@@ -12,7 +12,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { getDaysInMonth, format, startOfDay, setDate, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { getFrenchPublicHolidays, type PublicHoliday } from '@/lib/holiday-utils';
-import type { DailyMenu, MenuItem, MenuField, StoredMenuThemeValue } from './types';
+import type { DailyMenu, MenuItem, MenuField, StoredMenuThemeValue, MenuThemeIdentifier } from './types';
 import { initialMenuItem, frenchDays, MENU_THEME_OPTIONS_FOR_SELECT, NO_THEME_SELECT_VALUE } from './types';
 import MenuPlanningTable from './components/menu-planning-table';
 import WeeklyOrderSheets from './components/weekly-order-sheets';
@@ -159,6 +159,17 @@ export default function MenuPlanningPage() {
         ];
       });
 
+      const themeRgbColors: Record<MenuThemeIdentifier, [number, number, number]> = {
+        froid: [219, 234, 254],   // Light Blue (bg-blue-100)
+        vege: [209, 250, 229],    // Light Green (bg-green-100)
+        sam: [254, 249, 195],     // Light Yellow (bg-yellow-100)
+        poisson: [252, 231, 243], // Light Pink (bg-pink-100)
+        fete: [255, 237, 213],    // Light Orange (bg-orange-100)
+      };
+      const holidayWeekendColor: [number, number, number] = [253, 224, 71]; // Tailwind yellow-400
+      const holidayWeekdayColor: [number, number, number] = [254, 240, 138]; // Tailwind yellow-300
+      const weekendColor: [number, number, number] = [229, 231, 235]; // Tailwind gray-200
+
       doc.autoTable({
         head: head,
         body: body,
@@ -172,19 +183,25 @@ export default function MenuPlanningPage() {
           2: { cellWidth: 20 }, 
         },
         willDrawCell: (data) => {
-          const dayMenu = menuData[data.row.index];
-          if (dayMenu && data.section === 'body') { 
-            let fillColorArray: [number, number, number] | undefined;
-            if (dayMenu.theme && dayMenu.theme !== '') {
-              // PDF row coloring by theme is complex with HSL vars from CSS.
-              // Current implementation relies on text in "Thème" column.
-            } else if (dayMenu.isHoliday) {
-              fillColorArray = dayMenu.isWeekend ? [253, 224, 71] : [254, 240, 138]; // Tailwind yellow-400 and yellow-300 approx.
-            } else if (dayMenu.isWeekend) {
-              fillColorArray = [229, 231, 235]; // Tailwind gray-200 approx.
-            }
-            if (fillColorArray) {
-              doc.setFillColor(fillColorArray[0], fillColorArray[1], fillColorArray[2]);
+          // Ensure we are in the body section and have a valid row index
+          if (data.section === 'body' && data.row && typeof data.row.index === 'number' && data.row.index < menuData.length) {
+            const dayMenu = menuData[data.row.index];
+            if (dayMenu) {
+              let fillColor: [number, number, number] | undefined = undefined;
+
+              if (dayMenu.theme && dayMenu.theme !== '' && themeRgbColors[dayMenu.theme as MenuThemeIdentifier]) {
+                fillColor = themeRgbColors[dayMenu.theme as MenuThemeIdentifier];
+              } else if (dayMenu.isHoliday) {
+                fillColor = dayMenu.isWeekend ? holidayWeekendColor : holidayWeekdayColor;
+              } else if (dayMenu.isWeekend) {
+                fillColor = weekendColor;
+              }
+
+              if (fillColor) {
+                // `data.cell.styles` is the correct way to apply cell-specific styles in `willDrawCell`
+                // For jspdf-autotable, `fillColor` is an array [r, g, b] or a hex string.
+                data.cell.styles.fillColor = fillColor;
+              }
             }
           }
         },
@@ -352,3 +369,4 @@ export default function MenuPlanningPage() {
     </div>
   );
 }
+
