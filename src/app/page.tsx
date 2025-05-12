@@ -7,19 +7,22 @@ import { ArrowRight } from 'lucide-react';
 export default function HomePage() {
   return (
     <main className="flex min-h-screen flex-col items-center p-4 md:p-8 selection:bg-accent selection:text-accent-foreground">
-      {/* Section 1: Title (Top-ish) */}
+      {/* Section 1: Title and Date (Top-ish) */}
       <div className="w-full text-center pt-12 sm:pt-16 md:pt-20">
         <h1 
           className="text-5xl sm:text-6xl md:text-7xl font-serif font-bold text-foreground animate-title-fade-in title-glow"
         >
           Gestion par l'excellence
         </h1>
+        <div className="mt-4 md:mt-6"> {/* Add margin top for spacing */}
+          <CurrentDate />
+        </div>
       </div>
 
-      {/* Section 2: Button and Date (Centered in remaining space) */}
+      {/* Section 2: Button (Centered in remaining space) */}
       {/* This outer div takes up remaining vertical space and centers its child vertically and horizontally */}
       <div className="flex-grow flex flex-col items-center justify-center w-full"> 
-        <div className="text-center space-y-6 md:space-y-8 py-8"> {/* Container for button and date, with vertical spacing and padding */}
+        <div className="text-center space-y-6 md:space-y-8 py-8"> {/* Container for button, with vertical spacing and padding */}
           <Link href="/dashboard" passHref>
             <Button 
               size="lg" 
@@ -29,9 +32,9 @@ export default function HomePage() {
               <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
             </Button>
           </Link>
-          <CurrentDate /> {/* Date below the button */}
         </div>
       </div>
     </main>
   );
 }
+
