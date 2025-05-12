@@ -12,8 +12,8 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { getDaysInMonth, format, startOfDay, setDate, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { getFrenchPublicHolidays, type PublicHoliday } from '@/lib/holiday-utils';
-import type { DailyMenu, MenuItem, MenuField } from './types';
-import { initialMenuItem, frenchDays } from './types';
+import type { DailyMenu, MenuItem, MenuField, MenuThemeValue } from './types';
+import { initialMenuItem, frenchDays, MENU_THEMES } from './types';
 import MenuPlanningTable from './components/menu-planning-table';
 import WeeklyOrderSheets from './components/weekly-order-sheets';
 import TemperatureSheet from './components/temperature-sheet';
@@ -63,7 +63,7 @@ export default function MenuPlanningPage() {
         isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
         isHoliday: holidayMap.has(dateStr),
         holidayName: holidayMap.get(dateStr),
-        ...initialMenuItem,
+        ...initialMenuItem, // This will include theme: ''
       });
     }
     return data;
@@ -89,8 +89,11 @@ export default function MenuPlanningPage() {
     
     if (storedData && storedData.length > 0) {
         const expectedDays = getDaysInMonth(new Date(yearNum, monthNum));
-        if (storedData.length === expectedDays && storedData[0].date.startsWith(`${selectedYear}-${(monthNum + 1).toString().padStart(2, '0')}`)) {
-            setMenuData(storedData);
+        // Check if stored data matches the selected month/year and length
+        if (storedData.length === expectedDays && 
+            storedData[0].date.startsWith(`${yearNum}-${(monthNum + 1).toString().padStart(2, '0')}`)) {
+            // Ensure theme field exists, default if not
+            setMenuData(storedData.map(d => ({...initialMenuItem, ...d})));
         } else {
             const freshData = generateMonthData(yearNum, monthNum);
             setMenuData(freshData);
@@ -138,16 +141,14 @@ export default function MenuPlanningPage() {
       doc.setFontSize(10);
       doc.text(`Généré le: ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, 14, 28);
 
-      const head = [['Date', 'Jour', 'Entrée', 'Plat', 'Féculent', 'Légume', 'Sauce', 'Dessert']];
+      const head = [['Date', 'Jour', 'Thème', 'Entrée', 'Plat', 'Féculent', 'Légume', 'Sauce', 'Dessert']];
       
       const body = menuData.map(dayMenu => {
-        let dateDisplay = format(parseISO(dayMenu.date), 'dd/MM', { locale: fr });
-        // if (dayMenu.isHoliday && dayMenu.holidayName) {
-        //   dateDisplay += `\n(${dayMenu.holidayName})`; // Add holiday name to date cell, autoTable handles multiline
-        // }
+        const themeLabel = dayMenu.theme ? MENU_THEMES.find(t => t.value === dayMenu.theme)?.label : '-';
         return [
-          dateDisplay,
+          format(parseISO(dayMenu.date), 'dd/MM', { locale: fr }),
           dayMenu.dayName + (dayMenu.isHoliday && dayMenu.holidayName ? `\n(${dayMenu.holidayName})` : ''),
+          themeLabel || '-',
           dayMenu.entree || '-',
           dayMenu.plat || '-',
           dayMenu.feculent || '-',
@@ -163,19 +164,27 @@ export default function MenuPlanningPage() {
         startY: 35,
         theme: 'grid',
         headStyles: { fillColor: [50, 50, 50], textColor: [255,255,255], fontStyle: 'bold' },
-        styles: { fontSize: 8, cellPadding: 1.5, valign: 'middle' },
+        styles: { fontSize: 7, cellPadding: 1.5, valign: 'middle' }, // Reduced font size for more columns
         columnStyles: {
-          0: { cellWidth: 15 }, // Date
-          1: { cellWidth: 25 }, // Jour
+          0: { cellWidth: 13 }, // Date
+          1: { cellWidth: 22 }, // Jour
+          2: { cellWidth: 20 }, // Thème
+          // Auto width for others
         },
         willDrawCell: (data) => {
           const dayMenu = menuData[data.row.index];
-          if (dayMenu && data.section === 'body') { // Apply only to body cells
+          if (dayMenu && data.section === 'body') { 
             let fillColor;
-            if (dayMenu.isHoliday) {
-              fillColor = [255, 255, 204]; // Light yellow for holiday
+            // Theme color takes precedence
+            if (dayMenu.theme && dayMenu.theme !== '') {
+              // This is tricky for jspdf-autotable, as direct hex/rgb is easier than HSL from CSS vars
+              // For simplicity, we'll skip direct PDF row coloring by theme for now
+              // and rely on the text in the "Thème" column.
+              // If specific coloring is needed, it requires more complex hook logic.
+            } else if (dayMenu.isHoliday) {
+              fillColor = dayMenu.isWeekend ? [255, 255, 153] : [255, 255, 204]; // Darker Yellow for holiday weekend
             } else if (dayMenu.isWeekend) {
-              fillColor = [230, 230, 230]; // Light gray for weekend
+              fillColor = [230, 230, 230]; 
             }
             if (fillColor) {
               doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
@@ -243,6 +252,7 @@ export default function MenuPlanningPage() {
                   </CardTitle>
                   <CardDescription>
                     Choisissez une année et un mois pour afficher et modifier les menus. Les samedis et dimanches sont en gris, les jours fériés en jaune.
+                    Les thèmes colorient la ligne : Bleu (Froid), Vert (Végé), Jaune (SAM), Rose (Poisson), Orange (Fête).
                   </CardDescription>
                 </div>
                 <Button onClick={generateMonthlyMenuPdf} disabled={isLoading || isGeneratingMonthlyPdf} className="w-full sm:w-auto">
@@ -345,4 +355,3 @@ export default function MenuPlanningPage() {
     </div>
   );
 }
-

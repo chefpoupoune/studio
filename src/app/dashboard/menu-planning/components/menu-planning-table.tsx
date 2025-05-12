@@ -1,10 +1,11 @@
 
 "use client";
 
-import type { DailyMenu, MenuField } from '../types';
+import type { DailyMenu, MenuField, MenuThemeValue } from '../types';
+import { MENU_THEMES, menuThemeStyles } from '../types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea'; // Using Textarea for more space
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
 interface MenuPlanningTableProps {
@@ -23,6 +24,23 @@ export default function MenuPlanningTable({ menuData, onUpdateMenuEntry }: MenuP
     onUpdateMenuEntry(date, field, value);
   };
 
+  const getRowClass = (dayMenu: DailyMenu): string => {
+    const themeClass = dayMenu.theme && dayMenu.theme !== '' ? menuThemeStyles[dayMenu.theme] : '';
+
+    if (themeClass) {
+      return themeClass;
+    }
+    if (dayMenu.isHoliday) {
+      return dayMenu.isWeekend 
+        ? 'bg-yellow-200 dark:bg-yellow-800/50 text-yellow-900 dark:text-yellow-100' // Holiday on Weekend
+        : 'bg-yellow-100 dark:bg-yellow-700/40 text-yellow-800 dark:text-yellow-200'; // Holiday on Weekday
+    }
+    if (dayMenu.isWeekend) {
+      return 'bg-muted/30'; // Weekend only
+    }
+    return ''; // Default
+  };
+
   return (
     <div className="overflow-x-auto border rounded-md shadow-sm">
       <Table className="min-w-full">
@@ -30,6 +48,7 @@ export default function MenuPlanningTable({ menuData, onUpdateMenuEntry }: MenuP
           <TableRow>
             <TableHead className="w-[150px] min-w-[150px] sticky left-0 bg-muted/50 z-20">Date</TableHead>
             <TableHead className="w-[120px] min-w-[120px]">Jour</TableHead>
+            <TableHead className="w-[180px] min-w-[180px]">Thème</TableHead>
             <TableHead className="w-[200px] min-w-[200px]">Entrée</TableHead>
             <TableHead className="w-[200px] min-w-[200px]">Plat</TableHead>
             <TableHead className="w-[200px] min-w-[200px]">Féculent</TableHead>
@@ -42,22 +61,39 @@ export default function MenuPlanningTable({ menuData, onUpdateMenuEntry }: MenuP
           {menuData.map((dayMenu) => (
             <TableRow
               key={dayMenu.date}
-              className={cn(
-                dayMenu.isWeekend && 'bg-muted/30', // Grey for weekends
-                dayMenu.isHoliday && 'bg-yellow-100 dark:bg-yellow-700/30', // Yellow for holidays
-                dayMenu.isHoliday && dayMenu.isWeekend && 'bg-yellow-200 dark:bg-yellow-600/40' // Darker yellow if weekend holiday
-              )}
+              className={cn(getRowClass(dayMenu))}
             >
-              <TableCell className="font-medium sticky left-0 bg-card z-10 group-hover:bg-muted/50 transition-colors">
+              <TableCell className={cn(
+                "font-medium sticky left-0 z-10 group-hover:bg-muted/60 transition-colors",
+                getRowClass(dayMenu) ? '' : 'bg-card' // Ensure sticky cell matches row if themed, else default
+                // This logic might need to be more sophisticated if rowClass itself sets bg-card or similar
+              )}>
                 {dayMenu.date.split('-')[2]} {/* Show only day number */}
                 {dayMenu.isHoliday && dayMenu.holidayName && (
-                   <span className="block text-xs text-amber-700 dark:text-amber-400 truncate" title={dayMenu.holidayName}>
+                   <span className="block text-xs truncate" title={dayMenu.holidayName}>
                        {dayMenu.holidayName}
                    </span>
                 )}
               </TableCell>
               <TableCell>{dayMenu.dayName}</TableCell>
-              {(['entree', 'plat', 'feculent', 'legume', 'sauce', 'dessert'] as MenuField[]).map((field) => (
+              <TableCell className="p-1">
+                <Select
+                  value={dayMenu.theme || ''}
+                  onValueChange={(value) => handleInputChange(dayMenu.date, 'theme', value as MenuThemeValue)}
+                >
+                  <SelectTrigger className="text-xs min-h-[60px] h-auto py-1 bg-background/70 focus:bg-background">
+                    <SelectValue placeholder="Thème" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MENU_THEMES.map(themeOption => (
+                      <SelectItem key={themeOption.value} value={themeOption.value} className="text-xs">
+                        {themeOption.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </TableCell>
+              {(['entree', 'plat', 'feculent', 'legume', 'sauce', 'dessert'] as Exclude<MenuField, 'theme'>[]).map((field) => (
                 <TableCell key={field} className="p-1">
                   <Textarea
                     value={dayMenu[field]}
