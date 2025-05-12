@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare } from 'lucide-react';
 import type { PdfLayoutSettings } from '../types';
 import { useToast } from '@/hooks/use-toast';
+import { PDF_LAYOUT_CONFIGS_KEY, GENERAL_CONFIG_KEY } from '@/lib/pdf-settings'; // Import constants
 
 const pdfTypes = [
   { value: 'benefits', label: 'Avantages en Nature' },
@@ -28,12 +29,11 @@ const pdfTypes = [
   { value: 'weekly_order_sheet', label: 'Fiche de Commande Hebdomadaire' }
 ];
 
-const GENERAL_CONFIG_VALUE = "_general_pdf_config_";
 const GENERAL_CONFIG_DISPLAY_LABEL = "Configuration Générale / Par Défaut";
-const PDF_LAYOUT_CONFIGS_KEY = "pdf_layout_configurations";
+
 
 export default function PdfLayoutManager() {
-  const [selectedPdfType, setSelectedPdfType] = useState<string>(GENERAL_CONFIG_VALUE);
+  const [selectedPdfType, setSelectedPdfType] = useState<string>(GENERAL_CONFIG_KEY);
   const [pdfConfigs, setPdfConfigs] = useState<Record<string, Partial<PdfLayoutSettings>>>({});
   
   const [logoUrlInput, setLogoUrlInput] = useState<string>('');
@@ -50,7 +50,7 @@ export default function PdfLayoutManager() {
         setPdfConfigs(JSON.parse(storedConfigs));
       } else {
         // Initialize with a default general config if nothing is stored
-        setPdfConfigs({ [GENERAL_CONFIG_VALUE]: { primaryColor: '#16A085' } }); // Default teal color
+        setPdfConfigs({ [GENERAL_CONFIG_KEY]: { primaryColor: '#16A085', footerText: 'Généré le {date} - Page {pageNumber}/{totalPages}' } }); 
       }
     } catch (error) {
       console.error("Error loading PDF layout configs from localStorage:", error);
@@ -59,14 +59,14 @@ export default function PdfLayoutManager() {
         description: "Impossible de charger les configurations de mise en page PDF.",
         variant: "destructive",
       });
-      setPdfConfigs({ [GENERAL_CONFIG_VALUE]: { primaryColor: '#16A085' } });
+      setPdfConfigs({ [GENERAL_CONFIG_KEY]: { primaryColor: '#16A085', footerText: 'Généré le {date} - Page {pageNumber}/{totalPages}' } });
     }
   }, [toast]);
 
   useEffect(() => {
-    const activeConfigKey = selectedPdfType || GENERAL_CONFIG_VALUE;
+    const activeConfigKey = selectedPdfType || GENERAL_CONFIG_KEY;
     const specificConfig = pdfConfigs[activeConfigKey];
-    const generalConfig = pdfConfigs[GENERAL_CONFIG_VALUE] || {};
+    const generalConfig = pdfConfigs[GENERAL_CONFIG_KEY] || {};
     
     setLogoUrlInput(specificConfig?.logoUrl || generalConfig?.logoUrl || '');
     setPrimaryColorInput(specificConfig?.primaryColor || generalConfig?.primaryColor || '#16A085');
@@ -75,7 +75,7 @@ export default function PdfLayoutManager() {
   }, [selectedPdfType, pdfConfigs]);
 
   const selectedPdfLabel = useMemo(() => {
-    if (selectedPdfType === GENERAL_CONFIG_VALUE) {
+    if (selectedPdfType === GENERAL_CONFIG_KEY) {
       return GENERAL_CONFIG_DISPLAY_LABEL;
     }
     const foundPdf = pdfTypes.find(pt => pt.value === selectedPdfType);
@@ -83,7 +83,7 @@ export default function PdfLayoutManager() {
   }, [selectedPdfType]);
 
   const saveConfigValue = (key: keyof PdfLayoutSettings, value: string | undefined, successMessage: string) => {
-    const activeConfigKey = selectedPdfType || GENERAL_CONFIG_VALUE;
+    const activeConfigKey = selectedPdfType || GENERAL_CONFIG_KEY;
     const newConfigs = {
       ...pdfConfigs,
       [activeConfigKey]: {
@@ -104,10 +104,10 @@ export default function PdfLayoutManager() {
   const handleSaveHeaderText = () => saveConfigValue('headerText', headerTextInput, "Le texte d'en-tête");
   const handleSaveFooterText = () => saveConfigValue('footerText', footerTextInput, "Le texte de pied de page");
 
-  const currentEffectiveLogoUrl = useMemo(() => pdfConfigs[selectedPdfType]?.logoUrl || pdfConfigs[GENERAL_CONFIG_VALUE]?.logoUrl || '', [selectedPdfType, pdfConfigs]);
-  const currentEffectivePrimaryColor = useMemo(() => pdfConfigs[selectedPdfType]?.primaryColor || pdfConfigs[GENERAL_CONFIG_VALUE]?.primaryColor || '#16A085', [selectedPdfType, pdfConfigs]);
-  const currentEffectiveHeaderText = useMemo(() => pdfConfigs[selectedPdfType]?.headerText || pdfConfigs[GENERAL_CONFIG_VALUE]?.headerText || '', [selectedPdfType, pdfConfigs]);
-  const currentEffectiveFooterText = useMemo(() => pdfConfigs[selectedPdfType]?.footerText || pdfConfigs[GENERAL_CONFIG_VALUE]?.footerText || `Généré le {date} - Page {pageNumber}/{totalPages}`, [selectedPdfType, pdfConfigs]);
+  const currentEffectiveLogoUrl = useMemo(() => pdfConfigs[selectedPdfType]?.logoUrl || pdfConfigs[GENERAL_CONFIG_KEY]?.logoUrl || '', [selectedPdfType, pdfConfigs]);
+  const currentEffectivePrimaryColor = useMemo(() => pdfConfigs[selectedPdfType]?.primaryColor || pdfConfigs[GENERAL_CONFIG_KEY]?.primaryColor || '#16A085', [selectedPdfType, pdfConfigs]);
+  const currentEffectiveHeaderText = useMemo(() => pdfConfigs[selectedPdfType]?.headerText || pdfConfigs[GENERAL_CONFIG_KEY]?.headerText || '', [selectedPdfType, pdfConfigs]);
+  const currentEffectiveFooterText = useMemo(() => pdfConfigs[selectedPdfType]?.footerText || pdfConfigs[GENERAL_CONFIG_KEY]?.footerText || `Généré le {date} - Page {pageNumber}/{totalPages}`, [selectedPdfType, pdfConfigs]);
 
   return (
     <div className="space-y-6">
@@ -126,7 +126,7 @@ export default function PdfLayoutManager() {
                 <SelectValue placeholder="Choisir un type de PDF..." />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={GENERAL_CONFIG_VALUE}>{GENERAL_CONFIG_DISPLAY_LABEL}</SelectItem>
+                <SelectItem value={GENERAL_CONFIG_KEY}>{GENERAL_CONFIG_DISPLAY_LABEL}</SelectItem>
                 {pdfTypes.map(pdf => (
                   <SelectItem key={pdf.value} value={pdf.value}>{pdf.label}</SelectItem>
                 ))}

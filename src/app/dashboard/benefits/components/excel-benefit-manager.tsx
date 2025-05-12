@@ -10,10 +10,11 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { UploadCloud, FileDown, FileText, Loader2 } from 'lucide-react';
+import { UploadCloud, FileText, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { fr } from 'date-fns/locale';
 import { format } from 'date-fns';
+import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 
 // Extend jsPDF with autoTable, or TypeScript might complain
 interface jsPDFWithAutoTable extends jsPDF {
@@ -115,26 +116,46 @@ export default function ExcelBenefitManager() {
     }
     setIsLoading(true);
     try {
+      const pdfSettings = getPdfLayoutSettings('benefits');
       const doc = new jsPDF() as jsPDFWithAutoTable; // Cast to include autoTable
       const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
-      const title = `Avantages en Nature - ${monthLabel} ${selectedYear}`;
+      const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
+
+      // Header Text from settings
+      if (pdfSettings.headerText) {
+        doc.setFontSize(10);
+        doc.text(pdfSettings.headerText, 14, 15);
+      }
       
+      const title = `Avantages en Nature - ${monthLabel} ${selectedYear}`;
       doc.setFontSize(18);
-      doc.text(title, 14, 20);
+      doc.text(title, 14, pdfSettings.headerText ? 25 : 20); // Adjust Y based on header presence
+      
       doc.setFontSize(10);
-      doc.text(`Généré le: ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, 14, 28);
+      doc.text(`Généré le: ${generationDateFormatted}`, 14, pdfSettings.headerText ? 33 : 28);
+
+      const headStyles: { fillColor?: [number, number, number] } = {};
+      const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
+      if (primaryColorRgb) {
+        headStyles.fillColor = primaryColorRgb;
+      }
 
       doc.autoTable({
-        startY: 35,
+        startY: pdfSettings.headerText ? 40 : 35,
         head: [headers],
         body: excelData.map(row => row.map(cell => cell === null || cell === undefined ? '' : String(cell))),
         theme: 'grid',
-        headStyles: { fillColor: [22, 160, 133] }, // Example header color
+        headStyles: headStyles,
         didDrawPage: (data) => {
-          // Footer
-          const pageCount = doc.getNumberOfPages();
-          doc.setFontSize(10);
-          doc.text(`Page ${data.pageNumber} sur ${pageCount}`, data.settings.margin.left, doc.internal.pageSize.height - 10);
+          // Footer Text from settings
+          const pageCount = doc.internal.getNumberOfPages();
+          let footerStr = pdfSettings.footerText
+            .replace('{date}', generationDateFormatted)
+            .replace('{pageNumber}', data.pageNumber.toString())
+            .replace('{totalPages}', pageCount.toString());
+          
+          doc.setFontSize(9);
+          doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
         }
       });
       doc.save(`Avantages_Nature_${monthLabel}_${selectedYear}.pdf`);
