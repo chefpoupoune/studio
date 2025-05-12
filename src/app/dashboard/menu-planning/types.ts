@@ -1,4 +1,5 @@
 
+
 export interface MenuItem {
   entree: string;
   plat: string;
@@ -32,3 +33,4 @@ export const frenchMonths = [
   "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
   "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
 ];
+
