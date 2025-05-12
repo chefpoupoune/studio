@@ -6,7 +6,6 @@ import type { DailyMenu, MenuField } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Loader2, CalendarRange, AlertCircle, ThermometerIcon } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -21,7 +20,7 @@ interface MealItemTemperatureInput {
 
 interface DailyLogInput {
   personnel?: string;
-  correctiveActions?: string;
+  // correctiveActions removed
 }
 
 const mealPartsOrder: MenuField[] = ['entree', 'plat', 'feculent', 'legume', 'sauce', 'dessert'];
@@ -155,7 +154,7 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
                       <TableHead className="min-w-[120px] w-[120px] text-center">Temp. 2ème Serv. (12h45)</TableHead>
                       <TableHead className="min-w-[120px] w-[120px] text-center">Temp. 3ème Serv. (13h)</TableHead>
                       <TableHead className="min-w-[120px] w-[120px]">Personnel</TableHead>
-                      <TableHead className="min-w-[200px] w-[200px]">Actions Correctives / Observations</TableHead>
+                      {/* Removed "Actions Correctives / Observations" header */}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -224,22 +223,13 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
                                   <Input 
                                     type="text" 
                                     placeholder="Initiales" 
-                                    className="text-xs h-10" // Input will define its own height
+                                    className="text-xs h-10" 
                                     value={dailyInputs.personnel || ''}
                                     onChange={(e) => handleDailyLogChange(menu.date, 'personnel', e.target.value)}
                                     disabled={menu.isWeekend}
                                   />
                                 </TableCell>
-                                <TableCell rowSpan={numMealPartsForThisDay} className="p-1 align-top">
-                                  <Textarea 
-                                    placeholder="Actions/Observations..." 
-                                    className="text-xs min-h-[40px] h-auto" // Textarea can grow
-                                    rows={2} // Initial rows, can grow if content needs more
-                                    value={dailyInputs.correctiveActions || ''}
-                                    onChange={(e) => handleDailyLogChange(menu.date, 'correctiveActions', e.target.value)}
-                                    disabled={menu.isWeekend}
-                                  />
-                                </TableCell>
+                                {/* Removed Cell for "Actions Correctives / Observations" */}
                               </>
                             )}
                           </TableRow>
