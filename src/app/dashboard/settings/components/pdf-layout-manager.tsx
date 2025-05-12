@@ -1,56 +1,119 @@
 
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { FileCog, ImagePlus, Palette } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { FileCog, ImagePlus, Palette, Settings2 } from 'lucide-react';
+
+const pdfTypes = [
+  { value: 'benefits', label: 'Avantages en Nature' },
+  { value: 'monthly_cost', label: 'Coût de Revient Mensuel' },
+  { value: 'annual_cost', label: 'Récapitulatif Annuel Coût de Revient' },
+  { value: 'picnic_cost', label: 'Coût Repas Pique-Nique/Salade' },
+  { value: 'occasional_meal_cost', label: 'Coût Repas Occasionnel' },
+  { value: 'inventory_report', label: 'Rapport d\'Inventaire' },
+  { value: 'purchase_order', label: 'Bon de Commande Produit Cuisine' },
+  { value: 'time_tracking_summary', label: 'Relevé d\'Heures Individuel' },
+  { value: 'menu_planning_monthly', label: 'Planification des Menus Mensuelle' },
+  { value: 'temperature_sheet_monthly', label: 'Fiche de Température Mensuelle' },
+  // Note: Fiche de Commande (WeeklyOrderSheets) is a specific static template, might not fit this customization model as easily.
+];
 
 export default function PdfLayoutManager() {
-  // This component is a placeholder for a complex feature.
-  // Actual implementation would involve:
-  // - Selecting which PDF to customize (e.g., Avantages, Coût de revient, etc.)
-  // - UI for uploading/managing logos
-  // - UI for setting logo position, size
-  // - UI for customizing headers/footers (text, dynamic fields)
-  // - UI for adjusting margins, fonts
-  // - Storing these preferences (e.g., in localStorage)
-  // - Applying these preferences during PDF generation in respective components.
+  const [selectedPdfType, setSelectedPdfType] = useState<string>('');
+
+  const selectedPdfLabel = pdfTypes.find(pt => pt.value === selectedPdfType)?.label || "Général";
 
   return (
     <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Sélectionnez un type de PDF à configurer</CardTitle>
+          <CardDescription>
+            Choisissez le document dont vous souhaitez (à terme) personnaliser la mise en page.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="max-w-md">
+            <Label htmlFor="pdf-type-select" className="mb-2 block">Type de Document PDF</Label>
+            <Select value={selectedPdfType} onValueChange={setSelectedPdfType}>
+              <SelectTrigger id="pdf-type-select">
+                <SelectValue placeholder="Choisir un type de PDF..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Configuration Générale / Par Défaut</SelectItem>
+                {pdfTypes.map(pdf => (
+                  <SelectItem key={pdf.value} value={pdf.value}>{pdf.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+      
       <Alert variant="default" className="border-primary/50 bg-primary/10">
         <FileCog className="h-5 w-5 text-primary" />
-        <AlertTitle className="text-primary">Fonctionnalité en cours de développement</AlertTitle>
+        <AlertTitle className="text-primary font-semibold">Fonctionnalité en cours de développement</AlertTitle>
         <AlertDescription>
-          La gestion avancée de la mise en page des PDF, incluant l'ajout de logos personnalisés et la modification fine des modèles, est une fonctionnalité prévue pour une future version.
+          La gestion avancée de la mise en page des PDF est prévue pour une future version. Les options ci-dessous sont des démonstrations de ce qui sera possible.
         </AlertDescription>
       </Alert>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        <div className="p-6 border rounded-lg shadow-sm bg-card">
-          <div className="flex items-center gap-3 mb-3">
-            <ImagePlus className="w-6 h-6 text-accent" />
-            <h3 className="text-lg font-semibold text-foreground">Gestion des Logos</h3>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Prochainement, vous pourrez télécharger et sélectionner un logo d'entreprise à inclure automatiquement dans l'en-tête ou le pied de page de vos documents PDF générés.
-          </p>
-        </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Settings2 className="w-5 h-5 text-accent"/>
+            Options de Personnalisation pour: <span className="text-primary ml-1">{selectedPdfLabel}</span>
+          </CardTitle>
+           <CardDescription>
+            Les options suivantes sont des exemples et ne sont pas encore fonctionnelles.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+           <div className="grid md:grid-cols-2 gap-6">
+            <div className="p-6 border rounded-lg shadow-sm bg-card/50 hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-3 mb-3">
+                <ImagePlus className="w-6 h-6 text-accent" />
+                <h3 className="text-lg font-semibold text-foreground">Gestion du Logo</h3>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Téléchargez et positionnez votre logo pour ce type de document.
+              </p>
+              <Button variant="outline" disabled>Télécharger Logo</Button>
+            </div>
 
-        <div className="p-6 border rounded-lg shadow-sm bg-card">
-          <div className="flex items-center gap-3 mb-3">
-            <Palette className="w-6 h-6 text-accent" />
-            <h3 className="text-lg font-semibold text-foreground">Personnalisation des Modèles</h3>
+            <div className="p-6 border rounded-lg shadow-sm bg-card/50 hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-3 mb-3">
+                <Palette className="w-6 h-6 text-accent" />
+                <h3 className="text-lg font-semibold text-foreground">Mise en Page et Styles</h3>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Ajustez les marges, polices et couleurs spécifiques à ce document.
+              </p>
+               <Button variant="outline" disabled>Modifier Styles</Button>
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground">
-            À l'avenir, des options pour ajuster les marges, les polices, et potentiellement les couleurs des éléments communs des PDF (titres, tableaux) seront disponibles ici.
-          </p>
-        </div>
-      </div>
+           <div className="p-6 border rounded-lg shadow-sm bg-card/50 hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-3 mb-3">
+                <FileCog className="w-6 h-6 text-accent" />
+                <h3 className="text-lg font-semibold text-foreground">En-têtes et Pieds de Page</h3>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Personnalisez le contenu des en-têtes et pieds de page pour ce document.
+              </p>
+              <Button variant="outline" disabled>Configurer En-têtes/Pieds de Page</Button>
+            </div>
+        </CardContent>
+      </Card>
 
       <p className="text-sm text-muted-foreground text-center pt-4">
-        Pour l'instant, les PDF sont générés avec une mise en page standard. Nous travaillons à vous offrir plus de flexibilité.
+        Actuellement, tous les PDF sont générés avec une mise en page standard. Nous travaillons activement pour vous offrir une personnalisation complète.
       </p>
     </div>
   );
 }
+
