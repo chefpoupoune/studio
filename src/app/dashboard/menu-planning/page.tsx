@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { ArrowLeft, BookOpenText, CalendarDays } from 'lucide-react';
+import { ArrowLeft, BookOpenText, CalendarDays, ClipboardCheck } from 'lucide-react'; // Added ClipboardCheck
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
@@ -15,10 +15,12 @@ import { getFrenchPublicHolidays, type PublicHoliday } from '@/lib/holiday-utils
 import type { DailyMenu, MenuItem, MenuField } from './types';
 import { initialMenuItem, frenchDays } from './types';
 import MenuPlanningTable from './components/menu-planning-table';
+import WeeklyOrderSheets from './components/weekly-order-sheets'; // New import
 import { useToast } from '@/hooks/use-toast';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'; // Added Tabs
 
 const currentYear = new Date().getFullYear();
-const years = Array.from({ length: 10 }, (_, i) => currentYear - 5 + i); // Last 5 years and next 4 years
+const years = Array.from({ length: 10 }, (_, i) => currentYear - 5 + i);
 const months = Array.from({ length: 12 }, (_, i) => ({
   value: i.toString(),
   label: format(new Date(currentYear, i), "MMMM", { locale: fr }),
@@ -44,7 +46,7 @@ export default function MenuPlanningPage() {
     for (let day = 1; day <= daysInSelectedMonth; day++) {
       const currentDate = startOfDay(new Date(year, month, day));
       const dateStr = format(currentDate, 'yyyy-MM-dd');
-      const dayOfWeek = currentDate.getDay(); // 0 for Sunday, 1 for Monday, ...
+      const dayOfWeek = currentDate.getDay();
       
       data.push({
         date: dateStr,
@@ -52,7 +54,7 @@ export default function MenuPlanningPage() {
         isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
         isHoliday: holidayMap.has(dateStr),
         holidayName: holidayMap.get(dateStr),
-        ...initialMenuItem, // Spread initial empty menu items
+        ...initialMenuItem,
       });
     }
     return data;
@@ -77,12 +79,10 @@ export default function MenuPlanningPage() {
     const monthNum = parseInt(selectedMonth, 10);
     
     if (storedData && storedData.length > 0) {
-        // Ensure dates are consistent if loaded from storage, regenerate if structure mismatch
         const expectedDays = getDaysInMonth(new Date(yearNum, monthNum));
         if (storedData.length === expectedDays && storedData[0].date.startsWith(`${selectedYear}-${(monthNum + 1).toString().padStart(2, '0')}`)) {
             setMenuData(storedData);
         } else {
-            // Data mismatch, regenerate
             const freshData = generateMonthData(yearNum, monthNum);
             setMenuData(freshData);
         }
@@ -127,58 +127,93 @@ export default function MenuPlanningPage() {
         <CurrentDate />
       </div>
       
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-             <CalendarDays className="w-6 h-6 text-primary"/>
-             Sélection et Création des Menus
-          </CardTitle>
-          <CardDescription>
-            Choisissez une année et un mois pour afficher et modifier les menus. Les samedis et dimanches sont en gris, les jours fériés en jaune.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
-            <div>
-              <Label htmlFor="year-select">Année</Label>
-              <Select value={selectedYear} onValueChange={setSelectedYear}>
-                <SelectTrigger id="year-select">
-                  <SelectValue placeholder="Sélectionner une année" />
-                </SelectTrigger>
-                <SelectContent>
-                  {years.map(year => (
-                    <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="month-select">Mois</Label>
-              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                <SelectTrigger id="month-select">
-                  <SelectValue placeholder="Sélectionner un mois" />
-                </SelectTrigger>
-                <SelectContent>
-                  {months.map(month => (
-                    <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+      <Tabs defaultValue="planning" className="w-full">
+        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 gap-2 mb-6 bg-card p-1 rounded-lg">
+          <TabsTrigger value="planning" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <CalendarDays className="mr-1 sm:mr-2 h-4 w-4" /> Planification Mensuelle
+          </TabsTrigger>
+          <TabsTrigger value="order-sheets" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <ClipboardCheck className="mr-1 sm:mr-2 h-4 w-4" /> Fiches de Commande
+          </TabsTrigger>
+        </TabsList>
 
-          {isLoading ? (
-            <p className="text-muted-foreground text-center py-10">Chargement des menus...</p>
-          ) : (
-            <MenuPlanningTable
-              year={parseInt(selectedYear)}
-              month={parseInt(selectedMonth)}
-              menuData={menuData}
-              onUpdateMenuEntry={handleUpdateMenuEntry}
-            />
-          )}
-        </CardContent>
-      </Card>
+        <TabsContent value="planning">
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarDays className="w-6 h-6 text-primary"/>
+                Sélection et Création des Menus
+              </CardTitle>
+              <CardDescription>
+                Choisissez une année et un mois pour afficher et modifier les menus. Les samedis et dimanches sont en gris, les jours fériés en jaune.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+                <div>
+                  <Label htmlFor="year-select-planning">Année</Label>
+                  <Select value={selectedYear} onValueChange={setSelectedYear}>
+                    <SelectTrigger id="year-select-planning">
+                      <SelectValue placeholder="Sélectionner une année" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {years.map(year => (
+                        <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="month-select-planning">Mois</Label>
+                  <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                    <SelectTrigger id="month-select-planning">
+                      <SelectValue placeholder="Sélectionner un mois" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {months.map(month => (
+                        <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {isLoading ? (
+                <p className="text-muted-foreground text-center py-10">Chargement des menus...</p>
+              ) : (
+                <MenuPlanningTable
+                  year={parseInt(selectedYear)}
+                  month={parseInt(selectedMonth)}
+                  menuData={menuData}
+                  onUpdateMenuEntry={handleUpdateMenuEntry}
+                />
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="order-sheets">
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ClipboardCheck className="w-6 h-6 text-primary"/>
+                Fiches de Commande Hebdomadaires
+              </CardTitle>
+              <CardDescription>
+                Générez les fiches de commande pour chaque semaine du mois sélectionné.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <WeeklyOrderSheets
+                year={parseInt(selectedYear)}
+                month={parseInt(selectedMonth)}
+                menuData={menuData}
+                isLoading={isLoading}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

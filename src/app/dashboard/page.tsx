@@ -59,7 +59,7 @@ export default function DashboardPage() {
         />
         <DashboardCard
           title="Rubrique Menus"
-          description="Planifiez les menus hebdomadaires et mensuels."
+          description="Planifiez les menus hebdomadaires/mensuels et générez des fiches de commande."
           href="/dashboard/menu-planning"
           icon={<BookOpenText className="w-8 h-8 text-primary" />}
         />
