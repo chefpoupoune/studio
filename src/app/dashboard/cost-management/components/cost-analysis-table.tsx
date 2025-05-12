@@ -180,11 +180,13 @@ export default function CostAnalysisTable() {
   
   const getColumnClass = (header: string) => {
     const grayCols = ['Fournisseur', 'HT', 'TVA', 'Avoir', 'Total', 'Effectif'];
-    const orangeCols = ['IMP', 'SAJ', 'IME', 'ESAT', 'Repas +++', 'Nous', 'PN', 'PN ESAT'];
+    const orangeCols = ['IMP', 'SAJ', 'IME', 'ESAT', 'Repas +++', 'Nous', 'PN', 'PN ESAT']; // Note: 'Repas +++'
     if (grayCols.includes(header)) return 'bg-muted text-muted-foreground';
-    if (orangeCols.includes(header)) return 'bg-accent/30 text-accent-foreground'; // Using accent theme color
-    if (!isNaN(parseInt(header)) && parseInt(header) >= 1 && parseInt(header) <= 31) return 'bg-primary/20 text-primary-foreground'; // Using primary theme color
-    return '';
+    if (orangeCols.includes(header)) return 'bg-accent/30 text-accent-foreground';
+    // Check if header is a number string for day columns
+    const dayNumber = parseInt(header, 10);
+    if (!isNaN(dayNumber) && dayNumber >= 1 && dayNumber <= 31) return 'bg-primary/20 text-primary-foreground';
+    return 'bg-card'; // Default background for headers like "Jours du Mois"
   };
 
 
@@ -216,14 +218,22 @@ export default function CostAnalysisTable() {
         <Table className="min-w-full">
           <TableHeader>
             <TableRow>
-              <TableHead className={cn("sticky left-0 z-10 bg-card", getColumnClass('Fournisseur'))}>Fournisseur</TableHead>
-              {['HT', 'TVA', 'Avoir'].map(h => <TableHead key={h} className={cn("bg-card", getColumnClass(h))}>{h}</TableHead>)}
-              {dayKeys.map((dayKey, i) => <TableHead key={dayKey} className={cn("bg-card", getColumnClass((i+1).toString()))}>{i + 1}</TableHead>)}
-              {['IMP', 'SAJ', 'IME', 'ESAT', 'Repas +++', 'Nous'].map(h => <TableHead key={h} className={cn("bg-card", getColumnClass(h))}>{h}</TableHead>)}
-              <TableHead className={cn("bg-card", getColumnClass('Total'))}>Total</TableHead>
-              {['PN', 'PN ESAT'].map(h => <TableHead key={h} className={cn("bg-card", getColumnClass(h))}>{h}</TableHead>)}
-              <TableHead className={cn("bg-card", getColumnClass('Effectif'))}>Effectif</TableHead>
-              <TableHead className="bg-card">Action</TableHead>
+              <TableHead rowSpan={2} className={cn("sticky left-0 z-10", getColumnClass('Fournisseur'))}>Fournisseur</TableHead>
+              {['HT', 'TVA', 'Avoir'].map(h => <TableHead rowSpan={2} key={h} className={getColumnClass(h)}>{h}</TableHead>)}
+              
+              <TableHead colSpan={31} className={cn("text-center", getColumnClass('1'))}> {/* '1' to get day column style */}
+                Jours du Mois
+              </TableHead>
+              
+              {['IMP', 'SAJ', 'IME', 'ESAT', 'Repas +++', 'Nous'].map(h => <TableHead rowSpan={2} key={h} className={getColumnClass(h)}>{h.replace('+++', ' +++')}</TableHead>)}
+              <TableHead rowSpan={2} className={getColumnClass('Total')}>Total</TableHead>
+              {['PN', 'PN ESAT'].map(h => <TableHead rowSpan={2} key={h} className={getColumnClass(h)}>{h}</TableHead>)}
+              <TableHead rowSpan={2} className={getColumnClass('Effectif')}>Effectif</TableHead>
+              <TableHead rowSpan={2} className="bg-card">Action</TableHead>
+            </TableRow>
+            <TableRow>
+              {/* Individual day headers */}
+              {dayKeys.map((dayKey, i) => <TableHead key={dayKey} className={cn("text-center", getColumnClass((i+1).toString()))}>{i + 1}</TableHead>)}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -232,31 +242,31 @@ export default function CostAnalysisTable() {
               const rowEffectif = calculateRowEffectif(row, rowTotal);
               return (
                 <TableRow key={row.id}>
-                  <TableCell className={cn("sticky left-0 z-10 bg-card", getColumnClass('Fournisseur'))}>
-                    <Input type="text" value={row.fournisseur} onChange={e => handleInputChange(rowIndex, 'fournisseur', e.target.value)} className="w-32 text-xs p-1" />
+                  <TableCell className={cn("sticky left-0 z-10", getColumnClass('Fournisseur'))}>
+                    <Input type="text" value={row.fournisseur} onChange={e => handleInputChange(rowIndex, 'fournisseur', e.target.value)} className="w-32 text-xs p-1 bg-background" />
                   </TableCell>
                   {(['ht', 'tva', 'avoir'] as const).map(field => (
-                    <TableCell key={field} className={cn("bg-card", getColumnClass(field.toUpperCase()))}>
-                      <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="w-20 text-xs p-1" />
+                    <TableCell key={field} className={getColumnClass(field.toUpperCase())}>
+                      <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="w-20 text-xs p-1 bg-background" />
                     </TableCell>
                   ))}
                   {dayKeys.map((dayKey, i) => (
-                     <TableCell key={dayKey} className={cn("bg-card", getColumnClass((i+1).toString()))}>
-                        <Input type="number" value={row[dayKey]} onChange={e => handleInputChange(rowIndex, dayKey, e.target.value)} className="w-12 text-xs p-1" placeholder="0"/>
+                     <TableCell key={dayKey} className={getColumnClass((i+1).toString())}>
+                        <Input type="number" value={row[dayKey]} onChange={e => handleInputChange(rowIndex, dayKey, e.target.value)} className="w-12 text-xs p-1 bg-background" placeholder="0"/>
                      </TableCell>
                   ))}
                   {(['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'] as const).map(field => (
-                    <TableCell key={field} className={cn("bg-card", getColumnClass(field.toUpperCase()))}>
-                      <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="w-20 text-xs p-1" />
+                    <TableCell key={field} className={getColumnClass(field.toUpperCase().replace('REPASPLUS', 'Repas +++'))}> {/* Ensure correct key for Repas +++ */}
+                      <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="w-20 text-xs p-1 bg-background" />
                     </TableCell>
                   ))}
-                  <TableCell className={cn("bg-card", getColumnClass('Total'))}>{rowTotal.toFixed(2)}</TableCell>
+                  <TableCell className={getColumnClass('Total')}>{rowTotal.toFixed(2)}</TableCell>
                   {(['pn', 'pnEsat'] as const).map(field => (
-                    <TableCell key={field} className={cn("bg-card", getColumnClass(field.toUpperCase()))}>
-                      <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="w-20 text-xs p-1" />
+                    <TableCell key={field} className={getColumnClass(field.toUpperCase())}>
+                      <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="w-20 text-xs p-1 bg-background" />
                     </TableCell>
                   ))}
-                  <TableCell className={cn("bg-card", getColumnClass('Effectif'))}>{rowEffectif.toFixed(2)}</TableCell>
+                  <TableCell className={getColumnClass('Effectif')}>{rowEffectif.toFixed(2)}</TableCell>
                   <TableCell className="bg-card">
                     <Button variant="destructive" size="icon" onClick={() => handleDeleteRow(row.id)}><Trash2 className="h-4 w-4" /></Button>
                   </TableCell>
@@ -269,17 +279,18 @@ export default function CostAnalysisTable() {
               <TableCell className={cn("sticky left-0 z-10", getColumnClass('Fournisseur'))}>Totaux</TableCell>
               <TableCell className={getColumnClass('HT')}>{totals.totalHt.toFixed(2)}</TableCell>
               <TableCell className={getColumnClass('TVA')}>{totals.totalTva.toFixed(2)}</TableCell>
-              <TableCell className={getColumnClass('AVOIR')}>{totals.totalAvoir.toFixed(2)}</TableCell>
-              <TableCell colSpan={31 + 6}></TableCell> {/* Placeholder for day columns & IMP to Nous */}
-              <TableCell></TableCell> {/* Total Col */}
-              <TableCell></TableCell><TableCell></TableCell> {/* PN, PN ESAT Cols */}
+              <TableCell className={getColumnClass('Avoir')}>{totals.totalAvoir.toFixed(2)}</TableCell>
+              <TableCell colSpan={31 + 6} className={getColumnClass('1')}></TableCell> {/* Placeholder for day columns & IMP to Nous */}
+              <TableCell className={getColumnClass('Total')}></TableCell> {/* Total Col */}
+              <TableCell className={getColumnClass('PN')}></TableCell>
+              <TableCell className={getColumnClass('PN ESAT')}></TableCell> {/* PN, PN ESAT Cols */}
               <TableCell className={getColumnClass('Effectif')}>{totals.totalEffectifSum.toFixed(2)}</TableCell>
-              <TableCell></TableCell>
+              <TableCell className="bg-card"></TableCell> {/* Action Col */}
             </TableRow>
             <TableRow className="font-bold bg-muted/90">
-              <TableCell colSpan={ (4 + 31 + 6 + 1 + 2)} className="text-right">Prix de Revient</TableCell> {/* Sum of all columns before Effectif */}
+              <TableCell colSpan={ (1 + 3 + 31 + 6 + 1 + 2)} className={cn("text-right", getColumnClass('Effectif'))}>Prix de Revient</TableCell> {/* Sum of all columns before Effectif */}
               <TableCell className={getColumnClass('Effectif')}>{totals.prixDeRevient.toFixed(2)}</TableCell>
-              <TableCell></TableCell>
+              <TableCell className="bg-card"></TableCell> {/* Action Col */}
             </TableRow>
           </TableFooter>
         </Table>
@@ -297,5 +308,3 @@ export default function CostAnalysisTable() {
     </div>
   );
 }
-
-    
