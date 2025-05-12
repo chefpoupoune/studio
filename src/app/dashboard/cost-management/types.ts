@@ -67,3 +67,14 @@ export interface IngredientPN {
   quantityPerMeal: number; // Quantity of this unit used per meal
   // costPerMeal will be calculated: unitPrice * quantityPerMeal
 }
+
+// Types for Occasional Meal Cost Analysis
+export type OccasionalMealPartType = 'starter' | 'main' | 'dessert';
+
+export interface IngredientOccasional {
+  id: string;
+  name: string;
+  unit: string; // e.g., "kg", "pièce", "L", "g"
+  unitPrice: number; // Price per unit
+  quantityPerSingleMeal: number; // Quantity of this unit used for one person's meal part
+}

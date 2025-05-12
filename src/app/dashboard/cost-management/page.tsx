@@ -2,16 +2,16 @@
 "use client";
 
 import Link from 'next/link';
-import { ArrowLeft, DollarSign, CalendarDays, CalendarRange, CookingPot } from 'lucide-react';
+import { ArrowLeft, DollarSign, CalendarDays, CalendarRange, CookingPot, UtensilsCrossed } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import CostAnalysisTable from './components/cost-analysis-table';
 import AnnualCostAnalysisTable from './components/annual-cost-analysis-table';
-import PicnicCostAnalysis from './components/picnic-cost-analysis'; // New import
+import PicnicCostAnalysis from './components/picnic-cost-analysis';
+import OccasionalMealCostAnalysis from './components/occasional-meal-cost-analysis'; // New import
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import React, { useState, useEffect } from 'react';
-// type { CostEntry } from './types'; // This type is not directly used here, can be removed if not needed later
 
 export default function CostManagementPage() {
   const [isClient, setIsClient] = useState(false);
@@ -50,7 +50,7 @@ export default function CostManagementPage() {
       </div>
       
       <Tabs defaultValue="monthly" className="w-full">
-        <TabsList className="grid w-full grid-cols-1 md:grid-cols-3 mb-6 bg-card p-1 rounded-lg">
+        <TabsList className="grid w-full grid-cols-1 md:grid-cols-2 lg:grid-cols-4 mb-6 bg-card p-1 rounded-lg">
           <TabsTrigger value="monthly" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             <CalendarDays className="mr-1 sm:mr-2 h-4 w-4" /> Coût de Revient Mensuel
           </TabsTrigger>
@@ -59,6 +59,9 @@ export default function CostManagementPage() {
           </TabsTrigger>
           <TabsTrigger value="picnic" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             <CookingPot className="mr-1 sm:mr-2 h-4 w-4" /> Coût Pique-Nique/Salade
+          </TabsTrigger>
+          <TabsTrigger value="occasional" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <UtensilsCrossed className="mr-1 sm:mr-2 h-4 w-4" /> Coût Repas Occasionnel
           </TabsTrigger>
         </TabsList>
 
@@ -98,6 +101,19 @@ export default function CostManagementPage() {
             </CardHeader>
             <CardContent>
               <PicnicCostAnalysis />
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="occasional">
+           <Card className="shadow-xl">
+            <CardHeader>
+              <CardTitle>Calcul du Coût de Revient Repas Occasionnel</CardTitle>
+              <CardDescription>
+                Calculez le coût d'un repas (entrée, plat, dessert) pour un nombre donné de personnes.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <OccasionalMealCostAnalysis />
             </CardContent>
           </Card>
         </TabsContent>
