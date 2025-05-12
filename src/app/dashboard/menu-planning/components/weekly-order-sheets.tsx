@@ -12,7 +12,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { groupMenusByWeek, type WeekData } from '../utils'; // Updated import
+import { groupMenusByWeek, type WeekData } from '../utils';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -30,61 +30,97 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<number | null>(null); // Store week index being generated
 
   const weeklyGroupedMenus = useMemo(() => {
+    // This grouping is still useful for the UI part and for knowing week start/end dates for PDF title
     return groupMenusByWeek(year, month, menuData);
   }, [year, month, menuData]);
 
   const generatePdfForWeek = (week: WeekData, weekIndex: number) => {
-    if (week.menus.length === 0) {
-      toast({
-        title: "Aucun Menu Planifié",
-        description: `Aucun menu n'est planifié pour la semaine du ${format(week.startDate, "dd/MM", { locale: fr })} au ${format(week.endDate, "dd/MM", { locale: fr })}.`,
-        variant: "destructive",
-      });
-      return;
-    }
     setIsGeneratingPdf(weekIndex);
 
     try {
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
-      const monthName = format(new Date(year, month), "MMMM yyyy", { locale: fr });
-      const weekLabel = `Semaine ${week.weekNumberInMonth}: du ${format(week.startDate, "dd LLLL", { locale: fr })} au ${format(week.endDate, "dd LLLL yyyy", { locale: fr })}`;
-      
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 14;
+
+      // Header
       doc.setFontSize(16);
-      doc.text("Fiche de Commande Cuisine", 14, 20);
-      doc.setFontSize(12);
-      doc.text(monthName, 14, 28);
+      doc.text("Fiche de Commande Cuisine", pageWidth / 2, margin + 5, { align: 'center' });
+      
       doc.setFontSize(10);
-      doc.text(weekLabel, 14, 34);
-      doc.text(`Généré le: ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, doc.internal.pageSize.width - 14, 20, { align: 'right'});
+      const semaineText = `Semaine du: ${format(week.startDate, "dd/MM/yyyy", { locale: fr })}  Au: ${format(week.endDate, "dd/MM/yyyy", { locale: fr })}`;
+      doc.text(semaineText, margin, margin + 15);
+      doc.text(`Généré le: ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, pageWidth - margin, margin + 15, { align: 'right'});
 
+      let currentY = margin + 25;
 
-      const head = [['Date', 'Jour', 'Entrée', 'Plat', 'Féculent', 'Légume', 'Sauce', 'Dessert']];
-      const body = week.menus.map(menu => [
-        format(parseISO(menu.date), "dd/MM", { locale: fr }),
-        menu.dayName,
-        menu.entree,
-        menu.plat,
-        menu.feculent,
-        menu.legume,
-        menu.sauce,
-        menu.dessert,
-      ]);
+      // First Table (Days of the week)
+      const daysHeader = [['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi']];
+      const daysBody = Array(3).fill(Array(6).fill('')); // 3 empty rows
 
       doc.autoTable({
-        startY: 45,
-        head: head,
-        body: body,
+        startY: currentY,
+        head: daysHeader,
+        body: daysBody,
         theme: 'grid',
-        headStyles: { fillColor: [22, 160, 133] }, // Example header color
+        headStyles: { fillColor: [220, 220, 220], textColor: [0,0,0], fontStyle: 'bold', halign: 'center' },
+        styles: { cellPadding: 3, minCellHeight: 10 },
+        tableWidth: 'auto',
+        margin: { left: margin, right: margin },
+      });
+      currentY = (doc as any).lastAutoTable.finalY + 5;
+
+      // Black bar separator
+      doc.setFillColor(0, 0, 0);
+      doc.rect(margin, currentY, pageWidth - (2 * margin), 2, 'F');
+      currentY += 7;
+      
+      // IME Brebières Info
+      doc.setFontSize(9);
+      const imeInfo = "IME Brebières / 46 chemin du bois des Caures / 62117 Brebières  03.21.50.00.36";
+      const apiInfo = "API 771";
+      const imeInfoWidth = doc.getTextWidth(imeInfo);
+      const apiInfoWidth = doc.getTextWidth(apiInfo);
+      doc.text(imeInfo, (pageWidth - imeInfoWidth - apiInfoWidth - 10) / 2 + margin, currentY); // Center main part
+      doc.text(apiInfo, pageWidth - margin - apiInfoWidth, currentY); // API info to the right
+      currentY += 5;
+
+      // Another Black bar separator
+      doc.setFillColor(0, 0, 0);
+      doc.rect(margin, currentY, pageWidth - (2 * margin), 2, 'F');
+      currentY += 10;
+      
+      // Second Table (Categories)
+      const categoriesHeader = [['Fruits et Légumes', 'Frais', 'Surgeler', 'Viande', 'Sec', 'Autres']];
+      const categoriesBody = Array(15).fill(Array(6).fill(' ')); // 15 empty rows, use ' ' to ensure cell borders render
+
+      doc.autoTable({
+        startY: currentY,
+        head: categoriesHeader,
+        body: categoriesBody,
+        theme: 'grid',
+        headStyles: { fontStyle: 'bold', halign: 'center' },
+        columnStyles: {
+          0: { fillColor: [200, 230, 201] }, // Light Green for Fruits et Légumes
+          1: { fillColor: [173, 216, 230] }, // Light Blue for Frais
+          2: { fillColor: [173, 216, 230] }, // Light Blue for Surgeler
+          3: { fillColor: [255, 192, 203] }, // Light Red/Pink for Viande
+          4: { fillColor: [220, 220, 220] }, // Light Grey for Sec
+          5: { fillColor: [220, 220, 220] }, // Light Grey for Autres
+        },
+        styles: { cellPadding: 2, minCellHeight: 8, fontSize: 9, cellWidth: 'wrap' },
+        tableWidth: 'auto',
+        margin: { left: margin, right: margin },
         didDrawPage: (data) => {
-          const pageCount = doc.getNumberOfPages();
+          // Footer for page number
           doc.setFontSize(10);
-          doc.text(`Page ${data.pageNumber} sur ${pageCount}`, data.settings.margin.left, doc.internal.pageSize.height - 10);
+          doc.text(`Page ${data.pageNumber}`, pageWidth - margin, pageHeight - 10, { align: 'right' });
         }
       });
       
-      doc.save(`Fiche_Commande_${format(week.startDate, "yyyy-MM-dd")}_${format(week.endDate, "yyyy-MM-dd")}.pdf`);
-      toast({ title: "PDF Généré", description: `Fiche de commande pour ${weekLabel} téléchargée.` });
+      doc.save(`Fiche_Commande_Vierge_${format(week.startDate, "yyyy-MM-dd")}_${format(week.endDate, "yyyy-MM-dd")}.pdf`);
+      toast({ title: "PDF de Commande Vierge Généré", description: `Fiche de commande pour la semaine du ${format(week.startDate, "dd/MM", { locale: fr })} téléchargée.` });
+
     } catch (error) {
       console.error("Error generating PDF for week:", error);
       toast({ title: "Erreur PDF", description: "La génération du PDF a échoué.", variant: "destructive" });
@@ -125,18 +161,23 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
               <CardTitle>
                 Semaine {week.weekNumberInMonth}: {format(week.startDate, "dd LLLL", { locale: fr })} - {format(week.endDate, "dd LLLL yyyy", { locale: fr })}
               </CardTitle>
-              <CardDescription>{week.menus.length} jour{week.menus.length > 1 ? 's' : ''} avec menu planifié cette semaine.</CardDescription>
+              <CardDescription>
+                {/* This description might need update as PDF is now a template */}
+                Générez une fiche de commande vierge pour cette semaine.
+                {/* {week.menus.length} jour{week.menus.length > 1 ? 's' : ''} avec menu planifié cette semaine. */}
+              </CardDescription>
             </div>
             <Button 
               onClick={() => generatePdfForWeek(week, index)} 
-              disabled={isGeneratingPdf === index || week.menus.length === 0}
+              disabled={isGeneratingPdf === index}
               size="sm"
             >
               {isGeneratingPdf === index ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-              Générer PDF
+              Générer PDF Commande
             </Button>
           </CardHeader>
           <CardContent>
+            {/* The UI display of menus for the week is kept as is. The PDF generation is what changes. */}
             {week.menus.length > 0 ? (
               <div className="overflow-x-auto border rounded-md max-h-[300px]">
                 <Table>
@@ -170,7 +211,7 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
               </div>
             ) : (
               <div className="text-center py-6 text-muted-foreground flex items-center justify-center gap-2">
-                <AlertCircle className="w-5 h-5" /> Aucun menu planifié pour cette semaine.
+                <AlertCircle className="w-5 h-5" /> Aucun menu planifié pour cette semaine. La fiche de commande sera vierge.
               </div>
             )}
           </CardContent>
@@ -179,3 +220,4 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
     </div>
   );
 }
+
