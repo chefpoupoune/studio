@@ -1,7 +1,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, LayoutDashboard, Archive, Settings, Users, PackageSearch } from 'lucide-react';
+import { ArrowLeft, LayoutDashboard, Archive, Settings, PackageSearch, FileSpreadsheet } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function DashboardPage() {
@@ -33,11 +33,17 @@ export default function DashboardPage() {
           href="/dashboard/inventory"
           icon={<Archive className="w-8 h-8 text-primary" />}
         />
+         <DashboardCard
+          title="Avantages en Nature"
+          description="Gérez les avantages en nature mensuels via des fichiers Excel et exportez en PDF."
+          href="/dashboard/benefits"
+          icon={<FileSpreadsheet className="w-8 h-8 text-primary" />}
+        />
         <DashboardCard
           title="Analyse des Ventes (Bientôt)"
           description="Visualisez les tendances et performances de vos ventes."
           href="#"
-          icon={<PackageSearch className="w-8 h-8 text-primary" />} // Using PackageSearch as an example
+          icon={<PackageSearch className="w-8 h-8 text-primary" />} 
           disabled
         />
         <DashboardCard
