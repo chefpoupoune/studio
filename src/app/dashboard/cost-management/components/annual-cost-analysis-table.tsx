@@ -148,7 +148,7 @@ export default function AnnualCostAnalysisTable() {
       doc.setFontSize(10);
       doc.text(`Généré le: ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, 14, 28);
 
-      const head = [['Mois', 'Total HT (€)', 'Total TVA (€)', 'Total Avoir (€)', 'Total Effectif', 'Prix de Revient Mensuel (€)', 'Emarket (€)', 'Frais Fonct. (€)', 'Frais Gestion (€)', 'Total Ligne (€)']];
+      const head = [['Mois', 'Total HT (€)', 'Total TVA (€)', 'Total Avoir (€)', 'Total Effectif', 'Prix de Revient Mensuel (€)', 'Emarket (€)', 'Frais Fonct. (€)', 'Frais Gestion (€)', 'Prix de Revient Mensuel avec Frais de Gestion (€)']];
       
       const body = annualData.map(summary => [
         summary.month,
@@ -200,7 +200,7 @@ export default function AnnualCostAnalysisTable() {
             6: { cellWidth: 'auto', halign: 'right' }, // Emarket
             7: { cellWidth: 'auto', halign: 'right' }, // Frais Fonct.
             8: { cellWidth: 'auto', halign: 'right' }, // Frais Gestion
-            9: { cellWidth: 'auto', halign: 'right' }, // Total Ligne
+            9: { cellWidth: 'auto', halign: 'right' }, // Prix de Revient Mensuel avec Frais de Gestion
         },
         didDrawPage: (data) => {
           const pageCount = doc.getNumberOfPages();
@@ -262,7 +262,7 @@ export default function AnnualCostAnalysisTable() {
               <TableHead className="text-right">Emarket (€)</TableHead>
               <TableHead className="text-right">Frais Fonct. (€)</TableHead>
               <TableHead className="text-right">Frais Gestion (€)</TableHead>
-              <TableHead className="text-right">Total Ligne (€)</TableHead>
+              <TableHead className="text-right">Prix de Revient Mensuel avec Frais de Gestion (€)</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
