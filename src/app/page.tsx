@@ -19,11 +19,11 @@ export default function HomePage() {
 
         <div 
           className="relative w-full aspect-[16/10] md:aspect-[16/9] max-w-2xl mx-auto rounded-xl overflow-hidden shadow-2xl border-2 border-transparent hover:border-accent transition-all duration-300 group"
-          data-ai-hint="kitchen cooking"
+          data-ai-hint="restaurant catering"
         >
           <Image
-            src="https://picsum.photos/seed/cuisineExcellence/1200/750"
-            alt="Image illustrant l'excellence en cuisine"
+            src="https://picsum.photos/seed/restaurationExcellence/1200/750"
+            alt="Image illustrant l'excellence en restauration"
             layout="fill"
             objectFit="cover"
             className="transform group-hover:scale-105 transition-transform duration-500 ease-out"
@@ -37,7 +37,7 @@ export default function HomePage() {
             size="lg" 
             className="text-lg px-8 py-6 rounded-lg shadow-lg hover:shadow-accent/30 transform hover:scale-105 transition-all duration-300 ease-out group"
           >
-            Accéder au tableau de bord
+            Bon courage
             <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
           </Button>
         </Link>
