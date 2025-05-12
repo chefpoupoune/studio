@@ -64,11 +64,10 @@ export default function DashboardPage() {
           icon={<BookOpenText className="w-8 h-8 text-primary" />}
         />
         <DashboardCard
-          title="Paramètres (Bientôt)"
-          description="Configurez les paramètres de l'application."
-          href="#"
+          title="Paramètres"
+          description="Configurez les mises en page PDF et autres paramètres de l'application."
+          href="/dashboard/settings"
           icon={<Settings className="w-8 h-8 text-primary" />}
-          disabled
         />
       </div>
     </div>
