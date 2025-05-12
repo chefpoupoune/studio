@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { ArrowLeft, BookOpenText, CalendarDays, ClipboardCheck } from 'lucide-react'; // Added ClipboardCheck
+import { ArrowLeft, BookOpenText, CalendarDays, ClipboardCheck, Thermometer } from 'lucide-react'; // Added Thermometer
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
@@ -15,9 +15,10 @@ import { getFrenchPublicHolidays, type PublicHoliday } from '@/lib/holiday-utils
 import type { DailyMenu, MenuItem, MenuField } from './types';
 import { initialMenuItem, frenchDays } from './types';
 import MenuPlanningTable from './components/menu-planning-table';
-import WeeklyOrderSheets from './components/weekly-order-sheets'; // New import
+import WeeklyOrderSheets from './components/weekly-order-sheets';
+import TemperatureSheet from './components/temperature-sheet'; // New import
 import { useToast } from '@/hooks/use-toast';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'; // Added Tabs
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const currentYear = new Date().getFullYear();
 const years = Array.from({ length: 10 }, (_, i) => currentYear - 5 + i);
@@ -128,12 +129,15 @@ export default function MenuPlanningPage() {
       </div>
       
       <Tabs defaultValue="planning" className="w-full">
-        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 gap-2 mb-6 bg-card p-1 rounded-lg">
+        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-2 mb-6 bg-card p-1 rounded-lg">
           <TabsTrigger value="planning" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             <CalendarDays className="mr-1 sm:mr-2 h-4 w-4" /> Planification Mensuelle
           </TabsTrigger>
           <TabsTrigger value="order-sheets" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             <ClipboardCheck className="mr-1 sm:mr-2 h-4 w-4" /> Fiches de Commande
+          </TabsTrigger>
+          <TabsTrigger value="temperature-sheets" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <Thermometer className="mr-1 sm:mr-2 h-4 w-4" /> Fiches de Température
           </TabsTrigger>
         </TabsList>
 
@@ -205,6 +209,28 @@ export default function MenuPlanningPage() {
             </CardHeader>
             <CardContent>
               <WeeklyOrderSheets
+                year={parseInt(selectedYear)}
+                month={parseInt(selectedMonth)}
+                menuData={menuData}
+                isLoading={isLoading}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="temperature-sheets">
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Thermometer className="w-6 h-6 text-primary"/>
+                Fiches de Température Hebdomadaires
+              </CardTitle>
+              <CardDescription>
+                Consultez et remplissez les fiches de température pour chaque semaine du mois sélectionné, basées sur les plats planifiés.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TemperatureSheet
                 year={parseInt(selectedYear)}
                 month={parseInt(selectedMonth)}
                 menuData={menuData}

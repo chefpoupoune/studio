@@ -10,18 +10,12 @@ import { FileText, Loader2, CalendarRange, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import { format, startOfWeek, endOfWeek, addWeeks, isSameMonth, parseISO } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { groupMenusByWeek, type WeekData } from '../utils'; // Updated import
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
-}
-
-interface WeekData {
-  weekNumberInMonth: number;
-  startDate: Date;
-  endDate: Date;
-  menus: DailyMenu[];
 }
 
 interface WeeklyOrderSheetsProps {
@@ -29,41 +23,6 @@ interface WeeklyOrderSheetsProps {
   month: number; // 0-indexed
   menuData: DailyMenu[];
   isLoading: boolean;
-}
-
-function groupMenusByWeek(year: number, month: number, allMenusForMonth: DailyMenu[]): WeekData[] {
-  const weeks: WeekData[] = [];
-  if (!allMenusForMonth || allMenusForMonth.length === 0) return weeks;
-
-  const firstDayOfMonth = new Date(year, month, 1);
-  const lastDayOfMonth = new Date(year, month + 1, 0);
-
-  let currentIterationDate = startOfWeek(firstDayOfMonth, { locale: fr, weekStartsOn: 1 });
-  let weekCounter = 1;
-
-  while (currentIterationDate <= lastDayOfMonth) {
-    const weekStartDate = currentIterationDate < firstDayOfMonth ? firstDayOfMonth : currentIterationDate;
-    let weekEndDate = endOfWeek(currentIterationDate, { locale: fr, weekStartsOn: 1 });
-    weekEndDate = weekEndDate > lastDayOfMonth ? lastDayOfMonth : weekEndDate;
-
-    const weekMenus = allMenusForMonth.filter(menu => {
-      const menuDate = parseISO(menu.date); // Dates from menuData are strings
-      return menuDate >= weekStartDate && menuDate <= weekEndDate && isSameMonth(menuDate, firstDayOfMonth);
-    });
-    
-    // Only add the week if its range (start or end) overlaps with the current month
-     if (weekStartDate <= lastDayOfMonth && weekEndDate >= firstDayOfMonth) {
-        weeks.push({
-            weekNumberInMonth: weekCounter,
-            startDate: weekStartDate,
-            endDate: weekEndDate,
-            menus: weekMenus,
-        });
-        weekCounter++;
-    }
-    currentIterationDate = addWeeks(currentIterationDate, 1);
-  }
-  return weeks;
 }
 
 export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: WeeklyOrderSheetsProps) {
@@ -220,4 +179,3 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
     </div>
   );
 }
-
