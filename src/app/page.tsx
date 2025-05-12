@@ -1,5 +1,4 @@
 
-import Image from 'next/image';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { CurrentDate } from '@/components/current-date';
@@ -16,21 +15,6 @@ export default function HomePage() {
         >
           Gestion par l'excellence
         </h1>
-
-        <div 
-          className="relative w-full aspect-[16/10] md:aspect-[16/9] max-w-2xl mx-auto rounded-xl overflow-hidden shadow-2xl border-2 border-transparent hover:border-accent transition-all duration-300 group"
-          data-ai-hint="restaurant catering"
-        >
-          <Image
-            src="https://picsum.photos/seed/restaurationExcellence/1200/750"
-            alt="Image illustrant l'excellence en restauration"
-            layout="fill"
-            objectFit="cover"
-            className="transform group-hover:scale-105 transition-transform duration-500 ease-out"
-            priority
-          />
-           <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-70 group-hover:opacity-50 transition-opacity duration-300"></div>
-        </div>
         
         <Link href="/dashboard" passHref>
           <Button 
