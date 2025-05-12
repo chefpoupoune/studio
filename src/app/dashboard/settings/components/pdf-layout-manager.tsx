@@ -8,8 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileCog, ImagePlus, Palette, Settings2, Save } from 'lucide-react';
+import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare } from 'lucide-react';
 import type { PdfLayoutSettings } from '../types';
 import { useToast } from '@/hooks/use-toast';
 
@@ -24,6 +25,7 @@ const pdfTypes = [
   { value: 'time_tracking_summary', label: 'Relevé d\'Heures Individuel' },
   { value: 'menu_planning_monthly', label: 'Planification des Menus Mensuelle' },
   { value: 'temperature_sheet_monthly', label: 'Fiche de Température Mensuelle' },
+  { value: 'weekly_order_sheet', label: 'Fiche de Commande Hebdomadaire' }
 ];
 
 const GENERAL_CONFIG_VALUE = "_general_pdf_config_";
@@ -33,7 +35,12 @@ const PDF_LAYOUT_CONFIGS_KEY = "pdf_layout_configurations";
 export default function PdfLayoutManager() {
   const [selectedPdfType, setSelectedPdfType] = useState<string>(GENERAL_CONFIG_VALUE);
   const [pdfConfigs, setPdfConfigs] = useState<Record<string, Partial<PdfLayoutSettings>>>({});
+  
   const [logoUrlInput, setLogoUrlInput] = useState<string>('');
+  const [primaryColorInput, setPrimaryColorInput] = useState<string>('');
+  const [headerTextInput, setHeaderTextInput] = useState<string>('');
+  const [footerTextInput, setFooterTextInput] = useState<string>('');
+
   const { toast } = useToast();
 
   useEffect(() => {
@@ -41,6 +48,9 @@ export default function PdfLayoutManager() {
       const storedConfigs = localStorage.getItem(PDF_LAYOUT_CONFIGS_KEY);
       if (storedConfigs) {
         setPdfConfigs(JSON.parse(storedConfigs));
+      } else {
+        // Initialize with a default general config if nothing is stored
+        setPdfConfigs({ [GENERAL_CONFIG_VALUE]: { primaryColor: '#16A085' } }); // Default teal color
       }
     } catch (error) {
       console.error("Error loading PDF layout configs from localStorage:", error);
@@ -49,35 +59,21 @@ export default function PdfLayoutManager() {
         description: "Impossible de charger les configurations de mise en page PDF.",
         variant: "destructive",
       });
+      setPdfConfigs({ [GENERAL_CONFIG_VALUE]: { primaryColor: '#16A085' } });
     }
   }, [toast]);
 
   useEffect(() => {
-    // Update logoUrlInput when selectedPdfType or pdfConfigs change
     const activeConfigKey = selectedPdfType || GENERAL_CONFIG_VALUE;
     const specificConfig = pdfConfigs[activeConfigKey];
-    const generalConfig = pdfConfigs[GENERAL_CONFIG_VALUE];
+    const generalConfig = pdfConfigs[GENERAL_CONFIG_VALUE] || {};
     
     setLogoUrlInput(specificConfig?.logoUrl || generalConfig?.logoUrl || '');
+    setPrimaryColorInput(specificConfig?.primaryColor || generalConfig?.primaryColor || '#16A085');
+    setHeaderTextInput(specificConfig?.headerText || generalConfig?.headerText || '');
+    setFooterTextInput(specificConfig?.footerText || generalConfig?.footerText || `Généré le {date} - Page {pageNumber}/{totalPages}`);
   }, [selectedPdfType, pdfConfigs]);
 
-  const handleSaveLogoUrl = () => {
-    const activeConfigKey = selectedPdfType || GENERAL_CONFIG_VALUE;
-    const newConfigs = {
-      ...pdfConfigs,
-      [activeConfigKey]: {
-        ...(pdfConfigs[activeConfigKey] || {}),
-        logoUrl: logoUrlInput,
-      },
-    };
-    setPdfConfigs(newConfigs);
-    localStorage.setItem(PDF_LAYOUT_CONFIGS_KEY, JSON.stringify(newConfigs));
-    toast({
-      title: "Logo Enregistré",
-      description: `L'URL du logo pour "${selectedPdfLabel}" a été enregistrée.`,
-    });
-  };
-  
   const selectedPdfLabel = useMemo(() => {
     if (selectedPdfType === GENERAL_CONFIG_VALUE) {
       return GENERAL_CONFIG_DISPLAY_LABEL;
@@ -86,12 +82,32 @@ export default function PdfLayoutManager() {
     return foundPdf ? foundPdf.label : GENERAL_CONFIG_DISPLAY_LABEL;
   }, [selectedPdfType]);
 
-  const currentEffectiveLogoUrl = useMemo(() => {
-    const specificConfig = pdfConfigs[selectedPdfType];
-    const generalConfig = pdfConfigs[GENERAL_CONFIG_VALUE];
-    return specificConfig?.logoUrl || generalConfig?.logoUrl || '';
-  }, [selectedPdfType, pdfConfigs]);
+  const saveConfigValue = (key: keyof PdfLayoutSettings, value: string | undefined, successMessage: string) => {
+    const activeConfigKey = selectedPdfType || GENERAL_CONFIG_VALUE;
+    const newConfigs = {
+      ...pdfConfigs,
+      [activeConfigKey]: {
+        ...(pdfConfigs[activeConfigKey] || {}),
+        [key]: value,
+      },
+    };
+    setPdfConfigs(newConfigs);
+    localStorage.setItem(PDF_LAYOUT_CONFIGS_KEY, JSON.stringify(newConfigs));
+    toast({
+      title: "Configuration Enregistrée",
+      description: `${successMessage} pour "${selectedPdfLabel}" a été enregistrée.`,
+    });
+  };
 
+  const handleSaveLogoUrl = () => saveConfigValue('logoUrl', logoUrlInput, "L'URL du logo");
+  const handleSavePrimaryColor = () => saveConfigValue('primaryColor', primaryColorInput, "La couleur primaire");
+  const handleSaveHeaderText = () => saveConfigValue('headerText', headerTextInput, "Le texte d'en-tête");
+  const handleSaveFooterText = () => saveConfigValue('footerText', footerTextInput, "Le texte de pied de page");
+
+  const currentEffectiveLogoUrl = useMemo(() => pdfConfigs[selectedPdfType]?.logoUrl || pdfConfigs[GENERAL_CONFIG_VALUE]?.logoUrl || '', [selectedPdfType, pdfConfigs]);
+  const currentEffectivePrimaryColor = useMemo(() => pdfConfigs[selectedPdfType]?.primaryColor || pdfConfigs[GENERAL_CONFIG_VALUE]?.primaryColor || '#16A085', [selectedPdfType, pdfConfigs]);
+  const currentEffectiveHeaderText = useMemo(() => pdfConfigs[selectedPdfType]?.headerText || pdfConfigs[GENERAL_CONFIG_VALUE]?.headerText || '', [selectedPdfType, pdfConfigs]);
+  const currentEffectiveFooterText = useMemo(() => pdfConfigs[selectedPdfType]?.footerText || pdfConfigs[GENERAL_CONFIG_VALUE]?.footerText || `Généré le {date} - Page {pageNumber}/{totalPages}`, [selectedPdfType, pdfConfigs]);
 
   return (
     <div className="space-y-6">
@@ -99,7 +115,7 @@ export default function PdfLayoutManager() {
         <CardHeader>
           <CardTitle>Sélectionnez un type de PDF à configurer</CardTitle>
           <CardDescription>
-            Choisissez le document dont vous souhaitez personnaliser la mise en page du logo.
+            Choisissez le document dont vous souhaitez personnaliser la mise en page. Les configurations spécifiques priment sur la configuration générale.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -160,7 +176,6 @@ export default function PdfLayoutManager() {
                         className="object-contain rounded"
                         data-ai-hint="logo company"
                         onError={(e) => {
-                            // Small hack to hide broken image icon if URL is invalid / image fails to load
                             (e.target as HTMLImageElement).style.display = 'none';
                              toast({
                                 title: "Erreur de chargement du logo",
@@ -182,10 +197,32 @@ export default function PdfLayoutManager() {
                 <Palette className="w-6 h-6 text-accent" />
                 <h3 className="text-lg font-semibold text-foreground">Mise en Page et Styles</h3>
               </div>
-              <p className="text-sm text-muted-foreground mb-4">
-                Ajustez les marges, polices et couleurs spécifiques à ce document. (Bientôt disponible)
+              <div className="space-y-4">
+                <div>
+                    <Label htmlFor="primary-color-input">Couleur Primaire (Hex)</Label>
+                    <Input 
+                        id="primary-color-input"
+                        type="text" // Can also be type="color", but text allows pasting hex codes
+                        placeholder="#16A085"
+                        value={primaryColorInput}
+                        onChange={(e) => setPrimaryColorInput(e.target.value)}
+                        className="mt-1"
+                    />
+                    {currentEffectivePrimaryColor && (
+                         <div className="mt-2 flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">Couleur actuelle:</span>
+                            <div style={{ backgroundColor: currentEffectivePrimaryColor }} className="w-5 h-5 rounded border border-border"></div>
+                            <span className="text-xs font-mono">{currentEffectivePrimaryColor}</span>
+                        </div>
+                    )}
+                </div>
+                 <Button onClick={handleSavePrimaryColor}>
+                    <Save className="mr-2 h-4 w-4"/> Enregistrer Couleur Primaire
+                </Button>
+              </div>
+              <p className="text-sm text-muted-foreground mt-4">
+                D'autres options (marges, polices) bientôt disponibles.
               </p>
-               <Button variant="outline" disabled>Modifier Styles</Button>
             </div>
           </div>
            <div className="p-6 border rounded-lg shadow-sm bg-card/50 hover:shadow-md transition-shadow">
@@ -193,21 +230,51 @@ export default function PdfLayoutManager() {
                 <FileCog className="w-6 h-6 text-accent" />
                 <h3 className="text-lg font-semibold text-foreground">En-têtes et Pieds de Page</h3>
               </div>
-              <p className="text-sm text-muted-foreground mb-4">
-                Personnalisez le contenu des en-têtes et pieds de page pour ce document. (Bientôt disponible)
-              </p>
-              <Button variant="outline" disabled>Configurer En-têtes/Pieds de Page</Button>
+              <div className="space-y-4">
+                <div>
+                    <Label htmlFor="header-text-input" className="flex items-center gap-1"><Type className="w-4 h-4"/> Texte d'En-tête</Label>
+                    <Textarea 
+                        id="header-text-input"
+                        placeholder="Ex: Confidentiel - [Nom de l'Entreprise]"
+                        value={headerTextInput}
+                        onChange={(e) => setHeaderTextInput(e.target.value)}
+                        className="mt-1"
+                        rows={2}
+                    />
+                    {currentEffectiveHeaderText && <p className="text-xs text-muted-foreground mt-1">Actuel : {currentEffectiveHeaderText}</p>}
+                </div>
+                <Button onClick={handleSaveHeaderText}>
+                    <Save className="mr-2 h-4 w-4"/> Enregistrer En-tête
+                </Button>
+                 <div>
+                    <Label htmlFor="footer-text-input" className="flex items-center gap-1"><MessageSquare className="w-4 h-4"/> Texte de Pied de Page</Label>
+                    <Textarea 
+                        id="footer-text-input"
+                        placeholder="Ex: Généré le {date} - Page {pageNumber}/{totalPages}"
+                        value={footerTextInput}
+                        onChange={(e) => setFooterTextInput(e.target.value)}
+                        className="mt-1"
+                        rows={2}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Utilisez &#123;date&#125;, &#123;pageNumber&#125;, &#123;totalPages&#125; comme placeholders.</p>
+                    {currentEffectiveFooterText && <p className="text-xs text-muted-foreground mt-1">Actuel : {currentEffectiveFooterText}</p>}
+                </div>
+                 <Button onClick={handleSaveFooterText}>
+                    <Save className="mr-2 h-4 w-4"/> Enregistrer Pied de Page
+                </Button>
+              </div>
             </div>
         </CardContent>
       </Card>
 
       <Alert variant="default" className="border-primary/50 bg-primary/10">
         <FileCog className="h-5 w-5 text-primary" />
-        <AlertTitle className="text-primary font-semibold">Autres fonctionnalités en développement</AlertTitle>
+        <AlertTitle className="text-primary font-semibold">Note sur l'Application des Paramètres</AlertTitle>
         <AlertDescription>
-          La personnalisation des styles, en-têtes et pieds de page est prévue pour une future version. Seule la gestion de l'URL du logo est actuellement fonctionnelle.
+          Les configurations enregistrées ici (logo, couleur, en-têtes, pieds de page) seront utilisées lors de la génération des PDFs correspondants. L'intégration de ces paramètres dans chaque module de génération PDF est une étape future.
         </AlertDescription>
       </Alert>
     </div>
   );
 }
+
