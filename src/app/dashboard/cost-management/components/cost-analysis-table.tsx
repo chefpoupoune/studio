@@ -58,19 +58,25 @@ export default function CostAnalysisTable() {
   }, [selectedMonth, selectedYear, getLocalStorageKey, toast]);
 
   useEffect(() => {
-    if (!isLoading) { // Avoid saving while initially loading
+    if (!isLoading) { 
         localStorage.setItem(getLocalStorageKey(), JSON.stringify(costData));
     }
   }, [costData, getLocalStorageKey, isLoading]);
 
-  const handleInputChange = (rowIndex: number, fieldName: keyof CostEntryData | DayKey, value: string | number) => {
+  const handleInputChange = (rowIndex: number, fieldName: keyof CostEntryData, value: string | number) => {
     setCostData(prevData =>
       prevData.map((row, index) => {
         if (index === rowIndex) {
-          const newValue = (typeof row[fieldName as keyof CostEntry] === 'number' && fieldName !== 'fournisseur' && !dayKeys.includes(fieldName as DayKey))
-            ? parseFloat(value as string) || 0
-            : (dayKeys.includes(fieldName as DayKey) && value === "") ? "" : (dayKeys.includes(fieldName as DayKey) ? parseFloat(value as string) || 0 : value);
-          return { ...row, [fieldName]: newValue };
+          const fieldDefinition = initialRowData()[fieldName];
+          let processedValue: string | number;
+
+          if (typeof fieldDefinition === 'number') { 
+            processedValue = parseFloat(value as string) || 0;
+          } else { 
+            processedValue = value;
+          }
+          
+          return { ...row, [fieldName]: processedValue };
         }
         return row;
       })
@@ -118,7 +124,7 @@ export default function CostAnalysisTable() {
       doc.text(`Généré le: ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, 14, 28);
 
       const head = [
-        ['Fournisseur', 'HT', 'TVA', 'Avoir', 'Jour / Valeur',
+        ['Fournisseur', 'HT', 'TVA', 'Avoir', 'Jour', // Changed from 'Jour / Valeur'
          'IMP', 'SAJ', 'IME', 'ESAT', 'Repas+++', 'Nous', 
          'Total Ligne', 'PN', 'PN ESAT', 'Effectif Ligne']
       ];
@@ -136,8 +142,7 @@ export default function CostAnalysisTable() {
             dayRowEntry.push({ content: row.avoir.toFixed(2), rowSpan: dayKeys.length });
           }
           
-          const jourValeurContent = `${dayIndex + 1}: ${row[dayKey] === "" || row[dayKey] === undefined || row[dayKey] === null ? "" : Number(row[dayKey]).toFixed(2)}`;
-          dayRowEntry.push(jourValeurContent);
+          dayRowEntry.push({ content: (dayIndex + 1).toString(), styles: { halign: 'center' } }); // Only day number
 
           if (dayIndex === 0) {
             dayRowEntry.push({ content: row.imp.toFixed(2), rowSpan: dayKeys.length });
@@ -161,10 +166,10 @@ export default function CostAnalysisTable() {
           { content: totals.totalHt.toFixed(2), styles: { fontStyle: 'bold' } },
           { content: totals.totalTva.toFixed(2), styles: { fontStyle: 'bold' } },
           { content: totals.totalAvoir.toFixed(2), styles: { fontStyle: 'bold' } },
-          { content: '' }, // Jour / Valeur placeholder
-          { content: '', colSpan: 6 }, // IMP to Nous
-          { content: '' }, // Total Ligne
-          { content: '', colSpan: 2 }, // PN, PN ESAT
+          { content: '' }, // Jour placeholder
+          { content: '', colSpan: 6 }, 
+          { content: '' }, 
+          { content: '', colSpan: 2 }, 
           { content: totals.totalEffectifSum.toFixed(2), styles: { fontStyle: 'bold' } }
         ],
         [
@@ -186,14 +191,12 @@ export default function CostAnalysisTable() {
             1: { cellWidth: 15 }, // HT
             2: { cellWidth: 15 }, // TVA
             3: { cellWidth: 15 }, // Avoir
-            4: { cellWidth: 25, halign: 'left' }, // Jour / Valeur
-            // IMP to Nous (6 columns) - indices shifted
+            4: { cellWidth: 10, halign: 'center' }, // Jour - Adjusted width and alignment
             5: { cellWidth: 15, halign: 'right' }, 6: { cellWidth: 15, halign: 'right' }, 7: { cellWidth: 15, halign: 'right' },
             8: { cellWidth: 15, halign: 'right' }, 9: { cellWidth: 15, halign: 'right' }, 10: { cellWidth: 15, halign: 'right' },
-            11: { cellWidth: 18, halign: 'right' }, // Total Ligne
-            // PN, PN ESAT - indices shifted
+            11: { cellWidth: 18, halign: 'right' }, 
             12: { cellWidth: 15, halign: 'right' }, 13: { cellWidth: 15, halign: 'right' },
-            14: { cellWidth: 18, halign: 'right' }, // Effectif Ligne
+            14: { cellWidth: 18, halign: 'right' }, 
         },
         didDrawPage: (data) => {
           const pageCount = doc.getNumberOfPages();
@@ -217,12 +220,12 @@ export default function CostAnalysisTable() {
     const orangeCols = ['IMP', 'SAJ', 'IME', 'ESAT', 'Repas +++', 'Nous', 'PN', 'PN ESAT'];
     
     if (isHeader) { 
-      if (['Jour / Valeur'].includes(header)) return 'bg-primary/40 text-primary-foreground text-center font-semibold py-1';
+      if (['Jour'].includes(header)) return 'bg-primary/40 text-primary-foreground text-center font-semibold py-1'; // Changed from 'Jour / Valeur'
       if (grayCols.includes(header)) return 'bg-muted text-muted-foreground';
       if (orangeCols.includes(header)) return 'bg-accent/30 text-accent-foreground';
       return 'bg-card text-card-foreground';
     } else { 
-      if (['Jour / Valeur'].includes(header)) return 'bg-primary/10 p-0.5';
+      if (['Jour'].includes(header)) return 'bg-primary/10 p-0.5 text-center'; // Changed from 'Jour / Valeur' and ensured text-center
       if (grayCols.includes(header)) return 'bg-muted text-muted-foreground';
       if (orangeCols.includes(header)) return 'bg-accent/30 text-accent-foreground';
       return 'bg-card text-card-foreground';
@@ -260,7 +263,7 @@ export default function CostAnalysisTable() {
             <TableRow>
               <TableHead className={cn("sticky left-0 z-10", getColumnClass('Fournisseur'))}>Fournisseur</TableHead>
               {['HT', 'TVA', 'Avoir'].map(h => <TableHead key={h} className={getColumnClass(h)}>{h}</TableHead>)}
-              <TableHead className={getColumnClass('Jour / Valeur')}>Jour / Valeur</TableHead>
+              <TableHead className={getColumnClass('Jour')}>Jour</TableHead> {/* Changed from 'Jour / Valeur' */}
               {['IMP', 'SAJ', 'IME', 'ESAT', 'Repas +++', 'Nous'].map(h => <TableHead key={h} className={getColumnClass(h.replace('+++', ' +++'))}>{h.replace('+++', ' +++')}</TableHead>)}
               <TableHead className={getColumnClass('Total')}>Total</TableHead>
               {['PN', 'PN ESAT'].map(h => <TableHead key={h} className={getColumnClass(h)}>{h}</TableHead>)}
@@ -271,7 +274,7 @@ export default function CostAnalysisTable() {
           <TableBody>
             {costData.map((row, rowIndex) => (
               <React.Fragment key={row.id}>
-                {dayKeys.map((dayKey, dayIndex) => {
+                {dayKeys.map((dayKey, dayIndex) => { // dayKey is 'day1', 'day2', etc. It's not used for input anymore.
                   const rowTotal = calculateRowTotal(row);
                   const rowEffectif = calculateRowEffectif(row, rowTotal);
                   return (
@@ -288,17 +291,8 @@ export default function CostAnalysisTable() {
                         ))}
                       </>
                     )}
-                    <TableCell className={cn(getColumnClass('Jour / Valeur', false), "align-middle")}>
-                        <div className="flex items-center gap-1">
-                            <span className="w-6 text-center text-xs text-muted-foreground">{dayIndex + 1}</span>
-                            <Input 
-                                type="number" 
-                                value={row[dayKey]} 
-                                onChange={e => handleInputChange(rowIndex, dayKey, e.target.value)} 
-                                className="w-16 h-8 text-xs p-1 bg-background text-center" 
-                                placeholder="0"
-                            />
-                        </div>
+                    <TableCell className={cn(getColumnClass('Jour', false), "align-middle")}> {/* Changed from 'Jour / Valeur' */}
+                        <span className="text-xs text-muted-foreground">{dayIndex + 1}</span> {/* Display only day number */}
                     </TableCell>
                     {dayIndex === 0 && (
                       <>
@@ -330,10 +324,10 @@ export default function CostAnalysisTable() {
               <TableCell className={getColumnClass('HT')}>{totals.totalHt.toFixed(2)}</TableCell>
               <TableCell className={getColumnClass('TVA')}>{totals.totalTva.toFixed(2)}</TableCell>
               <TableCell className={getColumnClass('Avoir')}>{totals.totalAvoir.toFixed(2)}</TableCell>
-              <TableCell className={getColumnClass('Jour / Valeur', false)}></TableCell> {/* Placeholder for Jour / Valeur */}
-              <TableCell colSpan={6} className={getColumnClass('IMP', false)}></TableCell> {/* Placeholder for IMP group */}
+              <TableCell className={getColumnClass('Jour', false)}></TableCell> {/* Placeholder for Jour */}
+              <TableCell colSpan={6} className={getColumnClass('IMP', false)}></TableCell> 
               <TableCell className={getColumnClass('Total')}></TableCell> 
-              <TableCell colSpan={2} className={getColumnClass('PN', false)}></TableCell> {/* Placeholder for PN, PN ESAT */}
+              <TableCell colSpan={2} className={getColumnClass('PN', false)}></TableCell> 
               <TableCell className={getColumnClass('Effectif')}>{totals.totalEffectifSum.toFixed(2)}</TableCell>
               <TableCell className={getColumnClass('Action', false)}></TableCell> 
             </TableRow>
