@@ -10,6 +10,7 @@ import { TASK_STATUSES } from './types';
 import React, { useState, useEffect, useCallback } from 'react';
 import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 const initialTasks: Task[] = [
   {
@@ -192,3 +193,4 @@ export default function TaskManagementPage() {
     </div>
   );
 }
+
