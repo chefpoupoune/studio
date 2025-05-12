@@ -20,6 +20,10 @@ interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
 }
 
+const FIXED_MONTHLY_EMARKET = 62.50;
+const FIXED_MONTHLY_FRAIS_FONCTIONNEMENT = 278.04;
+const FIXED_MONTHLY_FRAIS_GESTION = 210.00;
+
 export default function AnnualCostAnalysisTable() {
   const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
   const [annualData, setAnnualData] = useState<MonthlySummary[]>([]);
@@ -39,6 +43,9 @@ export default function AnnualCostAnalysisTable() {
         totalHt: 0,
         totalTva: 0,
         totalAvoir: 0,
+        emarket: FIXED_MONTHLY_EMARKET,
+        fraisFonctionnement: FIXED_MONTHLY_FRAIS_FONCTIONNEMENT,
+        fraisGestion: FIXED_MONTHLY_FRAIS_GESTION,
         totalEffectifSum: 0,
         prixDeRevient: 0,
         dataFound: false,
@@ -57,13 +64,19 @@ export default function AnnualCostAnalysisTable() {
               const rowTotal = calculateRowTotal(entry);
               summary.totalEffectifSum += calculateRowEffectif(entry, rowTotal);
             });
-            summary.prixDeRevient = summary.totalEffectifSum !== 0 ? (summary.totalHt - summary.totalAvoir) / summary.totalEffectifSum : 0;
           }
         }
       } catch (error) {
         console.error(`Error loading data for ${monthLabels[monthIndex].label} ${year}:`, error);
         toast({ title: "Erreur de chargement", description: `Données corrompues pour ${monthLabels[monthIndex].label} ${year}.`, variant: "destructive" });
       }
+      
+      // Calculate Prix de Revient for the month including fixed costs
+      const totalFixedCosts = summary.emarket + summary.fraisFonctionnement + summary.fraisGestion;
+      summary.prixDeRevient = summary.totalEffectifSum !== 0 
+        ? (summary.totalHt - summary.totalAvoir + totalFixedCosts) / summary.totalEffectifSum 
+        : 0;
+        
       monthlySummaries.push(summary);
     }
     setAnnualData(monthlySummaries);
@@ -78,34 +91,51 @@ export default function AnnualCostAnalysisTable() {
     let grandTotalHt = 0;
     let grandTotalTva = 0;
     let grandTotalAvoir = 0;
+    let grandTotalEmarket = 0;
+    let grandTotalFraisFonctionnement = 0;
+    let grandTotalFraisGestion = 0;
     let grandTotalEffectifSum = 0;
-    let monthsWithData = 0;
+    let monthsWithDataForPRAverage = 0; // Count months with non-zero effectif for PR average
     let sumOfPrixDeRevient = 0;
 
     annualData.forEach(summary => {
       grandTotalHt += summary.totalHt;
       grandTotalTva += summary.totalTva;
       grandTotalAvoir += summary.totalAvoir;
+      grandTotalEmarket += summary.emarket;
+      grandTotalFraisFonctionnement += summary.fraisFonctionnement;
+      grandTotalFraisGestion += summary.fraisGestion;
       grandTotalEffectifSum += summary.totalEffectifSum;
-      if (summary.dataFound && summary.totalEffectifSum > 0) { // only count if data was found and effectif is not zero
+      
+      // For average PR, only consider months where PR is meaningful (non-zero effectif)
+      if (summary.totalEffectifSum > 0) { 
         sumOfPrixDeRevient += summary.prixDeRevient;
-        monthsWithData++;
+        monthsWithDataForPRAverage++;
       }
     });
     
-    const averagePrixDeRevient = monthsWithData > 0 ? sumOfPrixDeRevient / monthsWithData : 0;
-    // Alternative calculation for annual prix de revient based on annual totals
-    const overallPrixDeRevient = grandTotalEffectifSum !== 0 ? (grandTotalHt - grandTotalAvoir) / grandTotalEffectifSum : 0;
+    const averagePrixDeRevient = monthsWithDataForPRAverage > 0 ? sumOfPrixDeRevient / monthsWithDataForPRAverage : 0;
+    
+    const totalAnnualFixedCosts = grandTotalEmarket + grandTotalFraisFonctionnement + grandTotalFraisGestion;
+    const overallPrixDeRevient = grandTotalEffectifSum !== 0 
+      ? (grandTotalHt - grandTotalAvoir + totalAnnualFixedCosts) / grandTotalEffectifSum 
+      : 0;
 
-
-    return { grandTotalHt, grandTotalTva, grandTotalAvoir, grandTotalEffectifSum, averagePrixDeRevient, overallPrixDeRevient };
+    return { 
+      grandTotalHt, grandTotalTva, grandTotalAvoir, 
+      grandTotalEmarket, grandTotalFraisFonctionnement, grandTotalFraisGestion,
+      grandTotalEffectifSum, averagePrixDeRevient, overallPrixDeRevient 
+    };
   }, [annualData]);
 
   const generatePdf = () => {
-    if (annualData.every(m => !m.dataFound)) {
-       toast({ title: "Aucune Donnée", description: "Aucune donnée mensuelle trouvée pour cette année.", variant: "destructive" });
+    // Check if there's any data at all (HT, TVA, Avoir from localStorage, or just the fixed costs)
+    const hasAnyData = annualData.some(m => m.dataFound || m.totalEffectifSum > 0 || m.totalHt > 0 || m.totalAvoir > 0);
+    if (!hasAnyData && annualTotals.grandTotalEffectifSum === 0 && annualTotals.grandTotalHt === 0 ) { // Stricter check
+       toast({ title: "Aucune Donnée Significative", description: "Aucune donnée à afficher pour cette année.", variant: "destructive" });
       return;
     }
+
     setIsLoading(true);
     try {
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
@@ -116,13 +146,16 @@ export default function AnnualCostAnalysisTable() {
       doc.setFontSize(10);
       doc.text(`Généré le: ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, 14, 28);
 
-      const head = [['Mois', 'Total HT (€)', 'Total TVA (€)', 'Total Avoir (€)', 'Total Effectif', 'Prix de Revient Mensuel (€)']];
+      const head = [['Mois', 'Total HT (€)', 'Total TVA (€)', 'Total Avoir (€)', 'Emarket (€)', 'Frais Fonct. (€)', 'Frais Gestion (€)', 'Total Effectif', 'Prix de Revient Mensuel (€)']];
       
       const body = annualData.map(summary => [
         summary.month,
         summary.totalHt.toFixed(2),
         summary.totalTva.toFixed(2),
         summary.totalAvoir.toFixed(2),
+        summary.emarket.toFixed(2),
+        summary.fraisFonctionnement.toFixed(2),
+        summary.fraisGestion.toFixed(2),
         summary.totalEffectifSum.toFixed(2),
         summary.prixDeRevient.toFixed(2),
       ]);
@@ -133,12 +166,15 @@ export default function AnnualCostAnalysisTable() {
           { content: annualTotals.grandTotalHt.toFixed(2), styles: { fontStyle: 'bold' } },
           { content: annualTotals.grandTotalTva.toFixed(2), styles: { fontStyle: 'bold' } },
           { content: annualTotals.grandTotalAvoir.toFixed(2), styles: { fontStyle: 'bold' } },
+          { content: annualTotals.grandTotalEmarket.toFixed(2), styles: { fontStyle: 'bold' } },
+          { content: annualTotals.grandTotalFraisFonctionnement.toFixed(2), styles: { fontStyle: 'bold' } },
+          { content: annualTotals.grandTotalFraisGestion.toFixed(2), styles: { fontStyle: 'bold' } },
           { content: annualTotals.grandTotalEffectifSum.toFixed(2), styles: { fontStyle: 'bold' } },
-          { content: annualTotals.overallPrixDeRevient.toFixed(2), styles: { fontStyle: 'bold' } }, // Using overall annual PR
+          { content: annualTotals.overallPrixDeRevient.toFixed(2), styles: { fontStyle: 'bold' } },
         ],
          [
-          { content: 'Prix de Revient Annuel Moyen', colSpan: 5, styles: { fontStyle: 'bold', halign: 'right' } },
-          { content: annualTotals.averagePrixDeRevient.toFixed(2), styles: { fontStyle: 'bold' } } // Average of monthly PRs
+          { content: 'Prix de Revient Annuel Moyen (basé sur PR mensuels avec effectif > 0)', colSpan: 8, styles: { fontStyle: 'bold', halign: 'right' } },
+          { content: annualTotals.averagePrixDeRevient.toFixed(2), styles: { fontStyle: 'bold', halign: 'right' } }
         ]
       ];
 
@@ -148,7 +184,7 @@ export default function AnnualCostAnalysisTable() {
         foot: footer,
         startY: 35,
         theme: 'grid',
-        headStyles: { fillColor: [22, 160, 133] }, // Example: teal
+        headStyles: { fillColor: [22, 160, 133] }, 
         footStyles: { fillColor: [220, 220, 220], textColor: [0,0,0] },
         columnStyles: {
             0: { cellWidth: 'auto' }, 
@@ -157,6 +193,9 @@ export default function AnnualCostAnalysisTable() {
             3: { cellWidth: 'auto', halign: 'right' },
             4: { cellWidth: 'auto', halign: 'right' },
             5: { cellWidth: 'auto', halign: 'right' },
+            6: { cellWidth: 'auto', halign: 'right' },
+            7: { cellWidth: 'auto', halign: 'right' },
+            8: { cellWidth: 'auto', halign: 'right' },
         },
         didDrawPage: (data) => {
           const pageCount = doc.getNumberOfPages();
@@ -175,6 +214,9 @@ export default function AnnualCostAnalysisTable() {
     }
   };
 
+  const noDataForYear = !isLoading && annualData.every(m => !m.dataFound && m.totalEffectifSum === 0 && m.totalHt === 0 && m.totalAvoir === 0);
+
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
@@ -186,7 +228,11 @@ export default function AnnualCostAnalysisTable() {
           </Select>
         </div>
         <div className="sm:col-start-3">
-          <Button onClick={generatePdf} disabled={isLoading || annualData.every(m => !m.dataFound)} className="w-full sm:w-auto">
+           <Button 
+            onClick={generatePdf} 
+            disabled={isLoading || noDataForYear} 
+            className="w-full sm:w-auto"
+          >
             {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
             Générer PDF Annuel
           </Button>
@@ -207,17 +253,23 @@ export default function AnnualCostAnalysisTable() {
               <TableHead className="text-right">Total HT (€)</TableHead>
               <TableHead className="text-right">Total TVA (€)</TableHead>
               <TableHead className="text-right">Total Avoir (€)</TableHead>
+              <TableHead className="text-right">Emarket (€)</TableHead>
+              <TableHead className="text-right">Frais Fonct. (€)</TableHead>
+              <TableHead className="text-right">Frais Gestion (€)</TableHead>
               <TableHead className="text-right">Total Effectif</TableHead>
               <TableHead className="text-right">Prix de Revient Mensuel (€)</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {annualData.map((summary, index) => (
-              <TableRow key={index} className={cn(!summary.dataFound && "bg-muted/30 opacity-70")}>
+              <TableRow key={index} className={cn(!summary.dataFound && "opacity-70")}>
                 <TableCell className="font-medium">{summary.month}</TableCell>
                 <TableCell className="text-right">{summary.totalHt.toFixed(2)}</TableCell>
                 <TableCell className="text-right">{summary.totalTva.toFixed(2)}</TableCell>
                 <TableCell className="text-right">{summary.totalAvoir.toFixed(2)}</TableCell>
+                <TableCell className="text-right">{summary.emarket.toFixed(2)}</TableCell>
+                <TableCell className="text-right">{summary.fraisFonctionnement.toFixed(2)}</TableCell>
+                <TableCell className="text-right">{summary.fraisGestion.toFixed(2)}</TableCell>
                 <TableCell className="text-right">{summary.totalEffectifSum.toFixed(2)}</TableCell>
                 <TableCell className="text-right">{summary.prixDeRevient.toFixed(2)}</TableCell>
               </TableRow>
@@ -229,22 +281,25 @@ export default function AnnualCostAnalysisTable() {
               <TableCell className="text-right">{annualTotals.grandTotalHt.toFixed(2)}</TableCell>
               <TableCell className="text-right">{annualTotals.grandTotalTva.toFixed(2)}</TableCell>
               <TableCell className="text-right">{annualTotals.grandTotalAvoir.toFixed(2)}</TableCell>
+              <TableCell className="text-right">{annualTotals.grandTotalEmarket.toFixed(2)}</TableCell>
+              <TableCell className="text-right">{annualTotals.grandTotalFraisFonctionnement.toFixed(2)}</TableCell>
+              <TableCell className="text-right">{annualTotals.grandTotalFraisGestion.toFixed(2)}</TableCell>
               <TableCell className="text-right">{annualTotals.grandTotalEffectifSum.toFixed(2)}</TableCell>
               <TableCell className="text-right">{annualTotals.overallPrixDeRevient.toFixed(2)}</TableCell> 
             </TableRow>
             <TableRow className="font-bold bg-muted/80 text-foreground">
-              <TableCell colSpan={5} className="text-right">Prix de Revient Annuel Moyen (basé sur les PR mensuels)</TableCell>
+              <TableCell colSpan={8} className="text-right">Prix de Revient Annuel Moyen (basé sur PR mensuels avec effectif > 0)</TableCell>
               <TableCell className="text-right">{annualTotals.averagePrixDeRevient.toFixed(2)}</TableCell>
             </TableRow>
           </TableFooter>
         </Table>
       </div>
       )}
-       {!isLoading && annualData.every(m => !m.dataFound) && (
+       {noDataForYear && (
          <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
             <CalendarRange className="mx-auto h-12 w-12 text-muted-foreground" />
             <p className="mt-2 text-sm text-muted-foreground">
-                Aucune donnée mensuelle trouvée pour l'année {selectedYear}.
+                Aucune donnée mensuelle significative trouvée pour l'année {selectedYear}.
             </p>
             <p className="text-xs text-muted-foreground/70">
                 Veuillez saisir des données dans l'onglet "Coût de Revient Mensuel" pour cette année.

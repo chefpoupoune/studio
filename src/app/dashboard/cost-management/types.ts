@@ -51,6 +51,9 @@ export interface MonthlySummary {
   totalHt: number;
   totalTva: number;
   totalAvoir: number;
+  emarket: number;
+  fraisFonctionnement: number;
+  fraisGestion: number;
   totalEffectifSum: number;
   prixDeRevient: number;
   dataFound: boolean;
@@ -78,3 +81,4 @@ export interface IngredientOccasional {
   unitPrice: number; // Price per unit
   quantityPerSingleMeal: number; // Quantity of this unit used for one person's meal part
 }
+
