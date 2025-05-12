@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -133,16 +132,15 @@ export default function CostAnalysisTable() {
         ];
       });
 
-      // Add summary rows to body to be styled by autoTable
       body.push([
         { content: 'TOTALS', colSpan: 1, styles: { fontStyle: 'bold', halign: 'right' } },
         { content: totals.totalHt.toFixed(2), styles: { fontStyle: 'bold' } },
         { content: totals.totalTva.toFixed(2), styles: { fontStyle: 'bold' } },
         { content: totals.totalAvoir.toFixed(2), styles: { fontStyle: 'bold' } },
-        ...Array(31 + 6).fill(''), // empty cells for day columns + IMP to Nous
-        { content: '', styles: { fontStyle: 'bold'} }, // Total Ligne sum
-        { content: '', styles: { fontStyle: 'bold'} }, // PN sum
-        { content: '', styles: { fontStyle: 'bold'} }, // PN ESAT sum
+        ...Array(31 + 6).fill(''), 
+        { content: '', styles: { fontStyle: 'bold'} }, 
+        { content: '', styles: { fontStyle: 'bold'} }, 
+        { content: '', styles: { fontStyle: 'bold'} }, 
         { content: totals.totalEffectifSum.toFixed(2), styles: { fontStyle: 'bold' } }
       ]);
       body.push([
@@ -150,13 +148,12 @@ export default function CostAnalysisTable() {
         { content: totals.prixDeRevient.toFixed(2), styles: { fontStyle: 'bold' } }
       ]);
 
-
       doc.autoTable({
         head: head,
         body: body,
         startY: 35,
         theme: 'grid',
-        headStyles: { fillColor: [50, 50, 50], textColor: [255,255,255] }, // Kept for PDF specific styling
+        headStyles: { fillColor: [50, 50, 50], textColor: [255,255,255] }, 
         styles: { fontSize: 5, cellPadding: 1 }, 
         columnStyles: {
             0: { cellWidth: 30 }, 
@@ -178,15 +175,13 @@ export default function CostAnalysisTable() {
     }
   };
   
+  // Defines styling for non-day related columns. Day columns are styled directly in JSX.
   const getColumnClass = (header: string) => {
     const grayCols = ['Fournisseur', 'HT', 'TVA', 'Avoir', 'Total', 'Effectif'];
-    const orangeCols = ['IMP', 'SAJ', 'IME', 'ESAT', 'Repas +++', 'Nous', 'PN', 'PN ESAT']; // Note: 'Repas +++'
+    const orangeCols = ['IMP', 'SAJ', 'IME', 'ESAT', 'Repas +++', 'Nous', 'PN', 'PN ESAT'];
     if (grayCols.includes(header)) return 'bg-muted text-muted-foreground';
     if (orangeCols.includes(header)) return 'bg-accent/30 text-accent-foreground';
-    // Check if header is a number string for day columns
-    const dayNumber = parseInt(header, 10);
-    if (!isNaN(dayNumber) && dayNumber >= 1 && dayNumber <= 31) return 'bg-primary/20 text-primary-foreground';
-    return 'bg-card'; // Default background for headers like "Jours du Mois"
+    return 'bg-card text-card-foreground'; // Default for any other headers not specifically styled for days
   };
 
 
@@ -221,19 +216,26 @@ export default function CostAnalysisTable() {
               <TableHead rowSpan={2} className={cn("sticky left-0 z-10", getColumnClass('Fournisseur'))}>Fournisseur</TableHead>
               {['HT', 'TVA', 'Avoir'].map(h => <TableHead rowSpan={2} key={h} className={getColumnClass(h)}>{h}</TableHead>)}
               
-              <TableHead colSpan={31} className={cn("text-center", getColumnClass('1'))}> {/* '1' to get day column style */}
+              <TableHead colSpan={31} className="text-center bg-primary/40 text-primary-foreground font-semibold py-2"> {/* Prominent header for Jours du Mois */}
                 Jours du Mois
               </TableHead>
               
-              {['IMP', 'SAJ', 'IME', 'ESAT', 'Repas +++', 'Nous'].map(h => <TableHead rowSpan={2} key={h} className={getColumnClass(h)}>{h.replace('+++', ' +++')}</TableHead>)}
+              {['IMP', 'SAJ', 'IME', 'ESAT', 'Repas +++', 'Nous'].map(h => <TableHead rowSpan={2} key={h} className={getColumnClass(h.replace('+++', ' +++'))}>{h.replace('+++', ' +++')}</TableHead>)}
               <TableHead rowSpan={2} className={getColumnClass('Total')}>Total</TableHead>
               {['PN', 'PN ESAT'].map(h => <TableHead rowSpan={2} key={h} className={getColumnClass(h)}>{h}</TableHead>)}
               <TableHead rowSpan={2} className={getColumnClass('Effectif')}>Effectif</TableHead>
               <TableHead rowSpan={2} className="bg-card">Action</TableHead>
             </TableRow>
             <TableRow>
-              {/* Individual day headers */}
-              {dayKeys.map((dayKey, i) => <TableHead key={dayKey} className={cn("text-center", getColumnClass((i+1).toString()))}>{i + 1}</TableHead>)}
+              {/* Individual day headers - styled as sub-headers of "Jours du Mois" */}
+              {dayKeys.map((dayKey, i) => 
+                <TableHead 
+                  key={dayKey} 
+                  className="text-center bg-primary/20 text-primary-foreground p-1 text-xs h-auto min-w-[2.5rem] w-10" // Compact day headers
+                >
+                  {i + 1}
+                </TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -250,13 +252,19 @@ export default function CostAnalysisTable() {
                       <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="w-20 text-xs p-1 bg-background" />
                     </TableCell>
                   ))}
-                  {dayKeys.map((dayKey, i) => (
-                     <TableCell key={dayKey} className={getColumnClass((i+1).toString())}>
-                        <Input type="number" value={row[dayKey]} onChange={e => handleInputChange(rowIndex, dayKey, e.target.value)} className="w-12 text-xs p-1 bg-background" placeholder="0"/>
+                  {dayKeys.map((dayKey, i) => ( // Day data cells
+                     <TableCell key={dayKey} className="bg-primary/10 p-0.5">
+                        <Input 
+                            type="number" 
+                            value={row[dayKey]} 
+                            onChange={e => handleInputChange(rowIndex, dayKey, e.target.value)} 
+                            className="w-10 h-8 text-xs p-1 bg-background text-center" 
+                            placeholder="0"
+                        />
                      </TableCell>
                   ))}
                   {(['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'] as const).map(field => (
-                    <TableCell key={field} className={getColumnClass(field.toUpperCase().replace('REPASPLUS', 'Repas +++'))}> {/* Ensure correct key for Repas +++ */}
+                    <TableCell key={field} className={getColumnClass(field.toUpperCase().replace('REPASPLUS', 'Repas +++'))}>
                       <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="w-20 text-xs p-1 bg-background" />
                     </TableCell>
                   ))}
@@ -280,17 +288,17 @@ export default function CostAnalysisTable() {
               <TableCell className={getColumnClass('HT')}>{totals.totalHt.toFixed(2)}</TableCell>
               <TableCell className={getColumnClass('TVA')}>{totals.totalTva.toFixed(2)}</TableCell>
               <TableCell className={getColumnClass('Avoir')}>{totals.totalAvoir.toFixed(2)}</TableCell>
-              <TableCell colSpan={31 + 6} className={getColumnClass('1')}></TableCell> {/* Placeholder for day columns & IMP to Nous */}
-              <TableCell className={getColumnClass('Total')}></TableCell> {/* Total Col */}
+              <TableCell colSpan={31 + 6} className="bg-primary/10"></TableCell> {/* Placeholder visually aligned with day/orange columns cell background */}
+              <TableCell className={getColumnClass('Total')}></TableCell> 
               <TableCell className={getColumnClass('PN')}></TableCell>
-              <TableCell className={getColumnClass('PN ESAT')}></TableCell> {/* PN, PN ESAT Cols */}
+              <TableCell className={getColumnClass('PN ESAT')}></TableCell> 
               <TableCell className={getColumnClass('Effectif')}>{totals.totalEffectifSum.toFixed(2)}</TableCell>
-              <TableCell className="bg-card"></TableCell> {/* Action Col */}
+              <TableCell className="bg-card"></TableCell> 
             </TableRow>
             <TableRow className="font-bold bg-muted/90">
-              <TableCell colSpan={ (1 + 3 + 31 + 6 + 1 + 2)} className={cn("text-right", getColumnClass('Effectif'))}>Prix de Revient</TableCell> {/* Sum of all columns before Effectif */}
+              <TableCell colSpan={ (1 + 3 + 31 + 6 + 1 + 2)} className={cn("text-right", getColumnClass('Effectif'))}>Prix de Revient</TableCell> 
               <TableCell className={getColumnClass('Effectif')}>{totals.prixDeRevient.toFixed(2)}</TableCell>
-              <TableCell className="bg-card"></TableCell> {/* Action Col */}
+              <TableCell className="bg-card"></TableCell> 
             </TableRow>
           </TableFooter>
         </Table>
@@ -308,3 +316,4 @@ export default function CostAnalysisTable() {
     </div>
   );
 }
+
