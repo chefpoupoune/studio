@@ -1,8 +1,8 @@
 
 "use client";
 
-import type { DailyMenu, MenuField, MenuThemeValue } from '../types';
-import { MENU_THEMES, menuThemeStyles } from '../types';
+import type { DailyMenu, MenuField, StoredMenuThemeValue, MenuThemeIdentifier } from '../types';
+import { MENU_THEME_OPTIONS_FOR_SELECT, NO_THEME_SELECT_VALUE, menuThemeStyles } from '../types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -12,7 +12,7 @@ interface MenuPlanningTableProps {
   year: number;
   month: number;
   menuData: DailyMenu[];
-  onUpdateMenuEntry: (date: string, field: MenuField, value: string) => void;
+  onUpdateMenuEntry: (date: string, field: MenuField, value: StoredMenuThemeValue) => void;
 }
 
 export default function MenuPlanningTable({ menuData, onUpdateMenuEntry }: MenuPlanningTableProps) {
@@ -21,11 +21,17 @@ export default function MenuPlanningTable({ menuData, onUpdateMenuEntry }: MenuP
   }
 
   const handleInputChange = (date: string, field: MenuField, value: string) => {
-    onUpdateMenuEntry(date, field, value);
+    // For 'theme' field, value is StoredMenuThemeValue. For others, it's string.
+    // The onUpdateMenuEntry prop expects StoredMenuThemeValue for the theme field.
+    onUpdateMenuEntry(date, field, value as StoredMenuThemeValue);
   };
 
   const getRowClass = (dayMenu: DailyMenu): string => {
-    const themeClass = dayMenu.theme && dayMenu.theme !== '' ? menuThemeStyles[dayMenu.theme] : '';
+    // dayMenu.theme is StoredMenuThemeValue ('froid', 'vege', or '')
+    // menuThemeStyles expects MenuThemeIdentifier (not '')
+    const themeClass = dayMenu.theme && dayMenu.theme !== '' && menuThemeStyles[dayMenu.theme as MenuThemeIdentifier]
+      ? menuThemeStyles[dayMenu.theme as MenuThemeIdentifier]
+      : '';
 
     if (themeClass) {
       return themeClass;
@@ -65,8 +71,7 @@ export default function MenuPlanningTable({ menuData, onUpdateMenuEntry }: MenuP
             >
               <TableCell className={cn(
                 "font-medium sticky left-0 z-10 group-hover:bg-muted/60 transition-colors",
-                getRowClass(dayMenu) ? '' : 'bg-card' // Ensure sticky cell matches row if themed, else default
-                // This logic might need to be more sophisticated if rowClass itself sets bg-card or similar
+                getRowClass(dayMenu) ? '' : 'bg-card' 
               )}>
                 {dayMenu.date.split('-')[2]} {/* Show only day number */}
                 {dayMenu.isHoliday && dayMenu.holidayName && (
@@ -78,14 +83,17 @@ export default function MenuPlanningTable({ menuData, onUpdateMenuEntry }: MenuP
               <TableCell>{dayMenu.dayName}</TableCell>
               <TableCell className="p-1">
                 <Select
-                  value={dayMenu.theme || ''}
-                  onValueChange={(value) => handleInputChange(dayMenu.date, 'theme', value as MenuThemeValue)}
+                  value={dayMenu.theme === '' ? NO_THEME_SELECT_VALUE : dayMenu.theme}
+                  onValueChange={(valueFromSelect) => {
+                    const valueToStore: StoredMenuThemeValue = valueFromSelect === NO_THEME_SELECT_VALUE ? '' : valueFromSelect as MenuThemeIdentifier;
+                    handleInputChange(dayMenu.date, 'theme', valueToStore);
+                  }}
                 >
                   <SelectTrigger className="text-xs min-h-[60px] h-auto py-1 bg-background/70 focus:bg-background">
                     <SelectValue placeholder="Thème" />
                   </SelectTrigger>
                   <SelectContent>
-                    {MENU_THEMES.map(themeOption => (
+                    {MENU_THEME_OPTIONS_FOR_SELECT.map(themeOption => (
                       <SelectItem key={themeOption.value} value={themeOption.value} className="text-xs">
                         {themeOption.label}
                       </SelectItem>

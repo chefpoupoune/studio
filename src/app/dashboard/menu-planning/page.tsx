@@ -12,8 +12,8 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { getDaysInMonth, format, startOfDay, setDate, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { getFrenchPublicHolidays, type PublicHoliday } from '@/lib/holiday-utils';
-import type { DailyMenu, MenuItem, MenuField, MenuThemeValue } from './types';
-import { initialMenuItem, frenchDays, MENU_THEMES } from './types';
+import type { DailyMenu, MenuItem, MenuField, StoredMenuThemeValue } from './types';
+import { initialMenuItem, frenchDays, MENU_THEME_OPTIONS_FOR_SELECT, NO_THEME_SELECT_VALUE } from './types';
 import MenuPlanningTable from './components/menu-planning-table';
 import WeeklyOrderSheets from './components/weekly-order-sheets';
 import TemperatureSheet from './components/temperature-sheet';
@@ -93,7 +93,7 @@ export default function MenuPlanningPage() {
         if (storedData.length === expectedDays && 
             storedData[0].date.startsWith(`${yearNum}-${(monthNum + 1).toString().padStart(2, '0')}`)) {
             // Ensure theme field exists, default if not
-            setMenuData(storedData.map(d => ({...initialMenuItem, ...d})));
+            setMenuData(storedData.map(d => ({...initialMenuItem, ...d, theme: d.theme || '' })));
         } else {
             const freshData = generateMonthData(yearNum, monthNum);
             setMenuData(freshData);
@@ -111,7 +111,7 @@ export default function MenuPlanningPage() {
     }
   }, [menuData, isLoading, getLocalStorageKey]);
 
-  const handleUpdateMenuEntry = useCallback((date: string, field: MenuField, value: string) => {
+  const handleUpdateMenuEntry = useCallback((date: string, field: MenuField, value: StoredMenuThemeValue) => {
     setMenuData(prevData =>
       prevData.map(dayMenu =>
         dayMenu.date === date ? { ...dayMenu, [field]: value } : dayMenu
@@ -144,11 +144,12 @@ export default function MenuPlanningPage() {
       const head = [['Date', 'Jour', 'Thème', 'Entrée', 'Plat', 'Féculent', 'Légume', 'Sauce', 'Dessert']];
       
       const body = menuData.map(dayMenu => {
-        const themeLabel = dayMenu.theme ? MENU_THEMES.find(t => t.value === dayMenu.theme)?.label : '-';
+        const currentThemeValueForSelect = dayMenu.theme === '' ? NO_THEME_SELECT_VALUE : dayMenu.theme;
+        const themeLabel = MENU_THEME_OPTIONS_FOR_SELECT.find(t => t.value === currentThemeValueForSelect)?.label || '-';
         return [
           format(parseISO(dayMenu.date), 'dd/MM', { locale: fr }),
           dayMenu.dayName + (dayMenu.isHoliday && dayMenu.holidayName ? `\n(${dayMenu.holidayName})` : ''),
-          themeLabel || '-',
+          themeLabel,
           dayMenu.entree || '-',
           dayMenu.plat || '-',
           dayMenu.feculent || '-',
@@ -164,30 +165,26 @@ export default function MenuPlanningPage() {
         startY: 35,
         theme: 'grid',
         headStyles: { fillColor: [50, 50, 50], textColor: [255,255,255], fontStyle: 'bold' },
-        styles: { fontSize: 7, cellPadding: 1.5, valign: 'middle' }, // Reduced font size for more columns
+        styles: { fontSize: 7, cellPadding: 1.5, valign: 'middle' }, 
         columnStyles: {
-          0: { cellWidth: 13 }, // Date
-          1: { cellWidth: 22 }, // Jour
-          2: { cellWidth: 20 }, // Thème
-          // Auto width for others
+          0: { cellWidth: 13 }, 
+          1: { cellWidth: 22 }, 
+          2: { cellWidth: 20 }, 
         },
         willDrawCell: (data) => {
           const dayMenu = menuData[data.row.index];
           if (dayMenu && data.section === 'body') { 
-            let fillColor;
-            // Theme color takes precedence
+            let fillColorArray: [number, number, number] | undefined;
             if (dayMenu.theme && dayMenu.theme !== '') {
-              // This is tricky for jspdf-autotable, as direct hex/rgb is easier than HSL from CSS vars
-              // For simplicity, we'll skip direct PDF row coloring by theme for now
-              // and rely on the text in the "Thème" column.
-              // If specific coloring is needed, it requires more complex hook logic.
+              // PDF row coloring by theme is complex with HSL vars from CSS.
+              // Current implementation relies on text in "Thème" column.
             } else if (dayMenu.isHoliday) {
-              fillColor = dayMenu.isWeekend ? [255, 255, 153] : [255, 255, 204]; // Darker Yellow for holiday weekend
+              fillColorArray = dayMenu.isWeekend ? [253, 224, 71] : [254, 240, 138]; // Tailwind yellow-400 and yellow-300 approx.
             } else if (dayMenu.isWeekend) {
-              fillColor = [230, 230, 230]; 
+              fillColorArray = [229, 231, 235]; // Tailwind gray-200 approx.
             }
-            if (fillColor) {
-              doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
+            if (fillColorArray) {
+              doc.setFillColor(fillColorArray[0], fillColorArray[1], fillColorArray[2]);
             }
           }
         },
