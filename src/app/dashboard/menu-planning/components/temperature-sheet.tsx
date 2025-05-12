@@ -161,23 +161,29 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
                   <TableBody>
                     {week.menus.flatMap(menu => {
                       const dailyInputs = dailyLogData[menu.date] || {};
-                      return mealPartsOrder.map(mealPartKey => {
-                        const mealItemName = menu[mealPartKey];
-                        if (!mealItemName || mealItemName.trim() === "") return null;
+                      const presentMealParts = mealPartsOrder.filter(mpKey => menu[mpKey] && menu[mpKey].trim() !== "");
+                      const numMealPartsForThisDay = presentMealParts.length;
 
+                      if (numMealPartsForThisDay === 0) return []; // Skip day if no meal parts
+
+                      return presentMealParts.map((mealPartKey, mealPartIndex) => {
+                        const mealItemName = menu[mealPartKey];
+                        const isFirstMealPartForRowSpan = mealPartIndex === 0;
                         const itemTempKey = `${menu.date}_${mealPartKey}`;
                         const itemTempInputs = mealItemTemperatures[itemTempKey] || {};
 
                         return (
                           <TableRow key={`${menu.date}-${mealPartKey}`} className={menu.isWeekend ? "bg-muted/30 opacity-70" : ""}>
-                            <TableCell className="font-medium align-top py-2">
-                               {format(parseISO(menu.date), "E dd/MM", { locale: fr })}
-                               {menu.isHoliday && menu.holidayName && (
+                            {isFirstMealPartForRowSpan && (
+                              <TableCell rowSpan={numMealPartsForThisDay} className="font-medium align-top py-2">
+                                {format(parseISO(menu.date), "E dd/MM", { locale: fr })}
+                                {menu.isHoliday && menu.holidayName && (
                                   <span className="block text-xs text-amber-600 dark:text-amber-400 truncate" title={menu.holidayName}>
                                       {menu.holidayName}
                                   </span>
-                              )}
-                            </TableCell>
+                                )}
+                              </TableCell>
+                            )}
                             <TableCell className="align-top py-2 text-xs" title={mealItemName}>
                               <span className="font-semibold block">{mealPartDisplayNames[mealPartKey]}:</span>
                               {mealItemName}
@@ -212,29 +218,33 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
                                 disabled={menu.isWeekend}
                               />
                             </TableCell>
-                            <TableCell className="p-1 align-top">
-                              <Input 
-                                type="text" 
-                                placeholder="Initiales" 
-                                className="text-xs h-10"
-                                value={dailyInputs.personnel || ''}
-                                onChange={(e) => handleDailyLogChange(menu.date, 'personnel', e.target.value)}
-                                disabled={menu.isWeekend}
-                              />
-                            </TableCell>
-                            <TableCell className="p-1 align-top">
-                              <Textarea 
-                                placeholder="Actions/Observations..." 
-                                className="text-xs min-h-[40px] h-auto" 
-                                rows={2}
-                                value={dailyInputs.correctiveActions || ''}
-                                onChange={(e) => handleDailyLogChange(menu.date, 'correctiveActions', e.target.value)}
-                                disabled={menu.isWeekend}
-                              />
-                            </TableCell>
+                            {isFirstMealPartForRowSpan && (
+                              <>
+                                <TableCell rowSpan={numMealPartsForThisDay} className="p-1 align-top">
+                                  <Input 
+                                    type="text" 
+                                    placeholder="Initiales" 
+                                    className="text-xs h-10" // Input will define its own height
+                                    value={dailyInputs.personnel || ''}
+                                    onChange={(e) => handleDailyLogChange(menu.date, 'personnel', e.target.value)}
+                                    disabled={menu.isWeekend}
+                                  />
+                                </TableCell>
+                                <TableCell rowSpan={numMealPartsForThisDay} className="p-1 align-top">
+                                  <Textarea 
+                                    placeholder="Actions/Observations..." 
+                                    className="text-xs min-h-[40px] h-auto" // Textarea can grow
+                                    rows={2} // Initial rows, can grow if content needs more
+                                    value={dailyInputs.correctiveActions || ''}
+                                    onChange={(e) => handleDailyLogChange(menu.date, 'correctiveActions', e.target.value)}
+                                    disabled={menu.isWeekend}
+                                  />
+                                </TableCell>
+                              </>
+                            )}
                           </TableRow>
                         );
-                      }).filter(Boolean); // Remove null entries for empty meal parts
+                      });
                     })}
                   </TableBody>
                 </Table>
@@ -250,3 +260,4 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
     </div>
   );
 }
+
