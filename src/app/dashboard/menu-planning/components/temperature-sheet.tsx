@@ -14,6 +14,7 @@ import { groupMenusByWeek, type WeekData } from '../utils';
 import { useToast } from '@/hooks/use-toast';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -38,6 +39,7 @@ const mealPartDisplayNames: Record<MenuField, string> = {
   legume: "Légume",
   sauce: "Sauce",
   dessert: "Dessert",
+  theme: "Thème" // Should not appear in temperature sheet table body but needed for type completeness
 };
 
 interface TemperatureSheetProps {
@@ -48,8 +50,8 @@ interface TemperatureSheetProps {
 }
 
 export default function TemperatureSheet({ year, month, menuData, isLoading: pageLoading }: TemperatureSheetProps) {
-  const [mealItemTemperatures, setMealItemTemperatures] = useState<Record<string, MealItemTemperatureInput>>({}); // Key: date_mealPart
-  const [dailyLogData, setDailyLogData] = useState<Record<string, DailyLogInput>>({}); // Key: date
+  const [mealItemTemperatures, setMealItemTemperatures] = useState<Record<string, MealItemTemperatureInput>>({}); 
+  const [dailyLogData, setDailyLogData] = useState<Record<string, DailyLogInput>>({}); 
   const [isComponentLoading, setIsComponentLoading] = useState(true);
   const [isGeneratingMonthlyPdf, setIsGeneratingMonthlyPdf] = useState(false);
   const { toast } = useToast();
@@ -121,24 +123,43 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
     setIsGeneratingMonthlyPdf(true);
 
     try {
+      const pdfSettings = getPdfLayoutSettings('temperature_sheet_monthly');
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
+      const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
       const monthYearStr = format(new Date(year, month), "MMMM yyyy", { locale: fr });
-      const mainTitle = `Fiche de Température Mensuelle - ${monthYearStr}`;
       
+      let currentY = 15;
+      if (pdfSettings.headerText) {
+        doc.setFontSize(10);
+        doc.text(pdfSettings.headerText, 14, currentY);
+        currentY += 10;
+      }
+      
+      const mainTitle = `Fiche de Température Mensuelle - ${monthYearStr}`;
       doc.setFontSize(18);
-      doc.text(mainTitle, doc.internal.pageSize.getWidth() / 2, 20, { align: 'center' });
+      doc.text(mainTitle, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
+      currentY += 8;
       doc.setFontSize(10);
-      doc.text(`Généré le: ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, 14, 28);
+      doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY);
+      currentY += 7;
 
-      let currentY = 35;
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
+      if (pdfSettings.primaryColor) {
+        const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
+        if (primaryColorRgb) {
+          headStyles.fillColor = primaryColorRgb;
+           const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
+          headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
+        }
+      }
+
 
       weeklyGroupedMenus.forEach((week) => {
         if (week.menus.length === 0) return;
 
         const weekTitle = `Semaine ${week.weekNumberInMonth}: ${format(week.startDate, "dd LLLL", { locale: fr })} - ${format(week.endDate, "dd LLLL yyyy", { locale: fr })}`;
         
-        // Check if there's enough space for the week title and at least one row of table header + a bit of content
-        if (currentY + 20 > doc.internal.pageSize.getHeight() - 20) { // 20 for title, 20 for bottom margin
+        if (currentY + 20 > doc.internal.pageSize.getHeight() - 20) { 
             doc.addPage();
             currentY = 20;
         }
@@ -151,7 +172,7 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
 
         week.menus.forEach(menu => {
           const dailyInputs = dailyLogData[menu.date] || {};
-          const presentMealParts = mealPartsOrder.filter(mpKey => menu[mpKey] && menu[mpKey].trim() !== "");
+          const presentMealParts = mealPartsOrder.filter(mpKey => mpKey !== 'theme' && menu[mpKey] && menu[mpKey].trim() !== "");
           const numMealPartsForThisDay = presentMealParts.length;
 
           if (numMealPartsForThisDay === 0) return;
@@ -188,24 +209,28 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
             body: body,
             startY: currentY,
             theme: 'grid',
-            headStyles: { fillColor: [51, 102, 204], textColor: [255,255,255], fontSize: 9 },
+            headStyles: { ...headStyles, fontSize: 9 },
             styles: { fontSize: 8, cellPadding: 1.5 },
             columnStyles: {
-                0: { cellWidth: 30 }, // Jour
-                1: { cellWidth: 80 }, // Plat Concerné
-                2: { cellWidth: 30, halign: 'center' }, // Temp 1
-                3: { cellWidth: 30, halign: 'center' }, // Temp 2
-                4: { cellWidth: 30, halign: 'center' }, // Temp 3
-                5: { cellWidth: 30, halign: 'center' }, // Personnel
+                0: { cellWidth: 30 }, 
+                1: { cellWidth: 80 }, 
+                2: { cellWidth: 30, halign: 'center' }, 
+                3: { cellWidth: 30, halign: 'center' }, 
+                4: { cellWidth: 30, halign: 'center' }, 
+                5: { cellWidth: 30, halign: 'center' }, 
             },
             didDrawPage: (data) => {
-              const pageCount = doc.getNumberOfPages();
-              doc.setFontSize(8);
-              doc.text(`Page ${data.pageNumber} sur ${pageCount}`, data.settings.margin.left, doc.internal.pageSize.height - 10);
+              const pageCount = doc.internal.getNumberOfPages();
+              if (pdfSettings.footerText) {
+                let footerStr = pdfSettings.footerText
+                  .replace('{date}', generationDateFormatted)
+                  .replace('{pageNumber}', data.pageNumber.toString())
+                  .replace('{totalPages}', pageCount.toString());
+                doc.setFontSize(9);
+                doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+              }
             },
-            // Ensure table doesn't split rows with rowSpan incorrectly if possible, or manage page breaks before large chunks
             pageBreak: 'auto', 
-            // Add margin to bottom if table continues on next page
             marginBottom: 15 
           });
           currentY = (doc as any).lastAutoTable.finalY + 10;
@@ -296,7 +321,7 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
                     <TableBody>
                       {week.menus.flatMap(menu => {
                         const dailyInputs = dailyLogData[menu.date] || {};
-                        const presentMealParts = mealPartsOrder.filter(mpKey => menu[mpKey] && menu[mpKey].trim() !== "");
+                        const presentMealParts = mealPartsOrder.filter(mpKey => mpKey !== 'theme' && menu[mpKey] && menu[mpKey].trim() !== "");
                         const numMealPartsForThisDay = presentMealParts.length;
 
                         if (numMealPartsForThisDay === 0 && !menu.isWeekend) return [(
@@ -322,7 +347,7 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
                                 </TableCell>
                             </TableRow>
                         )];
-                        if (numMealPartsForThisDay === 0 && menu.isWeekend) return []; // Skip entirely if weekend and no meals
+                        if (numMealPartsForThisDay === 0 && menu.isWeekend) return []; 
 
                         return presentMealParts.map((mealPartKey, mealPartIndex) => {
                           const mealItemName = menu[mealPartKey];

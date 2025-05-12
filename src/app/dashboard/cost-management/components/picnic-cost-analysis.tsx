@@ -19,6 +19,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -57,7 +58,6 @@ export default function PicnicCostAnalysis() {
 
   const getLocalStorageKey = useCallback((mealType: MealTypePN) => `cost_pn_${mealType}_ingredients`, []);
 
-  // Load data from localStorage
   useEffect(() => {
     setIsLoading(true);
     try {
@@ -73,7 +73,6 @@ export default function PicnicCostAnalysis() {
     setIsLoading(false);
   }, [getLocalStorageKey, toast]);
 
-  // Save data to localStorage
   useEffect(() => {
     if (!isLoading) {
       localStorage.setItem(getLocalStorageKey('picnic'), JSON.stringify(picnicIngredients));
@@ -144,20 +143,41 @@ export default function PicnicCostAnalysis() {
     }
     setIsLoading(true);
     try {
+      const pdfSettings = getPdfLayoutSettings('picnic_cost');
       const doc = new jsPDF() as jsPDFWithAutoTable;
-      const title = `Coût de Revient - Repas ${mealTypeLabel}`;
+      const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
       
+      let currentY = 15;
+      if (pdfSettings.headerText) {
+        doc.setFontSize(10);
+        doc.text(pdfSettings.headerText, 14, currentY);
+        currentY += 10;
+      }
+
+      const title = `Coût de Revient - Repas ${mealTypeLabel}`;
       doc.setFontSize(18);
-      doc.text(title, 14, 20);
+      doc.text(title, 14, currentY);
+      currentY += 8;
       doc.setFontSize(10);
-      doc.text(`Généré le: ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, 14, 28);
+      doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY);
+      currentY += 7;
+
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
+      if (pdfSettings.primaryColor) {
+        const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
+        if (primaryColorRgb) {
+          headStyles.fillColor = primaryColorRgb;
+           const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
+          headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
+        }
+      }
 
       const head = [['Ingrédient', 'Unité', 'Prix/Unité (€)', 'Qté/Repas', 'Coût/Repas (€)']];
       const body = currentIngredients.map(ing => [
         ing.name,
         ing.unit,
         ing.unitPrice.toFixed(2),
-        ing.quantityPerMeal.toFixed(3), // Allow more precision for quantity
+        ing.quantityPerMeal.toFixed(3), 
         (ing.unitPrice * ing.quantityPerMeal).toFixed(2),
       ]);
       
@@ -172,9 +192,9 @@ export default function PicnicCostAnalysis() {
         head: head,
         body: body,
         foot: footer,
-        startY: 35,
+        startY: currentY,
         theme: 'grid',
-        headStyles: { fillColor: [34, 108, 221] }, // A blue color for header
+        headStyles: headStyles, 
         footStyles: { fillColor: [220, 220, 220], textColor: [0,0,0] },
         columnStyles: {
             0: { cellWidth: 'auto' }, 
@@ -184,9 +204,15 @@ export default function PicnicCostAnalysis() {
             4: { cellWidth: 'auto', halign: 'right' },
         },
         didDrawPage: (data) => {
-          const pageCount = doc.getNumberOfPages();
-          doc.setFontSize(8);
-          doc.text(`Page ${data.pageNumber} sur ${pageCount}`, data.settings.margin.left, doc.internal.pageSize.height - 10);
+          const pageCount = doc.internal.getNumberOfPages();
+           if (pdfSettings.footerText) {
+            let footerStr = pdfSettings.footerText
+              .replace('{date}', generationDateFormatted)
+              .replace('{pageNumber}', data.pageNumber.toString())
+              .replace('{totalPages}', pageCount.toString());
+            doc.setFontSize(9);
+            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+          }
         }
       });
 

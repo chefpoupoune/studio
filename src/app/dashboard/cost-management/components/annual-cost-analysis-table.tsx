@@ -15,6 +15,7 @@ import 'jspdf-autotable';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -140,13 +141,37 @@ export default function AnnualCostAnalysisTable() {
 
     setIsLoading(true);
     try {
+      const pdfSettings = getPdfLayoutSettings('annual_cost');
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
-      const title = `Récapitulatif Annuel Coût de Revient - ${selectedYear}`;
+      const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
       
+      let currentY = 15;
+      if (pdfSettings.headerText) {
+        doc.setFontSize(10);
+        doc.text(pdfSettings.headerText, 14, currentY);
+        currentY += 10;
+      }
+      
+      const title = `Récapitulatif Annuel Coût de Revient - ${selectedYear}`;
       doc.setFontSize(18);
-      doc.text(title, 14, 20);
+      doc.text(title, 14, currentY);
+      currentY += 8;
       doc.setFontSize(10);
-      doc.text(`Généré le: ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, 14, 28);
+      doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY);
+      currentY += 7;
+
+
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
+      if (pdfSettings.primaryColor) {
+        const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
+        if (primaryColorRgb) {
+          headStyles.fillColor = primaryColorRgb;
+          // Basic contrast check for text color, assuming primaryColor is dark
+          const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
+          headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
+        }
+      }
+
 
       const head = [['Mois', 'Total HT (€)', 'Total TVA (€)', 'Total Avoir (€)', 'Total Effectif', 'Prix de Revient Mensuel (€)', 'Emarket (€)', 'Frais Fonct. (€)', 'Frais Gestion (€)', 'Prix de Revient Mensuel avec Frais de Gestion (€)']];
       
@@ -170,7 +195,7 @@ export default function AnnualCostAnalysisTable() {
           { content: annualTotals.grandTotalTva.toFixed(2), styles: { fontStyle: 'bold' } },
           { content: annualTotals.grandTotalAvoir.toFixed(2), styles: { fontStyle: 'bold' } },
           { content: annualTotals.grandTotalEffectifSum.toFixed(2), styles: { fontStyle: 'bold' } },
-          { content: annualTotals.overallPrixDeRevient.toFixed(2), styles: { fontStyle: 'bold' } }, // Overall PR
+          { content: annualTotals.overallPrixDeRevient.toFixed(2), styles: { fontStyle: 'bold' } }, 
           { content: annualTotals.grandTotalEmarket.toFixed(2), styles: { fontStyle: 'bold' } },
           { content: annualTotals.grandTotalFraisFonctionnement.toFixed(2), styles: { fontStyle: 'bold' } },
           { content: annualTotals.grandTotalFraisGestion.toFixed(2), styles: { fontStyle: 'bold' } },
@@ -186,26 +211,32 @@ export default function AnnualCostAnalysisTable() {
         head: head,
         body: body,
         foot: footer,
-        startY: 35,
+        startY: currentY,
         theme: 'grid',
-        headStyles: { fillColor: [22, 160, 133] }, 
+        headStyles: headStyles, 
         footStyles: { fillColor: [220, 220, 220], textColor: [0,0,0] },
         columnStyles: {
-            0: { cellWidth: 'auto' }, // Mois
-            1: { cellWidth: 'auto', halign: 'right' }, // Total HT
-            2: { cellWidth: 'auto', halign: 'right' }, // Total TVA
-            3: { cellWidth: 'auto', halign: 'right' }, // Total Avoir
-            4: { cellWidth: 'auto', halign: 'right' }, // Total Effectif
-            5: { cellWidth: 'auto', halign: 'right' }, // Prix de Revient Mensuel
-            6: { cellWidth: 'auto', halign: 'right' }, // Emarket
-            7: { cellWidth: 'auto', halign: 'right' }, // Frais Fonct.
-            8: { cellWidth: 'auto', halign: 'right' }, // Frais Gestion
-            9: { cellWidth: 'auto', halign: 'right' }, // Prix de Revient Mensuel avec Frais de Gestion
+            0: { cellWidth: 'auto' }, 
+            1: { cellWidth: 'auto', halign: 'right' }, 
+            2: { cellWidth: 'auto', halign: 'right' }, 
+            3: { cellWidth: 'auto', halign: 'right' }, 
+            4: { cellWidth: 'auto', halign: 'right' }, 
+            5: { cellWidth: 'auto', halign: 'right' }, 
+            6: { cellWidth: 'auto', halign: 'right' }, 
+            7: { cellWidth: 'auto', halign: 'right' }, 
+            8: { cellWidth: 'auto', halign: 'right' }, 
+            9: { cellWidth: 'auto', halign: 'right' }, 
         },
         didDrawPage: (data) => {
-          const pageCount = doc.getNumberOfPages();
-          doc.setFontSize(8);
-          doc.text(`Page ${data.pageNumber} sur ${pageCount}`, data.settings.margin.left, doc.internal.pageSize.height - 10);
+          const pageCount = doc.internal.getNumberOfPages();
+          if (pdfSettings.footerText) {
+            let footerStr = pdfSettings.footerText
+              .replace('{date}', generationDateFormatted)
+              .replace('{pageNumber}', data.pageNumber.toString())
+              .replace('{totalPages}', pageCount.toString());
+            doc.setFontSize(9);
+            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+          }
         }
       });
 

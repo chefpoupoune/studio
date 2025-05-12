@@ -21,8 +21,9 @@ import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 
-// Extend jsPDF with autoTable, or TypeScript might complain
+
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
 }
@@ -63,7 +64,7 @@ export default function MenuPlanningPage() {
         isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
         isHoliday: holidayMap.has(dateStr),
         holidayName: holidayMap.get(dateStr),
-        ...initialMenuItem, // This will include theme: ''
+        ...initialMenuItem, 
       });
     }
     return data;
@@ -89,10 +90,8 @@ export default function MenuPlanningPage() {
     
     if (storedData && storedData.length > 0) {
         const expectedDays = getDaysInMonth(new Date(yearNum, monthNum));
-        // Check if stored data matches the selected month/year and length
         if (storedData.length === expectedDays && 
             storedData[0].date.startsWith(`${yearNum}-${(monthNum + 1).toString().padStart(2, '0')}`)) {
-            // Ensure theme field exists, default if not
             setMenuData(storedData.map(d => ({...initialMenuItem, ...d, theme: d.theme || '' })));
         } else {
             const freshData = generateMonthData(yearNum, monthNum);
@@ -131,15 +130,36 @@ export default function MenuPlanningPage() {
     setIsGeneratingMonthlyPdf(true);
 
     try {
+      const pdfSettings = getPdfLayoutSettings('menu_planning_monthly');
       const doc = new jsPDF() as jsPDFWithAutoTable;
       const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
       const yearLabel = selectedYear;
-      const title = `Planification des Menus - ${monthLabel} ${yearLabel}`;
+      const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
+      let currentY = 15;
+      if (pdfSettings.headerText) {
+        doc.setFontSize(10);
+        doc.text(pdfSettings.headerText, 14, currentY);
+        currentY += 10;
+      }
+
+      const title = `Planification des Menus - ${monthLabel} ${yearLabel}`;
       doc.setFontSize(18);
-      doc.text(title, doc.internal.pageSize.getWidth() / 2, 20, { align: 'center' });
+      doc.text(title, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
+      currentY += 8;
       doc.setFontSize(10);
-      doc.text(`Généré le: ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, 14, 28);
+      doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY);
+      currentY += 7;
+
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
+      if (pdfSettings.primaryColor) {
+        const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
+        if (primaryColorRgb) {
+          headStyles.fillColor = primaryColorRgb;
+          const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
+          headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
+        }
+      }
 
       const head = [['Date', 'Jour', 'Thème', 'Entrée', 'Plat', 'Féculent', 'Légume', 'Sauce', 'Dessert']];
       
@@ -160,22 +180,22 @@ export default function MenuPlanningPage() {
       });
 
       const themeRgbColors: Record<MenuThemeIdentifier, [number, number, number]> = {
-        froid: [219, 234, 254],   // Light Blue (bg-blue-100)
-        vege: [209, 250, 229],    // Light Green (bg-green-100)
-        sam: [254, 249, 195],     // Light Yellow (bg-yellow-100)
-        poisson: [252, 231, 243], // Light Pink (bg-pink-100)
-        fete: [255, 237, 213],    // Light Orange (bg-orange-100)
+        froid: [219, 234, 254],   
+        vege: [209, 250, 229],    
+        sam: [254, 249, 195],     
+        poisson: [252, 231, 243], 
+        fete: [255, 237, 213],    
       };
-      const holidayWeekendColor: [number, number, number] = [253, 224, 71]; // Tailwind yellow-400
-      const holidayWeekdayColor: [number, number, number] = [254, 240, 138]; // Tailwind yellow-300
-      const weekendColor: [number, number, number] = [229, 231, 235]; // Tailwind gray-200
+      const holidayWeekendColor: [number, number, number] = [253, 224, 71]; 
+      const holidayWeekdayColor: [number, number, number] = [254, 240, 138]; 
+      const weekendColor: [number, number, number] = [229, 231, 235]; 
 
       doc.autoTable({
         head: head,
         body: body,
-        startY: 35,
+        startY: currentY,
         theme: 'grid',
-        headStyles: { fillColor: [50, 50, 50], textColor: [255,255,255], fontStyle: 'bold' },
+        headStyles: headStyles,
         styles: { fontSize: 7, cellPadding: 1.5, valign: 'middle' }, 
         columnStyles: {
           0: { cellWidth: 13 }, 
@@ -183,7 +203,6 @@ export default function MenuPlanningPage() {
           2: { cellWidth: 20 }, 
         },
         willDrawCell: (data) => {
-          // Ensure we are in the body section and have a valid row index
           if (data.section === 'body' && data.row && typeof data.row.index === 'number' && data.row.index < menuData.length) {
             const dayMenu = menuData[data.row.index];
             if (dayMenu) {
@@ -198,17 +217,21 @@ export default function MenuPlanningPage() {
               }
 
               if (fillColor) {
-                // `data.cell.styles` is the correct way to apply cell-specific styles in `willDrawCell`
-                // For jspdf-autotable, `fillColor` is an array [r, g, b] or a hex string.
                 data.cell.styles.fillColor = fillColor;
               }
             }
           }
         },
         didDrawPage: (data) => {
-          const pageCount = doc.getNumberOfPages();
-          doc.setFontSize(8);
-          doc.text(`Page ${data.pageNumber} sur ${pageCount}`, data.settings.margin.left, doc.internal.pageSize.height - 10);
+          const pageCount = doc.internal.getNumberOfPages();
+          if (pdfSettings.footerText) {
+            let footerStr = pdfSettings.footerText
+              .replace('{date}', generationDateFormatted)
+              .replace('{pageNumber}', data.pageNumber.toString())
+              .replace('{totalPages}', pageCount.toString());
+            doc.setFontSize(8);
+            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+          }
         },
       });
 

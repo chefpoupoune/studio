@@ -19,6 +19,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -147,17 +148,34 @@ export default function OccasionalMealCostAnalysis() {
     }
     setIsLoading(true);
     try {
+      const pdfSettings = getPdfLayoutSettings('occasional_meal_cost');
       const doc = new jsPDF() as jsPDFWithAutoTable;
-      const title = `Coût de Revient Repas Occasionnel (${numberOfPeople} personnes)`;
-      
-      doc.setFontSize(18); doc.text(title, 14, 20);
-      doc.setFontSize(10); doc.text(`Généré le: ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, 14, 28);
+      const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
-      let startY = 35;
+      let currentY = 15;
+      if (pdfSettings.headerText) {
+        doc.setFontSize(10);
+        doc.text(pdfSettings.headerText, 14, currentY);
+        currentY += 10;
+      }
+      
+      const title = `Coût de Revient Repas Occasionnel (${numberOfPeople} personnes)`;
+      doc.setFontSize(18); doc.text(title, 14, currentY); currentY += 8;
+      doc.setFontSize(10); doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY); currentY += 7;
+
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
+       if (pdfSettings.primaryColor) {
+        const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
+        if (primaryColorRgb) {
+          headStyles.fillColor = primaryColorRgb;
+          const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
+          headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
+        }
+      }
 
       const addSectionToPdf = (partLabel: string, ingredients: IngredientOccasional[], partCost: number) => {
         if (ingredients.length > 0) {
-          doc.setFontSize(14); doc.text(partLabel, 14, startY); startY += 7;
+          doc.setFontSize(14); doc.text(partLabel, 14, currentY); currentY += 7;
           doc.autoTable({
             head: [['Ingrédient', 'Unité', 'Prix/Unité (€)', 'Qté/Pers.', 'Coût/Pers. (€)']],
             body: ingredients.map(ing => [
@@ -165,9 +183,11 @@ export default function OccasionalMealCostAnalysis() {
               (ing.unitPrice * ing.quantityPerSingleMeal).toFixed(2),
             ]),
             foot: [[{ content: `Total ${partLabel} / Pers.`, colSpan: 4, styles: { fontStyle: 'bold', halign: 'right' } }, { content: partCost.toFixed(2), styles: { fontStyle: 'bold', halign: 'right' } }]],
-            startY: startY, theme: 'grid', headStyles: { fillColor: [120, 120, 120] }, footStyles: { fillColor: [230, 230, 230], textColor: [0,0,0] }
+            startY: currentY, theme: 'grid', 
+            headStyles: headStyles, 
+            footStyles: { fillColor: [230, 230, 230], textColor: [0,0,0] }
           });
-          startY = (doc as any).lastAutoTable.finalY + 10;
+          currentY = (doc as any).lastAutoTable.finalY + 10;
         }
       };
       
@@ -176,12 +196,26 @@ export default function OccasionalMealCostAnalysis() {
       addSectionToPdf("Dessert", dessertIngredients, dessertCostPerPerson);
 
       doc.setFontSize(12);
-      doc.text("Récapitulatif:", 14, startY); startY += 7;
+      doc.text("Récapitulatif:", 14, currentY); currentY += 7;
       doc.setFontSize(10);
-      doc.text(`Nombre de personnes: ${numberOfPeople}`, 14, startY); startY += 6;
-      doc.text(`Coût total par personne: ${totalCostPerPerson.toFixed(2)} €`, 14, startY); startY += 6;
+      doc.text(`Nombre de personnes: ${numberOfPeople}`, 14, currentY); currentY += 6;
+      doc.text(`Coût total par personne: ${totalCostPerPerson.toFixed(2)} €`, 14, currentY); currentY += 6;
       doc.setFontSize(11); doc.setFont(undefined, 'bold');
-      doc.text(`Coût total pour ${numberOfPeople} personnes: ${totalCostForAllPeople.toFixed(2)} €`, 14, startY);
+      doc.text(`Coût total pour ${numberOfPeople} personnes: ${totalCostForAllPeople.toFixed(2)} €`, 14, currentY);
+
+      // Footer
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+          doc.setPage(i);
+           if (pdfSettings.footerText) {
+            let footerStr = pdfSettings.footerText
+              .replace('{date}', generationDateFormatted)
+              .replace('{pageNumber}', i.toString())
+              .replace('{totalPages}', pageCount.toString());
+            doc.setFontSize(9);
+            doc.text(footerStr, 14, doc.internal.pageSize.height - 10);
+          }
+      }
 
       doc.save(`cout_repas_occasionnel_${numberOfPeople}pers_${format(new Date(), "yyyyMMdd")}.pdf`);
       toast({ title: "PDF Généré", description: "Le PDF du coût repas occasionnel a été téléchargé." });

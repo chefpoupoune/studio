@@ -5,11 +5,18 @@ import React, { useState } from 'react';
 import type { Product } from '../types';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ListChecks, Printer } from 'lucide-react';
+import { ListChecks, Printer, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+
+interface jsPDFWithAutoTable extends jsPDF {
+  autoTable: (options: any) => jsPDF;
+}
 
 interface GenerateInventoryProps {
   products: Product[];
@@ -18,65 +25,82 @@ interface GenerateInventoryProps {
 export default function GenerateInventory({ products }: GenerateInventoryProps) {
   const [generatedInventory, setGeneratedInventory] = useState<Product[] | null>(null);
   const [generationDate, setGenerationDate] = useState<Date | null>(null);
+  const [isPrinting, setIsPrinting] = useState(false);
   const { toast } = useToast();
 
   const handleGenerateInventory = () => {
-    setGeneratedInventory([...products]); // Create a snapshot
+    setGeneratedInventory([...products]); 
     setGenerationDate(new Date());
     toast({ title: "Inventaire Généré", description: "L'inventaire actuel a été capturé." });
   };
 
   const handlePrintInventory = () => {
-    // Basic print functionality
-    const printWindow = window.open('', '_blank');
-    if (printWindow && generatedInventory && generationDate) {
-      const productRows = generatedInventory.map(p => `
-        <tr>
-          <td style="border: 1px solid #ddd; padding: 8px;">${p.name}</td>
-          <td style="border: 1px solid #ddd; padding: 8px;">${p.reference}</td>
-          <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${p.quantity}</td>
-        </tr>
-      `).join('');
+    if (!generatedInventory || !generationDate) {
+      toast({ title: "Erreur Impression", description: "Aucun inventaire généré à imprimer.", variant: "destructive" });
+      return;
+    }
+    setIsPrinting(true);
+    try {
+      const pdfSettings = getPdfLayoutSettings('inventory_report');
+      const doc = new jsPDF() as jsPDFWithAutoTable;
+      const generationDateFormatted = format(generationDate, "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Inventaire du ${format(generationDate, "dd MMMM yyyy 'à' HH:mm", { locale: fr })}</title>
-            <style>
-              body { font-family: sans-serif; margin: 20px; }
-              table { width: 100%; border-collapse: collapse; }
-              th, td { text-align: left; padding: 8px; border: 1px solid #ddd; }
-              th { background-color: #f2f2f2; }
-              h1 { text-align: center; }
-            </style>
-          </head>
-          <body>
-            <h1>Inventaire des Stocks</h1>
-            <p>Généré le: ${format(generationDate, "dd MMMM yyyy 'à' HH:mm", { locale: fr })}</p>
-            <table>
-              <thead>
-                <tr>
-                  <th>Nom du Produit</th>
-                  <th>Référence</th>
-                  <th style="text-align: right;">Quantité en Stock</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${productRows}
-              </tbody>
-            </table>
-            <script>
-              window.onload = function() {
-                window.print();
-                // window.onafterprint = function() { window.close(); } // Optional: close after print dialog
-              }
-            </script>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-    } else {
-       toast({ title: "Erreur Impression", description: "Impossible d'ouvrir la fenêtre d'impression ou aucun inventaire généré.", variant: "destructive" });
+      let currentY = 15;
+      if (pdfSettings.headerText) {
+        doc.setFontSize(10);
+        doc.text(pdfSettings.headerText, 14, currentY);
+        currentY += 10;
+      }
+
+      doc.setFontSize(18);
+      doc.text("Inventaire des Stocks", 14, currentY);
+      currentY += 8;
+      doc.setFontSize(10);
+      doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY);
+      currentY += 7;
+
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
+      if (pdfSettings.primaryColor) {
+        const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
+        if (primaryColorRgb) {
+          headStyles.fillColor = primaryColorRgb;
+          const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
+          headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
+        }
+      }
+
+      const body = generatedInventory.map(p => [
+        p.name,
+        p.reference,
+        p.quantity.toString(),
+      ]);
+
+      doc.autoTable({
+        startY: currentY,
+        head: [['Nom du Produit', 'Référence', 'Quantité en Stock']],
+        body: body,
+        theme: 'grid',
+        headStyles: headStyles,
+        columnStyles: { 2: { halign: 'right' } },
+        didDrawPage: (data) => {
+          const pageCount = doc.internal.getNumberOfPages();
+          if (pdfSettings.footerText) {
+            let footerStr = pdfSettings.footerText
+              .replace('{date}', generationDateFormatted)
+              .replace('{pageNumber}', data.pageNumber.toString())
+              .replace('{totalPages}', pageCount.toString());
+            doc.setFontSize(9);
+            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+          }
+        }
+      });
+      doc.save(`Inventaire_${format(generationDate, "yyyyMMdd_HHmm")}.pdf`);
+      toast({ title: "PDF d'Inventaire Généré", description: "Le fichier PDF a été téléchargé." });
+    } catch (error) {
+      console.error("Error generating inventory PDF:", error);
+      toast({ title: "Erreur PDF", description: "La génération du PDF d'inventaire a échoué.", variant: "destructive" });
+    } finally {
+      setIsPrinting(false);
     }
   };
 
@@ -89,12 +113,13 @@ export default function GenerateInventory({ products }: GenerateInventoryProps) 
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="flex flex-col sm:flex-row gap-4">
-          <Button onClick={handleGenerateInventory} className="w-full sm:w-auto">
+          <Button onClick={handleGenerateInventory} className="w-full sm:w-auto" disabled={isPrinting}>
             <ListChecks className="mr-2 h-4 w-4" /> Générer l'Inventaire Actuel
           </Button>
           {generatedInventory && (
-            <Button onClick={handlePrintInventory} variant="outline" className="w-full sm:w-auto">
-              <Printer className="mr-2 h-4 w-4" /> Imprimer l'Inventaire
+            <Button onClick={handlePrintInventory} variant="outline" className="w-full sm:w-auto" disabled={isPrinting}>
+              {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Printer className="mr-2 h-4 w-4" />} 
+              Imprimer l'Inventaire
             </Button>
           )}
         </div>
@@ -107,9 +132,9 @@ export default function GenerateInventory({ products }: GenerateInventoryProps) 
             {generatedInventory.length === 0 ? (
                <p className="text-muted-foreground text-center py-8">L'inventaire est vide.</p>
             ) : (
-              <div className="overflow-x-auto border rounded-md">
+              <div className="overflow-x-auto border rounded-md max-h-[400px]">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="sticky top-0 bg-card">
                     <TableRow>
                       <TableHead>Nom du Produit</TableHead>
                       <TableHead>Référence</TableHead>

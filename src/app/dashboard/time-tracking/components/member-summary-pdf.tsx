@@ -7,15 +7,15 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { FileText, UserCheck, TrendingUp, TrendingDown, Scale } from 'lucide-react';
+import { FileText, UserCheck, TrendingUp, TrendingDown, Scale, Loader2 } from 'lucide-react';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable'; // Ensure this import is correct for your jsPDF version
+import 'jspdf-autotable'; 
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from '@/components/ui/label';
+import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 
-// Extend jsPDF with autoTable, or TypeScript might complain
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
 }
@@ -27,6 +27,7 @@ interface MemberSummaryPdfProps {
 
 export default function MemberSummaryPdf({ members, timeEntries }: MemberSummaryPdfProps) {
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const { toast } = useToast();
 
   const selectedMember = useMemo(() => {
@@ -63,29 +64,54 @@ export default function MemberSummaryPdf({ members, timeEntries }: MemberSummary
       toast({ title: "Données Insuffisantes", description: "Sélectionnez un membre avec des entrées d'heures pour générer un PDF.", variant: "destructive" });
       return;
     }
+    setIsGeneratingPdf(true);
 
     try {
+      const pdfSettings = getPdfLayoutSettings('time_tracking_summary');
       const doc = new jsPDF() as jsPDFWithAutoTable;
-      const title = `Relevé d'Heures - ${selectedMember.name} (${selectedMember.role})`;
-      
-      doc.setFontSize(18);
-      doc.text(title, 14, 20);
-      doc.setFontSize(10);
-      doc.text(`Généré le: ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, 14, 28);
+      const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
-      // Summary Section
-      doc.setFontSize(12);
-      doc.text("Récapitulatif des Heures:", 14, 40);
+      let currentY = 15;
+      if (pdfSettings.headerText) {
+        doc.setFontSize(10);
+        doc.text(pdfSettings.headerText, 14, currentY);
+        currentY += 10;
+      }
+
+      const title = `Relevé d'Heures - ${selectedMember.name} (${selectedMember.role})`;
+      doc.setFontSize(18);
+      doc.text(title, 14, currentY);
+      currentY += 8;
       doc.setFontSize(10);
-      doc.text(`Total Heures Ajoutées: ${summaryStats.totalAdded.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, 14, 46);
-      doc.text(`Total Heures Déduites: ${summaryStats.totalDeducted.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, 14, 52);
+      doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY);
+      currentY += 10;
+
+      doc.setFontSize(12);
+      doc.text("Récapitulatif des Heures:", 14, currentY);
+      currentY += 6;
+      doc.setFontSize(10);
+      doc.text(`Total Heures Ajoutées: ${summaryStats.totalAdded.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, 14, currentY);
+      currentY += 6;
+      doc.text(`Total Heures Déduites: ${summaryStats.totalDeducted.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, 14, currentY);
+      currentY += 6;
       doc.setFontSize(11);
       doc.setFont(undefined, 'bold');
-      doc.text(`Solde d'Heures: ${summaryStats.netHours.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, 14, 58);
+      doc.text(`Solde d'Heures: ${summaryStats.netHours.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, 14, currentY);
+      currentY += 7;
       doc.setFont(undefined, 'normal');
 
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
+      if (pdfSettings.primaryColor) {
+        const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
+        if (primaryColorRgb) {
+          headStyles.fillColor = primaryColorRgb;
+          const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
+          headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
+        }
+      }
+
       doc.autoTable({
-        startY: 65,
+        startY: currentY,
         head: [['Date', 'Type', 'Heures', 'Raison']],
         body: memberTimeEntries.map(entry => [
           format(new Date(entry.date), "dd/MM/yyyy", { locale: fr }),
@@ -94,11 +120,17 @@ export default function MemberSummaryPdf({ members, timeEntries }: MemberSummary
           entry.reason,
         ]),
         theme: 'grid',
-        headStyles: { fillColor: [79, 70, 229] }, // Using a primary-like color for header
+        headStyles: headStyles,
         didDrawPage: (data) => {
-          const pageCount = doc.getNumberOfPages();
-          doc.setFontSize(10);
-          doc.text(`Page ${data.pageNumber} sur ${pageCount}`, data.settings.margin.left, doc.internal.pageSize.height - 10);
+          const pageCount = doc.internal.getNumberOfPages();
+          if (pdfSettings.footerText) {
+            let footerStr = pdfSettings.footerText
+              .replace('{date}', generationDateFormatted)
+              .replace('{pageNumber}', data.pageNumber.toString())
+              .replace('{totalPages}', pageCount.toString());
+            doc.setFontSize(9);
+            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+          }
         }
       });
 
@@ -107,6 +139,8 @@ export default function MemberSummaryPdf({ members, timeEntries }: MemberSummary
     } catch (error) {
       console.error("Error generating PDF:", error);
       toast({ title: "Erreur PDF", description: "La génération du PDF a échoué.", variant: "destructive" });
+    } finally {
+      setIsGeneratingPdf(false);
     }
   };
 
@@ -138,10 +172,11 @@ export default function MemberSummaryPdf({ members, timeEntries }: MemberSummary
           </div>
           <Button 
             onClick={generatePdf} 
-            disabled={!selectedMember || memberTimeEntries.length === 0} 
+            disabled={!selectedMember || memberTimeEntries.length === 0 || isGeneratingPdf} 
             className="w-full sm:w-auto"
           >
-            <FileText className="mr-2 h-4 w-4" /> Générer PDF du Relevé
+            {isGeneratingPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileText className="mr-2 h-4 w-4" />}
+            Générer PDF du Relevé
           </Button>
         </div>
 

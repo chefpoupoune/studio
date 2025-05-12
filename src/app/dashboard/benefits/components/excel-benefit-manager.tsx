@@ -16,7 +16,6 @@ import { fr } from 'date-fns/locale';
 import { format } from 'date-fns';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 
-// Extend jsPDF with autoTable, or TypeScript might complain
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
 }
@@ -32,7 +31,7 @@ const months = [
 ];
 
 const currentYear = new Date().getFullYear();
-const years = Array.from({ length: 10 }, (_, i) => currentYear - 5 + i); // Last 5 years and next 4 years
+const years = Array.from({ length: 10 }, (_, i) => currentYear - 5 + i);
 
 export default function ExcelBenefitManager() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -44,7 +43,6 @@ export default function ExcelBenefitManager() {
   const { toast } = useToast();
 
   useEffect(() => {
-    // Reset data if month/year changes after a file was processed
     setSelectedFile(null);
     setExcelData(null);
     setHeaders([]);
@@ -55,13 +53,13 @@ export default function ExcelBenefitManager() {
       const file = event.target.files[0];
       if (file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || file.type === "application/vnd.ms-excel") {
         setSelectedFile(file);
-        setExcelData(null); // Clear previous data
+        setExcelData(null); 
         setHeaders([]);
         toast({ title: "Fichier Sélectionné", description: file.name });
       } else {
         toast({ title: "Type de fichier invalide", description: "Veuillez sélectionner un fichier Excel (.xlsx ou .xls).", variant: "destructive" });
         setSelectedFile(null);
-        event.target.value = ''; // Reset file input
+        event.target.value = '';
       }
     }
   };
@@ -85,7 +83,7 @@ export default function ExcelBenefitManager() {
           if (jsonData.length > 0) {
             const extractedHeaders = jsonData[0].map(header => String(header ?? ''));
             setHeaders(extractedHeaders);
-            setExcelData(jsonData.slice(1)); // Data without headers
+            setExcelData(jsonData.slice(1));
             toast({ title: "Fichier Traité", description: "Les données du fichier Excel ont été chargées." });
           } else {
             setHeaders([]);
@@ -117,45 +115,52 @@ export default function ExcelBenefitManager() {
     setIsLoading(true);
     try {
       const pdfSettings = getPdfLayoutSettings('benefits');
-      const doc = new jsPDF() as jsPDFWithAutoTable; // Cast to include autoTable
+      const doc = new jsPDF() as jsPDFWithAutoTable;
       const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
+      let currentY = 15;
       // Header Text from settings
       if (pdfSettings.headerText) {
         doc.setFontSize(10);
-        doc.text(pdfSettings.headerText, 14, 15);
+        doc.text(pdfSettings.headerText, 14, currentY);
+        currentY += 10;
       }
       
       const title = `Avantages en Nature - ${monthLabel} ${selectedYear}`;
       doc.setFontSize(18);
-      doc.text(title, 14, pdfSettings.headerText ? 25 : 20); // Adjust Y based on header presence
+      doc.text(title, 14, currentY);
+      currentY += 8;
       
       doc.setFontSize(10);
-      doc.text(`Généré le: ${generationDateFormatted}`, 14, pdfSettings.headerText ? 33 : 28);
+      doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY);
+      currentY += 7;
 
       const headStyles: { fillColor?: [number, number, number] } = {};
-      const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
-      if (primaryColorRgb) {
-        headStyles.fillColor = primaryColorRgb;
+      if (pdfSettings.primaryColor) {
+        const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
+        if (primaryColorRgb) {
+          headStyles.fillColor = primaryColorRgb;
+        }
       }
 
       doc.autoTable({
-        startY: pdfSettings.headerText ? 40 : 35,
+        startY: currentY,
         head: [headers],
         body: excelData.map(row => row.map(cell => cell === null || cell === undefined ? '' : String(cell))),
         theme: 'grid',
         headStyles: headStyles,
         didDrawPage: (data) => {
-          // Footer Text from settings
           const pageCount = doc.internal.getNumberOfPages();
-          let footerStr = pdfSettings.footerText
-            .replace('{date}', generationDateFormatted)
-            .replace('{pageNumber}', data.pageNumber.toString())
-            .replace('{totalPages}', pageCount.toString());
-          
-          doc.setFontSize(9);
-          doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+          if (pdfSettings.footerText) {
+             let footerStr = pdfSettings.footerText
+              .replace('{date}', generationDateFormatted)
+              .replace('{pageNumber}', data.pageNumber.toString())
+              .replace('{totalPages}', pageCount.toString());
+            
+            doc.setFontSize(9);
+            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+          }
         }
       });
       doc.save(`Avantages_Nature_${monthLabel}_${selectedYear}.pdf`);

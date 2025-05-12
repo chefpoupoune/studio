@@ -16,6 +16,8 @@ import 'jspdf-autotable';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -114,17 +116,39 @@ export default function CostAnalysisTable() {
   const generatePdf = () => {
     setIsLoading(true);
     try {
+      const pdfSettings = getPdfLayoutSettings('monthly_cost');
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
       const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
+      const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
+
+      let currentY = 15;
+      if (pdfSettings.headerText) {
+        doc.setFontSize(10);
+        doc.text(pdfSettings.headerText, 14, currentY);
+        currentY += 10;
+      }
+
       const title = `Coût de Revient - ${monthLabel} ${selectedYear}`;
-      
       doc.setFontSize(18);
-      doc.text(title, 14, 20);
+      doc.text(title, 14, currentY);
+      currentY += 8;
       doc.setFontSize(10);
-      doc.text(`Généré le: ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, 14, 28);
+      doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY);
+      currentY += 7;
+
+
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
+      if (pdfSettings.primaryColor) {
+        const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
+        if (primaryColorRgb) {
+          headStyles.fillColor = primaryColorRgb;
+           const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
+          headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
+        }
+      }
 
       const head = [
-        ['Fournisseur', 'HT', 'TVA', 'Avoir', 'Jour', // Changed from 'Jour / Valeur'
+        ['Fournisseur', 'HT', 'TVA', 'Avoir', 'Jour', 
          'IMP', 'SAJ', 'IME', 'ESAT', 'Repas+++', 'Nous', 
          'Total Ligne', 'PN', 'PN ESAT', 'Effectif Ligne']
       ];
@@ -142,7 +166,7 @@ export default function CostAnalysisTable() {
             dayRowEntry.push({ content: row.avoir.toFixed(2), rowSpan: dayKeys.length });
           }
           
-          dayRowEntry.push({ content: (dayIndex + 1).toString(), styles: { halign: 'center' } }); // Only day number
+          dayRowEntry.push({ content: (dayIndex + 1).toString(), styles: { halign: 'center' } }); 
 
           if (dayIndex === 0) {
             dayRowEntry.push({ content: row.imp.toFixed(2), rowSpan: dayKeys.length });
@@ -166,7 +190,7 @@ export default function CostAnalysisTable() {
           { content: totals.totalHt.toFixed(2), styles: { fontStyle: 'bold' } },
           { content: totals.totalTva.toFixed(2), styles: { fontStyle: 'bold' } },
           { content: totals.totalAvoir.toFixed(2), styles: { fontStyle: 'bold' } },
-          { content: '' }, // Jour placeholder
+          { content: '' }, 
           { content: '', colSpan: 6 }, 
           { content: '' }, 
           { content: '', colSpan: 2 }, 
@@ -182,16 +206,13 @@ export default function CostAnalysisTable() {
         head: head,
         body: pdfBody,
         foot: pdfFooter,
-        startY: 35,
+        startY: currentY,
         theme: 'grid',
-        headStyles: { fillColor: [50, 50, 50], textColor: [255,255,255] }, 
+        headStyles: headStyles, 
         styles: { fontSize: 7, cellPadding: 1.5 }, 
         columnStyles: {
-            0: { cellWidth: 30 }, // Fournisseur
-            1: { cellWidth: 15 }, // HT
-            2: { cellWidth: 15 }, // TVA
-            3: { cellWidth: 15 }, // Avoir
-            4: { cellWidth: 10, halign: 'center' }, // Jour - Adjusted width and alignment
+            0: { cellWidth: 30 }, 1: { cellWidth: 15 }, 2: { cellWidth: 15 }, 3: { cellWidth: 15 }, 
+            4: { cellWidth: 10, halign: 'center' }, 
             5: { cellWidth: 15, halign: 'right' }, 6: { cellWidth: 15, halign: 'right' }, 7: { cellWidth: 15, halign: 'right' },
             8: { cellWidth: 15, halign: 'right' }, 9: { cellWidth: 15, halign: 'right' }, 10: { cellWidth: 15, halign: 'right' },
             11: { cellWidth: 18, halign: 'right' }, 
@@ -199,9 +220,15 @@ export default function CostAnalysisTable() {
             14: { cellWidth: 18, halign: 'right' }, 
         },
         didDrawPage: (data) => {
-          const pageCount = doc.getNumberOfPages();
-          doc.setFontSize(8);
-          doc.text(`Page ${data.pageNumber} sur ${pageCount}`, data.settings.margin.left, doc.internal.pageSize.height - 10);
+          const pageCount = doc.internal.getNumberOfPages();
+          if (pdfSettings.footerText) {
+            let footerStr = pdfSettings.footerText
+              .replace('{date}', generationDateFormatted)
+              .replace('{pageNumber}', data.pageNumber.toString())
+              .replace('{totalPages}', pageCount.toString());
+            doc.setFontSize(8);
+            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+          }
         }
       });
 
@@ -220,12 +247,12 @@ export default function CostAnalysisTable() {
     const orangeCols = ['IMP', 'SAJ', 'IME', 'ESAT', 'Repas +++', 'Nous', 'PN', 'PN ESAT'];
     
     if (isHeader) { 
-      if (['Jour'].includes(header)) return 'bg-primary/40 text-primary-foreground text-center font-semibold py-1'; // Changed from 'Jour / Valeur'
+      if (['Jour'].includes(header)) return 'bg-primary/40 text-primary-foreground text-center font-semibold py-1'; 
       if (grayCols.includes(header)) return 'bg-muted text-muted-foreground';
       if (orangeCols.includes(header)) return 'bg-accent/30 text-accent-foreground';
       return 'bg-card text-card-foreground';
     } else { 
-      if (['Jour'].includes(header)) return 'bg-primary/10 p-0.5 text-center'; // Changed from 'Jour / Valeur' and ensured text-center
+      if (['Jour'].includes(header)) return 'bg-primary/10 p-0.5 text-center'; 
       if (grayCols.includes(header)) return 'bg-muted text-muted-foreground';
       if (orangeCols.includes(header)) return 'bg-accent/30 text-accent-foreground';
       return 'bg-card text-card-foreground';
@@ -263,7 +290,7 @@ export default function CostAnalysisTable() {
             <TableRow>
               <TableHead className={cn("sticky left-0 z-10", getColumnClass('Fournisseur'))}>Fournisseur</TableHead>
               {['HT', 'TVA', 'Avoir'].map(h => <TableHead key={h} className={getColumnClass(h)}>{h}</TableHead>)}
-              <TableHead className={getColumnClass('Jour')}>Jour</TableHead> {/* Changed from 'Jour / Valeur' */}
+              <TableHead className={getColumnClass('Jour')}>Jour</TableHead> 
               {['IMP', 'SAJ', 'IME', 'ESAT', 'Repas +++', 'Nous'].map(h => <TableHead key={h} className={getColumnClass(h.replace('+++', ' +++'))}>{h.replace('+++', ' +++')}</TableHead>)}
               <TableHead className={getColumnClass('Total')}>Total</TableHead>
               {['PN', 'PN ESAT'].map(h => <TableHead key={h} className={getColumnClass(h)}>{h}</TableHead>)}
@@ -274,7 +301,7 @@ export default function CostAnalysisTable() {
           <TableBody>
             {costData.map((row, rowIndex) => (
               <React.Fragment key={row.id}>
-                {dayKeys.map((dayKey, dayIndex) => { // dayKey is 'day1', 'day2', etc. It's not used for input anymore.
+                {dayKeys.map((dayKey, dayIndex) => { 
                   const rowTotal = calculateRowTotal(row);
                   const rowEffectif = calculateRowEffectif(row, rowTotal);
                   return (
@@ -291,8 +318,8 @@ export default function CostAnalysisTable() {
                         ))}
                       </>
                     )}
-                    <TableCell className={cn(getColumnClass('Jour', false), "align-middle")}> {/* Changed from 'Jour / Valeur' */}
-                        <span className="text-xs text-muted-foreground">{dayIndex + 1}</span> {/* Display only day number */}
+                    <TableCell className={cn(getColumnClass('Jour', false), "align-middle")}> 
+                        <span className="text-xs text-muted-foreground">{dayIndex + 1}</span> 
                     </TableCell>
                     {dayIndex === 0 && (
                       <>
@@ -324,7 +351,7 @@ export default function CostAnalysisTable() {
               <TableCell className={getColumnClass('HT')}>{totals.totalHt.toFixed(2)}</TableCell>
               <TableCell className={getColumnClass('TVA')}>{totals.totalTva.toFixed(2)}</TableCell>
               <TableCell className={getColumnClass('Avoir')}>{totals.totalAvoir.toFixed(2)}</TableCell>
-              <TableCell className={getColumnClass('Jour', false)}></TableCell> {/* Placeholder for Jour */}
+              <TableCell className={getColumnClass('Jour', false)}></TableCell> 
               <TableCell colSpan={6} className={getColumnClass('IMP', false)}></TableCell> 
               <TableCell className={getColumnClass('Total')}></TableCell> 
               <TableCell colSpan={2} className={getColumnClass('PN', false)}></TableCell> 

@@ -7,15 +7,22 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, ShoppingBag, Printer } from 'lucide-react';
+import { PlusCircle, ShoppingBag, Printer, Loader2 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { CurrentDate } from '@/components/current-date'; // For display in PO header
+import { CurrentDate } from '@/components/current-date'; 
 import { useToast } from '@/hooks/use-toast';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+
+interface jsPDFWithAutoTable extends jsPDF {
+  autoTable: (options: any) => jsPDF;
+}
 
 interface GeneratePurchaseOrderProps {
   products: Product[];
@@ -30,9 +37,9 @@ interface SelectedProductForPO extends PurchaseOrderItem {
 export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddPurchaseOrder }: GeneratePurchaseOrderProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [orderItems, setOrderItems] = useState<SelectedProductForPO[]>([]);
+  const [isPrinting, setIsPrinting] = useState(false);
   const { toast } = useToast();
 
-  // Initialize orderItems when dialog opens or products change
   React.useEffect(() => {
     if (isDialogOpen) {
       setOrderItems(
@@ -40,7 +47,7 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
           productId: p.id,
           productName: p.name,
           reference: p.reference,
-          quantity: 1, // Default quantity
+          quantity: 1, 
           selected: false,
         }))
       );
@@ -69,65 +76,79 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
       toast({ title: "Aucun produit sélectionné", description: "Veuillez sélectionner des produits et spécifier une quantité.", variant: "destructive" });
       return;
     }
-    onAddPurchaseOrder(selectedItems.map(({selected, ...item}) => item)); // Remove 'selected' prop
+    onAddPurchaseOrder(selectedItems.map(({selected, ...item}) => item)); 
     setIsDialogOpen(false);
   };
 
   const handlePrintPO = (po: PurchaseOrder) => {
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      const itemRows = po.items.map(item => `
-        <tr>
-          <td style="border: 1px solid #ddd; padding: 8px;">${item.productName}</td>
-          <td style="border: 1px solid #ddd; padding: 8px;">${item.reference}</td>
-          <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${item.quantity}</td>
-        </tr>
-      `).join('');
+    setIsPrinting(true);
+    try {
+      const pdfSettings = getPdfLayoutSettings('purchase_order');
+      const doc = new jsPDF() as jsPDFWithAutoTable;
+      const generationDateFormatted = format(new Date(po.date), "dd MMMM yyyy", { locale: fr }); // Use PO date
+      const printDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Bon de Commande: ${po.orderNumber}</title>
-            <style>
-              body { font-family: sans-serif; margin: 20px; }
-              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-              th, td { text-align: left; padding: 8px; border: 1px solid #ddd; }
-              th { background-color: #f2f2f2; }
-              .header { margin-bottom: 30px; }
-              .po-details p { margin: 5px 0; }
-            </style>
-          </head>
-          <body>
-            <div class="header">
-              <h1>Bon de Commande Produit Cuisine Brebières</h1>
-              <div class="po-details">
-                <p><strong>Date:</strong> ${format(new Date(po.date), "dd MMMM yyyy", { locale: fr })}</p>
-                <p><strong>Numéro de commande:</strong> ${po.orderNumber}</p>
-              </div>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Produit</th>
-                  <th>Référence</th>
-                  <th style="text-align: right;">Quantité</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${itemRows}
-              </tbody>
-            </table>
-             <script>
-              window.onload = function() {
-                window.print();
-              }
-            </script>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-    } else {
-      toast({ title: "Erreur Impression", description: "Impossible d'ouvrir la fenêtre d'impression.", variant: "destructive" });
+
+      let currentY = 15;
+      if (pdfSettings.headerText) {
+        doc.setFontSize(10);
+        doc.text(pdfSettings.headerText, 14, currentY);
+        currentY += 10;
+      }
+
+      doc.setFontSize(18);
+      doc.text("Bon de Commande Produit Cuisine Brebières", 14, currentY); // Static title from original code
+      currentY += 8;
+      doc.setFontSize(10);
+      doc.text(`Date de commande: ${generationDateFormatted}`, 14, currentY);
+      currentY += 5;
+      doc.text(`Numéro de commande: ${po.orderNumber}`, 14, currentY);
+      currentY += 5;
+      doc.text(`Imprimé le: ${printDateFormatted}`, 14, currentY);
+      currentY += 7;
+
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
+      if (pdfSettings.primaryColor) {
+        const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
+        if (primaryColorRgb) {
+          headStyles.fillColor = primaryColorRgb;
+          const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
+          headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
+        }
+      }
+
+      const body = po.items.map(item => [
+        item.productName,
+        item.reference,
+        item.quantity.toString(),
+      ]);
+
+      doc.autoTable({
+        startY: currentY,
+        head: [['Produit', 'Référence', 'Quantité']],
+        body: body,
+        theme: 'grid',
+        headStyles: headStyles,
+        columnStyles: { 2: { halign: 'right' } },
+        didDrawPage: (data) => {
+          const pageCount = doc.internal.getNumberOfPages();
+          if (pdfSettings.footerText) {
+            let footerStr = pdfSettings.footerText
+              .replace('{date}', printDateFormatted) // Use print date for footer
+              .replace('{pageNumber}', data.pageNumber.toString())
+              .replace('{totalPages}', pageCount.toString());
+            doc.setFontSize(9);
+            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+          }
+        }
+      });
+      doc.save(`Bon_Commande_${po.orderNumber}.pdf`);
+      toast({ title: "PDF de Bon de Commande Généré", description: `Le bon de commande ${po.orderNumber} a été téléchargé.` });
+    } catch (error) {
+      console.error("Error generating purchase order PDF:", error);
+      toast({ title: "Erreur PDF", description: "La génération du PDF a échoué.", variant: "destructive" });
+    } finally {
+      setIsPrinting(false);
     }
   };
 
@@ -219,8 +240,9 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
                       <CardTitle className="text-lg">Commande N°: {po.orderNumber}</CardTitle>
                       <CardDescription>Date: {format(new Date(po.date), "dd MMMM yyyy", { locale: fr })}</CardDescription>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => handlePrintPO(po)}>
-                      <Printer className="mr-2 h-4 w-4" /> Imprimer
+                    <Button variant="outline" size="sm" onClick={() => handlePrintPO(po)} disabled={isPrinting}>
+                       {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Printer className="mr-2 h-4 w-4" />} 
+                      Imprimer
                     </Button>
                   </CardHeader>
                   <CardContent>
