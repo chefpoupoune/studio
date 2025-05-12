@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -23,10 +23,23 @@ const pdfTypes = [
   // Note: Fiche de Commande (WeeklyOrderSheets) is a specific static template, might not fit this customization model as easily.
 ];
 
+const GENERAL_CONFIG_VALUE = "_general_pdf_config_";
+const GENERAL_CONFIG_DISPLAY_LABEL = "Configuration Générale / Par Défaut";
+
 export default function PdfLayoutManager() {
   const [selectedPdfType, setSelectedPdfType] = useState<string>('');
 
-  const selectedPdfLabel = pdfTypes.find(pt => pt.value === selectedPdfType)?.label || "Général";
+  const selectedPdfLabel = useMemo(() => {
+    if (selectedPdfType === GENERAL_CONFIG_VALUE) {
+      return GENERAL_CONFIG_DISPLAY_LABEL;
+    }
+    const foundPdf = pdfTypes.find(pt => pt.value === selectedPdfType);
+    if (foundPdf) {
+      return foundPdf.label;
+    }
+    // Default label when placeholder is active or if value is somehow not found (e.g. initial empty string)
+    return GENERAL_CONFIG_DISPLAY_LABEL; 
+  }, [selectedPdfType]);
 
   return (
     <div className="space-y-6">
@@ -45,7 +58,7 @@ export default function PdfLayoutManager() {
                 <SelectValue placeholder="Choisir un type de PDF..." />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Configuration Générale / Par Défaut</SelectItem>
+                <SelectItem value={GENERAL_CONFIG_VALUE}>{GENERAL_CONFIG_DISPLAY_LABEL}</SelectItem>
                 {pdfTypes.map(pdf => (
                   <SelectItem key={pdf.value} value={pdf.value}>{pdf.label}</SelectItem>
                 ))}
