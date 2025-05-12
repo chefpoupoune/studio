@@ -1,7 +1,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, LayoutDashboard, Archive, Settings, PackageSearch, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeft, LayoutDashboard, Archive, Settings, PackageSearch, FileSpreadsheet, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function DashboardPage() {
@@ -38,6 +38,12 @@ export default function DashboardPage() {
           description="Gérez les avantages en nature mensuels via des fichiers Excel et exportez en PDF."
           href="/dashboard/benefits"
           icon={<FileSpreadsheet className="w-8 h-8 text-primary" />}
+        />
+        <DashboardCard
+          title="Suivi des Heures Brigade"
+          description="Gérez les heures de votre personnel, absences et générez des relevés PDF."
+          href="/dashboard/time-tracking"
+          icon={<Users className="w-8 h-8 text-primary" />}
         />
         <DashboardCard
           title="Analyse des Ventes (Bientôt)"
@@ -97,3 +103,4 @@ function DashboardCard({ title, description, href, icon, disabled }: DashboardCa
 
   return <Link href={href} className="h-full block">{cardContent}</Link>;
 }
+
