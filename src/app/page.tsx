@@ -1,3 +1,4 @@
+
 import Image from 'next/image';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -13,16 +14,16 @@ export default function HomePage() {
         <h1 
           className="text-5xl sm:text-6xl md:text-7xl font-serif font-bold text-foreground animate-title-fade-in title-glow"
         >
-          Excellence Dashboard
+          Gestion par l'excellence
         </h1>
 
         <div 
           className="relative w-full aspect-[16/10] md:aspect-[16/9] max-w-2xl mx-auto rounded-xl overflow-hidden shadow-2xl border-2 border-transparent hover:border-accent transition-all duration-300 group"
-          data-ai-hint="restaurant interior elegant"
+          data-ai-hint="kitchen cooking"
         >
           <Image
-            src="https://picsum.photos/seed/restaurantExcellence/1200/750"
-            alt="Image illustrant l'excellence en restauration"
+            src="https://picsum.photos/seed/cuisineExcellence/1200/750"
+            alt="Image illustrant l'excellence en cuisine"
             layout="fill"
             objectFit="cover"
             className="transform group-hover:scale-105 transition-transform duration-500 ease-out"
@@ -44,3 +45,4 @@ export default function HomePage() {
     </main>
   );
 }
+
