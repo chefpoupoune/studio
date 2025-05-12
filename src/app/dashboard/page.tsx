@@ -1,7 +1,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, LayoutDashboard, Archive, Settings, PackageSearch, FileSpreadsheet, Users, ClipboardList } from 'lucide-react';
+import { ArrowLeft, LayoutDashboard, Archive, Settings, PackageSearch, FileSpreadsheet, Users, ClipboardList, DollarSign } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function DashboardPage() {
@@ -50,6 +50,12 @@ export default function DashboardPage() {
           description="Suivez les tâches, problèmes et leur avancement avec un historique daté."
           href="/dashboard/task-management"
           icon={<ClipboardList className="w-8 h-8 text-primary" />}
+        />
+        <DashboardCard
+          title="Gestion des Coûts"
+          description="Analysez les coûts de revient mensuels et gérez les dépenses."
+          href="/dashboard/cost-management"
+          icon={<DollarSign className="w-8 h-8 text-primary" />}
         />
         <DashboardCard
           title="Analyse des Ventes (Bientôt)"
