@@ -58,13 +58,6 @@ export default function DashboardPage() {
           icon={<DollarSign className="w-8 h-8 text-primary" />}
         />
         <DashboardCard
-          title="Analyse des Ventes (Bientôt)"
-          description="Visualisez les tendances et performances de vos ventes."
-          href="#"
-          icon={<PackageSearch className="w-8 h-8 text-primary" />} 
-          disabled
-        />
-        <DashboardCard
           title="Paramètres (Bientôt)"
           description="Configurez les paramètres de l'application."
           href="#"
@@ -115,4 +108,3 @@ function DashboardCard({ title, description, href, icon, disabled }: DashboardCa
 
   return <Link href={href} className="h-full block">{cardContent}</Link>;
 }
-
