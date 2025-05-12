@@ -2,23 +2,30 @@
 "use client";
 
 import Link from 'next/link';
-import { ArrowLeft, BookOpenText, CalendarDays, ClipboardCheck, Thermometer } from 'lucide-react'; // Added Thermometer
+import { ArrowLeft, BookOpenText, CalendarDays, ClipboardCheck, Thermometer, FileText as FileTextIcon, Loader2 } from 'lucide-react'; // Added Thermometer, FileTextIcon, Loader2
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { getDaysInMonth, format, startOfDay, setDate } from 'date-fns';
+import { getDaysInMonth, format, startOfDay, setDate, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { getFrenchPublicHolidays, type PublicHoliday } from '@/lib/holiday-utils';
 import type { DailyMenu, MenuItem, MenuField } from './types';
 import { initialMenuItem, frenchDays } from './types';
 import MenuPlanningTable from './components/menu-planning-table';
 import WeeklyOrderSheets from './components/weekly-order-sheets';
-import TemperatureSheet from './components/temperature-sheet'; // New import
+import TemperatureSheet from './components/temperature-sheet';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+
+// Extend jsPDF with autoTable, or TypeScript might complain
+interface jsPDFWithAutoTable extends jsPDF {
+  autoTable: (options: any) => jsPDF;
+}
 
 const currentYear = new Date().getFullYear();
 const years = Array.from({ length: 10 }, (_, i) => currentYear - 5 + i);
@@ -32,6 +39,7 @@ export default function MenuPlanningPage() {
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().getMonth().toString());
   const [menuData, setMenuData] = useState<DailyMenu[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isGeneratingMonthlyPdf, setIsGeneratingMonthlyPdf] = useState(false);
   const { toast } = useToast();
 
   const generateMonthData = useCallback((year: number, month: number): DailyMenu[] => {
@@ -107,6 +115,89 @@ export default function MenuPlanningPage() {
       )
     );
   }, []);
+
+  const generateMonthlyMenuPdf = () => {
+    if (menuData.length === 0) {
+      toast({
+        title: "Aucune Donnée",
+        description: "Aucun menu à exporter pour le mois sélectionné.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsGeneratingMonthlyPdf(true);
+
+    try {
+      const doc = new jsPDF() as jsPDFWithAutoTable;
+      const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
+      const yearLabel = selectedYear;
+      const title = `Planification des Menus - ${monthLabel} ${yearLabel}`;
+
+      doc.setFontSize(18);
+      doc.text(title, doc.internal.pageSize.getWidth() / 2, 20, { align: 'center' });
+      doc.setFontSize(10);
+      doc.text(`Généré le: ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, 14, 28);
+
+      const head = [['Date', 'Jour', 'Entrée', 'Plat', 'Féculent', 'Légume', 'Sauce', 'Dessert']];
+      
+      const body = menuData.map(dayMenu => {
+        let dateDisplay = format(parseISO(dayMenu.date), 'dd/MM', { locale: fr });
+        // if (dayMenu.isHoliday && dayMenu.holidayName) {
+        //   dateDisplay += `\n(${dayMenu.holidayName})`; // Add holiday name to date cell, autoTable handles multiline
+        // }
+        return [
+          dateDisplay,
+          dayMenu.dayName + (dayMenu.isHoliday && dayMenu.holidayName ? `\n(${dayMenu.holidayName})` : ''),
+          dayMenu.entree || '-',
+          dayMenu.plat || '-',
+          dayMenu.feculent || '-',
+          dayMenu.legume || '-',
+          dayMenu.sauce || '-',
+          dayMenu.dessert || '-',
+        ];
+      });
+
+      doc.autoTable({
+        head: head,
+        body: body,
+        startY: 35,
+        theme: 'grid',
+        headStyles: { fillColor: [50, 50, 50], textColor: [255,255,255], fontStyle: 'bold' },
+        styles: { fontSize: 8, cellPadding: 1.5, valign: 'middle' },
+        columnStyles: {
+          0: { cellWidth: 15 }, // Date
+          1: { cellWidth: 25 }, // Jour
+        },
+        willDrawCell: (data) => {
+          const dayMenu = menuData[data.row.index];
+          if (dayMenu && data.section === 'body') { // Apply only to body cells
+            let fillColor;
+            if (dayMenu.isHoliday) {
+              fillColor = [255, 255, 204]; // Light yellow for holiday
+            } else if (dayMenu.isWeekend) {
+              fillColor = [230, 230, 230]; // Light gray for weekend
+            }
+            if (fillColor) {
+              doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
+            }
+          }
+        },
+        didDrawPage: (data) => {
+          const pageCount = doc.getNumberOfPages();
+          doc.setFontSize(8);
+          doc.text(`Page ${data.pageNumber} sur ${pageCount}`, data.settings.margin.left, doc.internal.pageSize.height - 10);
+        },
+      });
+
+      doc.save(`Planification_Menus_${monthLabel}_${yearLabel}.pdf`);
+      toast({ title: "PDF Mensuel Généré", description: `La planification des menus pour ${monthLabel} ${yearLabel} a été téléchargée.` });
+    } catch (error) {
+      console.error("Error generating monthly menu PDF:", error);
+      toast({ title: "Erreur PDF", description: "La génération du PDF des menus a échoué.", variant: "destructive" });
+    } finally {
+      setIsGeneratingMonthlyPdf(false);
+    }
+  };
   
   return (
     <div className="container mx-auto p-4 md:p-6 lg:p-8 min-h-screen">
@@ -144,13 +235,21 @@ export default function MenuPlanningPage() {
         <TabsContent value="planning">
           <Card className="shadow-lg">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CalendarDays className="w-6 h-6 text-primary"/>
-                Sélection et Création des Menus
-              </CardTitle>
-              <CardDescription>
-                Choisissez une année et un mois pour afficher et modifier les menus. Les samedis et dimanches sont en gris, les jours fériés en jaune.
-              </CardDescription>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <CalendarDays className="w-6 h-6 text-primary"/>
+                    Sélection et Création des Menus
+                  </CardTitle>
+                  <CardDescription>
+                    Choisissez une année et un mois pour afficher et modifier les menus. Les samedis et dimanches sont en gris, les jours fériés en jaune.
+                  </CardDescription>
+                </div>
+                <Button onClick={generateMonthlyMenuPdf} disabled={isLoading || isGeneratingMonthlyPdf} className="w-full sm:w-auto">
+                  {isGeneratingMonthlyPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileTextIcon className="mr-2 h-4 w-4" />}
+                  Générer PDF Mensuel
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
@@ -183,7 +282,10 @@ export default function MenuPlanningPage() {
               </div>
 
               {isLoading ? (
-                <p className="text-muted-foreground text-center py-10">Chargement des menus...</p>
+                <div className="flex justify-center items-center py-10">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <span className="ml-2 text-muted-foreground">Chargement des menus...</span>
+                </div>
               ) : (
                 <MenuPlanningTable
                   year={parseInt(selectedYear)}
@@ -243,3 +345,4 @@ export default function MenuPlanningPage() {
     </div>
   );
 }
+
