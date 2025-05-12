@@ -33,7 +33,7 @@ export const months = [
 ];
 
 export const currentYear = new Date().getFullYear();
-export const years = Array.from({ length: 10 }, (_, i) => currentYear - 5 + i);
+export const years = Array.from({ length: 10 }, (_, i) => currentYear - 5 + i); // Last 5 years and next 4 years
 
 export type DayKey = `day${number}`;
 
@@ -44,3 +44,14 @@ export const calculateRowTotal = (entry: CostEntryData): number => {
 export const calculateRowEffectif = (entry: CostEntryData, rowTotal: number): number => {
   return rowTotal + (entry.pn || 0) + (entry.pnEsat || 0);
 };
+
+export interface MonthlySummary {
+  month: string;
+  monthIndex: number;
+  totalHt: number;
+  totalTva: number;
+  totalAvoir: number;
+  totalEffectifSum: number;
+  prixDeRevient: number;
+  dataFound: boolean;
+}
