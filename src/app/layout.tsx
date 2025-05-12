@@ -32,7 +32,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr"> {/* Set language to French */}
+    <html lang="fr">{/* Set language to French */}
       <body 
         className={cn(
           geistSans.variable, 
