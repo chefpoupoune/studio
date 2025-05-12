@@ -118,7 +118,7 @@ export default function CostAnalysisTable() {
       doc.text(`Généré le: ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, 14, 28);
 
       const head = [
-        ['Fournisseur', 'HT', 'TVA', 'Avoir', 'Jour', 'Valeur',
+        ['Fournisseur', 'HT', 'TVA', 'Avoir', 'Jour / Valeur',
          'IMP', 'SAJ', 'IME', 'ESAT', 'Repas+++', 'Nous', 
          'Total Ligne', 'PN', 'PN ESAT', 'Effectif Ligne']
       ];
@@ -136,8 +136,8 @@ export default function CostAnalysisTable() {
             dayRowEntry.push({ content: row.avoir.toFixed(2), rowSpan: dayKeys.length });
           }
           
-          dayRowEntry.push(dayIndex + 1); // Jour
-          dayRowEntry.push(row[dayKey] === "" ? "" : Number(row[dayKey]).toFixed(2)); // Valeur
+          const jourValeurContent = `${dayIndex + 1}: ${row[dayKey] === "" || row[dayKey] === undefined || row[dayKey] === null ? "" : Number(row[dayKey]).toFixed(2)}`;
+          dayRowEntry.push(jourValeurContent);
 
           if (dayIndex === 0) {
             dayRowEntry.push({ content: row.imp.toFixed(2), rowSpan: dayKeys.length });
@@ -161,14 +161,14 @@ export default function CostAnalysisTable() {
           { content: totals.totalHt.toFixed(2), styles: { fontStyle: 'bold' } },
           { content: totals.totalTva.toFixed(2), styles: { fontStyle: 'bold' } },
           { content: totals.totalAvoir.toFixed(2), styles: { fontStyle: 'bold' } },
-          { content: '', colSpan: 2 }, // Jour, Valeur
+          { content: '' }, // Jour / Valeur placeholder
           { content: '', colSpan: 6 }, // IMP to Nous
           { content: '' }, // Total Ligne
           { content: '', colSpan: 2 }, // PN, PN ESAT
           { content: totals.totalEffectifSum.toFixed(2), styles: { fontStyle: 'bold' } }
         ],
         [
-          { content: 'Prix de Revient', colSpan: 15, styles: { fontStyle: 'bold', halign: 'right' } },
+          { content: 'Prix de Revient', colSpan: 14, styles: { fontStyle: 'bold', halign: 'right' } },
           { content: totals.prixDeRevient.toFixed(2), styles: { fontStyle: 'bold' } }
         ]
       ];
@@ -183,19 +183,17 @@ export default function CostAnalysisTable() {
         styles: { fontSize: 7, cellPadding: 1.5 }, 
         columnStyles: {
             0: { cellWidth: 30 }, // Fournisseur
-            // Adjust other column widths as needed
             1: { cellWidth: 15 }, // HT
             2: { cellWidth: 15 }, // TVA
             3: { cellWidth: 15 }, // Avoir
-            4: { cellWidth: 10, halign: 'center' }, // Jour
-            5: { cellWidth: 15, halign: 'right' }, // Valeur
-            // IMP to Nous (6 columns)
-            6: { cellWidth: 15, halign: 'right' }, 7: { cellWidth: 15, halign: 'right' }, 8: { cellWidth: 15, halign: 'right' },
-            9: { cellWidth: 15, halign: 'right' }, 10: { cellWidth: 15, halign: 'right' }, 11: { cellWidth: 15, halign: 'right' },
-            12: { cellWidth: 18, halign: 'right' }, // Total Ligne
-            // PN, PN ESAT
-            13: { cellWidth: 15, halign: 'right' }, 14: { cellWidth: 15, halign: 'right' },
-            15: { cellWidth: 18, halign: 'right' }, // Effectif Ligne
+            4: { cellWidth: 25, halign: 'left' }, // Jour / Valeur
+            // IMP to Nous (6 columns) - indices shifted
+            5: { cellWidth: 15, halign: 'right' }, 6: { cellWidth: 15, halign: 'right' }, 7: { cellWidth: 15, halign: 'right' },
+            8: { cellWidth: 15, halign: 'right' }, 9: { cellWidth: 15, halign: 'right' }, 10: { cellWidth: 15, halign: 'right' },
+            11: { cellWidth: 18, halign: 'right' }, // Total Ligne
+            // PN, PN ESAT - indices shifted
+            12: { cellWidth: 15, halign: 'right' }, 13: { cellWidth: 15, halign: 'right' },
+            14: { cellWidth: 18, halign: 'right' }, // Effectif Ligne
         },
         didDrawPage: (data) => {
           const pageCount = doc.getNumberOfPages();
@@ -218,14 +216,13 @@ export default function CostAnalysisTable() {
     const grayCols = ['Fournisseur', 'HT', 'TVA', 'Avoir', 'Total', 'Effectif'];
     const orangeCols = ['IMP', 'SAJ', 'IME', 'ESAT', 'Repas +++', 'Nous', 'PN', 'PN ESAT'];
     
-    if (isHeader) { // Header specific styles
-      if (['Jour', 'Valeur'].includes(header)) return 'bg-primary/40 text-primary-foreground text-center font-semibold py-1';
+    if (isHeader) { 
+      if (['Jour / Valeur'].includes(header)) return 'bg-primary/40 text-primary-foreground text-center font-semibold py-1';
       if (grayCols.includes(header)) return 'bg-muted text-muted-foreground';
       if (orangeCols.includes(header)) return 'bg-accent/30 text-accent-foreground';
       return 'bg-card text-card-foreground';
-    } else { // Cell specific styles
-      if (['Jour'].includes(header)) return 'bg-primary/10 text-center p-1';
-      if (['Valeur'].includes(header)) return 'bg-primary/10 p-0.5';
+    } else { 
+      if (['Jour / Valeur'].includes(header)) return 'bg-primary/10 p-0.5';
       if (grayCols.includes(header)) return 'bg-muted text-muted-foreground';
       if (orangeCols.includes(header)) return 'bg-accent/30 text-accent-foreground';
       return 'bg-card text-card-foreground';
@@ -263,8 +260,7 @@ export default function CostAnalysisTable() {
             <TableRow>
               <TableHead className={cn("sticky left-0 z-10", getColumnClass('Fournisseur'))}>Fournisseur</TableHead>
               {['HT', 'TVA', 'Avoir'].map(h => <TableHead key={h} className={getColumnClass(h)}>{h}</TableHead>)}
-              <TableHead className={getColumnClass('Jour')}>Jour</TableHead>
-              <TableHead className={getColumnClass('Valeur')}>Valeur</TableHead>
+              <TableHead className={getColumnClass('Jour / Valeur')}>Jour / Valeur</TableHead>
               {['IMP', 'SAJ', 'IME', 'ESAT', 'Repas +++', 'Nous'].map(h => <TableHead key={h} className={getColumnClass(h.replace('+++', ' +++'))}>{h.replace('+++', ' +++')}</TableHead>)}
               <TableHead className={getColumnClass('Total')}>Total</TableHead>
               {['PN', 'PN ESAT'].map(h => <TableHead key={h} className={getColumnClass(h)}>{h}</TableHead>)}
@@ -292,15 +288,17 @@ export default function CostAnalysisTable() {
                         ))}
                       </>
                     )}
-                    <TableCell className={getColumnClass('Jour', false)}>{dayIndex + 1}</TableCell>
-                    <TableCell className={getColumnClass('Valeur', false)}>
-                        <Input 
-                            type="number" 
-                            value={row[dayKey]} 
-                            onChange={e => handleInputChange(rowIndex, dayKey, e.target.value)} 
-                            className="w-16 h-8 text-xs p-1 bg-background text-center" 
-                            placeholder="0"
-                        />
+                    <TableCell className={cn(getColumnClass('Jour / Valeur', false), "align-middle")}>
+                        <div className="flex items-center gap-1">
+                            <span className="w-6 text-center text-xs text-muted-foreground">{dayIndex + 1}</span>
+                            <Input 
+                                type="number" 
+                                value={row[dayKey]} 
+                                onChange={e => handleInputChange(rowIndex, dayKey, e.target.value)} 
+                                className="w-16 h-8 text-xs p-1 bg-background text-center" 
+                                placeholder="0"
+                            />
+                        </div>
                     </TableCell>
                     {dayIndex === 0 && (
                       <>
@@ -316,7 +314,7 @@ export default function CostAnalysisTable() {
                           </TableCell>
                         ))}
                         <TableCell rowSpan={dayKeys.length} className={cn("align-top", getColumnClass('Effectif', false))}>{rowEffectif.toFixed(2)}</TableCell>
-                        <TableCell rowSpan={dayKeys.length} className={cn("align-top", getColumnClass('Action', false))}>
+                        <TableCell rowSpan={dayKeys.length} className={cn("align-top bg-card text-card-foreground", getColumnClass('Action', false))}>
                           <Button variant="destructive" size="icon" onClick={() => handleDeleteRow(row.id)}><Trash2 className="h-4 w-4" /></Button>
                         </TableCell>
                       </>
@@ -332,15 +330,15 @@ export default function CostAnalysisTable() {
               <TableCell className={getColumnClass('HT')}>{totals.totalHt.toFixed(2)}</TableCell>
               <TableCell className={getColumnClass('TVA')}>{totals.totalTva.toFixed(2)}</TableCell>
               <TableCell className={getColumnClass('Avoir')}>{totals.totalAvoir.toFixed(2)}</TableCell>
-              <TableCell colSpan={2} className={getColumnClass('Jour', false)}></TableCell> {/* Placeholder for Jour, Valeur */}
+              <TableCell className={getColumnClass('Jour / Valeur', false)}></TableCell> {/* Placeholder for Jour / Valeur */}
               <TableCell colSpan={6} className={getColumnClass('IMP', false)}></TableCell> {/* Placeholder for IMP group */}
               <TableCell className={getColumnClass('Total')}></TableCell> 
-              <TableCell colSpan={2} className={getColumnClass('PN')}></TableCell> {/* Placeholder for PN, PN ESAT */}
+              <TableCell colSpan={2} className={getColumnClass('PN', false)}></TableCell> {/* Placeholder for PN, PN ESAT */}
               <TableCell className={getColumnClass('Effectif')}>{totals.totalEffectifSum.toFixed(2)}</TableCell>
               <TableCell className={getColumnClass('Action', false)}></TableCell> 
             </TableRow>
             <TableRow className="font-bold bg-muted/90">
-              <TableCell colSpan={15} className={cn("text-right", getColumnClass('Effectif'))}>Prix de Revient</TableCell> 
+              <TableCell colSpan={14} className={cn("text-right", getColumnClass('Effectif'))}>Prix de Revient</TableCell> 
               <TableCell className={getColumnClass('Effectif')}>{totals.prixDeRevient.toFixed(2)}</TableCell>
               <TableCell className={getColumnClass('Action', false)}></TableCell> 
             </TableRow>
