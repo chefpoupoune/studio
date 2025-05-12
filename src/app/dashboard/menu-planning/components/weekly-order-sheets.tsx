@@ -38,7 +38,7 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
     setIsGeneratingPdf(weekIndex);
 
     try {
-      const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
+      const doc = new jsPDF({ orientation: 'landscape', format: 'a3' }) as jsPDFWithAutoTable;
       const pageHeight = doc.internal.pageSize.getHeight();
       const pageWidth = doc.internal.pageSize.getWidth();
       const margin = 14;
@@ -92,7 +92,7 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
       
       // Second Table (Categories)
       const categoriesHeader = [['Fruits et Légumes', 'Frais', 'Surgeler', 'Viande', 'Sec', 'Autres']];
-      const categoriesBody = Array(15).fill(Array(6).fill(' ')); // 15 empty rows, use ' ' to ensure cell borders render
+      const categoriesBody = Array(26).fill(Array(6).fill(' ')); // 26 empty rows for orders
 
       doc.autoTable({
         startY: currentY,
@@ -162,9 +162,7 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
                 Semaine {week.weekNumberInMonth}: {format(week.startDate, "dd LLLL", { locale: fr })} - {format(week.endDate, "dd LLLL yyyy", { locale: fr })}
               </CardTitle>
               <CardDescription>
-                {/* This description might need update as PDF is now a template */}
                 Générez une fiche de commande vierge pour cette semaine.
-                {/* {week.menus.length} jour{week.menus.length > 1 ? 's' : ''} avec menu planifié cette semaine. */}
               </CardDescription>
             </div>
             <Button 
@@ -177,7 +175,6 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
             </Button>
           </CardHeader>
           <CardContent>
-            {/* The UI display of menus for the week is kept as is. The PDF generation is what changes. */}
             {week.menus.length > 0 ? (
               <div className="overflow-x-auto border rounded-md max-h-[300px]">
                 <Table>
