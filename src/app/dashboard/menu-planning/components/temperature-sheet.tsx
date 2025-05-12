@@ -6,7 +6,7 @@ import type { DailyMenu } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { Textarea } from '@/components/ui/textarea'; // Keep for potential corrective actions
 import { Loader2, CalendarRange, AlertCircle, ThermometerIcon } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -19,32 +19,50 @@ interface TemperatureSheetProps {
   isLoading: boolean;
 }
 
-interface TemperatureEntry {
-  receptionTemp?: string;
-  serviceTemp?: string;
-  correctiveActions?: string;
-  visa?: string;
+interface TemperatureDayInput {
+  tempService1?: string;
+  tempService2?: string;
+  tempService3?: string;
+  personnel?: string;
+  correctiveActions?: string; // Optional: if needed
 }
 
-// Helper to create a unique key for each input field for local state
-const createInputKey = (date: string, field: keyof TemperatureEntry) => `${date}-${field}`;
-
-
 export default function TemperatureSheet({ year, month, menuData, isLoading }: TemperatureSheetProps) {
-  const [temperatureData, setTemperatureData] = useState<Record<string, TemperatureEntry>>({});
+  const [temperatureInputs, setTemperatureInputs] = useState<Record<string, TemperatureDayInput>>({});
 
   const weeklyGroupedMenus = useMemo(() => {
     return groupMenusByWeek(year, month, menuData);
   }, [year, month, menuData]);
 
-  const handleInputChange = (date: string, field: keyof TemperatureEntry, value: string) => {
-    setTemperatureData(prev => ({
+  const handleInputChange = (date: string, field: keyof TemperatureDayInput, value: string) => {
+    setTemperatureInputs(prev => ({
       ...prev,
       [date]: {
         ...(prev[date] || {}),
         [field]: value,
       }
     }));
+  };
+
+  const renderMenuCellContent = (menu: DailyMenu) => {
+    const items = [
+      menu.entree,
+      menu.plat,
+      menu.feculent,
+      menu.legume,
+      menu.sauce,
+      menu.dessert,
+    ].filter(item => item && item.trim() !== "");
+
+    if (items.length === 0) return <span className="text-muted-foreground text-xs italic">Aucun menu</span>;
+    
+    return (
+      <div className="text-xs space-y-0.5">
+        {items.map((item, idx) => (
+          <div key={idx} className="truncate" title={item}>{item}</div>
+        ))}
+      </div>
+    );
   };
 
 
@@ -81,7 +99,7 @@ export default function TemperatureSheet({ year, month, menuData, isLoading }: T
                 Semaine {week.weekNumberInMonth}: {format(week.startDate, "dd LLLL", { locale: fr })} - {format(week.endDate, "dd LLLL yyyy", { locale: fr })}
             </CardTitle>
             <CardDescription>
-              Enregistrez les températures pour les plats de cette semaine.
+              Enregistrez les températures et le personnel pour les plats de cette semaine.
               {week.menus.length === 0 && " (Aucun menu planifié pour cette semaine)"}
             </CardDescription>
           </CardHeader>
@@ -89,59 +107,82 @@ export default function TemperatureSheet({ year, month, menuData, isLoading }: T
             {week.menus.length > 0 ? (
               <div className="overflow-x-auto border rounded-md">
                 <Table>
-                  <TableHeader className="sticky top-0 bg-muted/20">
+                  <TableHeader className="sticky top-0 bg-muted/20 z-10">
                     <TableRow>
-                      <TableHead className="w-[80px]">Date</TableHead>
-                      <TableHead className="w-[100px]">Jour</TableHead>
-                      <TableHead className="min-w-[150px]">Plat Principal</TableHead>
-                      <TableHead className="min-w-[120px]">Temp. Réception/Prépa (°C)</TableHead>
-                      <TableHead className="min-w-[120px]">Temp. Service (°C)</TableHead>
-                      <TableHead className="min-w-[200px]">Actions Correctives</TableHead>
-                      <TableHead className="min-w-[100px]">Visa</TableHead>
+                      <TableHead className="w-[100px] min-w-[100px]">Jour</TableHead>
+                      <TableHead className="min-w-[200px] w-[250px]">Menu</TableHead>
+                      <TableHead className="min-w-[150px] w-[150px] text-center">Température 1er Service 11h45 (°C)</TableHead>
+                      <TableHead className="min-w-[150px] w-[150px] text-center">Température 2ème Service 12h45 (°C)</TableHead>
+                      <TableHead className="min-w-[150px] w-[150px] text-center">Température 3ème Service 13h (°C)</TableHead>
+                      <TableHead className="min-w-[120px] w-[120px]">Personnel</TableHead>
+                      <TableHead className="min-w-[200px] w-[200px]">Actions Correctives / Observations</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {week.menus.map(menu => {
-                      const currentEntry = temperatureData[menu.date] || {};
+                      const currentInputs = temperatureInputs[menu.date] || {};
                       return (
-                        <TableRow key={menu.date}>
-                          <TableCell>{format(parseISO(menu.date), "dd/MM", { locale: fr })}</TableCell>
-                          <TableCell>{menu.dayName}</TableCell>
-                          <TableCell className="text-sm" title={menu.plat}>{menu.plat || "-"}</TableCell>
-                          <TableCell className="p-1">
+                        <TableRow key={menu.date} className={menu.isWeekend ? "bg-muted/30" : ""}>
+                          <TableCell className="font-medium align-top">
+                            {menu.dayName}
+                            <span className="block text-xs text-muted-foreground">{format(parseISO(menu.date), "dd/MM", { locale: fr })}</span>
+                             {menu.isHoliday && menu.holidayName && (
+                                <span className="block text-xs text-amber-600 dark:text-amber-400 truncate" title={menu.holidayName}>
+                                    {menu.holidayName}
+                                </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="align-top py-2">
+                            {renderMenuCellContent(menu)}
+                          </TableCell>
+                          <TableCell className="p-1 align-top">
                             <Input 
                               type="text" 
                               placeholder="°C" 
-                              className="text-xs h-10" 
-                              value={currentEntry.receptionTemp || ''}
-                              onChange={(e) => handleInputChange(menu.date, 'receptionTemp', e.target.value)}
+                              className="text-xs h-10 text-center" 
+                              value={currentInputs.tempService1 || ''}
+                              onChange={(e) => handleInputChange(menu.date, 'tempService1', e.target.value)}
+                              disabled={menu.isWeekend}
                             />
                           </TableCell>
-                          <TableCell className="p-1">
+                          <TableCell className="p-1 align-top">
                             <Input 
                               type="text" 
                               placeholder="°C" 
-                              className="text-xs h-10"
-                              value={currentEntry.serviceTemp || ''}
-                              onChange={(e) => handleInputChange(menu.date, 'serviceTemp', e.target.value)}
+                              className="text-xs h-10 text-center"
+                              value={currentInputs.tempService2 || ''}
+                              onChange={(e) => handleInputChange(menu.date, 'tempService2', e.target.value)}
+                              disabled={menu.isWeekend}
                             />
                           </TableCell>
-                          <TableCell className="p-1">
-                            <Textarea 
-                              placeholder="Actions..." 
-                              className="text-xs min-h-[40px] h-10" 
-                              rows={1}
-                              value={currentEntry.correctiveActions || ''}
-                              onChange={(e) => handleInputChange(menu.date, 'correctiveActions', e.target.value)}
+                           <TableCell className="p-1 align-top">
+                            <Input 
+                              type="text" 
+                              placeholder="°C" 
+                              className="text-xs h-10 text-center"
+                              value={currentInputs.tempService3 || ''}
+                              onChange={(e) => handleInputChange(menu.date, 'tempService3', e.target.value)}
+                              disabled={menu.isWeekend}
                             />
                           </TableCell>
-                          <TableCell className="p-1">
+                          <TableCell className="p-1 align-top">
                             <Input 
                               type="text" 
                               placeholder="Initiales" 
                               className="text-xs h-10"
-                              value={currentEntry.visa || ''}
-                              onChange={(e) => handleInputChange(menu.date, 'visa', e.target.value)}
+                              value={currentInputs.personnel || ''}
+                              onChange={(e) => handleInputChange(menu.date, 'personnel', e.target.value)}
+                              disabled={menu.isWeekend}
+                            />
+                          </TableCell>
+                          <TableCell className="p-1 align-top">
+                            <Textarea 
+                              placeholder="Actions/Observations..." 
+                              className="text-xs min-h-[40px] h-auto" 
+                              rows={2}
+                              value={currentInputs.correctiveActions || ''}
+                              onChange={(e) => handleInputChange(menu.date, 'correctiveActions', e.target.value)}
+                              disabled={menu.isWeekend}
                             />
                           </TableCell>
                         </TableRow>
@@ -161,3 +202,4 @@ export default function TemperatureSheet({ year, month, menuData, isLoading }: T
     </div>
   );
 }
+
