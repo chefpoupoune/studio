@@ -1,0 +1,184 @@
+
+"use client";
+
+import Link from 'next/link';
+import { ArrowLeft, BookOpenText, CalendarDays } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { CurrentDate } from '@/components/current-date';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { getDaysInMonth, format, startOfDay, setDate } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { getFrenchPublicHolidays, type PublicHoliday } from '@/lib/holiday-utils';
+import type { DailyMenu, MenuItem, MenuField } from './types';
+import { initialMenuItem, frenchDays } from './types';
+import MenuPlanningTable from './components/menu-planning-table';
+import { useToast } from '@/hooks/use-toast';
+
+const currentYear = new Date().getFullYear();
+const years = Array.from({ length: 10 }, (_, i) => currentYear - 5 + i); // Last 5 years and next 4 years
+const months = Array.from({ length: 12 }, (_, i) => ({
+  value: i.toString(),
+  label: format(new Date(currentYear, i), "MMMM", { locale: fr }),
+}));
+
+export default function MenuPlanningPage() {
+  const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
+  const [selectedMonth, setSelectedMonth] = useState<string>(new Date().getMonth().toString());
+  const [menuData, setMenuData] = useState<DailyMenu[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
+
+  const generateMonthData = useCallback((year: number, month: number): DailyMenu[] => {
+    const daysInSelectedMonth = getDaysInMonth(new Date(year, month));
+    const publicHolidaysForYear = getFrenchPublicHolidays(year);
+    
+    const holidayMap = new Map<string, string>();
+    publicHolidaysForYear.forEach(h => {
+      holidayMap.set(format(h.date, 'yyyy-MM-dd'), h.name);
+    });
+
+    const data: DailyMenu[] = [];
+    for (let day = 1; day <= daysInSelectedMonth; day++) {
+      const currentDate = startOfDay(new Date(year, month, day));
+      const dateStr = format(currentDate, 'yyyy-MM-dd');
+      const dayOfWeek = currentDate.getDay(); // 0 for Sunday, 1 for Monday, ...
+      
+      data.push({
+        date: dateStr,
+        dayName: frenchDays[dayOfWeek],
+        isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
+        isHoliday: holidayMap.has(dateStr),
+        holidayName: holidayMap.get(dateStr),
+        ...initialMenuItem, // Spread initial empty menu items
+      });
+    }
+    return data;
+  }, []);
+
+  const getLocalStorageKey = useCallback(() => `menu_planning_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
+
+  useEffect(() => {
+    setIsLoading(true);
+    let storedData: DailyMenu[] | null = null;
+    try {
+      const rawStoredData = localStorage.getItem(getLocalStorageKey());
+      if (rawStoredData) {
+        storedData = JSON.parse(rawStoredData);
+      }
+    } catch (error) {
+      console.error("Error parsing menu data from localStorage:", error);
+      toast({ title: "Erreur de chargement", description: "Données de menu corrompues.", variant: "destructive"});
+    }
+
+    const yearNum = parseInt(selectedYear, 10);
+    const monthNum = parseInt(selectedMonth, 10);
+    
+    if (storedData && storedData.length > 0) {
+        // Ensure dates are consistent if loaded from storage, regenerate if structure mismatch
+        const expectedDays = getDaysInMonth(new Date(yearNum, monthNum));
+        if (storedData.length === expectedDays && storedData[0].date.startsWith(`${selectedYear}-${(monthNum + 1).toString().padStart(2, '0')}`)) {
+            setMenuData(storedData);
+        } else {
+            // Data mismatch, regenerate
+            const freshData = generateMonthData(yearNum, monthNum);
+            setMenuData(freshData);
+        }
+    } else {
+      const freshData = generateMonthData(yearNum, monthNum);
+      setMenuData(freshData);
+    }
+    setIsLoading(false);
+  }, [selectedYear, selectedMonth, generateMonthData, getLocalStorageKey, toast]);
+
+  useEffect(() => {
+    if (!isLoading && menuData.length > 0) {
+      localStorage.setItem(getLocalStorageKey(), JSON.stringify(menuData));
+    }
+  }, [menuData, isLoading, getLocalStorageKey]);
+
+  const handleUpdateMenuEntry = useCallback((date: string, field: MenuField, value: string) => {
+    setMenuData(prevData =>
+      prevData.map(dayMenu =>
+        dayMenu.date === date ? { ...dayMenu, [field]: value } : dayMenu
+      )
+    );
+  }, []);
+  
+  return (
+    <div className="container mx-auto p-4 md:p-6 lg:p-8 min-h-screen">
+      <div className="flex flex-col sm:flex-row items-center justify-between mb-6 gap-4">
+        <div className="flex items-center space-x-3">
+          <BookOpenText className="w-10 h-10 text-accent" />
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-serif font-bold text-foreground title-glow text-center sm:text-left">
+            Planification des Menus
+          </h1>
+        </div>
+        <Link href="/dashboard" passHref>
+          <Button variant="outline" size="sm" className="group w-full sm:w-auto">
+            <ArrowLeft className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:-translate-x-1" />
+            Retour au Tableau de Bord
+          </Button>
+        </Link>
+      </div>
+      <div className="mb-6 text-center sm:text-left">
+        <CurrentDate />
+      </div>
+      
+      <Card className="shadow-lg">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+             <CalendarDays className="w-6 h-6 text-primary"/>
+             Sélection et Création des Menus
+          </CardTitle>
+          <CardDescription>
+            Choisissez une année et un mois pour afficher et modifier les menus. Les samedis et dimanches sont en gris, les jours fériés en jaune.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+            <div>
+              <Label htmlFor="year-select">Année</Label>
+              <Select value={selectedYear} onValueChange={setSelectedYear}>
+                <SelectTrigger id="year-select">
+                  <SelectValue placeholder="Sélectionner une année" />
+                </SelectTrigger>
+                <SelectContent>
+                  {years.map(year => (
+                    <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="month-select">Mois</Label>
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger id="month-select">
+                  <SelectValue placeholder="Sélectionner un mois" />
+                </SelectTrigger>
+                <SelectContent>
+                  {months.map(month => (
+                    <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {isLoading ? (
+            <p className="text-muted-foreground text-center py-10">Chargement des menus...</p>
+          ) : (
+            <MenuPlanningTable
+              year={parseInt(selectedYear)}
+              month={parseInt(selectedMonth)}
+              menuData={menuData}
+              onUpdateMenuEntry={handleUpdateMenuEntry}
+            />
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

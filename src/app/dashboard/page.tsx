@@ -1,7 +1,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, LayoutDashboard, Archive, Settings, PackageSearch, FileSpreadsheet, Users, ClipboardList, DollarSign } from 'lucide-react';
+import { ArrowLeft, LayoutDashboard, Archive, Settings, PackageSearch, FileSpreadsheet, Users, ClipboardList, DollarSign, BookOpenText } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function DashboardPage() {
@@ -56,6 +56,12 @@ export default function DashboardPage() {
           description="Analysez les coûts de revient mensuels et gérez les dépenses."
           href="/dashboard/cost-management"
           icon={<DollarSign className="w-8 h-8 text-primary" />}
+        />
+        <DashboardCard
+          title="Rubrique Menus"
+          description="Planifiez les menus hebdomadaires et mensuels."
+          href="/dashboard/menu-planning"
+          icon={<BookOpenText className="w-8 h-8 text-primary" />}
         />
         <DashboardCard
           title="Paramètres (Bientôt)"
