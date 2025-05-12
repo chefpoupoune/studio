@@ -52,6 +52,13 @@ export default function GenerateInventory({ products }: GenerateInventoryProps) 
         currentY += 10;
       }
 
+      // Add Logo URL if available
+      if (pdfSettings.logoUrl) {
+        doc.setFontSize(8); 
+        doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY);
+        currentY += 5; 
+      }
+
       doc.setFontSize(18);
       doc.text("Inventaire des Stocks", 14, currentY);
       currentY += 8;
@@ -162,3 +169,5 @@ export default function GenerateInventory({ products }: GenerateInventoryProps) 
     </Card>
   );
 }
+
+    

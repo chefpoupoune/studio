@@ -13,7 +13,7 @@ import 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { groupMenusByWeek, type WeekData } from '../utils';
-import { getPdfLayoutSettings } from '@/lib/pdf-settings'; // No hexToRgb needed if not using primary color for tables
+import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -50,13 +50,19 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
       // Custom Header Text from settings
       if (pdfSettings.headerText) {
         doc.setFontSize(10);
-        // Simple split for multi-line header text - adjust as needed
         const headerLines = pdfSettings.headerText.split('\n');
         headerLines.forEach(line => {
           doc.text(line, margin, currentY);
-          currentY += 4; // Adjust line spacing
+          currentY += 4; 
         });
-        currentY += 2; // Extra space after header
+        currentY += 2; 
+      }
+
+      // Add Logo URL if available
+      if (pdfSettings.logoUrl) {
+        doc.setFontSize(8); 
+        doc.text(`Logo: ${pdfSettings.logoUrl}`, margin, currentY);
+        currentY += 5; 
       }
       
       doc.setFontSize(16);
@@ -69,6 +75,16 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
       doc.text(`Généré le: ${generationDateFormatted}`, pageWidth - margin, currentY + 10, { align: 'right'});
       currentY += 20;
 
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, halign?: string } = { fontStyle: 'bold', halign: 'center' };
+      if (pdfSettings.primaryColor) {
+        const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
+        if (primaryColorRgb) {
+          headStyles.fillColor = primaryColorRgb;
+          const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
+          headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
+        }
+      }
+
 
       const daysHeader = [['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi']];
       const daysBody = Array(3).fill(Array(6).fill('')); 
@@ -78,7 +94,7 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
         head: daysHeader,
         body: daysBody,
         theme: 'grid',
-        headStyles: { fillColor: [220, 220, 220], textColor: [0,0,0], fontStyle: 'bold', halign: 'center' },
+        headStyles: headStyles, // Use primaryColor for this header
         styles: { cellPadding: 3, minCellHeight: 10 },
         tableWidth: 'auto',
         margin: { left: margin, right: margin },
@@ -105,12 +121,15 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
       const categoriesHeader = [['Fruits et Légumes', 'Frais', 'Surgeler', 'Viande', 'Sec', 'Autres']];
       const categoriesBody = Array(26).fill(Array(6).fill(' ')); 
 
+      // Apply primary color to categoriesHeader too, but columnStyles will override cell fill
+      const categoryHeadStyles = { ...headStyles }; 
+
       doc.autoTable({
         startY: currentY,
         head: categoriesHeader,
         body: categoriesBody,
         theme: 'grid',
-        headStyles: { fontStyle: 'bold', halign: 'center' },
+        headStyles: categoryHeadStyles, 
         columnStyles: {
           0: { fillColor: [200, 230, 201] }, 
           1: { fillColor: [173, 216, 230] }, 
@@ -119,7 +138,7 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
           4: { fillColor: [220, 220, 220] }, 
           5: { fillColor: [220, 220, 220] }, 
         },
-        styles: { cellPadding: 2, minCellHeight: 8, fontSize: 9, cellWidth: (pageWidth - (2*margin)) / 6 }, // Equal width columns
+        styles: { cellPadding: 2, minCellHeight: 8, fontSize: 9, cellWidth: (pageWidth - (2*margin)) / 6 },
         tableWidth: 'auto',
         margin: { left: margin, right: margin },
         didDrawPage: (data) => {
@@ -235,3 +254,5 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
   );
 }
 
+
+    

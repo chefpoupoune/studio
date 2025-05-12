@@ -126,6 +126,13 @@ export default function ExcelBenefitManager() {
         doc.text(pdfSettings.headerText, 14, currentY);
         currentY += 10;
       }
+
+      // Add Logo URL if available
+      if (pdfSettings.logoUrl) {
+        doc.setFontSize(8); 
+        doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY);
+        currentY += 5; 
+      }
       
       const title = `Avantages en Nature - ${monthLabel} ${selectedYear}`;
       doc.setFontSize(18);
@@ -136,11 +143,13 @@ export default function ExcelBenefitManager() {
       doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY);
       currentY += 7;
 
-      const headStyles: { fillColor?: [number, number, number] } = {};
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
         if (primaryColorRgb) {
           headStyles.fillColor = primaryColorRgb;
+          const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
+          headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
         }
       }
 
@@ -275,3 +284,5 @@ export default function ExcelBenefitManager() {
     </div>
   );
 }
+
+    

@@ -158,6 +158,13 @@ export default function OccasionalMealCostAnalysis() {
         doc.text(pdfSettings.headerText, 14, currentY);
         currentY += 10;
       }
+
+      // Add Logo URL if available
+      if (pdfSettings.logoUrl) {
+        doc.setFontSize(8); 
+        doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY);
+        currentY += 5; 
+      }
       
       const title = `Coût de Revient Repas Occasionnel (${numberOfPeople} personnes)`;
       doc.setFontSize(18); doc.text(title, 14, currentY); currentY += 8;
@@ -346,3 +353,5 @@ export default function OccasionalMealCostAnalysis() {
   );
 }
 
+
+    

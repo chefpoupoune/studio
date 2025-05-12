@@ -143,6 +143,13 @@ export default function MenuPlanningPage() {
         currentY += 10;
       }
 
+      // Add Logo URL if available
+      if (pdfSettings.logoUrl) {
+        doc.setFontSize(8); 
+        doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY);
+        currentY += 5; 
+      }
+
       const title = `Planification des Menus - ${monthLabel} ${yearLabel}`;
       doc.setFontSize(18);
       doc.text(title, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
@@ -393,3 +400,5 @@ export default function MenuPlanningPage() {
   );
 }
 
+
+    

@@ -154,6 +154,13 @@ export default function PicnicCostAnalysis() {
         currentY += 10;
       }
 
+      // Add Logo URL if available
+      if (pdfSettings.logoUrl) {
+        doc.setFontSize(8); 
+        doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY);
+        currentY += 5; 
+      }
+
       const title = `Coût de Revient - Repas ${mealTypeLabel}`;
       doc.setFontSize(18);
       doc.text(title, 14, currentY);
@@ -336,3 +343,5 @@ export default function PicnicCostAnalysis() {
   );
 }
 
+
+    

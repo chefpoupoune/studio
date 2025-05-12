@@ -96,6 +96,13 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
         currentY += 10;
       }
 
+      // Add Logo URL if available
+      if (pdfSettings.logoUrl) {
+        doc.setFontSize(8); 
+        doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY);
+        currentY += 5; 
+      }
+
       doc.setFontSize(18);
       doc.text("Bon de Commande Produit Cuisine Brebières", 14, currentY); // Static title from original code
       currentY += 8;
@@ -276,3 +283,5 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
     </div>
   );
 }
+
+    

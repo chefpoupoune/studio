@@ -151,6 +151,13 @@ export default function AnnualCostAnalysisTable() {
         doc.text(pdfSettings.headerText, 14, currentY);
         currentY += 10;
       }
+
+      // Add Logo URL if available
+      if (pdfSettings.logoUrl) {
+        doc.setFontSize(8); 
+        doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY);
+        currentY += 5; 
+      }
       
       const title = `Récapitulatif Annuel Coût de Revient - ${selectedYear}`;
       doc.setFontSize(18);
@@ -348,3 +355,5 @@ export default function AnnualCostAnalysisTable() {
   );
 }
 
+
+    

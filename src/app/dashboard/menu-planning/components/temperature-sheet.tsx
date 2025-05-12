@@ -134,6 +134,13 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
         doc.text(pdfSettings.headerText, 14, currentY);
         currentY += 10;
       }
+
+      // Add Logo URL if available
+      if (pdfSettings.logoUrl) {
+        doc.setFontSize(8); 
+        doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY);
+        currentY += 5; 
+      }
       
       const mainTitle = `Fiche de Température Mensuelle - ${monthYearStr}`;
       doc.setFontSize(18);
@@ -435,3 +442,5 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
   );
 }
 
+
+    
