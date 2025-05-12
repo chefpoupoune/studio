@@ -56,6 +56,7 @@ export interface MonthlySummary {
   fraisGestion: number;
   totalEffectifSum: number;
   prixDeRevient: number;
+  totalLigne: number; // Added for the new total column
   dataFound: boolean;
 }
 
