@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google'; // Using existing imports from user's code
+import { Geist, Geist_Mono } from 'next/font/google';
 import { Playfair_Display } from 'next/font/google';
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 const playfairDisplay = Playfair_Display({
   variable: '--font-playfair-display',
   subsets: ['latin'],
-  weight: ['400', '700', '900'], // Specify weights for serif font
+  weight: ['400', '700', '900'], 
 });
 
 export const metadata: Metadata = {
@@ -32,13 +32,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr">{/* Set language to French */}
+    <html lang="fr">
       <body 
         className={cn(
           geistSans.variable, 
           geistMono.variable, 
           playfairDisplay.variable, 
-          "font-sans antialiased bg-background text-foreground" // Default to font-sans
+          "font-sans antialiased bg-background text-foreground"
         )}
       >
         {children}
