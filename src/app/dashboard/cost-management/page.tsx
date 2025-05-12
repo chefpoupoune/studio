@@ -2,15 +2,16 @@
 "use client";
 
 import Link from 'next/link';
-import { ArrowLeft, DollarSign, CalendarDays, CalendarRange } from 'lucide-react';
+import { ArrowLeft, DollarSign, CalendarDays, CalendarRange, CookingPot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import CostAnalysisTable from './components/cost-analysis-table';
 import AnnualCostAnalysisTable from './components/annual-cost-analysis-table';
+import PicnicCostAnalysis from './components/picnic-cost-analysis'; // New import
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import React, { useState, useEffect } from 'react';
-import type { CostEntry } from './types';
+// type { CostEntry } from './types'; // This type is not directly used here, can be removed if not needed later
 
 export default function CostManagementPage() {
   const [isClient, setIsClient] = useState(false);
@@ -49,12 +50,15 @@ export default function CostManagementPage() {
       </div>
       
       <Tabs defaultValue="monthly" className="w-full">
-        <TabsList className="grid w-full grid-cols-1 md:grid-cols-2 mb-6 bg-card p-1 rounded-lg">
+        <TabsList className="grid w-full grid-cols-1 md:grid-cols-3 mb-6 bg-card p-1 rounded-lg">
           <TabsTrigger value="monthly" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             <CalendarDays className="mr-1 sm:mr-2 h-4 w-4" /> Coût de Revient Mensuel
           </TabsTrigger>
           <TabsTrigger value="annual" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             <CalendarRange className="mr-1 sm:mr-2 h-4 w-4" /> Coût de Revient Annuel
+          </TabsTrigger>
+          <TabsTrigger value="picnic" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <CookingPot className="mr-1 sm:mr-2 h-4 w-4" /> Coût Pique-Nique/Salade
           </TabsTrigger>
         </TabsList>
 
@@ -84,8 +88,20 @@ export default function CostManagementPage() {
             </CardContent>
           </Card>
         </TabsContent>
+        <TabsContent value="picnic">
+           <Card className="shadow-xl">
+            <CardHeader>
+              <CardTitle>Calcul du Coût de Revient Pique-Nique / Salade</CardTitle>
+              <CardDescription>
+                Ajoutez les ingrédients pour calculer le coût de revient d'un repas pique-nique ou d'une salade.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PicnicCostAnalysis />
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
     </div>
   );
 }
-

@@ -55,3 +55,15 @@ export interface MonthlySummary {
   prixDeRevient: number;
   dataFound: boolean;
 }
+
+// Types for Pique-Nique / Salade Cost Analysis
+export type MealTypePN = 'picnic' | 'salad';
+
+export interface IngredientPN {
+  id: string;
+  name: string;
+  unit: string; // e.g., "kg", "pièce", "L", "g"
+  unitPrice: number; // Price per unit
+  quantityPerMeal: number; // Quantity of this unit used per meal
+  // costPerMeal will be calculated: unitPrice * quantityPerMeal
+}
