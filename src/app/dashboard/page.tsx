@@ -1,7 +1,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, LayoutDashboard, Archive, Settings, PackageSearch, FileSpreadsheet, Users } from 'lucide-react';
+import { ArrowLeft, LayoutDashboard, Archive, Settings, PackageSearch, FileSpreadsheet, Users, ClipboardList } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function DashboardPage() {
@@ -44,6 +44,12 @@ export default function DashboardPage() {
           description="Gérez les heures de votre personnel, absences et générez des relevés PDF."
           href="/dashboard/time-tracking"
           icon={<Users className="w-8 h-8 text-primary" />}
+        />
+        <DashboardCard
+          title="Gestion des Tâches & Problèmes"
+          description="Suivez les tâches, problèmes et leur avancement avec un historique daté."
+          href="/dashboard/task-management"
+          icon={<ClipboardList className="w-8 h-8 text-primary" />}
         />
         <DashboardCard
           title="Analyse des Ventes (Bientôt)"
