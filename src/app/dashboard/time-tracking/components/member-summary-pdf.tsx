@@ -13,6 +13,7 @@ import 'jspdf-autotable'; // Ensure this import is correct for your jsPDF versio
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
+import { Label } from '@/components/ui/label';
 
 // Extend jsPDF with autoTable, or TypeScript might complain
 interface jsPDFWithAutoTable extends jsPDF {
@@ -220,3 +221,4 @@ export default function MemberSummaryPdf({ members, timeEntries }: MemberSummary
     </Card>
   );
 }
+
