@@ -142,6 +142,9 @@ export default function PdfLayoutManager() {
             <Settings2 className="w-5 h-5 text-accent"/>
             Options de Personnalisation pour: <span className="text-primary ml-1">{selectedPdfLabel}</span>
           </CardTitle>
+          <CardDescription>
+            Modifiez les paramètres ci-dessous pour le type de PDF sélectionné. Les paramètres non définis spécifiquement pour ce type de PDF utiliseront la configuration générale.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
            <div className="grid md:grid-cols-2 gap-6">
