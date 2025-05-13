@@ -17,7 +17,7 @@
     --primary-h: 45;
     --primary-s: 100%;
     --primary-l: 51%;
-    --primary: hsl(var(--primary-h) var(--primary-s) var(--primary-l));
+    --primary: hsl(var(--primary-h), var(--primary-s), var(--primary-l));
 
     /* Default foreground colors for primary/accent */
     /* For light primary/accent (e.g. L > 60%) */
@@ -32,7 +32,7 @@
     --primary-foreground-h: var(--default-primary-foreground-dark-h); /* Default to dark text on primary */
     --primary-foreground-s: var(--default-primary-foreground-dark-s);
     --primary-foreground-l: var(--default-primary-foreground-dark-l);
-    --primary-foreground: hsl(var(--primary-foreground-h) var(--primary-foreground-s) var(--primary-foreground-l));
+    --primary-foreground: hsl(var(--primary-foreground-h), var(--primary-foreground-s), var(--primary-foreground-l));
 
 
     --secondary: 345 25% 35%; /* Muted, lighter Bordeaux */
@@ -44,7 +44,7 @@
     --accent-h: 45;
     --accent-s: 100%;
     --accent-l: 51%;
-    --accent: hsl(var(--accent-h) var(--accent-s) var(--accent-l));
+    --accent: hsl(var(--accent-h), var(--accent-s), var(--accent-l));
     
     --default-accent-foreground-dark-h: 345;
     --default-accent-foreground-dark-s: 35%;
@@ -56,7 +56,7 @@
     --accent-foreground-h: var(--default-accent-foreground-dark-h); /* Default to dark text on accent */
     --accent-foreground-s: var(--default-accent-foreground-dark-s);
     --accent-foreground-l: var(--default-accent-foreground-dark-l);
-    --accent-foreground: hsl(var(--accent-foreground-h) var(--accent-foreground-s) var(--accent-foreground-l));
+    --accent-foreground: hsl(var(--accent-foreground-h), var(--accent-foreground-s), var(--accent-foreground-l));
 
     --destructive: 0 70% 50%;
     --destructive-foreground: 0 0% 100%;
@@ -67,7 +67,7 @@
     --ring-h: 45;
     --ring-s: 100%;
     --ring-l: 51%;
-    --ring: hsl(var(--ring-h) var(--ring-s) var(--ring-l));
+    --ring: hsl(var(--ring-h), var(--ring-s), var(--ring-l));
     
     --radius: 0.5rem;
 
@@ -79,16 +79,16 @@
 
     --sidebar-background: 345 30% 15%;
     --sidebar-foreground: 35 25% 85%;
-    --sidebar-primary: hsl(var(--primary-h) var(--primary-s) var(--primary-l)); /* Use dynamic primary */
-    --sidebar-primary-foreground: hsl(var(--primary-foreground-h) var(--primary-foreground-s) var(--primary-foreground-l)); /* Use dynamic primary foreground */
+    --sidebar-primary: hsl(var(--primary-h), var(--primary-s), var(--primary-l)); /* Use dynamic primary */
+    --sidebar-primary-foreground: hsl(var(--primary-foreground-h), var(--primary-foreground-s), var(--primary-foreground-l)); /* Use dynamic primary foreground */
     --sidebar-accent: 345 30% 25%;
     /* Ensure sidebar-accent-foreground also uses dynamic HSL variables if needed, or a fixed contrast */
-    --sidebar-accent-foreground: hsl(var(--accent-h) calc(var(--accent-s) * 1.1) calc(var(--accent-l) * 1.1)); /* Brighter accent */
+    --sidebar-accent-foreground: hsl(var(--accent-h), calc(var(--accent-s) * 1.1), calc(var(--accent-l) * 1.1)); /* Brighter accent */
     --sidebar-border: 345 25% 30%;
-    --sidebar-ring: hsl(var(--ring-h) var(--ring-s) var(--ring-l));
+    --sidebar-ring: hsl(var(--ring-h), var(--ring-s), var(--ring-l));
   }
 
-  .dark {
+  html.dark { /* Changed from .dark to html.dark for direct application */
     --background: 345 35% 15%; 
     --foreground: 35 30% 85%; 
 

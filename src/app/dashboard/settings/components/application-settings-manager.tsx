@@ -104,16 +104,14 @@ export default function ApplicationSettingsManager() {
 
   const applyThemeMode = useCallback((theme: ThemeMode) => {
     if (typeof window === 'undefined') return;
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else if (theme === 'light') {
-      document.documentElement.classList.remove('dark');
-    } else { 
-      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
+    const root = document.documentElement;
+    root.classList.remove('light', 'dark');
+
+    if (theme === 'system') {
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      root.classList.add(systemTheme);
+    } else {
+      root.classList.add(theme);
     }
   }, []);
   
@@ -163,8 +161,17 @@ export default function ApplicationSettingsManager() {
       const initialAccentColor = storedAccentColor || DEFAULT_APP_PRIMARY_COLOR;
       setSelectedAccentColor(initialAccentColor);
       applyAccentColor(initialAccentColor);
+
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const handleChange = () => {
+        if (selectedThemeMode === 'system') {
+          applyThemeMode('system');
+        }
+      };
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
     }
-  }, [isClient, applyThemeMode, applyAccentColor]);
+  }, [isClient, applyThemeMode, applyAccentColor, selectedThemeMode]);
 
   const handleThemeModeChange = (newMode: ThemeMode) => {
     setSelectedThemeMode(newMode);
@@ -256,8 +263,11 @@ export default function ApplicationSettingsManager() {
             if (isRecognizedKey && typeof importedData[key] === 'string') {
                  localStorage.setItem(key, importedData[key]);
                  importedCount++;
-            } else if (isRecognizedKey) { 
+            } else if (isRecognizedKey && importedData[key] !== null && typeof importedData[key] === 'object') { 
                  localStorage.setItem(key, JSON.stringify(importedData[key]));
+                 importedCount++;
+            } else if (isRecognizedKey) { // Handles null or other primitive types correctly
+                 localStorage.setItem(key, String(importedData[key]));
                  importedCount++;
             }
           }
@@ -268,16 +278,31 @@ export default function ApplicationSettingsManager() {
             title: "Données Importées",
             description: `${importedCount} éléments de données ont été importés. Veuillez recharger la page pour appliquer tous les changements.`,
           });
+          // Re-apply theme and accent color after import
           const newTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
           if (newTheme && ['light', 'dark', 'system'].includes(newTheme)) {
             setSelectedThemeMode(newTheme); 
             applyThemeMode(newTheme); 
+          } else {
+            // If no theme in imported data, reset to system default
+            setSelectedThemeMode('system');
+            applyThemeMode('system');
+            localStorage.setItem(THEME_STORAGE_KEY, 'system');
           }
           const newAccent = localStorage.getItem(ACCENT_COLOR_STORAGE_KEY);
           if (newAccent) {
             setSelectedAccentColor(newAccent); 
             applyAccentColor(newAccent); 
+          } else {
+            // If no accent color in imported data, reset to app default
+            setSelectedAccentColor(DEFAULT_APP_PRIMARY_COLOR);
+            applyAccentColor(DEFAULT_APP_PRIMARY_COLOR);
+            localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, DEFAULT_APP_PRIMARY_COLOR);
           }
+          
+          // Force a page reload to ensure all components re-read from localStorage
+          setTimeout(() => window.location.reload(), 1000);
+
         } else {
             toast({ title: "Importation Partielle ou Vide", description: "Aucune donnée pertinente trouvée ou importée depuis le fichier.", variant: "default" });
         }
@@ -575,4 +600,3 @@ export default function ApplicationSettingsManager() {
   );
 }
     
-
