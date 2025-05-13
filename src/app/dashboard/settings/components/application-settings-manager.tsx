@@ -40,7 +40,7 @@ export default function ApplicationSettingsManager() {
             <div className="space-y-4">
                 <div>
                     <Label htmlFor="theme-select">Mode d'affichage</Label>
-                    <Select defaultValue="system" disabled name="theme-select-name" >
+                    <Select defaultValue="system" disabled>
                         <SelectTrigger id="theme-select" className="mt-1">
                             <SelectValue placeholder="Choisir un mode" />
                         </SelectTrigger>
@@ -72,7 +72,7 @@ export default function ApplicationSettingsManager() {
             <div className="space-y-4">
                 <div>
                     <Label htmlFor="language-select">Langue de l'application</Label>
-                    <Select defaultValue="fr" disabled name="language-select-name">
+                    <Select defaultValue="fr" disabled>
                         <SelectTrigger id="language-select" className="mt-1">
                             <SelectValue placeholder="Choisir une langue" />
                         </SelectTrigger>
@@ -84,7 +84,7 @@ export default function ApplicationSettingsManager() {
                 </div>
                 <div>
                     <Label htmlFor="date-format-select">Format de Date</Label>
-                    <Select defaultValue="dd/MM/yyyy" disabled name="date-format-select-name">
+                    <Select defaultValue="dd/MM/yyyy" disabled>
                         <SelectTrigger id="date-format-select" className="mt-1">
                             <SelectValue placeholder="Choisir un format de date" />
                         </SelectTrigger>
@@ -96,7 +96,7 @@ export default function ApplicationSettingsManager() {
                 </div>
                  <div>
                     <Label htmlFor="currency-select">Devise</Label>
-                    <Select defaultValue="EUR" disabled name="currency-select-name">
+                    <Select defaultValue="EUR" disabled>
                         <SelectTrigger id="currency-select" className="mt-1">
                             <SelectValue placeholder="Choisir une devise" />
                         </SelectTrigger>
@@ -106,6 +106,7 @@ export default function ApplicationSettingsManager() {
                         </SelectContent>
                     </Select>
                 </div>
+                <p className="text-xs text-muted-foreground pt-1">Paramètres de langue et région (Fonctionnalité à venir).</p>
             </div>
         </div>
 
@@ -156,7 +157,7 @@ export default function ApplicationSettingsManager() {
 
                 <div className="mt-2">
                     <Label htmlFor="notification-sound-select">Son de notification</Label>
-                    <Select defaultValue="default" disabled name="notification-sound-select-name">
+                    <Select defaultValue="default" disabled>
                         <SelectTrigger id="notification-sound-select" className="mt-1">
                             <SelectValue placeholder="Choisir un son" />
                         </SelectTrigger>
@@ -185,7 +186,7 @@ export default function ApplicationSettingsManager() {
                 </div>
                 <div>
                     <Label htmlFor="log-retention-period">Durée de conservation des données de log</Label>
-                    <Select defaultValue="90days" disabled name="log-retention-period-name">
+                    <Select defaultValue="90days" disabled>
                         <SelectTrigger id="log-retention-period" className="mt-1">
                             <SelectValue placeholder="Choisir une durée" />
                         </SelectTrigger>
@@ -231,4 +232,3 @@ export default function ApplicationSettingsManager() {
 }
 
     
-
