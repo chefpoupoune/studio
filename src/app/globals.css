@@ -82,6 +82,7 @@
     --sidebar-primary: hsl(var(--primary-h) var(--primary-s) var(--primary-l)); /* Use dynamic primary */
     --sidebar-primary-foreground: hsl(var(--primary-foreground-h) var(--primary-foreground-s) var(--primary-foreground-l)); /* Use dynamic primary foreground */
     --sidebar-accent: 345 30% 25%;
+    /* Ensure sidebar-accent-foreground also uses dynamic HSL variables if needed, or a fixed contrast */
     --sidebar-accent-foreground: hsl(var(--accent-h) calc(var(--accent-s) * 1.1) calc(var(--accent-l) * 1.1)); /* Brighter accent */
     --sidebar-border: 345 25% 30%;
     --sidebar-ring: hsl(var(--ring-h) var(--ring-s) var(--ring-l));
@@ -97,8 +98,8 @@
     --popover: 345 35% 20%;
     --popover-foreground: 35 30% 85%;
 
-    /* Primary, Accent, Ring HSL components are inherited from :root and dynamically set */
-    /* primary-foreground and accent-foreground HSL components are also inherited and dynamically set */
+    /* Primary, Accent, Ring HSL components are inherited from :root and dynamically set by JS */
+    /* primary-foreground and accent-foreground HSL components are also inherited and dynamically set by JS */
     
     --secondary: 345 25% 30%;
     --secondary-foreground: 35 30% 85%;
@@ -120,7 +121,7 @@
     
     --sidebar-background: 345 30% 10%;
     --sidebar-foreground: 35 25% 80%;
-    /* sidebar-primary, sidebar-primary-foreground, sidebar-accent-foreground, sidebar-ring will use the dynamic values */
+    /* sidebar-primary, sidebar-primary-foreground, sidebar-accent-foreground, sidebar-ring will use the dynamic values set by JS */
     --sidebar-accent: 345 30% 20%;
     --sidebar-border: 345 25% 25%;
   }

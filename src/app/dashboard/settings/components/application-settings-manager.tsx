@@ -120,6 +120,8 @@ export default function ApplicationSettingsManager() {
       document.documentElement.style.setProperty('--ring-s', `${hslColor.s}%`);
       document.documentElement.style.setProperty('--ring-l', `${hslColor.l}%`);
 
+      // Adjust foreground color based on lightness (L value of HSL)
+      // If L > 60, it's a light color, so use dark text. Otherwise, use light text.
       if (hslColor.l > 60) { 
         document.documentElement.style.setProperty('--primary-foreground-h', `var(--default-primary-foreground-dark-h)`);
         document.documentElement.style.setProperty('--primary-foreground-s', `var(--default-primary-foreground-dark-s)`);
@@ -265,14 +267,14 @@ export default function ApplicationSettingsManager() {
           });
           // Force re-apply theme and accent color from newly imported settings
           const newTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
-          if (newTheme) {
-            setSelectedThemeMode(newTheme); // update state
-            applyThemeMode(newTheme); // re-apply
+          if (newTheme && ['light', 'dark', 'system'].includes(newTheme)) {
+            setSelectedThemeMode(newTheme); 
+            applyThemeMode(newTheme); 
           }
           const newAccent = localStorage.getItem(ACCENT_COLOR_STORAGE_KEY);
           if (newAccent) {
-            setSelectedAccentColor(newAccent); // update state
-            applyAccentColor(newAccent); // re-apply
+            setSelectedAccentColor(newAccent); 
+            applyAccentColor(newAccent); 
           }
         } else {
             toast({ title: "Importation Partielle ou Vide", description: "Aucune donnée pertinente trouvée ou importée depuis le fichier.", variant: "default" });
