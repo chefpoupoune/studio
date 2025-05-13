@@ -1,4 +1,4 @@
-"use client"; // Added "use client" as Tabs is a client component
+"use client"; 
 
 import Link from 'next/link';
 import { ArrowLeft, Settings as SettingsIcon, FileCog, Settings2 as AppSettingsIcon } from 'lucide-react';
@@ -7,23 +7,25 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { CurrentDate } from '@/components/current-date';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import PdfLayoutManager from './components/pdf-layout-manager';
-import ApplicationSettingsManager from './components/application-settings-manager'; // New import
-import React from 'react'; // Import React for useState and useEffect if needed
+import ApplicationSettingsManager from './components/application-settings-manager';
+import React from 'react';
 
 export default function SettingsPage() {
-  // If client-side specific logic is needed (e.g., for localStorage access directly here)
-  // const [isClient, setIsClient] = React.useState(false);
-  // React.useEffect(() => {
-  //   setIsClient(true);
-  // }, []);
+  const [isClient, setIsClient] = React.useState(false);
+  
+  React.useEffect(() => {
+    setIsClient(true);
+  }, []);
 
-  // if (!isClient) {
-  //   return (
-  //     <div className="flex items-center justify-center min-h-screen">
-  //       <p className="text-lg text-muted-foreground">Chargement des paramètres...</p>
-  //     </div>
-  //   );
-  // }
+  if (!isClient) {
+    // Render a loading state or null while waiting for client-side mount
+    // This helps prevent hydration mismatches related to localStorage access in child components.
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p className="text-lg text-muted-foreground">Chargement des paramètres...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-4 md:p-6 lg:p-8 min-h-screen">
