@@ -1,9 +1,14 @@
+
 "use client";
 
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Cog } from 'lucide-react';
+import { Cog, Palette, Globe, Bell, Database } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export default function ApplicationSettingsManager() {
   return (
@@ -17,35 +22,111 @@ export default function ApplicationSettingsManager() {
           Configurez les options globales de l'application, telles que le thème, les notifications, et d'autres préférences utilisateur.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
-        <Alert>
-            <Cog className="h-4 w-4" />
-            <AlertTitle>En cours de développement</AlertTitle>
+      <CardContent className="space-y-8">
+        <Alert variant="default" className="border-primary/30 bg-primary/5">
+            <Cog className="h-5 w-5 text-primary" />
+            <AlertTitle className="text-primary font-semibold">Section en Cours de Développement</AlertTitle>
             <AlertDescription>
-                Cette section est en cours de construction. Bientôt, vous pourrez personnaliser ici divers aspects de votre application.
+                Cette section est en cours de construction. Bientôt, vous pourrez personnaliser ici divers aspects de votre application. Les options ci-dessous sont des exemples de ce qui pourrait être disponible.
             </AlertDescription>
         </Alert>
 
-        {/* Placeholder for future settings */}
+        {/* Theme Settings Placeholder */}
         <div className="p-6 border rounded-lg shadow-sm bg-card/50">
-            <h3 className="text-lg font-semibold text-foreground mb-3">Thème de l'application</h3>
-            <p className="text-sm text-muted-foreground">
-                Choix du thème (Clair/Sombre), couleurs d'accentuation, etc. (Fonctionnalité à venir)
-            </p>
+            <div className="flex items-center gap-3 mb-4">
+                <Palette className="w-5 h-5 text-accent" />
+                <h3 className="text-lg font-semibold text-foreground">Thème de l'Application</h3>
+            </div>
+            <div className="space-y-4">
+                <div>
+                    <Label htmlFor="theme-select">Mode d'affichage</Label>
+                    <Select defaultValue="system" disabled>
+                        <SelectTrigger id="theme-select" className="mt-1">
+                            <SelectValue placeholder="Choisir un mode" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="light">Clair</SelectItem>
+                            <SelectItem value="dark">Sombre</SelectItem>
+                            <SelectItem value="system">Système</SelectItem>
+                        </SelectContent>
+                    </Select>
+                     <p className="text-xs text-muted-foreground mt-1">Fonctionnalité à venir.</p>
+                </div>
+                <div>
+                    <Label htmlFor="accent-color-picker">Couleur d'Accentuation</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                        <input type="color" id="accent-color-picker" defaultValue="#FFD700" className="h-8 w-10 rounded border bg-background p-0.5" disabled />
+                        <span className="text-sm text-muted-foreground">(Ex: Doré)</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Fonctionnalité à venir.</p>
+                </div>
+            </div>
         </div>
 
+        {/* Language & Region Settings Placeholder */}
         <div className="p-6 border rounded-lg shadow-sm bg-card/50">
-            <h3 className="text-lg font-semibold text-foreground mb-3">Préférences de Notification</h3>
-            <p className="text-sm text-muted-foreground">
-                Gestion des alertes et notifications (Fonctionnalité à venir)
-            </p>
+            <div className="flex items-center gap-3 mb-4">
+                <Globe className="w-5 h-5 text-accent" />
+                <h3 className="text-lg font-semibold text-foreground">Langue et Région</h3>
+            </div>
+            <div className="space-y-4">
+                <div>
+                    <Label htmlFor="language-select">Langue de l'application</Label>
+                    <Select defaultValue="fr" disabled>
+                        <SelectTrigger id="language-select" className="mt-1">
+                            <SelectValue placeholder="Choisir une langue" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="fr">Français</SelectItem>
+                            <SelectItem value="en">English (Fonctionnalité à venir)</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div>
+                    <Label htmlFor="date-format-select">Format de Date</Label>
+                    <Select defaultValue="dd/MM/yyyy" disabled>
+                        <SelectTrigger id="date-format-select" className="mt-1">
+                            <SelectValue placeholder="Choisir un format de date" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="dd/MM/yyyy">JJ/MM/AAAA</SelectItem>
+                            <SelectItem value="MM/dd/yyyy">MM/JJ/AAAA (Fonctionnalité à venir)</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
         </div>
 
-         <div className="p-6 border rounded-lg shadow-sm bg-card/50">
-            <h3 className="text-lg font-semibold text-foreground mb-3">Paramètres de Langue et Région</h3>
-            <p className="text-sm text-muted-foreground">
-                Choix de la langue, format des dates et des nombres. (Fonctionnalité à venir)
-            </p>
+        {/* Notification Preferences Placeholder */}
+        <div className="p-6 border rounded-lg shadow-sm bg-card/50">
+            <div className="flex items-center gap-3 mb-4">
+                <Bell className="w-5 h-5 text-accent" />
+                <h3 className="text-lg font-semibold text-foreground">Préférences de Notification</h3>
+            </div>
+            <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                    <Label htmlFor="email-notifications" className="flex-grow">Notifications par e-mail</Label>
+                    <Switch id="email-notifications" disabled />
+                </div>
+                <div className="flex items-center justify-between">
+                    <Label htmlFor="inapp-notifications" className="flex-grow">Notifications dans l'application</Label>
+                    <Switch id="inapp-notifications" checked disabled />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Gestion des alertes et notifications (Fonctionnalité à venir).</p>
+            </div>
+        </div>
+
+        {/* Data Management Placeholder */}
+        <div className="p-6 border rounded-lg shadow-sm bg-card/50">
+            <div className="flex items-center gap-3 mb-4">
+                <Database className="w-5 h-5 text-accent" />
+                <h3 className="text-lg font-semibold text-foreground">Gestion des Données</h3>
+            </div>
+            <div className="space-y-3">
+                <Button variant="outline" disabled className="w-full sm:w-auto">Exporter les données de l'application</Button>
+                <Button variant="outline" disabled className="w-full sm:w-auto">Importer des données (Fonctionnalité à venir)</Button>
+                <p className="text-xs text-muted-foreground mt-1">Options pour sauvegarder ou restaurer les données de l'application (Fonctionnalité à venir).</p>
+            </div>
         </div>
       </CardContent>
     </Card>
