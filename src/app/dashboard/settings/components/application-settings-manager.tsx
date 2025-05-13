@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Cog, Palette, Globe, Bell, Database, Download, Upload, BellRing, ListChecks, PackageWarning } from 'lucide-react'; // Added BellRing, ListChecks, PackageWarning
+import { Cog, Palette, Globe, Bell, Database, Download, Upload, BellRing, ListChecks, Package } from 'lucide-react'; // Replaced PackageWarning with Package
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -141,7 +141,7 @@ export default function ApplicationSettingsManager() {
                     </div>
                      <div className="flex items-center justify-between">
                         <Label htmlFor="inapp-inventory-low" className="text-sm flex items-center gap-1.5 flex-grow cursor-not-allowed">
-                            <PackageWarning className="w-4 h-4 text-muted-foreground/70"/> Alerte stock bas (Inventaire)
+                            <Package className="w-4 h-4 text-muted-foreground/70"/> Alerte stock bas (Inventaire)
                         </Label>
                         <Switch id="inapp-inventory-low" disabled />
                     </div>
