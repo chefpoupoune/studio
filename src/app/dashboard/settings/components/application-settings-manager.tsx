@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Cog, Palette, Globe, Bell, Database, Download, Upload, BellRing, ListChecks, Package, ShieldCheck, Info, RotateCcw } from 'lucide-react';
+import { Cog, Palette, Globe, Bell, Database, Download, Upload, BellRing, ListChecks, Package, ShieldCheck, Info, RotateCcw, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -12,6 +12,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { DEFAULT_APP_PRIMARY_COLOR } from '@/config/colors';
 import { PDF_LAYOUT_CONFIGS_KEY } from '@/lib/pdf-settings';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const THEME_STORAGE_KEY = "app_settings_theme_mode";
 const ACCENT_COLOR_STORAGE_KEY = "app_settings_accent_color";
@@ -84,6 +95,8 @@ export default function ApplicationSettingsManager() {
   const [isClient, setIsClient] = useState(false);
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isImportAlertOpen, setIsImportAlertOpen] = useState(false);
+
 
   useEffect(() => {
     setIsClient(true);
@@ -120,8 +133,6 @@ export default function ApplicationSettingsManager() {
       document.documentElement.style.setProperty('--ring-s', `${hslColor.s}%`);
       document.documentElement.style.setProperty('--ring-l', `${hslColor.l}%`);
 
-      // Adjust foreground color based on lightness (L value of HSL)
-      // If L > 60, it's a light color, so use dark text. Otherwise, use light text.
       if (hslColor.l > 60) { 
         document.documentElement.style.setProperty('--primary-foreground-h', `var(--default-primary-foreground-dark-h)`);
         document.documentElement.style.setProperty('--primary-foreground-s', `var(--default-primary-foreground-dark-s)`);
@@ -219,7 +230,7 @@ export default function ApplicationSettingsManager() {
     toast({ title: "Données Exportées", description: "Toutes les données locales de l'application ont été exportées." });
   };
 
-  const handleImportButtonClick = () => {
+  const triggerFileInput = () => {
     fileInputRef.current?.click();
   };
 
@@ -238,25 +249,17 @@ export default function ApplicationSettingsManager() {
           throw new Error("Format de fichier invalide.");
         }
 
-        // Optional: Clear existing app-specific data before import
-        // APP_SPECIFIC_KEYS.forEach(key => localStorage.removeItem(key));
-        // APP_SPECIFIC_PREFIXES.forEach(prefix => {
-        //   Object.keys(localStorage).filter(k => k.startsWith(prefix)).forEach(k => localStorage.removeItem(k));
-        // });
-
         let importedCount = 0;
         for (const key in importedData) {
           if (Object.prototype.hasOwnProperty.call(importedData, key)) {
-             // Basic validation: ensure the key is one we might expect or manage
             const isRecognizedKey = APP_SPECIFIC_KEYS.includes(key) || APP_SPECIFIC_PREFIXES.some(prefix => key.startsWith(prefix));
             if (isRecognizedKey && typeof importedData[key] === 'string') {
                  localStorage.setItem(key, importedData[key]);
                  importedCount++;
-            } else if (isRecognizedKey) { // It's a recognized key but not a string (might be null)
-                 localStorage.setItem(key, JSON.stringify(importedData[key])); // Store as string
+            } else if (isRecognizedKey) { 
+                 localStorage.setItem(key, JSON.stringify(importedData[key]));
                  importedCount++;
             }
-            // Else, skip keys not matching app patterns or not strings
           }
         }
         
@@ -265,7 +268,6 @@ export default function ApplicationSettingsManager() {
             title: "Données Importées",
             description: `${importedCount} éléments de données ont été importés. Veuillez recharger la page pour appliquer tous les changements.`,
           });
-          // Force re-apply theme and accent color from newly imported settings
           const newTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
           if (newTheme && ['light', 'dark', 'system'].includes(newTheme)) {
             setSelectedThemeMode(newTheme); 
@@ -285,8 +287,9 @@ export default function ApplicationSettingsManager() {
         toast({ title: "Erreur d'Importation", description: `Impossible d'importer les données. ${error instanceof Error ? error.message : 'Erreur inconnue.'}`, variant: "destructive" });
       } finally {
         if (fileInputRef.current) {
-          fileInputRef.current.value = ""; // Reset file input
+          fileInputRef.current.value = ""; 
         }
+        setIsImportAlertOpen(false);
       }
     };
     reader.readAsText(file);
@@ -523,15 +526,38 @@ export default function ApplicationSettingsManager() {
                     <Download className="mr-2 h-4 w-4" />
                     Exporter Toutes les Données Locales
                 </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={handleImportButtonClick} 
-                  disabled={!isClient}
-                  className="w-full sm:w-auto"
-                >
-                    <Upload className="mr-2 h-4 w-4" />
-                    Importer des Données Locales
-                </Button>
+                
+                <AlertDialog open={isImportAlertOpen} onOpenChange={setIsImportAlertOpen}>
+                  <AlertDialogTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      disabled={!isClient}
+                      className="w-full sm:w-auto"
+                      onClick={() => setIsImportAlertOpen(true)}
+                    >
+                        <Upload className="mr-2 h-4 w-4" />
+                        Importer des Données Locales
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle className="flex items-center gap-2">
+                        <AlertTriangle className="text-destructive" /> Confirmer l'Importation
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        L'importation de données écrasera toutes les données existantes spécifiques à l'application qui portent le même nom. 
+                        Êtes-vous sûr de vouloir continuer ? Il est recommandé d'exporter vos données actuelles avant d'importer.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Annuler</AlertDialogCancel>
+                      <AlertDialogAction onClick={triggerFileInput}>
+                        Continuer l'Importation
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+
                 <input 
                     type="file" 
                     ref={fileInputRef} 
@@ -549,3 +575,4 @@ export default function ApplicationSettingsManager() {
   );
 }
     
+
