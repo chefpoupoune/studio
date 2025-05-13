@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Cog, Palette, Globe, Bell, Database } from 'lucide-react';
+import { Cog, Palette, Globe, Bell, Database, Download, Upload } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -55,7 +55,7 @@ export default function ApplicationSettingsManager() {
                 <div>
                     <Label htmlFor="accent-color-picker">Couleur d'Accentuation</Label>
                     <div className="flex items-center gap-2 mt-1">
-                        <input type="color" id="accent-color-picker" defaultValue="#FFD700" className="h-8 w-10 rounded border bg-background p-0.5" disabled />
+                        <input type="color" id="accent-color-picker" defaultValue="#FFD700" className="h-8 w-10 rounded border bg-background p-0.5 cursor-not-allowed" disabled />
                         <span className="text-sm text-muted-foreground">(Ex: Doré)</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">Fonctionnalité à venir.</p>
@@ -94,6 +94,18 @@ export default function ApplicationSettingsManager() {
                         </SelectContent>
                     </Select>
                 </div>
+                 <div>
+                    <Label htmlFor="currency-select">Devise</Label>
+                    <Select defaultValue="EUR" disabled>
+                        <SelectTrigger id="currency-select" className="mt-1">
+                            <SelectValue placeholder="Choisir une devise" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="EUR">Euro (€)</SelectItem>
+                            <SelectItem value="USD">Dollar US ($) (Fonctionnalité à venir)</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
             </div>
         </div>
 
@@ -105,12 +117,16 @@ export default function ApplicationSettingsManager() {
             </div>
             <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                    <Label htmlFor="email-notifications" className="flex-grow">Notifications par e-mail</Label>
+                    <Label htmlFor="email-notifications" className="flex-grow cursor-not-allowed">Notifications par e-mail</Label>
                     <Switch id="email-notifications" disabled />
                 </div>
                 <div className="flex items-center justify-between">
-                    <Label htmlFor="inapp-notifications" className="flex-grow">Notifications dans l'application</Label>
+                    <Label htmlFor="inapp-notifications" className="flex-grow cursor-not-allowed">Notifications dans l'application</Label>
                     <Switch id="inapp-notifications" checked disabled />
+                </div>
+                 <div className="flex items-center justify-between">
+                    <Label htmlFor="sound-notifications" className="flex-grow cursor-not-allowed">Notifications sonores</Label>
+                    <Switch id="sound-notifications" disabled />
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">Gestion des alertes et notifications (Fonctionnalité à venir).</p>
             </div>
@@ -122,13 +138,22 @@ export default function ApplicationSettingsManager() {
                 <Database className="w-5 h-5 text-accent" />
                 <h3 className="text-lg font-semibold text-foreground">Gestion des Données</h3>
             </div>
-            <div className="space-y-3">
-                <Button variant="outline" disabled className="w-full sm:w-auto">Exporter les données de l'application</Button>
-                <Button variant="outline" disabled className="w-full sm:w-auto">Importer des données (Fonctionnalité à venir)</Button>
-                <p className="text-xs text-muted-foreground mt-1">Options pour sauvegarder ou restaurer les données de l'application (Fonctionnalité à venir).</p>
+            <div className="flex flex-col sm:flex-row gap-3">
+                <Button variant="outline" disabled className="w-full sm:w-auto">
+                    <Download className="mr-2 h-4 w-4" />
+                    Exporter les données
+                </Button>
+                <Button variant="outline" disabled className="w-full sm:w-auto">
+                    <Upload className="mr-2 h-4 w-4" />
+                    Importer des données
+                </Button>
             </div>
+            <p className="text-xs text-muted-foreground mt-2">
+                Options pour sauvegarder ou restaurer les données de l'application (Fonctionnalité à venir).
+            </p>
         </div>
       </CardContent>
     </Card>
   );
 }
+
