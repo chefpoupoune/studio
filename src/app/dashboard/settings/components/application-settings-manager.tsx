@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Cog, Palette, Bell, Database, Download, Upload, BellRing, ListChecks, Package, ShieldCheck, Info, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Cog, Palette, Bell, Database, Download, Upload, BellRing, ListChecks, Package, Info, RotateCcw, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -26,6 +26,25 @@ import {
 
 const THEME_STORAGE_KEY = "app_settings_theme_mode";
 const ACCENT_COLOR_STORAGE_KEY = "app_settings_accent_color";
+
+// Notification settings keys
+const NOTIFICATIONS_EMAIL_KEY = "app_settings_notifications_email";
+const NOTIFICATIONS_IN_APP_GENERAL_KEY = "app_settings_notifications_in_app_general";
+const NOTIFICATIONS_IN_APP_NEW_TASK_KEY = "app_settings_notifications_in_app_new_task";
+const NOTIFICATIONS_IN_APP_STATUS_UPDATE_KEY = "app_settings_notifications_in_app_status_update";
+const NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY = "app_settings_notifications_in_app_inventory_low";
+const NOTIFICATIONS_SOUND_ENABLED_KEY = "app_settings_notifications_sound_enabled";
+const NOTIFICATIONS_SOUND_CHOICE_KEY = "app_settings_notifications_sound_choice";
+
+// Default notification values
+const DEFAULT_NOTIFICATIONS_EMAIL = false;
+const DEFAULT_NOTIFICATIONS_IN_APP_GENERAL = true;
+const DEFAULT_NOTIFICATIONS_IN_APP_NEW_TASK = true;
+const DEFAULT_NOTIFICATIONS_IN_APP_STATUS_UPDATE = true;
+const DEFAULT_NOTIFICATIONS_IN_APP_INVENTORY_LOW = true;
+const DEFAULT_NOTIFICATIONS_SOUND_ENABLED = false;
+const DEFAULT_NOTIFICATIONS_SOUND_CHOICE = 'default';
+
 
 type ThemeMode = 'light' | 'dark' | 'system';
 
@@ -79,6 +98,13 @@ const APP_SPECIFIC_KEYS = [
   THEME_STORAGE_KEY,
   ACCENT_COLOR_STORAGE_KEY,
   PDF_LAYOUT_CONFIGS_KEY,
+  NOTIFICATIONS_EMAIL_KEY,
+  NOTIFICATIONS_IN_APP_GENERAL_KEY,
+  NOTIFICATIONS_IN_APP_NEW_TASK_KEY,
+  NOTIFICATIONS_IN_APP_STATUS_UPDATE_KEY,
+  NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY,
+  NOTIFICATIONS_SOUND_ENABLED_KEY,
+  NOTIFICATIONS_SOUND_CHOICE_KEY,
 ];
 
 const APP_SPECIFIC_PREFIXES = [
@@ -92,6 +118,16 @@ const APP_SPECIFIC_PREFIXES = [
 export default function ApplicationSettingsManager() {
   const [selectedThemeMode, setSelectedThemeMode] = useState<ThemeMode>('system');
   const [selectedAccentColor, setSelectedAccentColor] = useState<string>(DEFAULT_APP_PRIMARY_COLOR);
+  
+  // Notification States
+  const [emailNotifications, setEmailNotifications] = useState<boolean>(DEFAULT_NOTIFICATIONS_EMAIL);
+  const [inAppGeneralNotifications, setInAppGeneralNotifications] = useState<boolean>(DEFAULT_NOTIFICATIONS_IN_APP_GENERAL);
+  const [inAppNewTaskNotifications, setInAppNewTaskNotifications] = useState<boolean>(DEFAULT_NOTIFICATIONS_IN_APP_NEW_TASK);
+  const [inAppStatusUpdateNotifications, setInAppStatusUpdateNotifications] = useState<boolean>(DEFAULT_NOTIFICATIONS_IN_APP_STATUS_UPDATE);
+  const [inAppInventoryLowNotifications, setInAppInventoryLowNotifications] = useState<boolean>(DEFAULT_NOTIFICATIONS_IN_APP_INVENTORY_LOW);
+  const [soundNotificationsEnabled, setSoundNotificationsEnabled] = useState<boolean>(DEFAULT_NOTIFICATIONS_SOUND_ENABLED);
+  const [notificationSoundChoice, setNotificationSoundChoice] = useState<string>(DEFAULT_NOTIFICATIONS_SOUND_CHOICE);
+
   const [isClient, setIsClient] = useState(false);
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -133,11 +169,9 @@ export default function ApplicationSettingsManager() {
       root.style.setProperty('--ring-s', `${hslColor.s}%`);
       root.style.setProperty('--ring-l', `${hslColor.l}%`);
 
-      // Determine foreground color based on lightness of accent color
       const isLightAccent = hslColor.l > 60;
 
       if (isLightAccent) { 
-        // Use HSL values for dark text
         root.style.setProperty('--primary-foreground-h', `var(--default-primary-foreground-dark-h)`);
         root.style.setProperty('--primary-foreground-s', `var(--default-primary-foreground-dark-s)`);
         root.style.setProperty('--primary-foreground-l', `var(--default-primary-foreground-dark-l)`);
@@ -145,7 +179,6 @@ export default function ApplicationSettingsManager() {
         root.style.setProperty('--accent-foreground-s', `var(--default-accent-foreground-dark-s)`);
         root.style.setProperty('--accent-foreground-l', `var(--default-accent-foreground-dark-l)`);
       } else { 
-        // Use HSL values for light text
         root.style.setProperty('--primary-foreground-h', `var(--default-primary-foreground-light-h)`);
         root.style.setProperty('--primary-foreground-s', `var(--default-primary-foreground-light-s)`);
         root.style.setProperty('--primary-foreground-l', `var(--default-primary-foreground-light-l)`);
@@ -159,6 +192,7 @@ export default function ApplicationSettingsManager() {
 
   useEffect(() => {
     if (isClient) {
+      // Theme and Accent
       const storedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
       const initialTheme = storedTheme && ['light', 'dark', 'system'].includes(storedTheme) ? storedTheme : 'system';
       setSelectedThemeMode(initialTheme);
@@ -168,10 +202,19 @@ export default function ApplicationSettingsManager() {
       const initialAccentColor = storedAccentColor || DEFAULT_APP_PRIMARY_COLOR;
       setSelectedAccentColor(initialAccentColor);
       applyAccentColor(initialAccentColor);
+      
+      // Notifications
+      setEmailNotifications(localStorage.getItem(NOTIFICATIONS_EMAIL_KEY) === 'true' || DEFAULT_NOTIFICATIONS_EMAIL);
+      setInAppGeneralNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_GENERAL_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_GENERAL);
+      setInAppNewTaskNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_NEW_TASK_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_NEW_TASK);
+      setInAppStatusUpdateNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_STATUS_UPDATE_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_STATUS_UPDATE);
+      setInAppInventoryLowNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_INVENTORY_LOW);
+      setSoundNotificationsEnabled(localStorage.getItem(NOTIFICATIONS_SOUND_ENABLED_KEY) === 'true' || DEFAULT_NOTIFICATIONS_SOUND_ENABLED);
+      setNotificationSoundChoice(localStorage.getItem(NOTIFICATIONS_SOUND_CHOICE_KEY) || DEFAULT_NOTIFICATIONS_SOUND_CHOICE);
+
 
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
       const handleChange = () => {
-        // Re-apply only if current mode is 'system'
         if (localStorage.getItem(THEME_STORAGE_KEY) === 'system' || !localStorage.getItem(THEME_STORAGE_KEY)) {
            applyThemeMode('system');
         }
@@ -181,6 +224,7 @@ export default function ApplicationSettingsManager() {
     }
   }, [isClient, applyThemeMode, applyAccentColor]);
 
+  // Handlers for theme and accent
   const handleThemeModeChange = (newMode: ThemeMode) => {
     setSelectedThemeMode(newMode);
     if (isClient) {
@@ -204,7 +248,7 @@ export default function ApplicationSettingsManager() {
       });
     }
   };
-
+  
   const handleResetAccentColor = () => {
     handleAccentColorChange(DEFAULT_APP_PRIMARY_COLOR);
     toast({
@@ -212,6 +256,41 @@ export default function ApplicationSettingsManager() {
       description: `La couleur d'accentuation a été réinitialisée à la valeur par défaut (${DEFAULT_APP_PRIMARY_COLOR}).`,
     });
   };
+
+  // Handlers for notification preferences
+  const createSwitchHandler = (
+    setter: React.Dispatch<React.SetStateAction<boolean>>,
+    key: string,
+    settingName: string
+  ) => (checked: boolean) => {
+    setter(checked);
+    if (isClient) {
+      localStorage.setItem(key, String(checked));
+      toast({
+        title: "Préférences Mises à Jour",
+        description: `${settingName} ${checked ? 'activées' : 'désactivées'}.`,
+      });
+    }
+  };
+  
+  const handleEmailNotificationsChange = createSwitchHandler(setEmailNotifications, NOTIFICATIONS_EMAIL_KEY, "Notifications par e-mail");
+  const handleInAppGeneralNotificationsChange = createSwitchHandler(setInAppGeneralNotifications, NOTIFICATIONS_IN_APP_GENERAL_KEY, "Notifications générales dans l'application");
+  const handleInAppNewTaskNotificationsChange = createSwitchHandler(setInAppNewTaskNotifications, NOTIFICATIONS_IN_APP_NEW_TASK_KEY, "Alertes pour nouvelle tâche/problème");
+  const handleInAppStatusUpdateNotificationsChange = createSwitchHandler(setInAppStatusUpdateNotifications, NOTIFICATIONS_IN_APP_STATUS_UPDATE_KEY, "Alertes pour mise à jour de statut de tâche");
+  const handleInAppInventoryLowNotificationsChange = createSwitchHandler(setInAppInventoryLowNotifications, NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY, "Alertes pour stock bas");
+  const handleSoundNotificationsEnabledChange = createSwitchHandler(setSoundNotificationsEnabled, NOTIFICATIONS_SOUND_ENABLED_KEY, "Sons de notification");
+
+  const handleNotificationSoundChoiceChange = (value: string) => {
+    setNotificationSoundChoice(value);
+    if (isClient) {
+      localStorage.setItem(NOTIFICATIONS_SOUND_CHOICE_KEY, value);
+      toast({
+        title: "Préférences Mises à Jour",
+        description: `Son de notification réglé sur "${value}".`,
+      });
+    }
+  };
+
 
   const handleExportData = () => {
     if (!isClient) return;
@@ -340,9 +419,9 @@ export default function ApplicationSettingsManager() {
       <CardContent className="space-y-8">
         <Alert variant="default" className="border-primary/30 bg-primary/5">
             <Info className="h-5 w-5 text-primary" />
-            <AlertTitle className="text-primary font-semibold">Développement en Cours</AlertTitle>
+            <AlertTitle className="text-primary font-semibold">Information</AlertTitle>
             <AlertDescription>
-                Certaines fonctionnalités de cette section sont en cours de construction ou sont des démonstrations. Les paramètres sauvegardés sont stockés localement dans votre navigateur.
+                Les paramètres modifiés ici sont sauvegardés localement dans votre navigateur.
             </AlertDescription>
         </Alert>
 
@@ -409,46 +488,46 @@ export default function ApplicationSettingsManager() {
             </div>
             <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                    <Label htmlFor="email-notifications" className="flex-grow cursor-not-allowed text-muted-foreground/80">Notifications par e-mail</Label>
-                    <Switch id="email-notifications" disabled />
+                    <Label htmlFor="email-notifications" className="flex-grow">Notifications par e-mail</Label>
+                    <Switch id="email-notifications" checked={emailNotifications} onCheckedChange={handleEmailNotificationsChange} disabled={!isClient} />
                 </div>
                 <div className="flex items-center justify-between">
-                    <Label htmlFor="inapp-notifications" className="flex-grow text-muted-foreground/80">Notifications générales dans l'application</Label>
-                    <Switch id="inapp-notifications" checked disabled />
+                    <Label htmlFor="inapp-notifications" className="flex-grow">Notifications générales dans l'application</Label>
+                    <Switch id="inapp-notifications" checked={inAppGeneralNotifications} onCheckedChange={handleInAppGeneralNotificationsChange} disabled={!isClient} />
                 </div>
 
                 <div className="pl-6 mt-3 space-y-2 border-l-2 border-muted/30">
                     <p className="text-sm text-muted-foreground mb-2 font-medium">Alertes spécifiques (dans l'app) :</p>
                     <div className="flex items-center justify-between">
-                        <Label htmlFor="inapp-new-task" className="text-sm flex items-center gap-1.5 flex-grow cursor-not-allowed text-muted-foreground/80">
-                            <ListChecks className="w-4 h-4 text-muted-foreground/70"/> Nouvelle tâche/problème signalé
+                        <Label htmlFor="inapp-new-task" className="text-sm flex items-center gap-1.5 flex-grow">
+                            <ListChecks className="w-4 h-4 text-muted-foreground/90"/> Nouvelle tâche/problème signalé
                         </Label>
-                        <Switch id="inapp-new-task" disabled />
+                        <Switch id="inapp-new-task" checked={inAppNewTaskNotifications} onCheckedChange={handleInAppNewTaskNotificationsChange} disabled={!isClient} />
                     </div>
                     <div className="flex items-center justify-between">
-                        <Label htmlFor="inapp-status-update" className="text-sm flex items-center gap-1.5 flex-grow cursor-not-allowed text-muted-foreground/80">
-                             <ListChecks className="w-4 h-4 text-muted-foreground/70"/> Mise à jour de statut d'une tâche
+                        <Label htmlFor="inapp-status-update" className="text-sm flex items-center gap-1.5 flex-grow">
+                             <ListChecks className="w-4 h-4 text-muted-foreground/90"/> Mise à jour de statut d'une tâche
                         </Label>
-                        <Switch id="inapp-status-update" disabled />
+                        <Switch id="inapp-status-update" checked={inAppStatusUpdateNotifications} onCheckedChange={handleInAppStatusUpdateNotificationsChange} disabled={!isClient} />
                     </div>
                      <div className="flex items-center justify-between">
-                        <Label htmlFor="inapp-inventory-low" className="text-sm flex items-center gap-1.5 flex-grow cursor-not-allowed text-muted-foreground/80">
-                            <Package className="w-4 h-4 text-muted-foreground/70"/> Alerte stock bas (Inventaire)
+                        <Label htmlFor="inapp-inventory-low" className="text-sm flex items-center gap-1.5 flex-grow">
+                            <Package className="w-4 h-4 text-muted-foreground/90"/> Alerte stock bas (Inventaire)
                         </Label>
-                        <Switch id="inapp-inventory-low" disabled />
+                        <Switch id="inapp-inventory-low" checked={inAppInventoryLowNotifications} onCheckedChange={handleInAppInventoryLowNotificationsChange} disabled={!isClient} />
                     </div>
                 </div>
                 
                 <div className="flex items-center justify-between pt-2">
-                    <Label htmlFor="sound-notifications" className="flex-grow cursor-not-allowed flex items-center gap-1.5 text-muted-foreground/80">
-                        <BellRing className="w-4 h-4 text-muted-foreground/70"/> Activer les sons de notification
+                    <Label htmlFor="sound-notifications" className="flex-grow flex items-center gap-1.5">
+                        <BellRing className="w-4 h-4 text-muted-foreground/90"/> Activer les sons de notification
                     </Label>
-                    <Switch id="sound-notifications" disabled />
+                    <Switch id="sound-notifications" checked={soundNotificationsEnabled} onCheckedChange={handleSoundNotificationsEnabledChange} disabled={!isClient} />
                 </div>
 
                 <div className="mt-2">
-                    <Label htmlFor="notification-sound-select" className="text-muted-foreground/80">Son de notification</Label>
-                    <Select defaultValue="default" disabled>
+                    <Label htmlFor="notification-sound-select">Son de notification</Label>
+                    <Select value={notificationSoundChoice} onValueChange={handleNotificationSoundChoiceChange} disabled={!isClient || !soundNotificationsEnabled}>
                         <SelectTrigger id="notification-sound-select" className="mt-1">
                             <SelectValue placeholder="Choisir un son" />
                         </SelectTrigger>
@@ -460,35 +539,7 @@ export default function ApplicationSettingsManager() {
                         </SelectContent>
                     </Select>
                 </div>
-                <p className="text-xs text-muted-foreground pt-1">Gestion détaillée des alertes et notifications (Fonctionnalité à venir).</p>
-            </div>
-        </div>
-
-        <div className="p-6 border rounded-lg shadow-sm bg-card/50">
-            <div className="flex items-center gap-3 mb-4">
-                <ShieldCheck className="w-5 h-5 text-accent" />
-                <h3 className="text-lg font-semibold text-foreground">Confidentialité et Données</h3>
-            </div>
-            <div className="space-y-4">
-                 <div className="flex items-center justify-between">
-                    <Label htmlFor="anonymize-usage-reports" className="flex-grow cursor-not-allowed text-muted-foreground/80">Anonymiser les rapports d'utilisation (si applicable)</Label>
-                    <Switch id="anonymize-usage-reports" disabled />
-                </div>
-                <div>
-                    <Label htmlFor="log-retention-period" className="text-muted-foreground/80">Durée de conservation des données de log</Label>
-                    <Select defaultValue="90days" disabled>
-                        <SelectTrigger id="log-retention-period" className="mt-1">
-                            <SelectValue placeholder="Choisir une durée" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="30days">30 jours</SelectItem>
-                            <SelectItem value="90days">90 jours (recommandé)</SelectItem>
-                            <SelectItem value="1year">1 an</SelectItem>
-                            <SelectItem value="forever">Indéfiniment (non recommandé)</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-                <p className="text-xs text-muted-foreground pt-1">Les préférences de confidentialité et la gestion des logs sont prévues pour des versions futures.</p>
+                <p className="text-xs text-muted-foreground pt-1">Les notifications réelles et les sons ne sont pas implémentés, seuls les paramètres sont sauvegardés.</p>
             </div>
         </div>
 
@@ -517,7 +568,7 @@ export default function ApplicationSettingsManager() {
                       variant="outline" 
                       disabled={!isClient}
                       className="w-full sm:w-auto"
-                      onClick={() => setIsImportAlertOpen(true)} // Open confirmation first
+                      onClick={() => setIsImportAlertOpen(true)}
                     >
                         <Upload className="mr-2 h-4 w-4" />
                         Importer des Données Locales
@@ -559,3 +610,4 @@ export default function ApplicationSettingsManager() {
   );
 }
     
+
