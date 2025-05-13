@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Cog, Palette, Globe, Bell, Database, Download, Upload } from 'lucide-react';
+import { Cog, Palette, Globe, Bell, Database, Download, Upload, BellRing, ListChecks, PackageWarning } from 'lucide-react'; // Added BellRing, ListChecks, PackageWarning
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -121,14 +121,54 @@ export default function ApplicationSettingsManager() {
                     <Switch id="email-notifications" disabled />
                 </div>
                 <div className="flex items-center justify-between">
-                    <Label htmlFor="inapp-notifications" className="flex-grow cursor-not-allowed">Notifications dans l'application</Label>
+                    <Label htmlFor="inapp-notifications" className="flex-grow cursor-not-allowed">Notifications générales dans l'application</Label>
                     <Switch id="inapp-notifications" checked disabled />
                 </div>
-                 <div className="flex items-center justify-between">
-                    <Label htmlFor="sound-notifications" className="flex-grow cursor-not-allowed">Notifications sonores</Label>
+
+                <div className="pl-6 mt-3 space-y-2 border-l-2 border-muted/30">
+                    <p className="text-sm text-muted-foreground mb-2 font-medium">Notifications spécifiques (dans l'app) :</p>
+                    <div className="flex items-center justify-between">
+                        <Label htmlFor="inapp-new-task" className="text-sm flex items-center gap-1.5 flex-grow cursor-not-allowed">
+                            <ListChecks className="w-4 h-4 text-muted-foreground/70"/> Nouvelle tâche/problème signalé
+                        </Label>
+                        <Switch id="inapp-new-task" disabled />
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <Label htmlFor="inapp-status-update" className="text-sm flex items-center gap-1.5 flex-grow cursor-not-allowed">
+                             <ListChecks className="w-4 h-4 text-muted-foreground/70"/> Mise à jour de statut d'une tâche
+                        </Label>
+                        <Switch id="inapp-status-update" disabled />
+                    </div>
+                     <div className="flex items-center justify-between">
+                        <Label htmlFor="inapp-inventory-low" className="text-sm flex items-center gap-1.5 flex-grow cursor-not-allowed">
+                            <PackageWarning className="w-4 h-4 text-muted-foreground/70"/> Alerte stock bas (Inventaire)
+                        </Label>
+                        <Switch id="inapp-inventory-low" disabled />
+                    </div>
+                </div>
+                
+                <div className="flex items-center justify-between pt-2">
+                    <Label htmlFor="sound-notifications" className="flex-grow cursor-not-allowed flex items-center gap-1.5">
+                        <BellRing className="w-4 h-4 text-muted-foreground/70"/> Activer les sons de notification
+                    </Label>
                     <Switch id="sound-notifications" disabled />
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Gestion des alertes et notifications (Fonctionnalité à venir).</p>
+
+                <div className="mt-2">
+                    <Label htmlFor="notification-sound-select">Son de notification</Label>
+                    <Select defaultValue="default" disabled>
+                        <SelectTrigger id="notification-sound-select" className="mt-1">
+                            <SelectValue placeholder="Choisir un son" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="default">Défaut</SelectItem>
+                            <SelectItem value="chime">Carillon</SelectItem>
+                            <SelectItem value="alert_soft">Alerte Douce</SelectItem>
+                            <SelectItem value="none">Aucun</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <p className="text-xs text-muted-foreground pt-1">Gestion des alertes et notifications (Fonctionnalité à venir).</p>
             </div>
         </div>
 
@@ -156,3 +196,5 @@ export default function ApplicationSettingsManager() {
     </Card>
   );
 }
+
+    
