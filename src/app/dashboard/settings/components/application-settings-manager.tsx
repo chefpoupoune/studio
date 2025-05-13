@@ -117,34 +117,41 @@ export default function ApplicationSettingsManager() {
   
   const applyAccentColor = useCallback((color: string) => {
     if (typeof window === 'undefined') return;
+    const root = document.documentElement;
     const hslColor = hexToHsl(color);
+
     if (hslColor) {
-      document.documentElement.style.setProperty('--primary-h', `${hslColor.h}`);
-      document.documentElement.style.setProperty('--primary-s', `${hslColor.s}%`);
-      document.documentElement.style.setProperty('--primary-l', `${hslColor.l}%`);
+      root.style.setProperty('--primary-h', `${hslColor.h}`);
+      root.style.setProperty('--primary-s', `${hslColor.s}%`);
+      root.style.setProperty('--primary-l', `${hslColor.l}%`);
       
-      document.documentElement.style.setProperty('--accent-h', `${hslColor.h}`);
-      document.documentElement.style.setProperty('--accent-s', `${hslColor.s}%`);
-      document.documentElement.style.setProperty('--accent-l', `${hslColor.l}%`);
+      root.style.setProperty('--accent-h', `${hslColor.h}`);
+      root.style.setProperty('--accent-s', `${hslColor.s}%`);
+      root.style.setProperty('--accent-l', `${hslColor.l}%`);
 
-      document.documentElement.style.setProperty('--ring-h', `${hslColor.h}`);
-      document.documentElement.style.setProperty('--ring-s', `${hslColor.s}%`);
-      document.documentElement.style.setProperty('--ring-l', `${hslColor.l}%`);
+      root.style.setProperty('--ring-h', `${hslColor.h}`);
+      root.style.setProperty('--ring-s', `${hslColor.s}%`);
+      root.style.setProperty('--ring-l', `${hslColor.l}%`);
 
-      if (hslColor.l > 60) { 
-        document.documentElement.style.setProperty('--primary-foreground-h', `var(--default-primary-foreground-dark-h)`);
-        document.documentElement.style.setProperty('--primary-foreground-s', `var(--default-primary-foreground-dark-s)`);
-        document.documentElement.style.setProperty('--primary-foreground-l', `var(--default-primary-foreground-dark-l)`);
-        document.documentElement.style.setProperty('--accent-foreground-h', `var(--default-accent-foreground-dark-h)`);
-        document.documentElement.style.setProperty('--accent-foreground-s', `var(--default-accent-foreground-dark-s)`);
-        document.documentElement.style.setProperty('--accent-foreground-l', `var(--default-accent-foreground-dark-l)`);
+      // Determine foreground color based on lightness of accent color
+      const isLightAccent = hslColor.l > 60;
+
+      if (isLightAccent) { 
+        // Use HSL values for dark text
+        root.style.setProperty('--primary-foreground-h', `var(--default-primary-foreground-dark-h)`);
+        root.style.setProperty('--primary-foreground-s', `var(--default-primary-foreground-dark-s)`);
+        root.style.setProperty('--primary-foreground-l', `var(--default-primary-foreground-dark-l)`);
+        root.style.setProperty('--accent-foreground-h', `var(--default-accent-foreground-dark-h)`);
+        root.style.setProperty('--accent-foreground-s', `var(--default-accent-foreground-dark-s)`);
+        root.style.setProperty('--accent-foreground-l', `var(--default-accent-foreground-dark-l)`);
       } else { 
-        document.documentElement.style.setProperty('--primary-foreground-h', `var(--default-primary-foreground-light-h)`);
-        document.documentElement.style.setProperty('--primary-foreground-s', `var(--default-primary-foreground-light-s)`);
-        document.documentElement.style.setProperty('--primary-foreground-l', `var(--default-primary-foreground-light-l)`);
-        document.documentElement.style.setProperty('--accent-foreground-h', `var(--default-accent-foreground-light-h)`);
-        document.documentElement.style.setProperty('--accent-foreground-s', `var(--default-accent-foreground-light-s)`);
-        document.documentElement.style.setProperty('--accent-foreground-l', `var(--default-accent-foreground-light-l)`);
+        // Use HSL values for light text
+        root.style.setProperty('--primary-foreground-h', `var(--default-primary-foreground-light-h)`);
+        root.style.setProperty('--primary-foreground-s', `var(--default-primary-foreground-light-s)`);
+        root.style.setProperty('--primary-foreground-l', `var(--default-primary-foreground-light-l)`);
+        root.style.setProperty('--accent-foreground-h', `var(--default-accent-foreground-light-h)`);
+        root.style.setProperty('--accent-foreground-s', `var(--default-accent-foreground-light-s)`);
+        root.style.setProperty('--accent-foreground-l', `var(--default-accent-foreground-light-l)`);
       }
     }
   }, []);
@@ -164,14 +171,15 @@ export default function ApplicationSettingsManager() {
 
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
       const handleChange = () => {
-        if (selectedThemeMode === 'system') {
-          applyThemeMode('system');
+        // Re-apply only if current mode is 'system'
+        if (localStorage.getItem(THEME_STORAGE_KEY) === 'system' || !localStorage.getItem(THEME_STORAGE_KEY)) {
+           applyThemeMode('system');
         }
       };
       mediaQuery.addEventListener('change', handleChange);
       return () => mediaQuery.removeEventListener('change', handleChange);
     }
-  }, [isClient, applyThemeMode, applyAccentColor, selectedThemeMode]);
+  }, [isClient, applyThemeMode, applyAccentColor]);
 
   const handleThemeModeChange = (newMode: ThemeMode) => {
     setSelectedThemeMode(newMode);
@@ -266,7 +274,7 @@ export default function ApplicationSettingsManager() {
             } else if (isRecognizedKey && importedData[key] !== null && typeof importedData[key] === 'object') { 
                  localStorage.setItem(key, JSON.stringify(importedData[key]));
                  importedCount++;
-            } else if (isRecognizedKey) { // Handles null or other primitive types correctly
+            } else if (isRecognizedKey) { 
                  localStorage.setItem(key, String(importedData[key]));
                  importedCount++;
             }
@@ -284,7 +292,6 @@ export default function ApplicationSettingsManager() {
             setSelectedThemeMode(newTheme); 
             applyThemeMode(newTheme); 
           } else {
-            // If no theme in imported data, reset to system default
             setSelectedThemeMode('system');
             applyThemeMode('system');
             localStorage.setItem(THEME_STORAGE_KEY, 'system');
@@ -294,13 +301,11 @@ export default function ApplicationSettingsManager() {
             setSelectedAccentColor(newAccent); 
             applyAccentColor(newAccent); 
           } else {
-            // If no accent color in imported data, reset to app default
             setSelectedAccentColor(DEFAULT_APP_PRIMARY_COLOR);
             applyAccentColor(DEFAULT_APP_PRIMARY_COLOR);
             localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, DEFAULT_APP_PRIMARY_COLOR);
           }
           
-          // Force a page reload to ensure all components re-read from localStorage
           setTimeout(() => window.location.reload(), 1000);
 
         } else {
@@ -558,7 +563,7 @@ export default function ApplicationSettingsManager() {
                       variant="outline" 
                       disabled={!isClient}
                       className="w-full sm:w-auto"
-                      onClick={() => setIsImportAlertOpen(true)}
+                      onClick={() => setIsImportAlertOpen(true)} // Open confirmation first
                     >
                         <Upload className="mr-2 h-4 w-4" />
                         Importer des Données Locales

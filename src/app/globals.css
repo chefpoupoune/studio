@@ -19,19 +19,19 @@
     --primary-l: 51%;
     --primary: hsl(var(--primary-h), var(--primary-s), var(--primary-l));
 
-    /* Default foreground colors for primary/accent */
-    /* For light primary/accent (e.g. L > 60%) */
+    /* Default foreground HSL components FOR DARK TEXT (used on light primary/accent) */
     --default-primary-foreground-dark-h: 345;
     --default-primary-foreground-dark-s: 35%;
     --default-primary-foreground-dark-l: 15%;
-     /* For dark primary/accent (e.g. L <= 60%) */
+     /* Default foreground HSL components FOR LIGHT TEXT (used on dark primary/accent) */
     --default-primary-foreground-light-h: 35;
     --default-primary-foreground-light-s: 30%;
     --default-primary-foreground-light-l: 90%;
 
-    --primary-foreground-h: var(--default-primary-foreground-dark-h); /* Default to dark text on primary */
-    --primary-foreground-s: var(--default-primary-foreground-dark-s);
-    --primary-foreground-l: var(--default-primary-foreground-dark-l);
+    /* Initial primary foreground (assuming primary color is dark enough for light text) */
+    --primary-foreground-h: var(--default-primary-foreground-light-h); 
+    --primary-foreground-s: var(--default-primary-foreground-light-s);
+    --primary-foreground-l: var(--default-primary-foreground-light-l);
     --primary-foreground: hsl(var(--primary-foreground-h), var(--primary-foreground-s), var(--primary-foreground-l));
 
 
@@ -41,11 +41,12 @@
     --muted: 345 20% 30%;
     --muted-foreground: 35 20% 70%;
 
-    --accent-h: 45;
+    --accent-h: 45; /* Same as primary by default */
     --accent-s: 100%;
     --accent-l: 51%;
     --accent: hsl(var(--accent-h), var(--accent-s), var(--accent-l));
     
+    /* Default accent foreground HSL components (similar to primary) */
     --default-accent-foreground-dark-h: 345;
     --default-accent-foreground-dark-s: 35%;
     --default-accent-foreground-dark-l: 15%;
@@ -53,9 +54,10 @@
     --default-accent-foreground-light-s: 30%;
     --default-accent-foreground-light-l: 90%;
 
-    --accent-foreground-h: var(--default-accent-foreground-dark-h); /* Default to dark text on accent */
-    --accent-foreground-s: var(--default-accent-foreground-dark-s);
-    --accent-foreground-l: var(--default-accent-foreground-dark-l);
+     /* Initial accent foreground (assuming accent color is dark enough for light text) */
+    --accent-foreground-h: var(--default-accent-foreground-light-h);
+    --accent-foreground-s: var(--default-accent-foreground-light-s);
+    --accent-foreground-l: var(--default-accent-foreground-light-l);
     --accent-foreground: hsl(var(--accent-foreground-h), var(--accent-foreground-s), var(--accent-foreground-l));
 
     --destructive: 0 70% 50%;
@@ -64,7 +66,7 @@
     --border: 345 20% 40%;
     --input: 345 20% 40%;
     
-    --ring-h: 45;
+    --ring-h: 45; /* Same as primary by default */
     --ring-s: 100%;
     --ring-l: 51%;
     --ring: hsl(var(--ring-h), var(--ring-s), var(--ring-l));
@@ -145,4 +147,3 @@
 }
 
 /* Keyframes for animations are now in tailwind.config.ts */
-
