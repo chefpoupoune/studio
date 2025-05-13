@@ -1,19 +1,20 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Cog, Palette, Globe, Bell, Database, Download, Upload, BellRing, ListChecks, Package, ShieldCheck, Info, RotateCcw } from 'lucide-react'; // Added RotateCcw for reset
+import { Cog, Palette, Globe, Bell, Database, Download, Upload, BellRing, ListChecks, Package, ShieldCheck, Info, RotateCcw } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { DEFAULT_APP_PRIMARY_COLOR } from '@/config/colors';
+import { PDF_LAYOUT_CONFIGS_KEY } from '@/lib/pdf-settings';
 
 const THEME_STORAGE_KEY = "app_settings_theme_mode";
 const ACCENT_COLOR_STORAGE_KEY = "app_settings_accent_color";
-const DEFAULT_ACCENT_COLOR = "#FFBF00"; // Default gold/amber similar to original primary
 
 type ThemeMode = 'light' | 'dark' | 'system';
 
@@ -28,7 +29,7 @@ function hexToHsl(hex: string): { h: number; s: number; l: number } | null {
 
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
-  let h = 0, s = 0; // h and s can be 0 if max === min
+  let h = 0, s = 0; 
   let l = (max + min) / 2;
 
   if (max !== min) {
@@ -50,23 +51,51 @@ function hexToHsl(hex: string): { h: number; s: number; l: number } | null {
   };
 }
 
+// List of specific keys and prefixes for app data
+const APP_SPECIFIC_KEYS = [
+  'inventory_products',
+  'inventory_stock_movements',
+  'inventory_purchase_orders',
+  'occasional_meal_starter_ingredients',
+  'occasional_meal_main_ingredients',
+  'occasional_meal_dessert_ingredients',
+  'occasional_meal_num_people',
+  'cost_pn_picnic_ingredients',
+  'cost_pn_salad_ingredients',
+  'time_tracking_members',
+  'time_tracking_entries',
+  'task_management_tasks',
+  THEME_STORAGE_KEY,
+  ACCENT_COLOR_STORAGE_KEY,
+  PDF_LAYOUT_CONFIGS_KEY,
+];
+
+const APP_SPECIFIC_PREFIXES = [
+  'cost_analysis_',
+  'menu_planning_',
+  'temperature_sheet_meal_item_temps_',
+  'temperature_sheet_daily_log_data_',
+];
+
 
 export default function ApplicationSettingsManager() {
   const [selectedThemeMode, setSelectedThemeMode] = useState<ThemeMode>('system');
-  const [selectedAccentColor, setSelectedAccentColor] = useState<string>(DEFAULT_ACCENT_COLOR);
+  const [selectedAccentColor, setSelectedAccentColor] = useState<string>(DEFAULT_APP_PRIMARY_COLOR);
   const [isClient, setIsClient] = useState(false);
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
   const applyThemeMode = useCallback((theme: ThemeMode) => {
+    if (typeof window === 'undefined') return;
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else if (theme === 'light') {
       document.documentElement.classList.remove('dark');
-    } else { // system
+    } else { 
       if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
         document.documentElement.classList.add('dark');
       } else {
@@ -76,6 +105,7 @@ export default function ApplicationSettingsManager() {
   }, []);
   
   const applyAccentColor = useCallback((color: string) => {
+    if (typeof window === 'undefined') return;
     const hslColor = hexToHsl(color);
     if (hslColor) {
       document.documentElement.style.setProperty('--primary-h', `${hslColor.h}`);
@@ -90,19 +120,18 @@ export default function ApplicationSettingsManager() {
       document.documentElement.style.setProperty('--ring-s', `${hslColor.s}%`);
       document.documentElement.style.setProperty('--ring-l', `${hslColor.l}%`);
 
-      // Adjust primary-foreground based on lightness for better contrast
-      if (hslColor.l > 60) { // If accent is light
+      if (hslColor.l > 60) { 
         document.documentElement.style.setProperty('--primary-foreground-h', `var(--default-primary-foreground-dark-h)`);
         document.documentElement.style.setProperty('--primary-foreground-s', `var(--default-primary-foreground-dark-s)`);
         document.documentElement.style.setProperty('--primary-foreground-l', `var(--default-primary-foreground-dark-l)`);
         document.documentElement.style.setProperty('--accent-foreground-h', `var(--default-accent-foreground-dark-h)`);
         document.documentElement.style.setProperty('--accent-foreground-s', `var(--default-accent-foreground-dark-s)`);
         document.documentElement.style.setProperty('--accent-foreground-l', `var(--default-accent-foreground-dark-l)`);
-      } else { // If accent is dark or mid
+      } else { 
         document.documentElement.style.setProperty('--primary-foreground-h', `var(--default-primary-foreground-light-h)`);
         document.documentElement.style.setProperty('--primary-foreground-s', `var(--default-primary-foreground-light-s)`);
         document.documentElement.style.setProperty('--primary-foreground-l', `var(--default-primary-foreground-light-l)`);
-         document.documentElement.style.setProperty('--accent-foreground-h', `var(--default-accent-foreground-light-h)`);
+        document.documentElement.style.setProperty('--accent-foreground-h', `var(--default-accent-foreground-light-h)`);
         document.documentElement.style.setProperty('--accent-foreground-s', `var(--default-accent-foreground-light-s)`);
         document.documentElement.style.setProperty('--accent-foreground-l', `var(--default-accent-foreground-light-l)`);
       }
@@ -112,15 +141,13 @@ export default function ApplicationSettingsManager() {
 
   useEffect(() => {
     if (isClient) {
-      // Load and apply theme mode
       const storedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
       const initialTheme = storedTheme && ['light', 'dark', 'system'].includes(storedTheme) ? storedTheme : 'system';
       setSelectedThemeMode(initialTheme);
       applyThemeMode(initialTheme);
 
-      // Load and apply accent color
       const storedAccentColor = localStorage.getItem(ACCENT_COLOR_STORAGE_KEY);
-      const initialAccentColor = storedAccentColor || DEFAULT_ACCENT_COLOR;
+      const initialAccentColor = storedAccentColor || DEFAULT_APP_PRIMARY_COLOR;
       setSelectedAccentColor(initialAccentColor);
       applyAccentColor(initialAccentColor);
     }
@@ -151,12 +178,118 @@ export default function ApplicationSettingsManager() {
   };
 
   const handleResetAccentColor = () => {
-    handleAccentColorChange(DEFAULT_ACCENT_COLOR);
+    handleAccentColorChange(DEFAULT_APP_PRIMARY_COLOR);
     toast({
       title: "Couleur d'Accentuation Réinitialisée",
-      description: `La couleur d'accentuation a été réinitialisée à la valeur par défaut (${DEFAULT_ACCENT_COLOR}).`,
+      description: `La couleur d'accentuation a été réinitialisée à la valeur par défaut (${DEFAULT_APP_PRIMARY_COLOR}).`,
     });
   };
+
+  const handleExportData = () => {
+    if (!isClient) return;
+    const dataToExport: Record<string, string | null> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) {
+        const isAppKey = APP_SPECIFIC_KEYS.includes(key) || 
+                         APP_SPECIFIC_PREFIXES.some(prefix => key.startsWith(prefix));
+        if (isAppKey) {
+          dataToExport[key] = localStorage.getItem(key);
+        }
+      }
+    }
+
+    if (Object.keys(dataToExport).length === 0) {
+      toast({ title: "Aucune donnée à exporter", description: "Aucune donnée spécifique à l'application n'a été trouvée.", variant: "default" });
+      return;
+    }
+
+    const jsonString = JSON.stringify(dataToExport, null, 2);
+    const blob = new Blob([jsonString], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `gestion_excellence_data_backup_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast({ title: "Données Exportées", description: "Toutes les données locales de l'application ont été exportées." });
+  };
+
+  const handleImportButtonClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isClient) return;
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const jsonString = e.target?.result as string;
+        const importedData = JSON.parse(jsonString);
+        
+        if (typeof importedData !== 'object' || importedData === null) {
+          throw new Error("Format de fichier invalide.");
+        }
+
+        // Optional: Clear existing app-specific data before import
+        // APP_SPECIFIC_KEYS.forEach(key => localStorage.removeItem(key));
+        // APP_SPECIFIC_PREFIXES.forEach(prefix => {
+        //   Object.keys(localStorage).filter(k => k.startsWith(prefix)).forEach(k => localStorage.removeItem(k));
+        // });
+
+        let importedCount = 0;
+        for (const key in importedData) {
+          if (Object.prototype.hasOwnProperty.call(importedData, key)) {
+             // Basic validation: ensure the key is one we might expect or manage
+            const isRecognizedKey = APP_SPECIFIC_KEYS.includes(key) || APP_SPECIFIC_PREFIXES.some(prefix => key.startsWith(prefix));
+            if (isRecognizedKey && typeof importedData[key] === 'string') {
+                 localStorage.setItem(key, importedData[key]);
+                 importedCount++;
+            } else if (isRecognizedKey) { // It's a recognized key but not a string (might be null)
+                 localStorage.setItem(key, JSON.stringify(importedData[key])); // Store as string
+                 importedCount++;
+            }
+            // Else, skip keys not matching app patterns or not strings
+          }
+        }
+        
+        if (importedCount > 0) {
+          toast({
+            title: "Données Importées",
+            description: `${importedCount} éléments de données ont été importés. Veuillez recharger la page pour appliquer tous les changements.`,
+          });
+          // Force re-apply theme and accent color from newly imported settings
+          const newTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
+          if (newTheme) {
+            setSelectedThemeMode(newTheme); // update state
+            applyThemeMode(newTheme); // re-apply
+          }
+          const newAccent = localStorage.getItem(ACCENT_COLOR_STORAGE_KEY);
+          if (newAccent) {
+            setSelectedAccentColor(newAccent); // update state
+            applyAccentColor(newAccent); // re-apply
+          }
+        } else {
+            toast({ title: "Importation Partielle ou Vide", description: "Aucune donnée pertinente trouvée ou importée depuis le fichier.", variant: "default" });
+        }
+
+      } catch (error) {
+        console.error("Error importing data:", error);
+        toast({ title: "Erreur d'Importation", description: `Impossible d'importer les données. ${error instanceof Error ? error.message : 'Erreur inconnue.'}`, variant: "destructive" });
+      } finally {
+        if (fileInputRef.current) {
+          fileInputRef.current.value = ""; // Reset file input
+        }
+      }
+    };
+    reader.readAsText(file);
+  };
+
 
   return (
     <Card className="shadow-lg">
@@ -178,7 +311,6 @@ export default function ApplicationSettingsManager() {
             </AlertDescription>
         </Alert>
 
-        {/* Theme Settings */}
         <div className="p-6 border rounded-lg shadow-sm bg-card/50">
             <div className="flex items-center gap-3 mb-4">
                 <Palette className="w-5 h-5 text-accent" />
@@ -221,7 +353,7 @@ export default function ApplicationSettingsManager() {
                             variant="outline" 
                             size="sm" 
                             onClick={handleResetAccentColor} 
-                            disabled={!isClient || selectedAccentColor === DEFAULT_ACCENT_COLOR}
+                            disabled={!isClient || selectedAccentColor === DEFAULT_APP_PRIMARY_COLOR}
                             className="ml-2"
                          >
                             <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
@@ -235,7 +367,6 @@ export default function ApplicationSettingsManager() {
             </div>
         </div>
 
-        {/* Language & Region Settings Placeholder */}
         <div className="p-6 border rounded-lg shadow-sm bg-card/50">
             <div className="flex items-center gap-3 mb-4">
                 <Globe className="w-5 h-5 text-accent" />
@@ -282,7 +413,6 @@ export default function ApplicationSettingsManager() {
             </div>
         </div>
 
-        {/* Notification Preferences Placeholder */}
         <div className="p-6 border rounded-lg shadow-sm bg-card/50">
             <div className="flex items-center gap-3 mb-4">
                 <Bell className="w-5 h-5 text-accent" />
@@ -345,7 +475,6 @@ export default function ApplicationSettingsManager() {
             </div>
         </div>
 
-        {/* Privacy Settings Placeholder */}
         <div className="p-6 border rounded-lg shadow-sm bg-card/50">
             <div className="flex items-center gap-3 mb-4">
                 <ShieldCheck className="w-5 h-5 text-accent" />
@@ -374,8 +503,6 @@ export default function ApplicationSettingsManager() {
             </div>
         </div>
 
-
-        {/* Data Management Placeholder */}
         <div className="p-6 border rounded-lg shadow-sm bg-card/50">
             <div className="flex items-center gap-3 mb-4">
                 <Database className="w-5 h-5 text-accent" />
@@ -385,17 +512,34 @@ export default function ApplicationSettingsManager() {
                 Options pour sauvegarder ou restaurer les données de l'application stockées localement. Utile pour les migrations ou la récupération après incident.
             </p>
             <div className="flex flex-col sm:flex-row gap-3">
-                <Button variant="outline" disabled className="w-full sm:w-auto">
+                <Button 
+                  variant="outline" 
+                  onClick={handleExportData} 
+                  disabled={!isClient}
+                  className="w-full sm:w-auto"
+                >
                     <Download className="mr-2 h-4 w-4" />
                     Exporter Toutes les Données Locales
                 </Button>
-                <Button variant="outline" disabled className="w-full sm:w-auto">
+                <Button 
+                  variant="outline" 
+                  onClick={handleImportButtonClick} 
+                  disabled={!isClient}
+                  className="w-full sm:w-auto"
+                >
                     <Upload className="mr-2 h-4 w-4" />
                     Importer des Données Locales
                 </Button>
+                <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    className="hidden" 
+                    accept=".json" 
+                    onChange={handleFileImport} 
+                />
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-                Fonctionnalité à venir. Cela permettra de télécharger un fichier JSON contenant toutes vos configurations et données saisies (sauf mots de passe), ou de restaurer l'application à partir d'un tel fichier.
+                L'importation écrasera les données existantes avec le même nom. Sauvegardez vos données actuelles avant d'importer si nécessaire.
             </p>
         </div>
       </CardContent>

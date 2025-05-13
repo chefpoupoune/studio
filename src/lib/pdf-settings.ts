@@ -1,12 +1,13 @@
 
 import type { PdfLayoutSettings } from '@/app/dashboard/settings/types';
+import { DEFAULT_APP_PRIMARY_COLOR } from '@/config/colors';
 
 export const PDF_LAYOUT_CONFIGS_KEY = "pdf_layout_configurations";
 export const GENERAL_CONFIG_KEY = "_general_pdf_config_";
 
 const DEFAULT_SETTINGS: Required<PdfLayoutSettings> = {
   logoUrl: '',
-  primaryColor: '#16A085', // Default Teal from globals.css theme
+  primaryColor: DEFAULT_APP_PRIMARY_COLOR,
   headerText: '',
   footerText: 'Généré le {date} - Page {pageNumber}/{totalPages}',
 };
@@ -24,7 +25,6 @@ export function hexToRgb(hex: string): [number, number, number] | null {
 export function getPdfLayoutSettings(pdfTypeKey: string): Required<PdfLayoutSettings> {
   let allConfigs: Record<string, Partial<PdfLayoutSettings>> = {};
   
-  // Ensure localStorage is accessed only on the client side
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
       const storedConfigs = localStorage.getItem(PDF_LAYOUT_CONFIGS_KEY);
@@ -33,14 +33,12 @@ export function getPdfLayoutSettings(pdfTypeKey: string): Required<PdfLayoutSett
       }
     } catch (error) {
       console.error("Error reading PDF layout configs from localStorage:", error);
-      // Use empty allConfigs, defaults will apply
     }
   }
 
   const generalConfig = allConfigs[GENERAL_CONFIG_KEY] || {};
   const specificConfig = allConfigs[pdfTypeKey] || {};
 
-  // Merge: Specific overrides General, which overrides Defaults
   return {
     logoUrl: specificConfig.logoUrl ?? generalConfig.logoUrl ?? DEFAULT_SETTINGS.logoUrl,
     primaryColor: specificConfig.primaryColor ?? generalConfig.primaryColor ?? DEFAULT_SETTINGS.primaryColor,
