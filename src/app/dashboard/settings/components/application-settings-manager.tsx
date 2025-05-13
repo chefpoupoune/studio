@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Cog, Palette, Globe, Bell, Database, Download, Upload, BellRing, ListChecks, Package } from 'lucide-react'; // Replaced PackageWarning with Package
+import { Cog, Palette, Globe, Bell, Database, Download, Upload, BellRing, ListChecks, Package, ShieldCheck } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -40,7 +40,7 @@ export default function ApplicationSettingsManager() {
             <div className="space-y-4">
                 <div>
                     <Label htmlFor="theme-select">Mode d'affichage</Label>
-                    <Select defaultValue="system" disabled>
+                    <Select defaultValue="system" disabled name="theme-select-name" >
                         <SelectTrigger id="theme-select" className="mt-1">
                             <SelectValue placeholder="Choisir un mode" />
                         </SelectTrigger>
@@ -72,7 +72,7 @@ export default function ApplicationSettingsManager() {
             <div className="space-y-4">
                 <div>
                     <Label htmlFor="language-select">Langue de l'application</Label>
-                    <Select defaultValue="fr" disabled>
+                    <Select defaultValue="fr" disabled name="language-select-name">
                         <SelectTrigger id="language-select" className="mt-1">
                             <SelectValue placeholder="Choisir une langue" />
                         </SelectTrigger>
@@ -84,7 +84,7 @@ export default function ApplicationSettingsManager() {
                 </div>
                 <div>
                     <Label htmlFor="date-format-select">Format de Date</Label>
-                    <Select defaultValue="dd/MM/yyyy" disabled>
+                    <Select defaultValue="dd/MM/yyyy" disabled name="date-format-select-name">
                         <SelectTrigger id="date-format-select" className="mt-1">
                             <SelectValue placeholder="Choisir un format de date" />
                         </SelectTrigger>
@@ -96,7 +96,7 @@ export default function ApplicationSettingsManager() {
                 </div>
                  <div>
                     <Label htmlFor="currency-select">Devise</Label>
-                    <Select defaultValue="EUR" disabled>
+                    <Select defaultValue="EUR" disabled name="currency-select-name">
                         <SelectTrigger id="currency-select" className="mt-1">
                             <SelectValue placeholder="Choisir une devise" />
                         </SelectTrigger>
@@ -156,7 +156,7 @@ export default function ApplicationSettingsManager() {
 
                 <div className="mt-2">
                     <Label htmlFor="notification-sound-select">Son de notification</Label>
-                    <Select defaultValue="default" disabled>
+                    <Select defaultValue="default" disabled name="notification-sound-select-name">
                         <SelectTrigger id="notification-sound-select" className="mt-1">
                             <SelectValue placeholder="Choisir un son" />
                         </SelectTrigger>
@@ -172,24 +172,57 @@ export default function ApplicationSettingsManager() {
             </div>
         </div>
 
+        {/* Privacy Settings Placeholder */}
+        <div className="p-6 border rounded-lg shadow-sm bg-card/50">
+            <div className="flex items-center gap-3 mb-4">
+                <ShieldCheck className="w-5 h-5 text-accent" />
+                <h3 className="text-lg font-semibold text-foreground">Confidentialité et Données</h3>
+            </div>
+            <div className="space-y-4">
+                 <div className="flex items-center justify-between">
+                    <Label htmlFor="anonymize-usage-reports" className="flex-grow cursor-not-allowed">Anonymiser les rapports d'utilisation</Label>
+                    <Switch id="anonymize-usage-reports" disabled />
+                </div>
+                <div>
+                    <Label htmlFor="log-retention-period">Durée de conservation des données de log</Label>
+                    <Select defaultValue="90days" disabled name="log-retention-period-name">
+                        <SelectTrigger id="log-retention-period" className="mt-1">
+                            <SelectValue placeholder="Choisir une durée" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="30days">30 jours</SelectItem>
+                            <SelectItem value="90days">90 jours</SelectItem>
+                            <SelectItem value="1year">1 an</SelectItem>
+                            <SelectItem value="forever">Indéfiniment (non recommandé)</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <p className="text-xs text-muted-foreground pt-1">Préférences de confidentialité (Fonctionnalité à venir).</p>
+            </div>
+        </div>
+
+
         {/* Data Management Placeholder */}
         <div className="p-6 border rounded-lg shadow-sm bg-card/50">
             <div className="flex items-center gap-3 mb-4">
                 <Database className="w-5 h-5 text-accent" />
                 <h3 className="text-lg font-semibold text-foreground">Gestion des Données</h3>
             </div>
+             <p className="text-sm text-muted-foreground mb-3">
+                Options pour sauvegarder ou restaurer les données de l'application. Utile pour les migrations ou la récupération après incident.
+            </p>
             <div className="flex flex-col sm:flex-row gap-3">
                 <Button variant="outline" disabled className="w-full sm:w-auto">
                     <Download className="mr-2 h-4 w-4" />
-                    Exporter les données
+                    Exporter Toutes les Données
                 </Button>
                 <Button variant="outline" disabled className="w-full sm:w-auto">
                     <Upload className="mr-2 h-4 w-4" />
-                    Importer des données
+                    Importer des Données
                 </Button>
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-                Options pour sauvegarder ou restaurer les données de l'application (Fonctionnalité à venir).
+                Fonctionnalité à venir. Cela permettra de télécharger un fichier contenant toutes vos configurations et données saisies, ou de restaurer l'application à partir d'un tel fichier.
             </p>
         </div>
       </CardContent>
@@ -198,3 +231,4 @@ export default function ApplicationSettingsManager() {
 }
 
     
+
