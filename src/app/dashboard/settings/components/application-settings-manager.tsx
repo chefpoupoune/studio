@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Cog, Palette, Globe, Bell, Database, Download, Upload, BellRing, ListChecks, Package, ShieldCheck, Info, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Cog, Palette, Bell, Database, Download, Upload, BellRing, ListChecks, Package, ShieldCheck, Info, RotateCcw, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -399,52 +399,6 @@ export default function ApplicationSettingsManager() {
                         La couleur d'accentuation est sauvegardée et appliquée dynamiquement à l'application.
                     </p>
                 </div>
-            </div>
-        </div>
-
-        <div className="p-6 border rounded-lg shadow-sm bg-card/50">
-            <div className="flex items-center gap-3 mb-4">
-                <Globe className="w-5 h-5 text-accent" />
-                <h3 className="text-lg font-semibold text-foreground">Langue et Région</h3>
-            </div>
-            <div className="space-y-4">
-                <div>
-                    <Label htmlFor="language-select">Langue de l'application</Label>
-                    <Select defaultValue="fr" disabled>
-                        <SelectTrigger id="language-select" className="mt-1">
-                            <SelectValue placeholder="Choisir une langue" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="fr">Français (par défaut)</SelectItem>
-                            <SelectItem value="en">English (Fonctionnalité à venir)</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-                <div>
-                    <Label htmlFor="date-format-select">Format de Date</Label>
-                    <Select defaultValue="dd/MM/yyyy" disabled>
-                        <SelectTrigger id="date-format-select" className="mt-1">
-                            <SelectValue placeholder="Choisir un format de date" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="dd/MM/yyyy">JJ/MM/AAAA (par défaut)</SelectItem>
-                            <SelectItem value="MM/dd/yyyy">MM/JJ/AAAA (Fonctionnalité à venir)</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-                 <div>
-                    <Label htmlFor="currency-select">Devise Principale</Label>
-                    <Select defaultValue="EUR" disabled>
-                        <SelectTrigger id="currency-select" className="mt-1">
-                            <SelectValue placeholder="Choisir une devise" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="EUR">Euro (€) (par défaut)</SelectItem>
-                            <SelectItem value="USD">Dollar US ($) (Fonctionnalité à venir)</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-                <p className="text-xs text-muted-foreground pt-1">Les paramètres de langue, format de date et devise sont prévus pour des versions futures.</p>
             </div>
         </div>
 
