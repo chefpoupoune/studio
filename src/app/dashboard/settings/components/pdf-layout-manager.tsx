@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare, ArrowRightLeft, TextCursorInput } from 'lucide-react';
+import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare, ArrowRightLeft, TextCursorInput, Eye } from 'lucide-react';
 import type { PdfLayoutSettings } from '../types';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -24,6 +24,8 @@ import {
   DEFAULT_FONT_SIZE
 } from '@/lib/pdf-settings';
 import { DEFAULT_APP_PRIMARY_COLOR } from '@/config/colors';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 const pdfTypes = [
   { value: 'benefits', label: 'Avantages en Nature' },
@@ -101,7 +103,7 @@ export default function PdfLayoutManager() {
   useEffect(() => {
     const activeConfigKey = selectedPdfType || GENERAL_CONFIG_KEY;
     const specificSettings = pdfConfigs[activeConfigKey] || {};
-    const effectiveSettings = fetchPdfSettings(activeConfigKey); // Use the getter to respect hierarchy
+    const effectiveSettings = fetchPdfSettings(activeConfigKey); 
     
     setLogoUrlInput(specificSettings.logoUrl ?? effectiveSettings.logoUrl);
     setPrimaryColorInput(specificSettings.primaryColor ?? effectiveSettings.primaryColor);
@@ -128,7 +130,6 @@ export default function PdfLayoutManager() {
     
     const newSpecificConfig: Partial<PdfLayoutSettings> = { ...(pdfConfigs[activeConfigKey] || {}) };
 
-    // Iterate over updates and apply them
     (Object.keys(updates) as Array<keyof PdfLayoutSettings>).forEach(key => {
         const valueToSave = updates[key];
         let defaultValue: string | number | undefined;
@@ -244,7 +245,7 @@ export default function PdfLayoutManager() {
                 </Button>
                 {currentEffectiveSettings.logoUrl && (
                   <div className="mt-4 p-2 border rounded-md inline-block bg-muted">
-                    <p className="text-xs text-muted-foreground mb-1">Aperçu du logo actuel :</p>
+                    <p className="text-xs text-muted-foreground mb-1">Aperçu du logo actuel (si URL valide):</p>
                     <Image 
                         src={currentEffectiveSettings.logoUrl} 
                         alt="Aperçu du logo" 
@@ -357,6 +358,83 @@ export default function PdfLayoutManager() {
                 </Button>
               </div>
             </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Eye className="w-5 h-5 text-accent"/>
+            Aperçu de la Mise en Page PDF (Simulation)
+          </CardTitle>
+          <CardDescription>
+            Visualisation approximative basée sur les paramètres actuels pour "{selectedPdfLabel}".
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="bg-white dark:bg-neutral-800 p-4 rounded-md shadow-inner aspect-[210/297] w-full max-w-sm mx-auto overflow-hidden border border-muted">
+            <div
+              className="h-full w-full bg-neutral-50 dark:bg-neutral-700 relative flex flex-col"
+              style={{
+                paddingTop: `${Math.max(2, currentEffectiveSettings.marginTop / 4)}px`, // Scaled margins
+                paddingBottom: `${Math.max(2, currentEffectiveSettings.marginBottom / 4)}px`,
+                paddingLeft: `${Math.max(2, currentEffectiveSettings.marginLeft / 4)}px`,
+                paddingRight: `${Math.max(2, currentEffectiveSettings.marginRight / 4)}px`,
+                fontSize: `${Math.max(6, currentEffectiveSettings.defaultFontSize / 1.8)}px`, // Scaled font
+              }}
+            >
+              {/* Header Area */}
+              <div className="mb-auto flex-shrink-0">
+                {currentEffectiveSettings.logoUrl && (
+                  <div className="mb-1 h-6 w-auto flex items-center">
+                    <Image
+                      src={currentEffectiveSettings.logoUrl}
+                      alt="Aperçu Logo"
+                      width={40} height={20}
+                      className="object-contain max-h-full max-w-full"
+                      data-ai-hint="logo company"
+                      onError={(e) => (e.currentTarget.style.display = 'none')}
+                      unoptimized // Useful for arbitrary URLs if not whitelisted
+                    />
+                  </div>
+                )}
+                {currentEffectiveSettings.headerText && (
+                  <div className="text-[0.8em] text-neutral-600 dark:text-neutral-300 truncate leading-tight">
+                    {currentEffectiveSettings.headerText.split('\n')[0]}
+                  </div>
+                )}
+              </div>
+
+              {/* Dummy Content Area */}
+              <div className="flex-grow my-1 space-y-0.5 overflow-hidden py-1">
+                <div
+                  className="h-2 w-full rounded-sm"
+                  style={{ backgroundColor: currentEffectiveSettings.primaryColor }}
+                />
+                <div className="h-1 w-11/12 bg-neutral-300 dark:bg-neutral-600 rounded-sm" />
+                <div className="h-1 w-full bg-neutral-300 dark:bg-neutral-600 rounded-sm" />
+                <div className="h-1 w-10/12 bg-neutral-300 dark:bg-neutral-600 rounded-sm" />
+                <div className="h-1 w-full bg-neutral-300 dark:bg-neutral-600 rounded-sm" />
+                <div className="h-1 w-9/12 bg-neutral-300 dark:bg-neutral-600 rounded-sm" />
+              </div>
+
+              {/* Footer Area */}
+              <div className="mt-auto flex-shrink-0">
+                {currentEffectiveSettings.footerText && (
+                  <div className="text-[0.8em] text-neutral-500 dark:text-neutral-400 truncate leading-tight">
+                    {currentEffectiveSettings.footerText
+                      .replace('{date}', format(new Date(), "dd/MM/yy HH:mm", { locale: fr }))
+                      .replace('{pageNumber}', '1')
+                      .replace('{totalPages}', 'N')
+                      .split('\n')[0]}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2 text-center">
+            Cet aperçu est une simulation et peut ne pas refléter exactement le PDF final. Les tailles sont réduites.
+          </p>
         </CardContent>
       </Card>
 
