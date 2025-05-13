@@ -5,11 +5,22 @@ import { DEFAULT_APP_PRIMARY_COLOR } from '@/config/colors';
 export const PDF_LAYOUT_CONFIGS_KEY = "pdf_layout_configurations";
 export const GENERAL_CONFIG_KEY = "_general_pdf_config_";
 
+export const DEFAULT_LOGO_URL = '';
+export const DEFAULT_HEADER_TEXT = '';
+export const DEFAULT_FOOTER_TEXT = 'Généré le {date} - Page {pageNumber}/{totalPages}';
+export const DEFAULT_MARGIN = 30; // Approx 10.6mm in points (1pt = 1/72 inch, 1 inch = 25.4mm)
+export const DEFAULT_FONT_SIZE = 10; // Default font size in points
+
 const DEFAULT_SETTINGS: Required<PdfLayoutSettings> = {
-  logoUrl: '',
+  logoUrl: DEFAULT_LOGO_URL,
   primaryColor: DEFAULT_APP_PRIMARY_COLOR,
-  headerText: '',
-  footerText: 'Généré le {date} - Page {pageNumber}/{totalPages}',
+  headerText: DEFAULT_HEADER_TEXT,
+  footerText: DEFAULT_FOOTER_TEXT,
+  marginTop: DEFAULT_MARGIN,
+  marginRight: DEFAULT_MARGIN,
+  marginBottom: DEFAULT_MARGIN,
+  marginLeft: DEFAULT_MARGIN,
+  defaultFontSize: DEFAULT_FONT_SIZE,
 };
 
 // Helper to convert hex to RGB array for jsPDF fillColor
@@ -44,5 +55,11 @@ export function getPdfLayoutSettings(pdfTypeKey: string): Required<PdfLayoutSett
     primaryColor: specificConfig.primaryColor ?? generalConfig.primaryColor ?? DEFAULT_SETTINGS.primaryColor,
     headerText: specificConfig.headerText ?? generalConfig.headerText ?? DEFAULT_SETTINGS.headerText,
     footerText: specificConfig.footerText ?? generalConfig.footerText ?? DEFAULT_SETTINGS.footerText,
+    marginTop: specificConfig.marginTop ?? generalConfig.marginTop ?? DEFAULT_SETTINGS.marginTop,
+    marginRight: specificConfig.marginRight ?? generalConfig.marginRight ?? DEFAULT_SETTINGS.marginRight,
+    marginBottom: specificConfig.marginBottom ?? generalConfig.marginBottom ?? DEFAULT_SETTINGS.marginBottom,
+    marginLeft: specificConfig.marginLeft ?? generalConfig.marginLeft ?? DEFAULT_SETTINGS.marginLeft,
+    defaultFontSize: specificConfig.defaultFontSize ?? generalConfig.defaultFontSize ?? DEFAULT_SETTINGS.defaultFontSize,
   };
 }
+
