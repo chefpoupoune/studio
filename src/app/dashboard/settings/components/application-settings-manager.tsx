@@ -1,7 +1,7 @@
 
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Cog, Palette, Globe, Bell, Database, Download, Upload, BellRing, ListChecks, Package, ShieldCheck } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -9,8 +9,54 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+
+const THEME_STORAGE_KEY = "app_settings_theme_mode";
+
+type ThemeMode = 'light' | 'dark' | 'system';
 
 export default function ApplicationSettingsManager() {
+  const [selectedThemeMode, setSelectedThemeMode] = useState<ThemeMode>('system');
+  const [isClient, setIsClient] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  useEffect(() => {
+    if (isClient) {
+      const storedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
+      if (storedTheme && ['light', 'dark', 'system'].includes(storedTheme)) {
+        setSelectedThemeMode(storedTheme);
+      }
+    }
+  }, [isClient]);
+
+  const handleThemeModeChange = (newMode: ThemeMode) => {
+    setSelectedThemeMode(newMode);
+    if (isClient) {
+      localStorage.setItem(THEME_STORAGE_KEY, newMode);
+      toast({
+        title: "Thème Mis à Jour",
+        description: `Le mode d'affichage est maintenant réglé sur "${newMode}". Un rechargement peut être nécessaire pour voir tous les changements.`,
+      });
+      // Note: Actual theme application (changing CSS variables or html classes) is not implemented here.
+      // This currently only saves the preference.
+      if (newMode === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else if (newMode === 'light') {
+        document.documentElement.classList.remove('dark');
+      } else { // system
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      }
+    }
+  };
+
   return (
     <Card className="shadow-lg">
       <CardHeader>
@@ -25,13 +71,13 @@ export default function ApplicationSettingsManager() {
       <CardContent className="space-y-8">
         <Alert variant="default" className="border-primary/30 bg-primary/5">
             <Cog className="h-5 w-5 text-primary" />
-            <AlertTitle className="text-primary font-semibold">Section en Cours de Développement</AlertTitle>
+            <AlertTitle className="text-primary font-semibold">Développement en Cours</AlertTitle>
             <AlertDescription>
-                Cette section est en cours de construction. Bientôt, vous pourrez personnaliser ici divers aspects de votre application. Les options ci-dessous sont des exemples de ce qui pourrait être disponible.
+                Certaines fonctionnalités de cette section sont en cours de construction ou sont des démonstrations. Le changement de thème est partiellement implémenté (préférence sauvegardée).
             </AlertDescription>
         </Alert>
 
-        {/* Theme Settings Placeholder */}
+        {/* Theme Settings */}
         <div className="p-6 border rounded-lg shadow-sm bg-card/50">
             <div className="flex items-center gap-3 mb-4">
                 <Palette className="w-5 h-5 text-accent" />
@@ -40,7 +86,11 @@ export default function ApplicationSettingsManager() {
             <div className="space-y-4">
                 <div>
                     <Label htmlFor="theme-select">Mode d'affichage</Label>
-                    <Select defaultValue="system" disabled>
+                    <Select 
+                        value={selectedThemeMode} 
+                        onValueChange={(value: ThemeMode) => handleThemeModeChange(value)}
+                        disabled={!isClient}
+                    >
                         <SelectTrigger id="theme-select" className="mt-1">
                             <SelectValue placeholder="Choisir un mode" />
                         </SelectTrigger>
@@ -50,7 +100,9 @@ export default function ApplicationSettingsManager() {
                             <SelectItem value="system">Système</SelectItem>
                         </SelectContent>
                     </Select>
-                     <p className="text-xs text-muted-foreground mt-1">Fonctionnalité à venir.</p>
+                     <p className="text-xs text-muted-foreground mt-1">
+                        Le changement de thème est appliqué dynamiquement et sauvegardé.
+                     </p>
                 </div>
                 <div>
                     <Label htmlFor="accent-color-picker">Couleur d'Accentuation</Label>
@@ -58,7 +110,7 @@ export default function ApplicationSettingsManager() {
                         <input type="color" id="accent-color-picker" defaultValue="#FFD700" className="h-8 w-10 rounded border bg-background p-0.5 cursor-not-allowed" disabled />
                         <span className="text-sm text-muted-foreground">(Ex: Doré)</span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">Fonctionnalité à venir.</p>
+                    <p className="text-xs text-muted-foreground mt-1">Personnalisation de la couleur d'accent (Fonctionnalité à venir).</p>
                 </div>
             </div>
         </div>
