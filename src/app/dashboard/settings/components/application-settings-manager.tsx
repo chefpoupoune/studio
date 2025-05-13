@@ -12,11 +12,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 
 const THEME_STORAGE_KEY = "app_settings_theme_mode";
+const ACCENT_COLOR_STORAGE_KEY = "app_settings_accent_color";
+const DEFAULT_ACCENT_COLOR = "#FFD700"; // Default gold
 
 type ThemeMode = 'light' | 'dark' | 'system';
 
 export default function ApplicationSettingsManager() {
   const [selectedThemeMode, setSelectedThemeMode] = useState<ThemeMode>('system');
+  const [selectedAccentColor, setSelectedAccentColor] = useState<string>(DEFAULT_ACCENT_COLOR);
   const [isClient, setIsClient] = useState(false);
   const { toast } = useToast();
 
@@ -29,6 +32,23 @@ export default function ApplicationSettingsManager() {
       const storedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
       if (storedTheme && ['light', 'dark', 'system'].includes(storedTheme)) {
         setSelectedThemeMode(storedTheme);
+        // Apply theme on initial load
+        if (storedTheme === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else if (storedTheme === 'light') {
+          document.documentElement.classList.remove('dark');
+        } else { // system
+          if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        }
+      }
+
+      const storedAccentColor = localStorage.getItem(ACCENT_COLOR_STORAGE_KEY);
+      if (storedAccentColor) {
+        setSelectedAccentColor(storedAccentColor);
       }
     }
   }, [isClient]);
@@ -39,10 +59,8 @@ export default function ApplicationSettingsManager() {
       localStorage.setItem(THEME_STORAGE_KEY, newMode);
       toast({
         title: "Thème Mis à Jour",
-        description: `Le mode d'affichage est maintenant réglé sur "${newMode}". Un rechargement peut être nécessaire pour voir tous les changements.`,
+        description: `Le mode d'affichage est maintenant réglé sur "${newMode}".`,
       });
-      // Note: Actual theme application (changing CSS variables or html classes) is not implemented here.
-      // This currently only saves the preference.
       if (newMode === 'dark') {
         document.documentElement.classList.add('dark');
       } else if (newMode === 'light') {
@@ -54,6 +72,18 @@ export default function ApplicationSettingsManager() {
           document.documentElement.classList.remove('dark');
         }
       }
+    }
+  };
+
+  const handleAccentColorChange = (newColor: string) => {
+    setSelectedAccentColor(newColor);
+    if (isClient) {
+      localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, newColor);
+      toast({
+        title: "Couleur d'Accentuation Mise à Jour",
+        description: `La couleur d'accentuation est maintenant ${newColor}. L'application visuelle de cette couleur est une fonctionnalité à venir.`,
+      });
+      // Note: Actual application of accent color to CSS variables is not implemented yet.
     }
   };
 
@@ -73,7 +103,7 @@ export default function ApplicationSettingsManager() {
             <Cog className="h-5 w-5 text-primary" />
             <AlertTitle className="text-primary font-semibold">Développement en Cours</AlertTitle>
             <AlertDescription>
-                Certaines fonctionnalités de cette section sont en cours de construction ou sont des démonstrations. Le changement de thème est partiellement implémenté (préférence sauvegardée).
+                Certaines fonctionnalités de cette section sont en cours de construction ou sont des démonstrations.
             </AlertDescription>
         </Alert>
 
@@ -107,10 +137,18 @@ export default function ApplicationSettingsManager() {
                 <div>
                     <Label htmlFor="accent-color-picker">Couleur d'Accentuation</Label>
                     <div className="flex items-center gap-2 mt-1">
-                        <input type="color" id="accent-color-picker" defaultValue="#FFD700" className="h-8 w-10 rounded border bg-background p-0.5 cursor-not-allowed" disabled />
-                        <span className="text-sm text-muted-foreground">(Ex: Doré)</span>
+                        <input
+                            type="color"
+                            id="accent-color-picker"
+                            value={selectedAccentColor}
+                            onChange={(e) => handleAccentColorChange(e.target.value)}
+                            className="h-8 w-10 rounded border-input bg-background p-0.5 cursor-pointer"
+                        />
+                        <span className="text-sm text-muted-foreground font-mono">{selectedAccentColor}</span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">Personnalisation de la couleur d'accent (Fonctionnalité à venir).</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                        La couleur d'accent est sauvegardée. L'application visuelle est une fonctionnalité à venir.
+                    </p>
                 </div>
             </div>
         </div>
@@ -282,5 +320,4 @@ export default function ApplicationSettingsManager() {
     </Card>
   );
 }
-
     
