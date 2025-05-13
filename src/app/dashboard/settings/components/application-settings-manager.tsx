@@ -13,9 +13,43 @@ import { useToast } from '@/hooks/use-toast';
 
 const THEME_STORAGE_KEY = "app_settings_theme_mode";
 const ACCENT_COLOR_STORAGE_KEY = "app_settings_accent_color";
-const DEFAULT_ACCENT_COLOR = "#FFD700"; // Default gold
+const DEFAULT_ACCENT_COLOR = "#FFBF00"; // Default gold/amber similar to original primary
 
 type ThemeMode = 'light' | 'dark' | 'system';
+
+// Helper function to convert HEX to HSL
+function hexToHsl(hex: string): { h: number; s: number; l: number } | null {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (!result) return null;
+
+  let r = parseInt(result[1], 16) / 255;
+  let g = parseInt(result[2], 16) / 255;
+  let b = parseInt(result[3], 16) / 255;
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0, s = 0; // h and s can be 0 if max === min
+  let l = (max + min) / 2;
+
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+      default: h = 0; 
+    }
+    h /= 6;
+  }
+
+  return {
+    h: Math.round(h * 360),
+    s: Math.round(s * 100),
+    l: Math.round(l * 100),
+  };
+}
+
 
 export default function ApplicationSettingsManager() {
   const [selectedThemeMode, setSelectedThemeMode] = useState<ThemeMode>('system');
@@ -27,7 +61,7 @@ export default function ApplicationSettingsManager() {
     setIsClient(true);
   }, []);
 
-  const applyTheme = useCallback((theme: ThemeMode) => {
+  const applyThemeMode = useCallback((theme: ThemeMode) => {
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else if (theme === 'light') {
@@ -40,29 +74,64 @@ export default function ApplicationSettingsManager() {
       }
     }
   }, []);
+  
+  const applyAccentColor = useCallback((color: string) => {
+    const hslColor = hexToHsl(color);
+    if (hslColor) {
+      document.documentElement.style.setProperty('--primary-h', `${hslColor.h}`);
+      document.documentElement.style.setProperty('--primary-s', `${hslColor.s}%`);
+      document.documentElement.style.setProperty('--primary-l', `${hslColor.l}%`);
+      
+      document.documentElement.style.setProperty('--accent-h', `${hslColor.h}`);
+      document.documentElement.style.setProperty('--accent-s', `${hslColor.s}%`);
+      document.documentElement.style.setProperty('--accent-l', `${hslColor.l}%`);
+
+      document.documentElement.style.setProperty('--ring-h', `${hslColor.h}`);
+      document.documentElement.style.setProperty('--ring-s', `${hslColor.s}%`);
+      document.documentElement.style.setProperty('--ring-l', `${hslColor.l}%`);
+
+      // Adjust primary-foreground based on lightness for better contrast
+      // This is a simplified example. A more robust solution would involve WCAG contrast checking.
+      if (hslColor.l > 60) { // If accent is light
+        document.documentElement.style.setProperty('--primary-foreground-h', `var(--default-primary-foreground-dark-h)`);
+        document.documentElement.style.setProperty('--primary-foreground-s', `var(--default-primary-foreground-dark-s)`);
+        document.documentElement.style.setProperty('--primary-foreground-l', `var(--default-primary-foreground-dark-l)`);
+        document.documentElement.style.setProperty('--accent-foreground-h', `var(--default-accent-foreground-dark-h)`);
+        document.documentElement.style.setProperty('--accent-foreground-s', `var(--default-accent-foreground-dark-s)`);
+        document.documentElement.style.setProperty('--accent-foreground-l', `var(--default-accent-foreground-dark-l)`);
+      } else { // If accent is dark or mid
+        document.documentElement.style.setProperty('--primary-foreground-h', `var(--default-primary-foreground-light-h)`);
+        document.documentElement.style.setProperty('--primary-foreground-s', `var(--default-primary-foreground-light-s)`);
+        document.documentElement.style.setProperty('--primary-foreground-l', `var(--default-primary-foreground-light-l)`);
+         document.documentElement.style.setProperty('--accent-foreground-h', `var(--default-accent-foreground-light-h)`);
+        document.documentElement.style.setProperty('--accent-foreground-s', `var(--default-accent-foreground-light-s)`);
+        document.documentElement.style.setProperty('--accent-foreground-l', `var(--default-accent-foreground-light-l)`);
+      }
+    }
+  }, []);
+
 
   useEffect(() => {
     if (isClient) {
+      // Load and apply theme mode
       const storedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
-      if (storedTheme && ['light', 'dark', 'system'].includes(storedTheme)) {
-        setSelectedThemeMode(storedTheme);
-        applyTheme(storedTheme);
-      } else {
-        applyTheme('system'); // Apply system theme by default if nothing stored
-      }
+      const initialTheme = storedTheme && ['light', 'dark', 'system'].includes(storedTheme) ? storedTheme : 'system';
+      setSelectedThemeMode(initialTheme);
+      applyThemeMode(initialTheme);
 
+      // Load and apply accent color
       const storedAccentColor = localStorage.getItem(ACCENT_COLOR_STORAGE_KEY);
-      if (storedAccentColor) {
-        setSelectedAccentColor(storedAccentColor);
-      }
+      const initialAccentColor = storedAccentColor || DEFAULT_ACCENT_COLOR;
+      setSelectedAccentColor(initialAccentColor);
+      applyAccentColor(initialAccentColor);
     }
-  }, [isClient, applyTheme]);
+  }, [isClient, applyThemeMode, applyAccentColor]);
 
   const handleThemeModeChange = (newMode: ThemeMode) => {
     setSelectedThemeMode(newMode);
     if (isClient) {
       localStorage.setItem(THEME_STORAGE_KEY, newMode);
-      applyTheme(newMode);
+      applyThemeMode(newMode);
       toast({
         title: "Thème Mis à Jour",
         description: `Le mode d'affichage est maintenant réglé sur "${newMode === 'light' ? 'Clair' : newMode === 'dark' ? 'Sombre' : 'Système'}".`,
@@ -74,12 +143,10 @@ export default function ApplicationSettingsManager() {
     setSelectedAccentColor(newColor);
     if (isClient) {
       localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, newColor);
-      // Note: Actual application of accent color to CSS variables is not implemented in this step.
-      // This would typically involve updating CSS custom properties.
-      document.documentElement.style.setProperty('--accent-manual', newColor); // Example, not tied to globals.css yet
+      applyAccentColor(newColor);
       toast({
         title: "Couleur d'Accentuation Mise à Jour",
-        description: `La couleur d'accentuation est maintenant ${newColor}. L'application visuelle complète de cette couleur est une fonctionnalité en cours de développement.`,
+        description: `La couleur d'accentuation est maintenant ${newColor}.`,
       });
     }
   };
@@ -132,7 +199,7 @@ export default function ApplicationSettingsManager() {
                      </p>
                 </div>
                 <div>
-                    <Label htmlFor="accent-color-picker">Couleur d'Accentuation (Globale)</Label>
+                    <Label htmlFor="accent-color-picker">Couleur d'Accentuation (Primaire, Accent, Anneaux)</Label>
                     <div className="flex items-center gap-2 mt-1">
                         <input
                             type="color"
@@ -145,7 +212,7 @@ export default function ApplicationSettingsManager() {
                         <span className="text-sm text-muted-foreground font-mono">{selectedAccentColor}</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                        La couleur d'accentuation est sauvegardée. L'application visuelle complète (mise à jour du fichier de thème global) est une fonctionnalité avancée en cours de développement.
+                        La couleur d'accentuation est sauvegardée et appliquée dynamiquement à l'application.
                     </p>
                 </div>
             </div>

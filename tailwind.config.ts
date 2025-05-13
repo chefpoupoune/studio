@@ -27,8 +27,8 @@ export default {
   				foreground: 'hsl(var(--popover-foreground))'
   			},
   			primary: {
-  				DEFAULT: 'hsl(var(--primary))',
-  				foreground: 'hsl(var(--primary-foreground))'
+  				DEFAULT: 'hsl(var(--primary-h) var(--primary-s) var(--primary-l))',
+  				foreground: 'hsl(var(--primary-foreground-h) var(--primary-foreground-s) var(--primary-foreground-l))'
   			},
   			secondary: {
   				DEFAULT: 'hsl(var(--secondary))',
@@ -39,8 +39,8 @@ export default {
   				foreground: 'hsl(var(--muted-foreground))'
   			},
   			accent: {
-  				DEFAULT: 'hsl(var(--accent))',
-  				foreground: 'hsl(var(--accent-foreground))'
+  				DEFAULT: 'hsl(var(--accent-h) var(--accent-s) var(--accent-l))',
+  				foreground: 'hsl(var(--accent-foreground-h) var(--accent-foreground-s) var(--accent-foreground-l))'
   			},
   			destructive: {
   				DEFAULT: 'hsl(var(--destructive))',
@@ -48,7 +48,7 @@ export default {
   			},
   			border: 'hsl(var(--border))',
   			input: 'hsl(var(--input))',
-  			ring: 'hsl(var(--ring))',
+  			ring: 'hsl(var(--ring-h) var(--ring-s) var(--ring-l))',
   			chart: {
   				'1': 'hsl(var(--chart-1))',
   				'2': 'hsl(var(--chart-2))',
@@ -59,12 +59,12 @@ export default {
   			sidebar: {
   				DEFAULT: 'hsl(var(--sidebar-background))',
   				foreground: 'hsl(var(--sidebar-foreground))',
-  				primary: 'hsl(var(--sidebar-primary))',
-  				'primary-foreground': 'hsl(var(--sidebar-primary-foreground))',
+  				primary: 'hsl(var(--sidebar-primary))', // This will use the dynamic primary from :root
+  				'primary-foreground': 'hsl(var(--sidebar-primary-foreground))', // This will use dynamic primary-foreground from :root
   				accent: 'hsl(var(--sidebar-accent))',
   				'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
   				border: 'hsl(var(--sidebar-border))',
-  				ring: 'hsl(var(--sidebar-ring))'
+  				ring: 'hsl(var(--sidebar-ring))' // This will use dynamic ring from :root
   			}
   		},
   		borderRadius: {
