@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Cog, Palette, Globe, Bell, Database, Download, Upload, BellRing, ListChecks, Package, ShieldCheck, Info } from 'lucide-react';
+import { Cog, Palette, Globe, Bell, Database, Download, Upload, BellRing, ListChecks, Package, ShieldCheck, Info, RotateCcw } from 'lucide-react'; // Added RotateCcw for reset
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -91,7 +91,6 @@ export default function ApplicationSettingsManager() {
       document.documentElement.style.setProperty('--ring-l', `${hslColor.l}%`);
 
       // Adjust primary-foreground based on lightness for better contrast
-      // This is a simplified example. A more robust solution would involve WCAG contrast checking.
       if (hslColor.l > 60) { // If accent is light
         document.documentElement.style.setProperty('--primary-foreground-h', `var(--default-primary-foreground-dark-h)`);
         document.documentElement.style.setProperty('--primary-foreground-s', `var(--default-primary-foreground-dark-s)`);
@@ -149,6 +148,14 @@ export default function ApplicationSettingsManager() {
         description: `La couleur d'accentuation est maintenant ${newColor}.`,
       });
     }
+  };
+
+  const handleResetAccentColor = () => {
+    handleAccentColorChange(DEFAULT_ACCENT_COLOR);
+    toast({
+      title: "Couleur d'Accentuation Réinitialisée",
+      description: `La couleur d'accentuation a été réinitialisée à la valeur par défaut (${DEFAULT_ACCENT_COLOR}).`,
+    });
   };
 
   return (
@@ -210,6 +217,16 @@ export default function ApplicationSettingsManager() {
                             disabled={!isClient}
                         />
                         <span className="text-sm text-muted-foreground font-mono">{selectedAccentColor}</span>
+                         <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={handleResetAccentColor} 
+                            disabled={!isClient || selectedAccentColor === DEFAULT_ACCENT_COLOR}
+                            className="ml-2"
+                         >
+                            <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                            Réinitialiser
+                        </Button>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
                         La couleur d'accentuation est sauvegardée et appliquée dynamiquement à l'application.
@@ -386,4 +403,3 @@ export default function ApplicationSettingsManager() {
   );
 }
     
-
