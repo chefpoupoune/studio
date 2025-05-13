@@ -288,6 +288,11 @@ export default function ApplicationSettingsManager() {
         title: "Préférences Mises à Jour",
         description: `Son de notification réglé sur "${value}".`,
       });
+      // Potentially play the sound here if enabled
+      if (soundNotificationsEnabled && value !== 'none') {
+        // This is a placeholder for actual sound playing logic
+        console.log(`Playing sound: ${value}`);
+      }
     }
   };
 
@@ -610,4 +615,3 @@ export default function ApplicationSettingsManager() {
   );
 }
     
-
