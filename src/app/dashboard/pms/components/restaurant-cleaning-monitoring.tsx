@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+// Removed Select imports for zone selection
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -16,11 +16,13 @@ import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
-import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord as SimplifiedMonthlyRestaurantCleaningRecord, PmsZoneWithTasksDefinition, PmsZone } from '../types';
+import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord as SimplifiedMonthlyRestaurantCleaningRecord, PmsZoneWithTasksDefinition as PmsRestaurantZoneWithTasksDefinition } from '../types'; // Aliased PmsZoneWithTasksDefinition
 import { PMS_RESTAURANT_CLEANING_KEY, PMS_CONFIG_STORAGE_KEY } from '@/app/dashboard/settings/types';
 import { NO_STATUS_SELECT_VALUE } from '../types';
 import { getMonthDays, type DayData } from '../utils';
 import { cn } from '@/lib/utils';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -36,7 +38,7 @@ const monthsArray = Array.from({ length: 12 }, (_, i) => ({
 export default function RestaurantCleaningMonitoring() {
   const [selectedYear, setSelectedYear] = useState<string>(getYear(new Date()).toString());
   const [selectedMonth, setSelectedMonth] = useState<string>(getMonth(new Date()).toString());
-  const [configuredZones, setConfiguredZones] = useState<PmsZone[]>([]);
+  const [configuredZones, setConfiguredZones] = useState<PmsRestaurantZoneWithTasksDefinition[]>([]);
   const [selectedZoneId, setSelectedZoneId] = useState<string | undefined>(undefined);
   const [monthData, setMonthData] = useState<DayData[]>([]);
   const [cleaningRecords, setCleaningRecords] = useState<SimplifiedMonthlyRestaurantCleaningRecord>({});
@@ -47,7 +49,6 @@ export default function RestaurantCleaningMonitoring() {
 
   useEffect(() => {
     setIsLoading(true);
-    // Load configured zones
     try {
       const pmsSettingsRaw = localStorage.getItem(PMS_CONFIG_STORAGE_KEY);
       if (pmsSettingsRaw) {
@@ -77,8 +78,19 @@ export default function RestaurantCleaningMonitoring() {
       toast({ title: "Erreur de chargement", description: "Données de nettoyage restaurant corrompues.", variant: "destructive" });
       setCleaningRecords({});
     }
+     // Reset selected zone if it's no longer valid for the new config
+    if (selectedZoneId && !configuredZones.find(z => z.id === selectedZoneId)) {
+        setSelectedZoneId(undefined);
+    }
     setIsLoading(false);
-  }, [selectedYear, selectedMonth, getLocalStorageKeyForRecords, toast]);
+  }, [selectedYear, selectedMonth, getLocalStorageKeyForRecords, toast]); // configuredZones removed
+
+  useEffect(() => {
+    if (selectedZoneId && !configuredZones.find(z => z.id === selectedZoneId)) {
+        setSelectedZoneId(configuredZones.length > 0 ? configuredZones[0].id : undefined);
+    }
+  }, [configuredZones, selectedZoneId]);
+
 
   useEffect(() => {
     if (!isLoading) {
@@ -113,7 +125,7 @@ export default function RestaurantCleaningMonitoring() {
   const generatePdf = () => {
     setIsLoading(true);
     try {
-      const pdfSettings = getPdfLayoutSettings('pms_restaurant_cleaning_monthly'); // Assuming a new key for specific settings
+      const pdfSettings = getPdfLayoutSettings('pms_restaurant_cleaning_monthly'); 
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
       const monthLabel = monthsArray.find(m => m.value === selectedMonth)?.label || '';
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
@@ -145,13 +157,13 @@ export default function RestaurantCleaningMonitoring() {
       const body: any[][] = [];
       monthData.forEach(day => {
         configuredZones.forEach(zone => {
-          if (zone.criteria.length === 0 && !day.isWeekend) { // Show zone even if no tasks, unless weekend
+          if (zone.tasks.length === 0 && !day.isWeekend) { // Show zone even if no tasks, unless weekend
             body.push([
               day.dayOfMonth.toString(), day.dayName, zone.name, 
               {content: "Aucune tâche définie", colSpan: 4, styles: {fontStyle: 'italic', textColor: [150,150,150]}}
             ]);
           }
-          zone.criteria.forEach(task => {
+          zone.tasks.forEach(task => {
             const record = getRecord(day.date, zone.id, task.id);
             let statusDisplay = '';
             switch (record.status) {
@@ -220,11 +232,11 @@ export default function RestaurantCleaningMonitoring() {
           Suivi Mensuel du Nettoyage Restaurant
         </CardTitle>
         <CardDescription>
-          Sélectionnez une année, un mois, puis une zone pour enregistrer et visualiser le suivi du nettoyage du restaurant. Les zones et tâches sont configurables dans les Paramètres PMS.
+          Sélectionnez une année, un mois, puis une zone pour enregistrer et visualiser le suivi. Les zones sont configurables dans les Paramètres PMS.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-end mb-4">
           <div>
             <Label htmlFor="year-select-resto-cleaning">Année</Label>
             <Select value={selectedYear} onValueChange={setSelectedYear}>
@@ -239,20 +251,7 @@ export default function RestaurantCleaningMonitoring() {
               <SelectContent>{monthsArray.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
             </Select>
           </div>
-          <div>
-            <Label htmlFor="zone-select-resto-cleaning">Zone de Nettoyage Restaurant</Label>
-            <Select value={selectedZoneId} onValueChange={setSelectedZoneId} disabled={configuredZones.length === 0}>
-              <SelectTrigger id="zone-select-resto-cleaning">
-                <SelectValue placeholder={configuredZones.length === 0 ? "Aucune zone configurée" : "Sélectionner une zone"} />
-              </SelectTrigger>
-              <SelectContent>
-                {configuredZones.map(zone => (
-                  <SelectItem key={zone.id} value={zone.id}>{zone.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2">
+          <div className="flex flex-col sm:flex-row gap-2 md:col-span-1 md:justify-self-end">
              <Button onClick={generatePdf} disabled={isLoading || monthData.length === 0 || configuredZones.length === 0} className="w-full sm:w-auto">
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
                 Générer PDF Global
@@ -276,107 +275,128 @@ export default function RestaurantCleaningMonitoring() {
                 Veuillez définir des zones et leurs tâches dans "Paramètres" &gt; "Paramètres PMS" pour commencer.
             </p>
           </div>
-        ) : !selectedZoneId ? (
-           <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
-            <ListFilter className="mx-auto h-12 w-12 text-muted-foreground" />
-            <p className="mt-2 text-sm text-muted-foreground">
-                Veuillez sélectionner une zone de nettoyage restaurant pour afficher le tableau de suivi.
-            </p>
-          </div>
-        ) : selectedZoneData && monthData.length > 0 ? (
-          <div className="overflow-x-auto border rounded-md max-h-[70vh]">
-            <Table className="min-w-full table-fixed">
-              <TableHeader className="sticky top-0 z-10 bg-card shadow-sm">
-                <TableRow>
-                  <TableHead className="w-[60px] min-w-[60px] text-center px-1">Date</TableHead>
-                  <TableHead className="w-[100px] min-w-[100px] px-1">Jour</TableHead>
-                  {selectedZoneData.criteria.map(task => (
-                    <TableHead key={task.id} className="w-[250px] min-w-[250px] text-center px-1 border-l">
-                      {task.name}
-                      <div className="grid grid-cols-3 gap-px mt-1 text-xs font-normal text-muted-foreground">
-                        <span>Statut</span>
-                        <span>Opérateur</span>
-                        <span>Notes</span>
-                      </div>
-                    </TableHead>
-                  ))}
-                   {selectedZoneData.criteria.length === 0 && (
-                     <TableHead className="w-full text-center px-1 border-l">Aucune tâche définie pour cette zone</TableHead>
-                   )}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {monthData.map((day) => (
-                  <TableRow key={day.date} className={cn(day.isWeekend && "bg-muted/30")}>
-                    <TableCell className="text-center font-medium px-1 align-top py-2">{day.dayOfMonth}</TableCell>
-                    <TableCell className="px-1 align-top py-2">{day.dayName}</TableCell>
-                    {selectedZoneData.criteria.length > 0 ? selectedZoneData.criteria.map(task => {
-                      const record = getRecord(day.date, selectedZoneData.id, task.id);
-                      return (
-                        <TableCell key={task.id} className="p-1 align-top border-l">
-                          <div className="grid grid-cols-3 gap-1">
-                            <Select
-                              value={record.status === '' ? NO_STATUS_SELECT_VALUE : record.status}
-                              onValueChange={(valueFromSelect) => {
-                                const valueToStore = valueFromSelect === NO_STATUS_SELECT_VALUE ? '' : valueFromSelect as 'fait' | 'non_fait' | 'na';
-                                handleRecordChange(day.date, selectedZoneData.id, task.id, 'status', valueToStore);
-                              }}
-                              disabled={day.isWeekend}
-                            >
-                              <SelectTrigger className="h-7 text-xs text-foreground/80">
-                                <SelectValue placeholder="Statut" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value={NO_STATUS_SELECT_VALUE}>-</SelectItem>
-                                <SelectItem value="fait">Fait</SelectItem>
-                                <SelectItem value="non_fait">Non Fait</SelectItem>
-                                <SelectItem value="na">N/A</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <Input
-                              type="text"
-                              placeholder="Op."
-                              value={record.operator}
-                              onChange={(e) => handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', e.target.value)}
-                              className="h-7 text-xs"
-                              disabled={day.isWeekend}
-                              maxLength={15}
-                            />
-                            <Textarea
-                              placeholder="Notes"
-                              value={record.notes}
-                              onChange={(e) => handleRecordChange(day.date, selectedZoneData.id, task.id, 'notes', e.target.value)}
-                              className="h-16 text-xs resize-none py-1"
-                              disabled={day.isWeekend}
-                              maxLength={50}
-                            />
-                          </div>
-                        </TableCell>
-                      );
-                    }) : (
-                       <TableCell className="p-1 align-top border-l text-center text-xs text-muted-foreground italic" colSpan={1}>
-                         Aucune tâche à afficher pour cette zone.
-                       </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
         ) : (
-          <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
-            <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />
-            <p className="mt-2 text-sm text-muted-foreground">
-              {selectedZoneId ? "Aucune donnée à afficher pour la période ou zone sélectionnée." : "Veuillez d'abord sélectionner une zone."}
-            </p>
-             {selectedZoneData && selectedZoneData.criteria.length === 0 && (
-               <p className="text-xs text-muted-foreground/70 mt-1">
-                 La zone "{selectedZoneData.name}" n'a pas de tâches définies. Ajoutez-en via les Paramètres PMS.
-               </p>
-             )}
-          </div>
+           <>
+            <div className="mb-4">
+              <Label className="text-sm font-medium mb-2 block">Sélectionner une Zone de Nettoyage Restaurant :</Label>
+              <div className="flex flex-wrap gap-2">
+                {configuredZones.map(zone => (
+                  <Button
+                    key={zone.id}
+                    variant={selectedZoneId === zone.id ? "default" : "outline"}
+                    onClick={() => setSelectedZoneId(zone.id)}
+                    size="sm"
+                  >
+                    {zone.name}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {!selectedZoneId ? (
+              <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
+                  <ListFilter className="mx-auto h-12 w-12 text-muted-foreground" />
+                  <p className="mt-2 text-sm text-muted-foreground">
+                      Veuillez sélectionner une zone de nettoyage ci-dessus pour afficher le tableau de suivi.
+                  </p>
+              </div>
+            ) : selectedZoneData && monthData.length > 0 ? (
+              <div className="overflow-x-auto border rounded-md max-h-[70vh]">
+                <Table className="min-w-full table-fixed">
+                  <TableHeader className="sticky top-0 z-10 bg-card shadow-sm">
+                    <TableRow>
+                      <TableHead className="w-[60px] min-w-[60px] text-center px-1">Date</TableHead>
+                      <TableHead className="w-[100px] min-w-[100px] px-1">Jour</TableHead>
+                      {selectedZoneData.tasks.map(task => (
+                        <TableHead key={task.id} className="w-[250px] min-w-[250px] text-center px-1 border-l">
+                          {task.name}
+                          <div className="grid grid-cols-3 gap-px mt-1 text-xs font-normal text-muted-foreground">
+                            <span>Statut</span>
+                            <span>Opérateur</span>
+                            <span>Notes</span>
+                          </div>
+                        </TableHead>
+                      ))}
+                       {selectedZoneData.tasks.length === 0 && (
+                         <TableHead className="w-full text-center px-1 border-l">Aucune tâche définie pour cette zone</TableHead>
+                       )}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {monthData.map((day) => (
+                      <TableRow key={day.date} className={cn(day.isWeekend && "bg-muted/30")}>
+                        <TableCell className="text-center font-medium px-1 align-top py-2">{day.dayOfMonth}</TableCell>
+                        <TableCell className="px-1 align-top py-2">{day.dayName}</TableCell>
+                        {selectedZoneData.tasks.length > 0 ? selectedZoneData.tasks.map(task => {
+                          const record = getRecord(day.date, selectedZoneData.id, task.id);
+                          return (
+                            <TableCell key={task.id} className="p-1 align-top border-l">
+                              <div className="grid grid-cols-3 gap-1">
+                                <Select
+                                  value={record.status === '' ? NO_STATUS_SELECT_VALUE : record.status}
+                                  onValueChange={(valueFromSelect) => {
+                                    const valueToStore = valueFromSelect === NO_STATUS_SELECT_VALUE ? '' : valueFromSelect as 'fait' | 'non_fait' | 'na';
+                                    handleRecordChange(day.date, selectedZoneData.id, task.id, 'status', valueToStore);
+                                  }}
+                                  disabled={day.isWeekend}
+                                >
+                                  <SelectTrigger className="h-7 text-xs text-foreground/80">
+                                    <SelectValue placeholder="Statut" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value={NO_STATUS_SELECT_VALUE}>-</SelectItem>
+                                    <SelectItem value="fait">Fait</SelectItem>
+                                    <SelectItem value="non_fait">Non Fait</SelectItem>
+                                    <SelectItem value="na">N/A</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <Input
+                                  type="text"
+                                  placeholder="Op."
+                                  value={record.operator}
+                                  onChange={(e) => handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', e.target.value)}
+                                  className="h-7 text-xs"
+                                  disabled={day.isWeekend}
+                                  maxLength={15}
+                                />
+                                <Textarea
+                                  placeholder="Notes"
+                                  value={record.notes}
+                                  onChange={(e) => handleRecordChange(day.date, selectedZoneData.id, task.id, 'notes', e.target.value)}
+                                  className="h-16 text-xs resize-none py-1"
+                                  disabled={day.isWeekend}
+                                  maxLength={50}
+                                />
+                              </div>
+                            </TableCell>
+                          );
+                        }) : (
+                           <TableCell className="p-1 align-top border-l text-center text-xs text-muted-foreground italic" colSpan={1}>
+                             Aucune tâche à afficher pour cette zone.
+                           </TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
+                <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {selectedZoneId ? "Aucune donnée à afficher pour la période ou zone sélectionnée." : "Veuillez d'abord sélectionner une zone."}
+                </p>
+                 {selectedZoneData && selectedZoneData.tasks.length === 0 && (
+                   <p className="text-xs text-muted-foreground/70 mt-1">
+                     La zone "{selectedZoneData.name}" n'a pas de tâches définies. Ajoutez-en via les Paramètres PMS.
+                   </p>
+                 )}
+              </div>
+            )}
+          </>
         )}
       </CardContent>
     </Card>
   );
 }
+
