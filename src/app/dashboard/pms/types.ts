@@ -13,7 +13,7 @@ export interface PmsZoneWithTasksDefinition {
 export interface SimplifiedTaskRecord {
   status: 'fait' | 'non_fait' | 'na' | '';
   operator: string;
-  notes: string;
+  // notes: string; // Removed notes
 }
 
 // The key will be something like "YYYY-MM-DD_zoneId_taskId"
@@ -39,7 +39,7 @@ export interface PmsZone {
 export interface DailyCleaningRecordData {
   status?: 'fait' | 'non_fait' | 'na' | ''; 
   operator?: string; 
-  notes?: string;    
+  // notes?: string; // Removed notes
 }
 
 export interface DailyZoneCleaningStatus {

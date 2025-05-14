@@ -3,9 +3,8 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-// Removed Select imports for zone selection
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+// Removed Textarea as notes are removed
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -16,7 +15,7 @@ import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
-import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord as SimplifiedMonthlyRestaurantCleaningRecord, PmsZoneWithTasksDefinition as PmsRestaurantZoneWithTasksDefinition } from '../types'; // Aliased PmsZoneWithTasksDefinition
+import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord as SimplifiedMonthlyRestaurantCleaningRecord, PmsZoneWithTasksDefinition as PmsRestaurantZoneWithTasksDefinition } from '../types';
 import { PMS_RESTAURANT_CLEANING_KEY, PMS_CONFIG_STORAGE_KEY } from '@/app/dashboard/settings/types';
 import { NO_STATUS_SELECT_VALUE } from '../types';
 import { getMonthDays, type DayData } from '../utils';
@@ -45,7 +44,7 @@ export default function RestaurantCleaningMonitoring() {
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
-  const getLocalStorageKeyForRecords = useCallback(() => `pms_restaurant_cleaning_records_v1_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
+  const getLocalStorageKeyForRecords = useCallback(() => `pms_restaurant_cleaning_records_v2_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
 
   useEffect(() => {
     setIsLoading(true);
@@ -53,13 +52,23 @@ export default function RestaurantCleaningMonitoring() {
       const pmsSettingsRaw = localStorage.getItem(PMS_CONFIG_STORAGE_KEY);
       if (pmsSettingsRaw) {
         const pmsSettings = JSON.parse(pmsSettingsRaw);
-        setConfiguredZones(pmsSettings[PMS_RESTAURANT_CLEANING_KEY] || []);
+        const restaurantZones = pmsSettings[PMS_RESTAURANT_CLEANING_KEY] || [];
+        setConfiguredZones(restaurantZones);
+        // Auto-select first zone if available and none is selected
+        if (!selectedZoneId && restaurantZones.length > 0) {
+          setSelectedZoneId(restaurantZones[0].id);
+        } else if (selectedZoneId && !restaurantZones.find(z => z.id === selectedZoneId)) {
+          // If current selectedZoneId is no longer valid, reset or pick first
+          setSelectedZoneId(restaurantZones.length > 0 ? restaurantZones[0].id : undefined);
+        }
       } else {
         setConfiguredZones([]);
+        setSelectedZoneId(undefined);
       }
     } catch (error) {
       console.error("Error loading PMS configurations for restaurant:", error);
       setConfiguredZones([]);
+      setSelectedZoneId(undefined);
     }
 
     const yearNum = parseInt(selectedYear, 10);
@@ -78,18 +87,8 @@ export default function RestaurantCleaningMonitoring() {
       toast({ title: "Erreur de chargement", description: "Données de nettoyage restaurant corrompues.", variant: "destructive" });
       setCleaningRecords({});
     }
-     // Reset selected zone if it's no longer valid for the new config
-    if (selectedZoneId && !configuredZones.find(z => z.id === selectedZoneId)) {
-        setSelectedZoneId(undefined);
-    }
     setIsLoading(false);
-  }, [selectedYear, selectedMonth, getLocalStorageKeyForRecords, toast]); // configuredZones removed
-
-  useEffect(() => {
-    if (selectedZoneId && !configuredZones.find(z => z.id === selectedZoneId)) {
-        setSelectedZoneId(configuredZones.length > 0 ? configuredZones[0].id : undefined);
-    }
-  }, [configuredZones, selectedZoneId]);
+  }, [selectedYear, selectedMonth, getLocalStorageKeyForRecords, toast]);
 
 
   useEffect(() => {
@@ -103,7 +102,7 @@ export default function RestaurantCleaningMonitoring() {
     setCleaningRecords(prev => ({
       ...prev,
       [recordKey]: {
-        ...(prev[recordKey] || { status: '', operator: '', notes: '' }),
+        ...(prev[recordKey] || { status: '', operator: '' }), // Removed notes
         [field]: value,
       }
     }));
@@ -111,7 +110,7 @@ export default function RestaurantCleaningMonitoring() {
   
   const getRecord = (date: string, zoneId: string, taskId: string): SimplifiedTaskRecord => {
     const recordKey = `${date}_${zoneId}_${taskId}`;
-    return cleaningRecords[recordKey] || { status: '', operator: '', notes: '' };
+    return cleaningRecords[recordKey] || { status: '', operator: '' }; // Removed notes
   };
 
   const handleClearMonthData = () => {
@@ -121,8 +120,16 @@ export default function RestaurantCleaningMonitoring() {
       toast({ title: "Données Effacées", description: `Les données de nettoyage restaurant pour ${monthsArray[parseInt(selectedMonth)].label} ${selectedYear} ont été effacées.` });
     }
   };
+  
+  const selectedZoneData = useMemo(() => {
+    return configuredZones.find(zone => zone.id === selectedZoneId);
+  }, [selectedZoneId, configuredZones]);
 
-  const generatePdf = () => {
+  const generatePdfForZone = () => {
+    if (!selectedZoneData) {
+      toast({ title: "Aucune Zone Sélectionnée", description: "Veuillez sélectionner une zone pour générer le PDF.", variant: "destructive" });
+      return;
+    }
     setIsLoading(true);
     try {
       const pdfSettings = getPdfLayoutSettings('pms_restaurant_cleaning_monthly'); 
@@ -138,7 +145,7 @@ export default function RestaurantCleaningMonitoring() {
         doc.setFontSize(8); doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY); currentY += 5;
       }
       
-      const title = `Suivi Nettoyage Restaurant - ${monthLabel} ${selectedYear}`;
+      const title = `Suivi Nettoyage Restaurant - Zone: ${selectedZoneData.name} - ${monthLabel} ${selectedYear}`;
       doc.setFontSize(18); doc.text(title, 14, currentY); currentY += 8;
       doc.setFontSize(10); doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY); currentY += 7;
 
@@ -151,39 +158,44 @@ export default function RestaurantCleaningMonitoring() {
           headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
         }
       }
-
-      const head: any[] = [['Date', 'Jour', 'Zone', 'Tâche', 'Statut', 'Opérateur', 'Notes']];
+      
+      const headBase = ['Date', 'Jour'];
+      const taskHeaders: string[] = [];
+      selectedZoneData.tasks.forEach(task => {
+        taskHeaders.push(`Statut (${task.name})`);
+        taskHeaders.push(`Opérateur (${task.name})`);
+      });
+      const head: any[] = [headBase.concat(taskHeaders)];
       
       const body: any[][] = [];
       monthData.forEach(day => {
-        configuredZones.forEach(zone => {
-          if (zone.tasks.length === 0 && !day.isWeekend) { // Show zone even if no tasks, unless weekend
-            body.push([
-              day.dayOfMonth.toString(), day.dayName, zone.name, 
-              {content: "Aucune tâche définie", colSpan: 4, styles: {fontStyle: 'italic', textColor: [150,150,150]}}
-            ]);
+        const row: any[] = [
+          day.isWeekend ? {content: day.dayOfMonth.toString(), styles: {fillColor: [230,230,230]}} : day.dayOfMonth.toString(),
+          day.isWeekend ? {content: day.dayName, styles: {fillColor: [230,230,230]}} : day.dayName,
+        ];
+        selectedZoneData.tasks.forEach(task => {
+          const record = getRecord(day.date, selectedZoneData.id, task.id);
+          let statusDisplay = '';
+          switch (record.status) {
+            case 'fait': statusDisplay = 'Fait'; break;
+            case 'non_fait': statusDisplay = 'Non Fait'; break;
+            case 'na': statusDisplay = 'N/A'; break;
+            default: statusDisplay = '-';
           }
-          zone.tasks.forEach(task => {
-            const record = getRecord(day.date, zone.id, task.id);
-            let statusDisplay = '';
-            switch (record.status) {
-              case 'fait': statusDisplay = 'Fait'; break;
-              case 'non_fait': statusDisplay = 'Non Fait'; break;
-              case 'na': statusDisplay = 'N/A'; break;
-              default: statusDisplay = '-';
-            }
-            const row = [
-              day.isWeekend ? {content: day.dayOfMonth.toString(), styles: {fillColor: [230,230,230]}} : day.dayOfMonth.toString(),
-              day.isWeekend ? {content: day.dayName, styles: {fillColor: [230,230,230]}} : day.dayName,
-              day.isWeekend ? {content: zone.name, styles: {fillColor: [230,230,230]}} : zone.name,
-              day.isWeekend ? {content: task.name, styles: {fillColor: [230,230,230]}} : task.name,
-              day.isWeekend ? {content: statusDisplay, styles: {halign: 'center', fillColor: [230,230,230]}} : {content: statusDisplay, styles: {halign: 'center'}},
-              day.isWeekend ? {content: record.operator || '-', styles: {halign: 'center', fillColor: [230,230,230]}} : {content: record.operator || '-', styles: {halign: 'center'}},
-              day.isWeekend ? {content: record.notes || '-', styles: {fontSize: 7, fillColor: [230,230,230]}} : {content: record.notes || '-', styles: {fontSize: 7}},
-            ];
-            body.push(row);
-          });
+          row.push(day.isWeekend ? {content: statusDisplay, styles: {halign: 'center', fillColor: [230,230,230]}} : {content: statusDisplay, styles: {halign: 'center'}});
+          row.push(day.isWeekend ? {content: record.operator || '-', styles: {halign: 'center', fillColor: [230,230,230]}} : {content: record.operator || '-', styles: {halign: 'center'}});
         });
+        body.push(row);
+      });
+      
+      const columnStyles: { [key: number]: { cellWidth: 'auto' | number, halign?: 'left' | 'center' | 'right' } } = {
+        0: { cellWidth: 15, halign: 'center' }, 
+        1: { cellWidth: 25 }, 
+      };
+      let currentColumnIndex = 2;
+      selectedZoneData.tasks.forEach(() => {
+        columnStyles[currentColumnIndex++] = { cellWidth: 30, halign: 'center' }; // Statut
+        columnStyles[currentColumnIndex++] = { cellWidth: 30, halign: 'center' }; // Opérateur
       });
 
       doc.autoTable({
@@ -191,17 +203,9 @@ export default function RestaurantCleaningMonitoring() {
         head: head,
         body: body,
         theme: 'grid',
-        headStyles: { ...headStyles, halign: 'center', fontSize: 9 },
-        styles: { fontSize: 8, cellPadding: 1.5 },
-        columnStyles: {
-            0: { cellWidth: 15, halign: 'center' }, 
-            1: { cellWidth: 20 }, 
-            2: { cellWidth: 35 }, 
-            3: { cellWidth: 50 }, 
-            4: { cellWidth: 20, halign: 'center' }, 
-            5: { cellWidth: 25, halign: 'center' }, 
-            6: { cellWidth: 'auto' }, 
-        },
+        headStyles: { ...headStyles, halign: 'center', fontSize: 8, cellPadding: 1 },
+        styles: { fontSize: 7, cellPadding: 1 },
+        columnStyles: columnStyles,
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
           if (pdfSettings.footerText) {
@@ -210,19 +214,16 @@ export default function RestaurantCleaningMonitoring() {
           }
         },
       });
-      doc.save(`Suivi_Nettoyage_Restaurant_${monthLabel}_${selectedYear}.pdf`);
-      toast({ title: "PDF Généré", description: "Le PDF du suivi de nettoyage restaurant a été téléchargé." });
+      doc.save(`Suivi_Nettoyage_Restaurant_${selectedZoneData.name.replace(/\s+/g, '_')}_${monthLabel}_${selectedYear}.pdf`);
+      toast({ title: "PDF de Zone Généré", description: `Le PDF pour la zone "${selectedZoneData.name}" a été téléchargé.` });
     } catch (error) {
-      console.error("Error generating PDF:", error);
+      console.error("Error generating PDF for zone:", error);
       toast({ title: "Erreur PDF", description: "La génération du PDF a échoué.", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const selectedZoneData = useMemo(() => {
-    return configuredZones.find(zone => zone.id === selectedZoneId);
-  }, [selectedZoneId, configuredZones]);
 
   return (
     <Card className="shadow-lg">
@@ -252,9 +253,9 @@ export default function RestaurantCleaningMonitoring() {
             </Select>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 md:col-span-1 md:justify-self-end">
-             <Button onClick={generatePdf} disabled={isLoading || monthData.length === 0 || configuredZones.length === 0} className="w-full sm:w-auto">
+             <Button onClick={generatePdfForZone} disabled={isLoading || !selectedZoneData || monthData.length === 0 || configuredZones.length === 0} className="w-full sm:w-auto">
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-                Générer PDF Global
+                Générer PDF Zone
             </Button>
             <Button variant="destructive" onClick={handleClearMonthData} disabled={isLoading || Object.keys(cleaningRecords).length === 0} className="w-full sm:w-auto">
                 <Trash2 className="mr-2 h-4 w-4" />
@@ -308,12 +309,11 @@ export default function RestaurantCleaningMonitoring() {
                       <TableHead className="w-[60px] min-w-[60px] text-center px-1">Date</TableHead>
                       <TableHead className="w-[100px] min-w-[100px] px-1">Jour</TableHead>
                       {selectedZoneData.tasks.map(task => (
-                        <TableHead key={task.id} className="w-[250px] min-w-[250px] text-center px-1 border-l">
+                        <TableHead key={task.id} className="w-[200px] min-w-[200px] text-center px-1 border-l">
                           {task.name}
-                          <div className="grid grid-cols-3 gap-px mt-1 text-xs font-normal text-muted-foreground">
+                          <div className="grid grid-cols-2 gap-px mt-1 text-xs font-normal text-muted-foreground">
                             <span>Statut</span>
                             <span>Opérateur</span>
-                            <span>Notes</span>
                           </div>
                         </TableHead>
                       ))}
@@ -331,7 +331,7 @@ export default function RestaurantCleaningMonitoring() {
                           const record = getRecord(day.date, selectedZoneData.id, task.id);
                           return (
                             <TableCell key={task.id} className="p-1 align-top border-l">
-                              <div className="grid grid-cols-3 gap-1">
+                              <div className="grid grid-cols-2 gap-1">
                                 <Select
                                   value={record.status === '' ? NO_STATUS_SELECT_VALUE : record.status}
                                   onValueChange={(valueFromSelect) => {
@@ -358,14 +358,6 @@ export default function RestaurantCleaningMonitoring() {
                                   className="h-7 text-xs"
                                   disabled={day.isWeekend}
                                   maxLength={15}
-                                />
-                                <Textarea
-                                  placeholder="Notes"
-                                  value={record.notes}
-                                  onChange={(e) => handleRecordChange(day.date, selectedZoneData.id, task.id, 'notes', e.target.value)}
-                                  className="h-16 text-xs resize-none py-1"
-                                  disabled={day.isWeekend}
-                                  maxLength={50}
                                 />
                               </div>
                             </TableCell>
@@ -399,4 +391,3 @@ export default function RestaurantCleaningMonitoring() {
     </Card>
   );
 }
-
