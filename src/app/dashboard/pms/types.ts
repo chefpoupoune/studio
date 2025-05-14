@@ -1,4 +1,5 @@
 
+
 export interface PmsTask {
   id: string;
   name: string;
@@ -39,3 +40,5 @@ export interface SimplifiedDailyZoneRecord {
 export interface SimplifiedMonthlyKitchenCleaningRecord {
   [date_zoneId: string]: SimplifiedDailyZoneRecord; // e.g., "2024-07-15_zone_plan_travail"
 }
+
+export const NO_STATUS_SELECT_VALUE = "_aucun_statut_";

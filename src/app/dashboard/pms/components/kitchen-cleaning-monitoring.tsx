@@ -17,6 +17,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 import type { SimplifiedDailyZoneRecord, SimplifiedMonthlyKitchenCleaningRecord } from '../types';
+import { NO_STATUS_SELECT_VALUE } from '../types'; // Import the new constant
 import { getMonthDays, type DayData } from '../utils';
 import { cn } from '@/lib/utils';
 
@@ -264,15 +265,18 @@ export default function KitchenCleaningMonitoring() {
                       return (
                         <TableCell key={zone.id} className="p-2 space-y-1 align-top">
                           <Select
-                            value={record.status}
-                            onValueChange={(value) => handleRecordChange(day.date, zone.id, 'status', value)}
+                            value={record.status === '' ? NO_STATUS_SELECT_VALUE : record.status}
+                            onValueChange={(valueFromSelect) => {
+                              const valueToStore = valueFromSelect === NO_STATUS_SELECT_VALUE ? '' : valueFromSelect as 'fait' | 'non_fait' | 'na';
+                              handleRecordChange(day.date, zone.id, 'status', valueToStore);
+                            }}
                             disabled={day.isWeekend}
                           >
                             <SelectTrigger className="h-8 text-xs">
                               <SelectValue placeholder="Statut" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">-</SelectItem>
+                              <SelectItem value={NO_STATUS_SELECT_VALUE}>-</SelectItem>
                               <SelectItem value="fait">Fait</SelectItem>
                               <SelectItem value="non_fait">Non Fait</SelectItem>
                               <SelectItem value="na">N/A</SelectItem>
@@ -311,3 +315,4 @@ export default function KitchenCleaningMonitoring() {
     </Card>
   );
 }
+
