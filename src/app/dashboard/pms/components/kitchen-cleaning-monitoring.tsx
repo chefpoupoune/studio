@@ -1,138 +1,186 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon, CheckSquare, Eraser, Info } from 'lucide-react';
-import { format, parseISO, startOfDay } from 'date-fns';
+import React, { useState, ChangeEvent, useEffect, useCallback } from 'react';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { UploadCloud, FileText, Loader2, CalendarIcon, AlertCircle } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { format, startOfDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { useToast } from '@/hooks/use-toast';
+import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 
-interface CleaningTask {
-  id: string;
-  name: string;
-  area: string;
-  frequency: 'daily'; // Pour l'instant, focus sur le quotidien
+interface jsPDFWithAutoTable extends jsPDF {
+  autoTable: (options: any) => jsPDF;
 }
 
-// Tâches de nettoyage quotidiennes prédéfinies pour la cuisine
-const dailyKitchenTasks: CleaningTask[] = [
-  { id: 'kc_task_1', name: 'Nettoyage et désinfection des plans de travail', area: 'Surfaces Hautes', frequency: 'daily' },
-  { id: 'kc_task_2', name: 'Nettoyage des sols (balayage et lavage)', area: 'Sols', frequency: 'daily' },
-  { id: 'kc_task_3', name: 'Nettoyage des éviers, plonge et robinetterie', area: 'Zone Plonge', frequency: 'daily' },
-  { id: 'kc_task_4', name: 'Vidage et nettoyage des poubelles (cuisine)', area: 'Gestion Déchets', frequency: 'daily' },
-  { id: 'kc_task_5', name: 'Nettoyage extérieur du four et des fourneaux', area: 'Equipements Cuisson', frequency: 'daily' },
-  { id: 'kc_task_6', name: 'Nettoyage des grilles et filtres de hotte (si nécessaire)', area: 'Ventilation', frequency: 'daily' },
-  { id: 'kc_task_7', name: 'Contrôle et nettoyage intérieur du réfrigérateur/chambre froide', area: 'Stockage Froid', frequency: 'daily' },
-  { id: 'kc_task_8', name: 'Nettoyage de la trancheuse (si utilisée)', area: 'Petit Equipement', frequency: 'daily' },
-  { id: 'kc_task_9', name: 'Rangement et organisation générale', area: 'Général', frequency: 'daily' },
-];
-
-interface TaskLogEntry {
-  completed: boolean;
-  completedBy: string;
-  notes: string;
-}
-
-type DailyCleaningLog = Record<string, TaskLogEntry>; // Key: taskId
+type ExcelRow = (string | number | boolean | Date | null)[];
+type ExcelData = ExcelRow[];
 
 export default function KitchenCleaningMonitoring() {
   const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
-  const [dailyLog, setDailyLog] = useState<DailyCleaningLog>({});
-  const [isLoading, setIsLoading] = useState(true);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [excelData, setExcelData] = useState<ExcelData | null>(null);
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const getLocalStorageKey = useCallback((date: Date) => {
-    return `pms_kitchen_cleaning_log_${format(date, 'yyyy-MM-dd')}`;
-  }, []);
-
-  // Load log from localStorage
+  // Effacer les données Excel et le fichier sélectionné quand la date change
   useEffect(() => {
-    setIsLoading(true);
-    const dateKey = getLocalStorageKey(selectedDate);
-    try {
-      const storedLog = localStorage.getItem(dateKey);
-      if (storedLog) {
-        setDailyLog(JSON.parse(storedLog));
+    setSelectedFile(null);
+    setExcelData(null);
+    setHeaders([]);
+  }, [selectedDate]);
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      const file = event.target.files[0];
+      if (file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || file.type === "application/vnd.ms-excel") {
+        setSelectedFile(file);
+        setExcelData(null); 
+        setHeaders([]);
+        toast({ title: "Fichier Sélectionné", description: file.name });
       } else {
-        // Initialize with default empty state for all tasks if no log found
-        const initialLog: DailyCleaningLog = {};
-        dailyKitchenTasks.forEach(task => {
-          initialLog[task.id] = { completed: false, completedBy: '', notes: '' };
-        });
-        setDailyLog(initialLog);
+        toast({ title: "Type de fichier invalide", description: "Veuillez sélectionner un fichier Excel (.xlsx ou .xls).", variant: "destructive" });
+        setSelectedFile(null);
+        event.target.value = ''; // Réinitialiser l'input file
       }
+    }
+  };
+
+  const processExcelFile = () => {
+    if (!selectedFile) {
+      toast({ title: "Aucun fichier", description: "Veuillez d'abord sélectionner un fichier Excel.", variant: "destructive" });
+      return;
+    }
+    setIsLoading(true);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = e.target?.result;
+        if (data) {
+          const workbook = XLSX.read(data, { type: 'binary', cellDates: true });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null }) as ExcelData;
+          
+          if (jsonData.length > 0) {
+            const extractedHeaders = jsonData[0].map(header => String(header ?? ''));
+            setHeaders(extractedHeaders);
+            setExcelData(jsonData.slice(1));
+            toast({ title: "Fichier Traité", description: "Les données du fichier Excel ont été chargées." });
+          } else {
+            setHeaders([]);
+            setExcelData([]);
+            toast({ title: "Fichier Vide", description: "Le fichier Excel semble vide ou ne contient pas d'en-têtes.", variant: "destructive" });
+          }
+        }
+      } catch (error) {
+        console.error("Error processing Excel file:", error);
+        toast({ title: "Erreur de Traitement", description: "Impossible de lire le fichier Excel.", variant: "destructive" });
+        setExcelData(null);
+        setHeaders([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    reader.onerror = () => {
+      setIsLoading(false);
+      toast({ title: "Erreur de Lecture", description: "Impossible de lire le fichier.", variant: "destructive" });
+    };
+    reader.readAsBinaryString(selectedFile);
+  };
+
+  const generatePdf = () => {
+    if (!excelData || excelData.length === 0 || headers.length === 0) {
+      toast({ title: "Aucune Donnée", description: "Veuillez traiter un fichier Excel avec des données pour générer un PDF.", variant: "destructive" });
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const pdfSettings = getPdfLayoutSettings('pms_kitchen_cleaning'); // Use a specific key for PDF settings
+      const doc = new jsPDF() as jsPDFWithAutoTable;
+      const dateFormattedForTitle = format(selectedDate, "dd MMMM yyyy", { locale: fr });
+      const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
+
+      let currentY = 15;
+      if (pdfSettings.headerText) {
+        doc.setFontSize(10);
+        doc.text(pdfSettings.headerText, 14, currentY);
+        currentY += 10;
+      }
+
+      if (pdfSettings.logoUrl) {
+        doc.setFontSize(8); 
+        doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY);
+        currentY += 5; 
+      }
+      
+      const title = `Suivi Nettoyage Cuisine - ${dateFormattedForTitle}`;
+      doc.setFontSize(18);
+      doc.text(title, 14, currentY);
+      currentY += 8;
+      
+      doc.setFontSize(10);
+      doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY);
+      currentY += 7;
+
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
+      if (pdfSettings.primaryColor) {
+        const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
+        if (primaryColorRgb) {
+          headStyles.fillColor = primaryColorRgb;
+          const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
+          headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
+        }
+      }
+
+      doc.autoTable({
+        startY: currentY,
+        head: [headers],
+        body: excelData.map(row => row.map(cell => cell === null || cell === undefined ? '' : String(cell))),
+        theme: 'grid',
+        headStyles: headStyles,
+        didDrawPage: (data) => {
+          const pageCount = doc.internal.getNumberOfPages();
+          if (pdfSettings.footerText) {
+            let footerStr = pdfSettings.footerText
+              .replace('{date}', generationDateFormatted)
+              .replace('{pageNumber}', data.pageNumber.toString())
+              .replace('{totalPages}', pageCount.toString());
+            
+            doc.setFontSize(9);
+            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+          }
+        }
+      });
+      doc.save(`Suivi_Nettoyage_Cuisine_${format(selectedDate, "yyyy-MM-dd")}.pdf`);
+      toast({ title: "PDF Généré", description: "Le fichier PDF du suivi de nettoyage a été téléchargé." });
     } catch (error) {
-        console.error("Error loading kitchen cleaning log:", error);
-        toast({ title: "Erreur de chargement", description: "Les données de nettoyage n'ont pu être chargées.", variant: "destructive" });
-        const initialLog: DailyCleaningLog = {};
-        dailyKitchenTasks.forEach(task => {
-          initialLog[task.id] = { completed: false, completedBy: '', notes: '' };
-        });
-        setDailyLog(initialLog);
+      console.error("Error generating PDF:", error);
+      toast({ title: "Erreur PDF", description: "La génération du PDF a échoué.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
-  }, [selectedDate, getLocalStorageKey, toast]);
-
-  // Save log to localStorage
-  useEffect(() => {
-    if (!isLoading) { // Only save if not initially loading to prevent overwriting
-      const dateKey = getLocalStorageKey(selectedDate);
-      localStorage.setItem(dateKey, JSON.stringify(dailyLog));
-    }
-  }, [dailyLog, selectedDate, getLocalStorageKey, isLoading]);
-
-  const handleTaskChange = (taskId: string, field: keyof TaskLogEntry, value: string | boolean) => {
-    setDailyLog(prevLog => ({
-      ...prevLog,
-      [taskId]: {
-        ...(prevLog[taskId] || { completed: false, completedBy: '', notes: '' }), // Ensure task entry exists
-        [field]: value,
-      },
-    }));
   };
-  
-  const handleClearDayLog = () => {
-     if (confirm(`Êtes-vous sûr de vouloir effacer tous les enregistrements pour le ${format(selectedDate, "dd/MM/yyyy", { locale: fr })} ? Cette action est irréversible.`)) {
-        const initialLog: DailyCleaningLog = {};
-        dailyKitchenTasks.forEach(task => {
-          initialLog[task.id] = { completed: false, completedBy: '', notes: '' };
-        });
-        setDailyLog(initialLog);
-        toast({ title: "Données Effacées", description: `Les enregistrements du ${format(selectedDate, "dd/MM/yyyy", { locale: fr })} ont été réinitialisés.` });
-     }
-  };
-
-  if (isLoading && !dailyLog) { // Add check for dailyLog to prevent premature render
-    return <p>Chargement des données de nettoyage...</p>;
-  }
 
   return (
     <Card className="shadow-lg">
       <CardHeader>
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <div>
-                <CardTitle className="flex items-center gap-2">
-                <CheckSquare className="w-6 h-6 text-primary"/>
-                Suivi Quotidien du Nettoyage Cuisine
-                </CardTitle>
-                <CardDescription>
-                Enregistrez les tâches de nettoyage effectuées pour la date sélectionnée.
-                </CardDescription>
-            </div>
-            <Button variant="destructive" onClick={handleClearDayLog} size="sm" className="w-full sm:w-auto">
-                <Eraser className="mr-2 h-4 w-4" /> Effacer Jour Actuel
-            </Button>
-        </div>
+        <CardTitle className="flex items-center gap-2">
+          Suivi Quotidien du Nettoyage Cuisine (via Excel)
+        </CardTitle>
+        <CardDescription>
+          Sélectionnez une date, téléchargez votre fichier Excel (.xlsx ou .xls) pour visualiser les tâches de nettoyage et générer un PDF.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div>
@@ -163,66 +211,83 @@ export default function KitchenCleaningMonitoring() {
           </Popover>
         </div>
 
-        {dailyKitchenTasks.length === 0 ? (
-            <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
-                <Info className="mx-auto h-12 w-12 text-muted-foreground" />
-                <p className="mt-2 text-sm text-muted-foreground">
-                    Aucune tâche de nettoyage n'est configurée pour le moment.
-                </p>
-            </div>
-        ) : (
-            <div className="overflow-x-auto border rounded-md">
-            <Table>
-                <TableHeader className="sticky top-0 bg-card z-10">
-                <TableRow>
-                    <TableHead className="w-[50px] text-center">Fait</TableHead>
-                    <TableHead>Tâche</TableHead>
-                    <TableHead>Zone</TableHead>
-                    <TableHead className="w-[150px]">Réalisé par</TableHead>
-                    <TableHead className="w-[250px]">Observations</TableHead>
-                </TableRow>
+        <div className="flex flex-col sm:flex-row items-center gap-4">
+          <div className="w-full">
+            <Label htmlFor="excel-upload" className="sr-only">Télécharger Fichier Excel de Suivi</Label>
+            <Input
+              id="excel-upload"
+              type="file"
+              accept=".xlsx, .xls"
+              onChange={handleFileChange}
+              className="cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+            />
+          </div>
+          <Button onClick={processExcelFile} disabled={!selectedFile || isLoading} className="w-full sm:w-auto">
+            {isLoading && selectedFile ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-2 h-4 w-4" />}
+            Traiter le Fichier
+          </Button>
+        </div>
+        
+        {selectedFile && !excelData && !isLoading && (
+          <p className="text-sm text-muted-foreground">Fichier "{selectedFile.name}" prêt à être traité. Cliquez sur "Traiter le Fichier".</p>
+        )}
+
+        {excelData && headers.length > 0 && (
+          <div className="space-y-4">
+            <h3 className="text-xl font-semibold text-foreground">
+              Aperçu du Suivi pour le {format(selectedDate, "dd MMMM yyyy", { locale: fr })}
+            </h3>
+            <div className="overflow-x-auto border rounded-md max-h-[400px]">
+              <Table>
+                <TableHeader className="sticky top-0 bg-card">
+                  <TableRow>
+                    {headers.map((header, index) => (
+                      <TableHead key={index}>{header}</TableHead>
+                    ))}
+                  </TableRow>
                 </TableHeader>
                 <TableBody>
-                {dailyKitchenTasks.map((task) => {
-                    const logEntry = dailyLog[task.id] || { completed: false, completedBy: '', notes: '' };
-                    return (
-                    <TableRow key={task.id}>
-                        <TableCell className="text-center">
-                        <Checkbox
-                            checked={logEntry.completed}
-                            onCheckedChange={(checked) => handleTaskChange(task.id, 'completed', !!checked)}
-                            aria-label={`Marquer ${task.name} comme complétée`}
-                        />
+                  {excelData.map((row, rowIndex) => (
+                    <TableRow key={rowIndex}>
+                      {row.map((cell, cellIndex) => (
+                        <TableCell key={cellIndex}>
+                          {cell instanceof Date ? format(cell, 'P', { locale: fr }) : (cell === null || cell === undefined ? '' : String(cell))}
                         </TableCell>
-                        <TableCell className="font-medium">{task.name}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{task.area}</TableCell>
-                        <TableCell>
-                        <Input
-                            type="text"
-                            placeholder="Initiales"
-                            value={logEntry.completedBy}
-                            onChange={(e) => handleTaskChange(task.id, 'completedBy', e.target.value)}
-                            className="h-8 text-xs"
-                            disabled={!logEntry.completed}
-                        />
-                        </TableCell>
-                        <TableCell>
-                        <Textarea
-                            placeholder="Notes..."
-                            value={logEntry.notes}
-                            onChange={(e) => handleTaskChange(task.id, 'notes', e.target.value)}
-                            className="h-16 text-xs resize-none" // Adjusted height and added resize-none
-                            disabled={!logEntry.completed}
-                        />
-                        </TableCell>
+                      ))}
                     </TableRow>
-                    );
-                })}
+                  ))}
                 </TableBody>
-            </Table>
+              </Table>
             </div>
+            <Button onClick={generatePdf} disabled={isLoading} className="w-full sm:w-auto">
+              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+              Générer PDF du Suivi
+            </Button>
+          </div>
         )}
+        
+        {excelData && excelData.length === 0 && headers.length === 0 && !isLoading && (
+           <p className="text-muted-foreground text-center py-8">Aucune donnée à afficher. Le fichier est peut-être vide ou mal formaté.</p>
+        )}
+
+        {!selectedFile && !isLoading && (
+          <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
+              <UploadCloud className="mx-auto h-12 w-12 text-muted-foreground" />
+              <p className="mt-2 text-sm text-muted-foreground">
+                  Sélectionnez une date, puis téléchargez un fichier Excel pour le suivi du nettoyage cuisine.
+              </p>
+          </div>
+        )}
+         {isLoading && !selectedFile && (
+             <div className="text-center py-10">
+                <Loader2 className="mx-auto h-12 w-12 text-primary animate-spin" />
+                <p className="mt-2 text-sm text-muted-foreground">Chargement...</p>
+            </div>
+         )}
       </CardContent>
     </Card>
   );
 }
+
+
+    
