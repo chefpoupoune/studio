@@ -17,6 +17,7 @@ import { format, startOfDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -289,5 +290,3 @@ export default function KitchenCleaningMonitoring() {
   );
 }
 
-
-    
