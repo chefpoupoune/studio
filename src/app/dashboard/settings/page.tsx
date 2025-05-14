@@ -1,13 +1,14 @@
 "use client"; 
 
 import Link from 'next/link';
-import { ArrowLeft, Settings as SettingsIcon, FileCog, Settings2 as AppSettingsIcon } from 'lucide-react';
+import { ArrowLeft, Settings as SettingsIcon, FileCog, Settings2 as AppSettingsIcon, ShieldAlert } from 'lucide-react'; // Added ShieldAlert
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import PdfLayoutManager from './components/pdf-layout-manager';
 import ApplicationSettingsManager from './components/application-settings-manager';
+import PmsConfigManager from './components/pms-config-manager'; // New Import
 import React from 'react';
 
 export default function SettingsPage() {
@@ -18,8 +19,6 @@ export default function SettingsPage() {
   }, []);
 
   if (!isClient) {
-    // Render a loading state or null while waiting for client-side mount
-    // This helps prevent hydration mismatches related to localStorage access in child components.
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p className="text-lg text-muted-foreground">Chargement des paramètres...</p>
@@ -48,12 +47,15 @@ export default function SettingsPage() {
       </div>
       
       <Tabs defaultValue="pdf-layout" className="w-full">
-        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 mb-6 bg-card p-1 rounded-lg">
+        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 mb-6 bg-card p-1 rounded-lg">
           <TabsTrigger value="pdf-layout" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             <FileCog className="mr-1 sm:mr-2 h-4 w-4" /> Mises en Page PDF
           </TabsTrigger>
           <TabsTrigger value="app-settings" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             <AppSettingsIcon className="mr-1 sm:mr-2 h-4 w-4" /> Paramètres Application
+          </TabsTrigger>
+          <TabsTrigger value="pms-config" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <ShieldAlert className="mr-1 sm:mr-2 h-4 w-4" /> Paramètres PMS
           </TabsTrigger>
         </TabsList>
 
@@ -73,6 +75,20 @@ export default function SettingsPage() {
 
         <TabsContent value="app-settings">
           <ApplicationSettingsManager />
+        </TabsContent>
+
+        <TabsContent value="pms-config">
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle>Configuration du Plan de Maîtrise Sanitaire (PMS)</CardTitle>
+              <CardDescription>
+                Définissez les zones, les tâches et les critères pour les différents modules de suivi du PMS.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PmsConfigManager />
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

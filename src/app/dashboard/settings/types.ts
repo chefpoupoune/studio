@@ -11,3 +11,22 @@ export interface PdfLayoutSettings {
   defaultFontSize?: number; // Default font size in points
 }
 
+// Types for PMS Configuration
+export interface PmsCriterion {
+  id: string;
+  name: string;
+}
+
+export interface PmsZone {
+  id: string;
+  name: string;
+  criteria: PmsCriterion[];
+}
+
+// Defines the structure for PMS configurations, keyed by category (e.g., 'kitchenCleaning')
+export interface PmsConfigurations {
+  [categoryKey: string]: PmsZone[];
+}
+
+export const PMS_KITCHEN_CLEANING_KEY = 'kitchenCleaning'; // Example key for kitchen cleaning config
+export const PMS_CONFIG_STORAGE_KEY = 'pms_module_configurations_v1';
