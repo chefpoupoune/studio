@@ -16,8 +16,8 @@ import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
-import type { SimplifiedDailyZoneRecord, SimplifiedMonthlyKitchenCleaningRecord } from '../types';
-import { NO_STATUS_SELECT_VALUE } from '../types'; // Import the new constant
+import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord, PmsZoneWithTasksDefinition } from '../types';
+import { NO_STATUS_SELECT_VALUE } from '../types';
 import { getMonthDays, type DayData } from '../utils';
 import { cn } from '@/lib/utils';
 
@@ -28,15 +28,50 @@ const months = Array.from({ length: 12 }, (_, i) => ({
   label: format(new Date(currentFullYear, i), "MMMM", { locale: fr }),
 }));
 
-// Pour cette étape, les zones sont prédéfinies.
-// Elles seront dynamiques plus tard grâce aux paramètres.
-const PREDEFINED_KITCHEN_ZONES = [
-  { id: 'zone_plans_travail', name: 'Plans de Travail' },
-  { id: 'zone_sols', name: 'Sols' },
-  { id: 'zone_equip_cuisson', name: 'Équipements de Cuisson' },
-  { id: 'zone_equip_froids', name: 'Équipements Froids (Ext.)' },
-  { id: 'zone_plonge', name: 'Plonge' },
-  { id: 'zone_poubelles', name: 'Poubelles & Local' },
+// PREDEFINED_KITCHEN_ZONES_WITH_TASKS will eventually come from settings
+const PREDEFINED_KITCHEN_ZONES_WITH_TASKS: PmsZoneWithTasksDefinition[] = [
+  {
+    id: 'zone_plans_travail', name: 'Plans de Travail',
+    tasks: [
+      { id: 'pt_net_des', name: 'Nettoyage et désinfection' },
+      { id: 'pt_rangement', name: 'Rangement' },
+    ]
+  },
+  {
+    id: 'zone_sols', name: 'Sols',
+    tasks: [
+      { id: 'sols_balayage', name: 'Balayage' },
+      { id: 'sols_lavage', name: 'Lavage' },
+    ]
+  },
+  {
+    id: 'zone_equip_cuisson', name: 'Équipements de Cuisson',
+    tasks: [
+      { id: 'ec_deg_hottes', name: 'Dégraissage hottes' },
+      { id: 'ec_net_fours', name: 'Nettoyage fours/plaques' },
+    ]
+  },
+  {
+    id: 'zone_equip_froids', name: 'Équipements Froids (Ext.)',
+    tasks: [
+      { id: 'ef_net_portes', name: 'Nettoyage portes/poignées' },
+      { id: 'ef_verif_joints', name: 'Vérification joints' },
+    ]
+  },
+  {
+    id: 'zone_plonge', name: 'Plonge',
+    tasks: [
+      { id: 'pl_net_eviers', name: 'Nettoyage éviers/robinetterie' },
+      { id: 'pl_det_machine', name: 'Détartrage machine' },
+    ]
+  },
+  {
+    id: 'zone_poubelles', name: 'Poubelles & Local',
+    tasks: [
+      { id: 'pb_vidage_net', name: 'Vidage et nettoyage' },
+      { id: 'pb_net_local', name: 'Nettoyage local' },
+    ]
+  },
 ];
 
 interface jsPDFWithAutoTable extends jsPDF {
@@ -51,7 +86,7 @@ export default function KitchenCleaningMonitoring() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const getLocalStorageKey = useCallback(() => `pms_kitchen_cleaning_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
+  const getLocalStorageKey = useCallback(() => `pms_kitchen_cleaning_v2_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
 
   useEffect(() => {
     setIsLoading(true);
@@ -75,13 +110,13 @@ export default function KitchenCleaningMonitoring() {
   }, [selectedYear, selectedMonth, getLocalStorageKey, toast]);
 
   useEffect(() => {
-    if (!isLoading) { // Avoid saving while initially loading
+    if (!isLoading) {
         localStorage.setItem(getLocalStorageKey(), JSON.stringify(cleaningRecords));
     }
   }, [cleaningRecords, isLoading, getLocalStorageKey]);
 
-  const handleRecordChange = (date: string, zoneId: string, field: keyof SimplifiedDailyZoneRecord, value: string) => {
-    const recordKey = `${date}_${zoneId}`;
+  const handleRecordChange = (date: string, zoneId: string, taskId: string, field: keyof SimplifiedTaskRecord, value: string) => {
+    const recordKey = `${date}_${zoneId}_${taskId}`;
     setCleaningRecords(prev => ({
       ...prev,
       [recordKey]: {
@@ -91,8 +126,8 @@ export default function KitchenCleaningMonitoring() {
     }));
   };
   
-  const getRecord = (date: string, zoneId: string): SimplifiedDailyZoneRecord => {
-    const recordKey = `${date}_${zoneId}`;
+  const getRecord = (date: string, zoneId: string, taskId: string): SimplifiedTaskRecord => {
+    const recordKey = `${date}_${zoneId}_${taskId}`;
     return cleaningRecords[recordKey] || { status: '', operator: '', notes: '' };
   };
 
@@ -107,7 +142,7 @@ export default function KitchenCleaningMonitoring() {
   const generatePdf = () => {
     setIsLoading(true);
     try {
-      const pdfSettings = getPdfLayoutSettings('pms_kitchen_cleaning_monthly'); // New specific key
+      const pdfSettings = getPdfLayoutSettings('pms_kitchen_cleaning_monthly');
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
       const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
@@ -134,56 +169,49 @@ export default function KitchenCleaningMonitoring() {
         }
       }
 
-      const head: any[] = [['Date', 'Jour']];
-      PREDEFINED_KITCHEN_ZONES.forEach(zone => {
-        head[0].push({ content: zone.name, colSpan: 3, styles: { halign: 'center' } });
-      });
-      const subHead: any[] = [['', '']];
-       PREDEFINED_KITCHEN_ZONES.forEach(() => {
-        subHead[0].push({content: 'Statut', styles: {halign: 'center'}});
-        subHead[0].push({content: 'Opérateur', styles: {halign: 'center'}});
-        subHead[0].push({content: 'Notes', styles: {halign: 'center', cellWidth: 50}}); // Wider notes
-      });
+      const head: any[] = [['Date', 'Jour', 'Zone', 'Tâche', 'Statut', 'Opérateur', 'Notes']];
       
-      const body = monthData.map(day => {
-        const row: any[] = [day.dayOfMonth, day.dayName];
-        PREDEFINED_KITCHEN_ZONES.forEach(zone => {
-          const record = getRecord(day.date, zone.id);
-          let statusDisplay = '';
-          switch (record.status) {
-            case 'fait': statusDisplay = 'Fait'; break;
-            case 'non_fait': statusDisplay = 'Non Fait'; break;
-            case 'na': statusDisplay = 'N/A'; break;
-            default: statusDisplay = '-';
-          }
-          row.push({content: statusDisplay, styles: {halign: 'center'}});
-          row.push({content: record.operator || '-', styles: {halign: 'center'}});
-          row.push({content: record.notes || '-', styles: { fontSize: 7 }}); // Smaller font for notes
+      const body: any[][] = [];
+      monthData.forEach(day => {
+        PREDEFINED_KITCHEN_ZONES_WITH_TASKS.forEach(zone => {
+          zone.tasks.forEach(task => {
+            const record = getRecord(day.date, zone.id, task.id);
+            let statusDisplay = '';
+            switch (record.status) {
+              case 'fait': statusDisplay = 'Fait'; break;
+              case 'non_fait': statusDisplay = 'Non Fait'; break;
+              case 'na': statusDisplay = 'N/A'; break;
+              default: statusDisplay = '-';
+            }
+            const row = [
+              day.isWeekend ? {content: day.dayOfMonth.toString(), styles: {fillColor: [230,230,230]}} : day.dayOfMonth.toString(),
+              day.isWeekend ? {content: day.dayName, styles: {fillColor: [230,230,230]}} : day.dayName,
+              day.isWeekend ? {content: zone.name, styles: {fillColor: [230,230,230]}} : zone.name,
+              day.isWeekend ? {content: task.name, styles: {fillColor: [230,230,230]}} : task.name,
+              day.isWeekend ? {content: statusDisplay, styles: {halign: 'center', fillColor: [230,230,230]}} : {content: statusDisplay, styles: {halign: 'center'}},
+              day.isWeekend ? {content: record.operator || '-', styles: {halign: 'center', fillColor: [230,230,230]}} : {content: record.operator || '-', styles: {halign: 'center'}},
+              day.isWeekend ? {content: record.notes || '-', styles: {fontSize: 7, fillColor: [230,230,230]}} : {content: record.notes || '-', styles: {fontSize: 7}},
+            ];
+            body.push(row);
+          });
         });
-        return row;
       });
 
       doc.autoTable({
         startY: currentY,
         head: head,
-        body: [subHead[0], ...body], // Add subHead as the first row of the body for styling
+        body: body,
         theme: 'grid',
-        headStyles: { ...headStyles, halign: 'center' },
+        headStyles: { ...headStyles, halign: 'center', fontSize: 9 },
         styles: { fontSize: 8, cellPadding: 1.5 },
-        didDrawCell: (data) => {
-            // Color weekend rows, skip for main header and subheader
-            if (data.section === 'body' && data.row.index > 0) { // data.row.index 0 is the subHead now
-                const dayIndex = data.row.index -1; // Adjust index because subHead is now row 0 of body
-                if (dayIndex < monthData.length && monthData[dayIndex].isWeekend) {
-                    doc.setFillColor(230, 230, 230); // Light gray for weekends
-                    doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
-                }
-            }
-            // If it's the subheader row
-            if (data.section === 'body' && data.row.index === 0) {
-                 doc.setFillColor(240, 240, 240); // Very light gray for subheader
-                 doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
-            }
+        columnStyles: {
+            0: { cellWidth: 15, halign: 'center' }, // Date
+            1: { cellWidth: 20 }, // Jour
+            2: { cellWidth: 35 }, // Zone
+            3: { cellWidth: 50 }, // Tâche
+            4: { cellWidth: 20, halign: 'center' }, // Statut
+            5: { cellWidth: 25, halign: 'center' }, // Opérateur
+            6: { cellWidth: 'auto' }, // Notes (take remaining space)
         },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
@@ -210,7 +238,7 @@ export default function KitchenCleaningMonitoring() {
           Suivi Mensuel du Nettoyage Cuisine
         </CardTitle>
         <CardDescription>
-          Sélectionnez un mois et une année pour enregistrer et visualiser le suivi du nettoyage.
+          Sélectionnez un mois et une année pour enregistrer et visualiser le suivi du nettoyage par tâche et par zone.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -245,58 +273,69 @@ export default function KitchenCleaningMonitoring() {
           <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /> Chargement...</div>
         ) : monthData.length > 0 ? (
           <div className="overflow-x-auto border rounded-md max-h-[70vh]">
-            <Table className="min-w-full">
+            <Table className="min-w-full table-fixed">
               <TableHeader className="sticky top-0 z-10 bg-card shadow-sm">
                 <TableRow>
-                  <TableHead className="w-[50px] min-w-[50px] text-center">Date</TableHead>
-                  <TableHead className="w-[100px] min-w-[100px]">Jour</TableHead>
-                  {PREDEFINED_KITCHEN_ZONES.map(zone => (
-                    <TableHead key={zone.id} className="min-w-[250px] text-center">{zone.name}</TableHead>
+                  <TableHead className="w-[60px] min-w-[60px] text-center px-1">Date</TableHead>
+                  <TableHead className="w-[100px] min-w-[100px] px-1">Jour</TableHead>
+                  {PREDEFINED_KITCHEN_ZONES_WITH_TASKS.map(zone => (
+                    <TableHead key={zone.id} className="w-[300px] min-w-[300px] text-center px-1">{zone.name}</TableHead>
                   ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {monthData.map((day) => (
                   <TableRow key={day.date} className={cn(day.isWeekend && "bg-muted/30")}>
-                    <TableCell className="text-center font-medium">{day.dayOfMonth}</TableCell>
-                    <TableCell>{day.dayName}</TableCell>
-                    {PREDEFINED_KITCHEN_ZONES.map(zone => {
-                      const record = getRecord(day.date, zone.id);
+                    <TableCell className="text-center font-medium px-1">{day.dayOfMonth}</TableCell>
+                    <TableCell className="px-1">{day.dayName}</TableCell>
+                    {PREDEFINED_KITCHEN_ZONES_WITH_TASKS.map(zone => {
                       return (
-                        <TableCell key={zone.id} className="p-2 space-y-1 align-top">
-                          <Select
-                            value={record.status === '' ? NO_STATUS_SELECT_VALUE : record.status}
-                            onValueChange={(valueFromSelect) => {
-                              const valueToStore = valueFromSelect === NO_STATUS_SELECT_VALUE ? '' : valueFromSelect as 'fait' | 'non_fait' | 'na';
-                              handleRecordChange(day.date, zone.id, 'status', valueToStore);
-                            }}
-                            disabled={day.isWeekend}
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue placeholder="Statut" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value={NO_STATUS_SELECT_VALUE}>-</SelectItem>
-                              <SelectItem value="fait">Fait</SelectItem>
-                              <SelectItem value="non_fait">Non Fait</SelectItem>
-                              <SelectItem value="na">N/A</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Input
-                            type="text"
-                            placeholder="Opérateur"
-                            value={record.operator}
-                            onChange={(e) => handleRecordChange(day.date, zone.id, 'operator', e.target.value)}
-                            className="h-8 text-xs"
-                            disabled={day.isWeekend}
-                          />
-                          <Textarea
-                            placeholder="Notes"
-                            value={record.notes}
-                            onChange={(e) => handleRecordChange(day.date, zone.id, 'notes', e.target.value)}
-                            className="h-16 text-xs resize-none"
-                            disabled={day.isWeekend}
-                          />
+                        <TableCell key={zone.id} className="p-1 space-y-1.5 align-top">
+                          {zone.tasks.map(task => {
+                            const record = getRecord(day.date, zone.id, task.id);
+                            return (
+                              <div key={task.id} className="p-1.5 border rounded bg-background/50 shadow-sm">
+                                <p className="text-xs font-medium mb-1 truncate" title={task.name}>{task.name}</p>
+                                <div className="space-y-1">
+                                  <Select
+                                    value={record.status === '' ? NO_STATUS_SELECT_VALUE : record.status}
+                                    onValueChange={(valueFromSelect) => {
+                                      const valueToStore = valueFromSelect === NO_STATUS_SELECT_VALUE ? '' : valueFromSelect as 'fait' | 'non_fait' | 'na';
+                                      handleRecordChange(day.date, zone.id, task.id, 'status', valueToStore);
+                                    }}
+                                    disabled={day.isWeekend}
+                                  >
+                                    <SelectTrigger className="h-7 text-xs text-foreground/80">
+                                      <SelectValue placeholder="Statut" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value={NO_STATUS_SELECT_VALUE}>-</SelectItem>
+                                      <SelectItem value="fait">Fait</SelectItem>
+                                      <SelectItem value="non_fait">Non Fait</SelectItem>
+                                      <SelectItem value="na">N/A</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <Input
+                                    type="text"
+                                    placeholder="Op."
+                                    value={record.operator}
+                                    onChange={(e) => handleRecordChange(day.date, zone.id, task.id, 'operator', e.target.value)}
+                                    className="h-7 text-xs"
+                                    disabled={day.isWeekend}
+                                    maxLength={15}
+                                  />
+                                  <Textarea
+                                    placeholder="Notes"
+                                    value={record.notes}
+                                    onChange={(e) => handleRecordChange(day.date, zone.id, task.id, 'notes', e.target.value)}
+                                    className="h-12 text-xs resize-none py-1"
+                                    disabled={day.isWeekend}
+                                    maxLength={50}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
                         </TableCell>
                       );
                     })}
@@ -315,4 +354,3 @@ export default function KitchenCleaningMonitoring() {
     </Card>
   );
 }
-

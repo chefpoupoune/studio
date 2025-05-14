@@ -1,5 +1,30 @@
 
+export interface PmsTaskDefinition {
+  id: string;
+  name: string;
+}
 
+export interface PmsZoneWithTasksDefinition {
+  id: string;
+  name: string;
+  tasks: PmsTaskDefinition[];
+}
+
+export interface SimplifiedTaskRecord {
+  status: 'fait' | 'non_fait' | 'na' | '';
+  operator: string;
+  notes: string;
+}
+
+// The key will be something like "YYYY-MM-DD_zoneId_taskId"
+export interface SimplifiedMonthlyKitchenCleaningRecord {
+  [date_zoneId_taskId: string]: SimplifiedTaskRecord;
+}
+
+export const NO_STATUS_SELECT_VALUE = "_aucun_statut_";
+
+
+// --- Potentially for later, more complex PMS settings ---
 export interface PmsTask {
   id: string;
   name: string;
@@ -8,37 +33,21 @@ export interface PmsTask {
 export interface PmsZone {
   id: string;
   name: string;
-  tasks: PmsTask[]; // Tâches/critères spécifiques à cette zone
+  tasks: PmsTask[]; 
 }
 
 export interface DailyCleaningRecordData {
-  status?: 'fait' | 'non_fait' | 'na' | ''; // Statut de la tâche/zone pour le jour
-  operator?: string; // Initiales de l'opérateur
-  notes?: string;    // Notes additionnelles
+  status?: 'fait' | 'non_fait' | 'na' | ''; 
+  operator?: string; 
+  notes?: string;    
 }
 
 export interface DailyZoneCleaningStatus {
   [zoneId: string]: {
-    [taskId: string]: DailyCleaningRecordData; // Statut par tâche dans la zone
-    // Ou si on veut un statut global pour la zone pour simplifier au début:
-    // globalStatus?: DailyCleaningRecordData; 
+    [taskId: string]: DailyCleaningRecordData; 
   };
 }
 
-
 export interface MonthlyCleaningRecord {
-  [date: string]: DailyZoneCleaningStatus; // YYYY-MM-DD -> ZoneID -> TaskID -> Status
+  [date: string]: DailyZoneCleaningStatus; 
 }
-
-// Pour le formulaire simplifié de cette étape
-export interface SimplifiedDailyZoneRecord {
-  status: 'fait' | 'non_fait' | 'na' | '';
-  operator: string;
-  notes: string;
-}
-
-export interface SimplifiedMonthlyKitchenCleaningRecord {
-  [date_zoneId: string]: SimplifiedDailyZoneRecord; // e.g., "2024-07-15_zone_plan_travail"
-}
-
-export const NO_STATUS_SELECT_VALUE = "_aucun_statut_";
