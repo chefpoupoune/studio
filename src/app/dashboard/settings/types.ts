@@ -28,5 +28,7 @@ export interface PmsConfigurations {
   [categoryKey: string]: PmsZone[];
 }
 
-export const PMS_KITCHEN_CLEANING_KEY = 'kitchenCleaning'; // Example key for kitchen cleaning config
-export const PMS_CONFIG_STORAGE_KEY = 'pms_module_configurations_v1';
+export const PMS_KITCHEN_CLEANING_KEY = 'kitchenCleaning_v1';
+export const PMS_RESTAURANT_CLEANING_KEY = 'restaurantCleaning_v1'; // New key for restaurant
+export const PMS_CONFIG_STORAGE_KEY = 'pms_module_configurations_v2'; // Incremented version
+
