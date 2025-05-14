@@ -161,20 +161,20 @@ export default function PmsConfigManager() {
           ) : (
             <Accordion type="multiple" className="w-full">
               {kitchenCleaningZones.map(zone => (
-                <AccordionItem value={zone.id} key={zone.id}>
-                  <AccordionTrigger>
-                    <div className="flex justify-between items-center w-full pr-2">
-                      <span className="font-medium">{zone.name}</span>
-                      <div className="space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleOpenZoneDialog(zone);}} className="h-7 w-7">
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleDeleteZone(zone.id);}} className="h-7 w-7 hover:text-destructive">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                <AccordionItem value={zone.id} key={zone.id} className="group/item">
+                  <div className="flex items-center py-0"> {/* Removed py-4 to avoid double padding with trigger */}
+                    <AccordionTrigger className="flex-grow py-4 text-left">
+                      {zone.name}
+                    </AccordionTrigger>
+                    <div className="pl-2 pr-2 space-x-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                      <Button variant="ghost" size="icon" onClick={() => handleOpenZoneDialog(zone)} className="h-7 w-7">
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteZone(zone.id)} className="h-7 w-7 hover:text-destructive">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
-                  </AccordionTrigger>
+                  </div>
                   <AccordionContent className="pl-4 pr-2">
                     <div className="mb-3">
                       <Button variant="outline" size="sm" onClick={() => handleOpenCriterionDialog(zone)}>
