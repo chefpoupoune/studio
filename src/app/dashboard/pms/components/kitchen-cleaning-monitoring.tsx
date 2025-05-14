@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
@@ -9,26 +9,25 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, FileText, Trash2, AlertCircle } from 'lucide-react';
+import { Loader2, FileText, Trash2, AlertCircle, ListFilter } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format, getYear, getMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
-import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord, PmsZoneWithTasksDefinition } from '../types';
+import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord, PmsZoneWithTasksDefinition, PmsTaskDefinition } from '../types';
 import { NO_STATUS_SELECT_VALUE } from '../types';
 import { getMonthDays, type DayData } from '../utils';
 import { cn } from '@/lib/utils';
 
 const currentFullYear = new Date().getFullYear();
-const years = Array.from({ length: 10 }, (_, i) => currentFullYear - 5 + i);
-const months = Array.from({ length: 12 }, (_, i) => ({
+const yearsArray = Array.from({ length: 10 }, (_, i) => currentFullYear - 5 + i);
+const monthsArray = Array.from({ length: 12 }, (_, i) => ({
   value: i.toString(),
   label: format(new Date(currentFullYear, i), "MMMM", { locale: fr }),
 }));
 
-// PREDEFINED_KITCHEN_ZONES_WITH_TASKS will eventually come from settings
 const PREDEFINED_KITCHEN_ZONES_WITH_TASKS: PmsZoneWithTasksDefinition[] = [
   {
     id: 'zone_plans_travail', name: 'Plans de Travail',
@@ -81,6 +80,7 @@ interface jsPDFWithAutoTable extends jsPDF {
 export default function KitchenCleaningMonitoring() {
   const [selectedYear, setSelectedYear] = useState<string>(getYear(new Date()).toString());
   const [selectedMonth, setSelectedMonth] = useState<string>(getMonth(new Date()).toString());
+  const [selectedZoneId, setSelectedZoneId] = useState<string | undefined>(undefined);
   const [monthData, setMonthData] = useState<DayData[]>([]);
   const [cleaningRecords, setCleaningRecords] = useState<SimplifiedMonthlyKitchenCleaningRecord>({});
   const [isLoading, setIsLoading] = useState(false);
@@ -132,10 +132,10 @@ export default function KitchenCleaningMonitoring() {
   };
 
   const handleClearMonthData = () => {
-    if (confirm(`Êtes-vous sûr de vouloir effacer toutes les données de nettoyage pour ${months[parseInt(selectedMonth)].label} ${selectedYear} ? Cette action est irréversible.`)) {
+    if (confirm(`Êtes-vous sûr de vouloir effacer toutes les données de nettoyage pour ${monthsArray[parseInt(selectedMonth)].label} ${selectedYear} ? Cette action est irréversible.`)) {
       setCleaningRecords({});
       localStorage.removeItem(getLocalStorageKey());
-      toast({ title: "Données Effacées", description: `Les données de nettoyage pour ${months[parseInt(selectedMonth)].label} ${selectedYear} ont été effacées.` });
+      toast({ title: "Données Effacées", description: `Les données de nettoyage pour ${monthsArray[parseInt(selectedMonth)].label} ${selectedYear} ont été effacées.` });
     }
   };
 
@@ -144,7 +144,7 @@ export default function KitchenCleaningMonitoring() {
     try {
       const pdfSettings = getPdfLayoutSettings('pms_kitchen_cleaning_monthly');
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
-      const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
+      const monthLabel = monthsArray.find(m => m.value === selectedMonth)?.label || '';
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
       let currentY = 15;
@@ -205,13 +205,13 @@ export default function KitchenCleaningMonitoring() {
         headStyles: { ...headStyles, halign: 'center', fontSize: 9 },
         styles: { fontSize: 8, cellPadding: 1.5 },
         columnStyles: {
-            0: { cellWidth: 15, halign: 'center' }, // Date
-            1: { cellWidth: 20 }, // Jour
-            2: { cellWidth: 35 }, // Zone
-            3: { cellWidth: 50 }, // Tâche
-            4: { cellWidth: 20, halign: 'center' }, // Statut
-            5: { cellWidth: 25, halign: 'center' }, // Opérateur
-            6: { cellWidth: 'auto' }, // Notes (take remaining space)
+            0: { cellWidth: 15, halign: 'center' }, 
+            1: { cellWidth: 20 }, 
+            2: { cellWidth: 35 }, 
+            3: { cellWidth: 50 }, 
+            4: { cellWidth: 20, halign: 'center' }, 
+            5: { cellWidth: 25, halign: 'center' }, 
+            6: { cellWidth: 'auto' }, 
         },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
@@ -231,6 +231,10 @@ export default function KitchenCleaningMonitoring() {
     }
   };
 
+  const selectedZoneData = useMemo(() => {
+    return PREDEFINED_KITCHEN_ZONES_WITH_TASKS.find(zone => zone.id === selectedZoneId);
+  }, [selectedZoneId]);
+
   return (
     <Card className="shadow-lg">
       <CardHeader>
@@ -238,29 +242,42 @@ export default function KitchenCleaningMonitoring() {
           Suivi Mensuel du Nettoyage Cuisine
         </CardTitle>
         <CardDescription>
-          Sélectionnez un mois et une année pour enregistrer et visualiser le suivi du nettoyage par tâche et par zone.
+          Sélectionnez une année, un mois, puis une zone pour enregistrer et visualiser le suivi du nettoyage.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
           <div>
             <Label htmlFor="year-select-cleaning">Année</Label>
             <Select value={selectedYear} onValueChange={setSelectedYear}>
               <SelectTrigger id="year-select-cleaning"><SelectValue placeholder="Année" /></SelectTrigger>
-              <SelectContent>{years.map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}</SelectContent>
+              <SelectContent>{yearsArray.map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div>
             <Label htmlFor="month-select-cleaning">Mois</Label>
             <Select value={selectedMonth} onValueChange={setSelectedMonth}>
               <SelectTrigger id="month-select-cleaning"><SelectValue placeholder="Mois" /></SelectTrigger>
-              <SelectContent>{months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
+              <SelectContent>{monthsArray.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="zone-select-cleaning">Zone de Nettoyage</Label>
+            <Select value={selectedZoneId} onValueChange={setSelectedZoneId}>
+              <SelectTrigger id="zone-select-cleaning">
+                <SelectValue placeholder="Sélectionner une zone" />
+              </SelectTrigger>
+              <SelectContent>
+                {PREDEFINED_KITCHEN_ZONES_WITH_TASKS.map(zone => (
+                  <SelectItem key={zone.id} value={zone.id}>{zone.name}</SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </div>
           <div className="flex flex-col sm:flex-row gap-2">
              <Button onClick={generatePdf} disabled={isLoading || monthData.length === 0} className="w-full sm:w-auto">
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-                Générer PDF
+                Générer PDF Global
             </Button>
             <Button variant="destructive" onClick={handleClearMonthData} disabled={isLoading || Object.keys(cleaningRecords).length === 0} className="w-full sm:w-auto">
                 <Trash2 className="mr-2 h-4 w-4" />
@@ -271,71 +288,78 @@ export default function KitchenCleaningMonitoring() {
 
         {isLoading ? (
           <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /> Chargement...</div>
-        ) : monthData.length > 0 ? (
+        ) : !selectedZoneId ? (
+           <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
+            <ListFilter className="mx-auto h-12 w-12 text-muted-foreground" />
+            <p className="mt-2 text-sm text-muted-foreground">
+                Veuillez sélectionner une zone de nettoyage pour afficher le tableau de suivi.
+            </p>
+        </div>
+        ) : selectedZoneData && monthData.length > 0 ? (
           <div className="overflow-x-auto border rounded-md max-h-[70vh]">
             <Table className="min-w-full table-fixed">
               <TableHeader className="sticky top-0 z-10 bg-card shadow-sm">
                 <TableRow>
                   <TableHead className="w-[60px] min-w-[60px] text-center px-1">Date</TableHead>
                   <TableHead className="w-[100px] min-w-[100px] px-1">Jour</TableHead>
-                  {PREDEFINED_KITCHEN_ZONES_WITH_TASKS.map(zone => (
-                    <TableHead key={zone.id} className="w-[300px] min-w-[300px] text-center px-1">{zone.name}</TableHead>
+                  {selectedZoneData.tasks.map(task => (
+                    <TableHead key={task.id} className="w-[250px] min-w-[250px] text-center px-1 border-l">
+                      {task.name}
+                      <div className="grid grid-cols-3 gap-px mt-1 text-xs font-normal text-muted-foreground">
+                        <span>Statut</span>
+                        <span>Opérateur</span>
+                        <span>Notes</span>
+                      </div>
+                    </TableHead>
                   ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {monthData.map((day) => (
                   <TableRow key={day.date} className={cn(day.isWeekend && "bg-muted/30")}>
-                    <TableCell className="text-center font-medium px-1">{day.dayOfMonth}</TableCell>
-                    <TableCell className="px-1">{day.dayName}</TableCell>
-                    {PREDEFINED_KITCHEN_ZONES_WITH_TASKS.map(zone => {
+                    <TableCell className="text-center font-medium px-1 align-top py-2">{day.dayOfMonth}</TableCell>
+                    <TableCell className="px-1 align-top py-2">{day.dayName}</TableCell>
+                    {selectedZoneData.tasks.map(task => {
+                      const record = getRecord(day.date, selectedZoneData.id, task.id);
                       return (
-                        <TableCell key={zone.id} className="p-1 space-y-1.5 align-top">
-                          {zone.tasks.map(task => {
-                            const record = getRecord(day.date, zone.id, task.id);
-                            return (
-                              <div key={task.id} className="p-1.5 border rounded bg-background/50 shadow-sm">
-                                <p className="text-xs font-medium mb-1 truncate" title={task.name}>{task.name}</p>
-                                <div className="space-y-1">
-                                  <Select
-                                    value={record.status === '' ? NO_STATUS_SELECT_VALUE : record.status}
-                                    onValueChange={(valueFromSelect) => {
-                                      const valueToStore = valueFromSelect === NO_STATUS_SELECT_VALUE ? '' : valueFromSelect as 'fait' | 'non_fait' | 'na';
-                                      handleRecordChange(day.date, zone.id, task.id, 'status', valueToStore);
-                                    }}
-                                    disabled={day.isWeekend}
-                                  >
-                                    <SelectTrigger className="h-7 text-xs text-foreground/80">
-                                      <SelectValue placeholder="Statut" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value={NO_STATUS_SELECT_VALUE}>-</SelectItem>
-                                      <SelectItem value="fait">Fait</SelectItem>
-                                      <SelectItem value="non_fait">Non Fait</SelectItem>
-                                      <SelectItem value="na">N/A</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                  <Input
-                                    type="text"
-                                    placeholder="Op."
-                                    value={record.operator}
-                                    onChange={(e) => handleRecordChange(day.date, zone.id, task.id, 'operator', e.target.value)}
-                                    className="h-7 text-xs"
-                                    disabled={day.isWeekend}
-                                    maxLength={15}
-                                  />
-                                  <Textarea
-                                    placeholder="Notes"
-                                    value={record.notes}
-                                    onChange={(e) => handleRecordChange(day.date, zone.id, task.id, 'notes', e.target.value)}
-                                    className="h-12 text-xs resize-none py-1"
-                                    disabled={day.isWeekend}
-                                    maxLength={50}
-                                  />
-                                </div>
-                              </div>
-                            );
-                          })}
+                        <TableCell key={task.id} className="p-1 align-top border-l">
+                          <div className="grid grid-cols-3 gap-1">
+                            <Select
+                              value={record.status === '' ? NO_STATUS_SELECT_VALUE : record.status}
+                              onValueChange={(valueFromSelect) => {
+                                const valueToStore = valueFromSelect === NO_STATUS_SELECT_VALUE ? '' : valueFromSelect as 'fait' | 'non_fait' | 'na';
+                                handleRecordChange(day.date, selectedZoneData.id, task.id, 'status', valueToStore);
+                              }}
+                              disabled={day.isWeekend}
+                            >
+                              <SelectTrigger className="h-7 text-xs text-foreground/80">
+                                <SelectValue placeholder="Statut" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={NO_STATUS_SELECT_VALUE}>-</SelectItem>
+                                <SelectItem value="fait">Fait</SelectItem>
+                                <SelectItem value="non_fait">Non Fait</SelectItem>
+                                <SelectItem value="na">N/A</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              type="text"
+                              placeholder="Op."
+                              value={record.operator}
+                              onChange={(e) => handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', e.target.value)}
+                              className="h-7 text-xs"
+                              disabled={day.isWeekend}
+                              maxLength={15}
+                            />
+                            <Textarea
+                              placeholder="Notes"
+                              value={record.notes}
+                              onChange={(e) => handleRecordChange(day.date, selectedZoneData.id, task.id, 'notes', e.target.value)}
+                              className="h-16 text-xs resize-none py-1"
+                              disabled={day.isWeekend}
+                              maxLength={50}
+                            />
+                          </div>
                         </TableCell>
                       );
                     })}
@@ -347,10 +371,13 @@ export default function KitchenCleaningMonitoring() {
         ) : (
           <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
             <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />
-            <p className="mt-2 text-sm text-muted-foreground">Aucune donnée à afficher pour la période sélectionnée.</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {selectedZoneId ? "Aucune donnée à afficher pour la période sélectionnée." : "Veuillez d'abord sélectionner une zone."}
+            </p>
           </div>
         )}
       </CardContent>
     </Card>
   );
 }
+
