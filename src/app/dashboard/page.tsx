@@ -1,7 +1,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, LayoutDashboard, Archive, Settings, PackageSearch, FileSpreadsheet, Users, ClipboardList, DollarSign, BookOpenText } from 'lucide-react';
+import { ArrowLeft, LayoutDashboard, Archive, Settings, PackageSearch, FileSpreadsheet, Users, ClipboardList, DollarSign, BookOpenText, ShieldCheck } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function DashboardPage() {
@@ -62,6 +62,12 @@ export default function DashboardPage() {
           description="Planifiez les menus hebdomadaires/mensuels et générez des fiches de commande."
           href="/dashboard/menu-planning"
           icon={<BookOpenText className="w-8 h-8 text-primary" />}
+        />
+         <DashboardCard
+          title="PMS (Plan de Maîtrise Sanitaire)"
+          description="Gérez vos suivis de nettoyage, températures et livraisons."
+          href="/dashboard/pms"
+          icon={<ShieldCheck className="w-8 h-8 text-primary" />}
         />
         <DashboardCard
           title="Paramètres"
