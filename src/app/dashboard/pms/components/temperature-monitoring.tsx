@@ -35,16 +35,14 @@ const TEMP_MIN = -1;
 const TEMP_MAX = 14;
 const temperatureValues = Array.from({ length: TEMP_MAX - TEMP_MIN + 1 }, (_, i) => TEMP_MIN + i);
 
-const TEMP_TARGET_LABEL = "T° Cible : de 7 A 9 °C"; // Pourrait être configurable plus tard
+const TEMP_TARGET_LABEL = "T° Cible : de 7 A 9 °C"; 
 
-// Définition des zones de température pour l'affichage et le PDF
 const tempZonesDefinition = [
-  { label: "ZONE DE REJET (> 9°C)", from: 10, to: TEMP_MAX, color: "bg-red-200 dark:bg-red-800/50", textColor: "text-red-700 dark:text-red-200", pdfColor: [252, 165, 165] }, // light red
-  { label: "ZONE DE TOLERANCE (7 à 9°C)", from: 7, to: 9, color: "bg-blue-200 dark:bg-blue-800/50", textColor: "text-blue-700 dark:text-blue-200", pdfColor: [191, 219, 254] }, // light blue
-  { label: "ZONE DE T° CIBLE (< 7°C)", from: TEMP_MIN, to: 6, color: "bg-green-200 dark:bg-green-800/50", textColor: "text-green-700 dark:text-green-200", pdfColor: [167, 243, 208] }, // light green
-].sort((a, b) => b.from - a.from); // Important: trier par 'from' décroissant pour le rowSpan correct dans le rendu
+  { label: "ZONE DE REJET (> 9°C)", from: 10, to: TEMP_MAX, color: "bg-red-200 dark:bg-red-800/50", textColor: "text-red-700 dark:text-red-200", pdfColor: [252, 165, 165] },
+  { label: "ZONE DE TOLERANCE (7 à 9°C)", from: 7, to: 9, color: "bg-blue-200 dark:bg-blue-800/50", textColor: "text-blue-700 dark:text-blue-200", pdfColor: [191, 219, 254] },
+  { label: "ZONE DE T° CIBLE (< 7°C)", from: TEMP_MIN, to: 6, color: "bg-green-200 dark:bg-green-800/50", textColor: "text-green-700 dark:text-green-200", pdfColor: [167, 243, 208] },
+].sort((a, b) => b.from - a.from);
 
-// Calculer rowSpan pour chaque zone
 const tempZonesWithRowSpan = tempZonesDefinition.map(zone => ({
   ...zone,
   rowSpan: zone.to - zone.from + 1,
@@ -114,12 +112,22 @@ export default function TemperatureMonitoring() {
   const handleTempCellClick = (dateStr: string, equipmentId: string, tempValue: number) => {
     const recordKey = `${dateStr}_${equipmentId}`;
     setTemperatureRecords(prev => {
-      const currentRecord = prev[recordKey] || {};
+      const currentRecord = prev[recordKey] || { time: '', operator: '' };
+      const newMarkedValue = currentRecord.markedTemperatureValue === tempValue ? undefined : tempValue;
+      let newTime = currentRecord.time;
+
+      if (newMarkedValue !== undefined) { // Temperature is being marked
+        newTime = format(new Date(), 'HH:mm');
+      } else { // Temperature is being unmarked
+        newTime = ''; 
+      }
+
       return {
         ...prev,
         [recordKey]: {
           ...currentRecord,
-          markedTemperatureValue: currentRecord.markedTemperatureValue === tempValue ? undefined : tempValue,
+          markedTemperatureValue: newMarkedValue,
+          time: newTime, // Automatically set/clear time
         }
       };
     });
@@ -183,7 +191,7 @@ export default function TemperatureMonitoring() {
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
         if (primaryColorRgb) headStyles.fillColor = primaryColorRgb;
-        headStyles.textColor = [255,255,255]; // Assuming dark primary color
+        headStyles.textColor = [255,255,255]; 
       }
       
       const head: any[] = [
@@ -193,17 +201,14 @@ export default function TemperatureMonitoring() {
           ...monthData.map(day => ({ content: `${day.dayOfMonth}\n${day.dayName.substring(0,3)}`, styles: { halign: 'center', fontSize: 7, cellWidth: 7 } }))
         ]
       ];
-       // Placeholder for second header row if needed for more complex headers, or remove if single row is fine
-      head.push(monthData.map(() => '')); // Empty cells for the second part of colSpanned day headers if we were to have more day details.
-                                         // For this specific case, it makes the header take two visual lines, which might be okay.
-                                         // If only one line header is needed for days, then remove rowSpan and this push.
+      head.push(monthData.map(() => '')); 
 
       const body: any[][] = [];
       temperatureValues.slice().reverse().forEach(tempVal => {
         const row: any[] = [];
         const zoneForThisTemp = tempZonesWithRowSpan.find(z => tempVal <= z.to && tempVal >= z.from);
         
-        if (zoneForThisTemp && tempVal === zoneForThisTemp.to) { // Add zone label only for the first row of the zone
+        if (zoneForThisTemp && tempVal === zoneForThisTemp.to) {
             row.push({ 
                 content: zoneForThisTemp.label, 
                 rowSpan: zoneForThisTemp.rowSpan, 
@@ -213,12 +218,10 @@ export default function TemperatureMonitoring() {
                     fontStyle: 'bold', 
                     fontSize: 8, 
                     fillColor: zoneForThisTemp.pdfColor,
-                    // textColor: [0,0,0] // Ensure text is visible on colored background
                 } 
             });
         } else if (!zoneForThisTemp && tempZonesWithRowSpan.every(z => tempVal > z.to || tempVal < z.from)) {
-            // This case implies a gap if tempValues extend beyond defined zones, add empty cell
-            // Or, this cell is covered by a previous rowSpan
+          // This cell is covered by a previous rowSpan or is outside defined zones
         }
 
         row.push({ content: `${tempVal}°C`, styles: { halign: 'center', fontSize: 8 } });
@@ -233,7 +236,6 @@ export default function TemperatureMonitoring() {
         body.push(row);
       });
       
-      // Add rows for Heure and Operateur
       const timeRow: any[] = [{content: 'Heure Relevé', colSpan: 2, styles: {fontStyle: 'bold', fontSize: 8, halign: 'right'}}];
       monthData.forEach(day => {
         const record = getRecord(day.date, selectedEquipmentData.id);
@@ -253,17 +255,8 @@ export default function TemperatureMonitoring() {
         head: head,
         body: body,
         theme: 'grid',
-        headStyles: { ...headStyles, halign: 'center', fontSize: 8, cellPadding: 1, fillColor: [200,200,200], textColor: [0,0,0] }, // Neutral header
+        headStyles: { ...headStyles, halign: 'center', fontSize: 8, cellPadding: 1, fillColor: [200,200,200], textColor: [0,0,0] },
         styles: { fontSize: 8, cellPadding: 1 },
-        didDrawCell: (data) => { // Custom cell drawing for zone colors if rowSpan approach is tricky with autotable's direct styling
-            if (data.section === 'body' && data.column.index === 0) { // Zone column
-                const tempVal = temperatureValues.slice().reverse()[data.row.index];
-                const zone = tempZonesWithRowSpan.find(z => tempVal <= z.to && tempVal >= z.from);
-                if (zone && tempVal === zone.to) { // Only color the first cell of a spanned group
-                    // This might conflict with rowSpan fillColor, autotable handles this; direct cell coloring is an alternative
-                }
-            }
-        },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
           if (pdfSettings.footerText) {
@@ -302,7 +295,7 @@ export default function TemperatureMonitoring() {
               {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
               PDF Équipement
             </Button>
-            <Button variant="destructive" onClick={handleClearMonthData} disabled={isLoading || !selectedEquipmentId || Object.keys(temperatureRecords).length === 0} className="w-full sm:w-auto">
+            <Button variant="destructive" onClick={handleClearMonthData} disabled={isLoading || !selectedEquipmentId || Object.keys(temperatureRecords).filter(k => k.endsWith(`_${selectedEquipmentId}`)).length === 0} className="w-full sm:w-auto">
               <Trash2 className="mr-2 h-4 w-4" /> Effacer Mois (Équip.)
             </Button>
           </div>
@@ -323,40 +316,40 @@ export default function TemperatureMonitoring() {
               <div className="overflow-x-auto border rounded-md">
                 <Table className="min-w-full table-fixed">
                   <TableHeader className="sticky top-0 z-30 bg-card shadow-sm">
-                    <TableRow className="h-10">
+                    <TableRow className="h-8">
                       <TableHead className="w-12 sm:w-16 sticky left-0 z-20 bg-card border-r text-center text-xs p-1 align-middle">Zone</TableHead>
                       <TableHead className="w-12 sm:w-16 sticky left-12 sm:left-16 z-20 bg-card border-r text-center text-xs p-1 align-middle">T°C</TableHead>
-                      {monthData.map(day => (<TableHead key={day.date} className={cn("text-center text-[10px] sm:text-xs p-0.5 sm:p-1 w-7 sm:w-8 h-10", day.isWeekend && "bg-muted/50")}>{day.dayOfMonth}<br/>{day.dayName.substring(0,3)}</TableHead>))}
+                      {monthData.map(day => (<TableHead key={day.date} className={cn("text-center text-[9px] sm:text-xs p-0.5 sm:p-1 w-6 sm:w-7 h-8", day.isWeekend && "bg-muted/50")}>{day.dayOfMonth}<br/>{day.dayName.substring(0,3)}</TableHead>))}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {temperatureValues.slice().reverse().map((tempValue, tempIndex) => {
+                    {temperatureValues.slice().reverse().map((tempValue) => {
                       const zoneStartingThisRow = tempZonesWithRowSpan.find(z => z.to === tempValue);
                       return (
-                        <TableRow key={tempValue} className="h-6 hover:bg-muted/20">
+                        <TableRow key={tempValue} className="h-5 hover:bg-muted/20">
                           {zoneStartingThisRow ? (
                             <TableCell
                               rowSpan={zoneStartingThisRow.rowSpan}
-                              className={cn(zoneStartingThisRow.color, zoneStartingThisRow.textColor, "font-semibold align-middle text-center text-[10px] p-0 sticky left-0 z-10 border-r w-12 sm:w-16")}
+                              className={cn(zoneStartingThisRow.color, zoneStartingThisRow.textColor, "font-semibold align-middle text-center text-[9px] p-0 sticky left-0 z-10 border-r w-12 sm:w-16")}
                             >
                               <div className="h-full flex items-center justify-center overflow-hidden" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', transform: 'rotate(180deg)' }}>
                                 {zoneStartingThisRow.label}
                               </div>
                             </TableCell>
-                          ) : (tempZonesWithRowSpan.find(z => tempValue < z.to && tempValue >= z.from)) ? null : ( /* Cell covered by rowspan or no zone */
-                             <TableCell className="sticky left-0 z-10 border-r bg-card"></TableCell> /* Placeholder if logic needs invisible cell */
+                          ) : (tempZonesWithRowSpan.find(z => tempValue < z.to && tempValue >= z.from)) ? null : (
+                             <TableCell className="sticky left-0 z-10 border-r bg-card p-0"></TableCell>
                           ) }
-                          <TableCell className="font-mono text-[10px] sm:text-xs text-center border-r sticky left-12 sm:left-16 z-10 bg-card p-0.5 sm:p-1">{tempValue}°C</TableCell>
+                          <TableCell className="font-mono text-[9px] sm:text-xs text-center border-r sticky left-12 sm:left-16 z-10 bg-card p-0.5 sm:p-1">{tempValue}°C</TableCell>
                           {monthData.map((day) => {
                             const record = getRecord(day.date, selectedEquipmentData.id);
                             const isMarked = record.markedTemperatureValue === tempValue;
                             return (
                               <TableCell
                                 key={day.date}
-                                className={cn("text-center p-0 h-6 w-7 sm:w-8 cursor-pointer hover:bg-primary/20", day.isWeekend && "bg-muted/40 cursor-not-allowed", isMarked && "bg-primary/40 text-primary-foreground")}
+                                className={cn("text-center p-0 h-5 w-6 sm:w-7 cursor-pointer hover:bg-primary/20", day.isWeekend && "bg-muted/40 cursor-not-allowed", isMarked && "bg-primary text-primary-foreground")}
                                 onClick={() => !day.isWeekend && handleTempCellClick(day.date, selectedEquipmentData.id, tempValue)}
                               >
-                                {isMarked ? <span className="font-bold text-lg">X</span> : ""}
+                                {isMarked ? <span className="font-bold text-sm leading-none">X</span> : ""}
                               </TableCell>
                             );
                           })}
@@ -364,24 +357,24 @@ export default function TemperatureMonitoring() {
                       );
                     })}
                     {/* Row for Heure */}
-                    <TableRow className="bg-card/80 sticky bottom-12 sm:bottom-8 z-10 h-8">
-                        <TableCell colSpan={2} className="text-right font-semibold text-xs sticky left-0 z-20 bg-card p-1 border-t">Heure Relevé</TableCell>
+                    <TableRow className="bg-card/80 sticky bottom-10 sm:bottom-5 z-10 h-7">
+                        <TableCell colSpan={2} className="text-right font-semibold text-[10px] sm:text-xs sticky left-0 z-20 bg-card p-0.5 border-t">Heure Relevé</TableCell>
                         {monthData.map(day => (
                             <TableCell key={`time-${day.date}`} className="p-0.5 border-t">
                                 <Input type="text" placeholder="HH:mm" defaultValue={getRecord(day.date, selectedEquipmentData.id).time} 
                                        onBlur={(e) => handleTimeOperatorChange(day.date, selectedEquipmentData.id, 'time', e.target.value)}
-                                       className="h-6 text-[10px] sm:text-xs text-center p-0.5" disabled={day.isWeekend} pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" />
+                                       className="h-5 text-[9px] sm:text-xs text-center p-0.5" disabled={day.isWeekend} pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" />
                             </TableCell>
                         ))}
                     </TableRow>
                     {/* Row for Opérateur */}
-                    <TableRow className="bg-card/80 sticky bottom-0 z-10 h-8">
-                        <TableCell colSpan={2} className="text-right font-semibold text-xs sticky left-0 z-20 bg-card p-1 border-t">Opérateur</TableCell>
+                    <TableRow className="bg-card/80 sticky bottom-0 z-10 h-7">
+                        <TableCell colSpan={2} className="text-right font-semibold text-[10px] sm:text-xs sticky left-0 z-20 bg-card p-0.5 border-t">Opérateur</TableCell>
                         {monthData.map(day => (
                             <TableCell key={`op-${day.date}`} className="p-0.5 border-t">
                                 <Input type="text" placeholder="Initiales" defaultValue={getRecord(day.date, selectedEquipmentData.id).operator} 
                                        onBlur={(e) => handleTimeOperatorChange(day.date, selectedEquipmentData.id, 'operator', e.target.value)}
-                                       className="h-6 text-[10px] sm:text-xs text-center p-0.5" disabled={day.isWeekend} maxLength={10}/>
+                                       className="h-5 text-[9px] sm:text-xs text-center p-0.5" disabled={day.isWeekend} maxLength={10}/>
                             </TableCell>
                         ))}
                     </TableRow>
@@ -397,3 +390,4 @@ export default function TemperatureMonitoring() {
     </Card>
   );
 }
+
