@@ -27,7 +27,7 @@ export type SimplifiedMonthlyRestaurantCleaningRecord = SimplifiedMonthlyKitchen
 
 // For Temperature Records
 export interface DailyTemperatureRecord {
-  temperature?: string; 
+  markedTemperatureValue?: number; // Storing the numerical value of the temperature marked
   time?: string;       // HH:mm format
   operator?: string;
 }
@@ -39,30 +39,3 @@ export interface MonthlyTemperatureLog {
 
 
 export const NO_STATUS_SELECT_VALUE = "_aucun_statut_";
-
-// --- Potentially for later, more complex PMS settings ---
-// export interface PmsTask {
-//   id: string;
-//   name: string;
-// }
-
-// export interface PmsZone {
-//   id: string;
-//   name: string;
-//   tasks: PmsTask[]; 
-// }
-
-// export interface DailyCleaningRecordData {
-//   status?: 'fait' | 'non_fait' | 'na' | ''; 
-//   operator?: string; 
-// }
-
-// export interface DailyZoneCleaningStatus {
-//   [zoneId: string]: {
-//     [taskId: string]: DailyCleaningRecordData; 
-//   };
-// }
-
-// export interface MonthlyCleaningRecord {
-//   [date: string]: DailyZoneCleaningStatus; 
-// }
