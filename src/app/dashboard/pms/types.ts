@@ -37,5 +37,23 @@ export interface MonthlyTemperatureLog {
   [date_equipmentId: string]: DailyTemperatureRecord;
 }
 
+// For Reception Monitoring
+export interface ReceptionEntry {
+  id: string;
+  dateTime: string; // ISO string for date and time
+  supplierName: string;
+  productNameControlled: string;
+  vehicleObservations: string; // For "Véhicule: propreté température"
+  productTemperature?: string; // T°C
+  dlcDluo?: string;
+  lotNumber?: string;
+  packagingAspect?: string;
+  quantity?: string;
+  productLabeling?: string;
+  refused: boolean;
+  refusalReason?: string; // Optional, if refused is true
+  visa?: string; // Initials
+}
+
 
 export const NO_STATUS_SELECT_VALUE = "_aucun_statut_";
