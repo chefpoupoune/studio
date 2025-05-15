@@ -12,16 +12,15 @@ export interface PdfLayoutSettings {
 }
 
 // Types for PMS Configuration
-// Aligned with PmsTaskDefinition from pms/types.ts
 export interface PmsTaskDefinition { 
   id: string;
   name: string;
 }
 
-export interface PmsZone {
+export interface PmsZone { // Can also represent an "Equipment" if tasks array is empty
   id: string;
   name: string;
-  tasks: PmsTaskDefinition[]; // Renamed from criteria
+  tasks: PmsTaskDefinition[];
 }
 
 // Defines the structure for PMS configurations, keyed by category (e.g., 'kitchenCleaning')
@@ -31,6 +30,8 @@ export interface PmsConfigurations {
 
 export const PMS_KITCHEN_CLEANING_KEY = 'kitchenCleaning_v1';
 export const PMS_RESTAURANT_CLEANING_KEY = 'restaurantCleaning_v1';
-// Incremented version due to structure change (criteria -> tasks)
-export const PMS_CONFIG_STORAGE_KEY = 'pms_module_configurations_v3'; 
+export const PMS_TEMPERATURE_MONITORING_KEY = 'temperatureMonitoring_v1'; // New key for temperature equipment
+// Potentially add keys for delivery monitoring etc. in the future
 
+export const PMS_CONFIG_STORAGE_KEY = 'pms_module_configurations_v3';
+    
