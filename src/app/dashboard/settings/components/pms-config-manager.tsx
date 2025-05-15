@@ -25,23 +25,19 @@ const temperatureEquipmentSchema = baseZoneSchema.extend({
   equipmentType: z.enum(['refrigerator', 'freezer']).default('refrigerator'),
   targetTempMin: z.coerce.number().optional(),
   targetTempMax: z.coerce.number().optional(),
-  toleranceTempMin: z.coerce.number().optional(),
-  toleranceTempMax: z.coerce.number().optional(),
-}).refine(data => {
-    const { targetTempMin, targetTempMax, toleranceTempMin, toleranceTempMax } = data;
-    if (targetTempMin !== undefined && targetTempMax !== undefined && targetTempMin > targetTempMax) {
-        return false; 
-    }
-    if (toleranceTempMin !== undefined && toleranceTempMax !== undefined && toleranceTempMin > toleranceTempMax) {
-        return false; 
-    }
-    if (targetTempMax !== undefined && toleranceTempMin !== undefined && targetTempMax >= toleranceTempMin) {
-        return false; 
-    }
-    return true;
-}, {
-    message: "Les plages de température cible/tolérance sont invalides ou se chevauchent incorrectement. Assurez-vous que Min ≤ Max et que la cible est distincte de la tolérance.",
-    path: ['targetTempMin'] 
+  tolerance1TempMin: z.coerce.number().optional(),
+  tolerance1TempMax: z.coerce.number().optional(),
+  tolerance2TempMin: z.coerce.number().optional(),
+  tolerance2TempMax: z.coerce.number().optional(),
+})
+.refine(data => data.targetTempMin === undefined || data.targetTempMax === undefined || data.targetTempMin <= data.targetTempMax, {
+  message: "Cible T° Min doit être ≤ Cible T° Max.", path: ['targetTempMin']
+})
+.refine(data => data.tolerance1TempMin === undefined || data.tolerance1TempMax === undefined || data.tolerance1TempMin <= data.tolerance1TempMax, {
+  message: "Tolérance 1 T° Min doit être ≤ Tolérance 1 T° Max.", path: ['tolerance1TempMin']
+})
+.refine(data => data.tolerance2TempMin === undefined || data.tolerance2TempMax === undefined || data.tolerance2TempMin <= data.tolerance2TempMax, {
+  message: "Tolérance 2 T° Min doit être ≤ Tolérance 2 T° Max.", path: ['tolerance2TempMin']
 });
 
 
@@ -66,9 +62,8 @@ export default function PmsConfigManager() {
 
   const { toast } = useToast();
   
-  // Form hook defined once
   const form = useForm<ZoneFormData | TemperatureEquipmentFormData>({
-    // The resolver will be dynamically set in useEffect based on currentCategoryKey
+    // Resolver set dynamically
   });
   const taskForm = useForm<TaskFormData>({ resolver: zodResolver(taskSchema), defaultValues: { name: '' } });
   
@@ -95,7 +90,6 @@ export default function PmsConfigManager() {
     }
   }, [toast]);
 
-  // Effect to update form resolver and default values when dialog opens or category changes
   useEffect(() => {
     if (isZoneDialogOpen) {
         const resolver = currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY 
@@ -109,12 +103,15 @@ export default function PmsConfigManager() {
                 equipmentType: editingZone?.equipmentType || 'refrigerator',
                 targetTempMin: editingZone?.targetTempMin,
                 targetTempMax: editingZone?.targetTempMax,
-                toleranceTempMin: editingZone?.toleranceTempMin,
-                toleranceTempMax: editingZone?.toleranceTempMax,
+                tolerance1TempMin: editingZone?.tolerance1TempMin,
+                tolerance1TempMax: editingZone?.tolerance1TempMax,
+                tolerance2TempMin: editingZone?.tolerance2TempMin,
+                tolerance2TempMax: editingZone?.tolerance2TempMax,
             };
         }
         
-        form.reset(defaultValues, { resolver } as any); // Use 'as any' if type errors persist with dynamic resolver
+        form.reset(defaultValues);
+        form.reset(defaultValues, { resolver } as any);
     }
   }, [isZoneDialogOpen, currentCategoryKey, editingZone, form]);
 
@@ -125,9 +122,9 @@ export default function PmsConfigManager() {
   }, []);
 
   const handleOpenZoneDialog = (categoryKey: string, zone?: PmsZone) => {
-    setCurrentCategoryKey(categoryKey); // Set category first
+    setCurrentCategoryKey(categoryKey);
     setEditingZone(zone || null);
-    setIsZoneDialogOpen(true); // This will trigger the useEffect to reset form with new resolver and defaults
+    setIsZoneDialogOpen(true);
   };
 
   const handleZoneSubmit = (data: ZoneFormData | TemperatureEquipmentFormData) => {
@@ -138,14 +135,16 @@ export default function PmsConfigManager() {
     let updatedItemData: PmsZone;
 
     if (editingZone) {
-      updatedItemData = { ...editingZone, ...data, id: editingZone.id, tasks: editingZone.tasks || [] };
+      updatedItemData = { ...editingZone, name: data.name, id: editingZone.id, tasks: editingZone.tasks || [] };
        if (currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY) {
         const tempData = data as TemperatureEquipmentFormData;
         updatedItemData.equipmentType = tempData.equipmentType;
         updatedItemData.targetTempMin = tempData.targetTempMin;
         updatedItemData.targetTempMax = tempData.targetTempMax;
-        updatedItemData.toleranceTempMin = tempData.toleranceTempMin;
-        updatedItemData.toleranceTempMax = tempData.toleranceTempMax;
+        updatedItemData.tolerance1TempMin = tempData.tolerance1TempMin;
+        updatedItemData.tolerance1TempMax = tempData.tolerance1TempMax;
+        updatedItemData.tolerance2TempMin = tempData.tolerance2TempMin;
+        updatedItemData.tolerance2TempMax = tempData.tolerance2TempMax;
       }
       const updatedItems = currentItems.map(item => item.id === editingZone.id ? updatedItemData : item);
       saveConfigs({ ...pmsConfigs, [currentCategoryKey]: updatedItems });
@@ -160,8 +159,10 @@ export default function PmsConfigManager() {
           equipmentType: tempData.equipmentType,
           targetTempMin: tempData.targetTempMin,
           targetTempMax: tempData.targetTempMax,
-          toleranceTempMin: tempData.toleranceTempMin,
-          toleranceTempMax: tempData.toleranceTempMax,
+          tolerance1TempMin: tempData.tolerance1TempMin,
+          tolerance1TempMax: tempData.tolerance1TempMax,
+          tolerance2TempMin: tempData.tolerance2TempMin,
+          tolerance2TempMax: tempData.tolerance2TempMax,
         };
       } else {
         updatedItemData = { ...baseNewItem, id: `${currentCategoryKey}_item_${Date.now()}` };
@@ -178,7 +179,7 @@ export default function PmsConfigManager() {
     if (confirm(`Êtes-vous sûr de vouloir supprimer ${itemLabelSingular} et tous ${itemLabelPlural} associés ?`)) {
       const currentItems = pmsConfigs[categoryKey] || [];
       const updatedItems = currentItems.filter(item => item.id !== itemId);
-      saveConfigs({ ...pmsConfigs, [categoryKey]: updatedItems });
+      saveConfigs({ ...pmsConfigs, [currentCategoryKey]: updatedItems });
       toast({ title: `${categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone"} Supprimé(e)`, variant: "destructive" });
     }
   };
@@ -260,11 +261,14 @@ export default function PmsConfigManager() {
                       {categoryKey === PMS_TEMPERATURE_MONITORING_KEY && item.equipmentType && (
                         <span className="text-xs text-muted-foreground ml-2">({item.equipmentType === 'freezer' ? 'Congélateur' : 'Réfrigérateur'})</span>
                       )}
-                       {categoryKey === PMS_TEMPERATURE_MONITORING_KEY && (item.targetTempMin !== undefined || item.targetTempMax !== undefined) && (
+                       {categoryKey === PMS_TEMPERATURE_MONITORING_KEY && (
                         <span className="text-xs text-muted-foreground ml-2 italic">
                             (Cible: {item.targetTempMin ?? 'N/A'} à {item.targetTempMax ?? 'N/A'}°C
-                            { (item.toleranceTempMin !== undefined || item.toleranceTempMax !== undefined) && 
-                                `, Tol: ${item.toleranceTempMin ?? 'N/A'} à ${item.toleranceTempMax ?? 'N/A'}°C`
+                            { (item.tolerance1TempMin !== undefined || item.tolerance1TempMax !== undefined) && 
+                                `, Tol.1: ${item.tolerance1TempMin ?? 'N/A'} à ${item.tolerance1TempMax ?? 'N/A'}°C`
+                            }
+                            { (item.tolerance2TempMin !== undefined || item.tolerance2TempMax !== undefined) && 
+                                `, Tol.2: ${item.tolerance2TempMin ?? 'N/A'} à ${item.tolerance2TempMax ?? 'N/A'}°C`
                             })
                         </span>
                       )}
@@ -371,14 +375,22 @@ export default function PmsConfigManager() {
                     )} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <FormField control={form.control} name="toleranceTempMin" render={({ field }) => (
-                      <FormItem><FormLabel>Tolérance T° Min (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: 5" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
+                    <FormField control={form.control} name="tolerance1TempMin" render={({ field }) => (
+                      <FormItem><FormLabel>Tolérance 1 T° Min (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: -2" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
                     )} />
-                    <FormField control={form.control} name="toleranceTempMax" render={({ field }) => (
-                      <FormItem><FormLabel>Tolérance T° Max (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: 7" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
+                    <FormField control={form.control} name="tolerance1TempMax" render={({ field }) => (
+                      <FormItem><FormLabel>Tolérance 1 T° Max (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: -1" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
                     )} />
                   </div>
-                   <p className="text-xs text-muted-foreground">Laissez les champs de température vides si vous souhaitez utiliser les valeurs par défaut de l'application. Les plages de tolérance sont optionnelles.</p>
+                   <div className="grid grid-cols-2 gap-4">
+                    <FormField control={form.control} name="tolerance2TempMin" render={({ field }) => (
+                      <FormItem><FormLabel>Tolérance 2 T° Min (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: 5" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <FormField control={form.control} name="tolerance2TempMax" render={({ field }) => (
+                      <FormItem><FormLabel>Tolérance 2 T° Max (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: 7" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                  </div>
+                   <p className="text-xs text-muted-foreground">Laissez les champs de température vides si vous souhaitez utiliser les valeurs par défaut de l'application. Les plages de tolérance sont optionnelles et doivent être logiquement distinctes de la cible.</p>
                 </>
               )}
 
@@ -429,5 +441,3 @@ export default function PmsConfigManager() {
     </div>
   );
 }
-
-    

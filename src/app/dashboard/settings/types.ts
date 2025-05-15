@@ -20,15 +20,16 @@ export interface PmsTaskDefinition {
 export interface PmsZone { // Can also represent an "Equipment"
   id: string;
   name: string;
-  tasks?: PmsTaskDefinition[]; // Optional, as not all PMS categories use tasks (e.g., temperature)
+  tasks?: PmsTaskDefinition[]; // Optional for categories like temperature
   
   // Fields specific to Temperature Monitoring Equipment
   equipmentType?: 'refrigerator' | 'freezer';
   targetTempMin?: number;
   targetTempMax?: number;
-  toleranceTempMin?: number;
-  toleranceTempMax?: number;
-  // Note: Rejection zones are derived
+  tolerance1TempMin?: number; 
+  tolerance1TempMax?: number; 
+  tolerance2TempMin?: number; 
+  tolerance2TempMax?: number; 
 }
 
 // Defines the structure for PMS configurations, keyed by category (e.g., 'kitchenCleaning')
@@ -40,5 +41,5 @@ export const PMS_KITCHEN_CLEANING_KEY = 'kitchenCleaning_v1';
 export const PMS_RESTAURANT_CLEANING_KEY = 'restaurantCleaning_v1';
 export const PMS_TEMPERATURE_MONITORING_KEY = 'temperatureMonitoring_v1'; 
 
-export const PMS_CONFIG_STORAGE_KEY = 'pms_module_configurations_v4';
+export const PMS_CONFIG_STORAGE_KEY = 'pms_module_configurations_v5'; // Incremented version
     

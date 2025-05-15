@@ -33,6 +33,7 @@ const monthsArray = Array.from({ length: 12 }, (_, i) => ({
 
 interface TempZoneStyle {
   label: string;
+  type: 'target' | 'tolerance1' | 'tolerance2' | 'rejection';
   color: string;
   textColor: string;
   pdfColor: [number, number, number];
@@ -49,7 +50,7 @@ export default function TemperatureMonitoring() {
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
-  const getLocalStorageKeyForRecords = useCallback(() => `pms_temperature_records_grid_v2_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
+  const getLocalStorageKeyForRecords = useCallback(() => `pms_temperature_records_grid_v3_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
 
   const selectedEquipmentData = useMemo(() => {
     return configuredEquipments.find(eq => eq.id === selectedEquipmentId);
@@ -57,60 +58,84 @@ export default function TemperatureMonitoring() {
 
   const { temperatureValues, dynamicTempZones, targetLabel } = useMemo(() => {
     const equipmentType = selectedEquipmentData?.equipmentType || 'refrigerator';
-    let minTemp = -5, maxTemp = 15; // Defaults for refrigerator
+    let minDisplayTemp = -5, maxDisplayTemp = 15; 
     if (equipmentType === 'freezer') {
-      minTemp = -25; maxTemp = 5;
+      minDisplayTemp = -25; maxDisplayTemp = 0; 
     }
 
-    const values = Array.from({ length: maxTemp - minTemp + 1 }, (_, i) => minTemp + i);
+    const allDisplayTemps = Array.from({ length: maxDisplayTemp - minDisplayTemp + 1 }, (_, i) => minDisplayTemp + i);
     
-    let zones: TempZoneStyle[] = [];
-    let label = "T° Cible non définie";
+    let labelParts: string[] = [];
+    const zones: TempZoneStyle[] = [];
 
-    const { targetTempMin, targetTempMax, toleranceTempMin, toleranceTempMax } = selectedEquipmentData || {};
+    const { targetTempMin, targetTempMax, tolerance1TempMin, tolerance1TempMax, tolerance2TempMin, tolerance2TempMax } = selectedEquipmentData || {};
 
-    // Default values if custom not set
-    const effTargetMin = targetTempMin ?? (equipmentType === 'freezer' ? -25 : 0);
+    const effTargetMin = targetTempMin ?? (equipmentType === 'freezer' ? -22 : 0);
     const effTargetMax = targetTempMax ?? (equipmentType === 'freezer' ? -18 : 4);
-    const effToleranceMin = toleranceTempMin ?? (targetTempMax !== undefined ? targetTempMax +1 : (equipmentType === 'freezer' ? -17 : 5));
-    const effToleranceMax = toleranceTempMax ?? (toleranceTempMin !== undefined ? toleranceTempMin +2 : (equipmentType === 'freezer' ? -15 : 7));
+    labelParts.push(`Cible: ${effTargetMin}°C à ${effTargetMax}°C`);
 
-    label = `Cible: ${effTargetMin}°C à ${effTargetMax}°C`;
-    if(selectedEquipmentData?.toleranceTempMin !== undefined && selectedEquipmentData?.toleranceTempMax !== undefined){
-        label += ` / Tol.: ${effToleranceMin}°C à ${effToleranceMax}°C`;
+    const tol1Defined = tolerance1TempMin !== undefined && tolerance1TempMax !== undefined;
+    if (tol1Defined) {
+      labelParts.push(`Tol.1: ${tolerance1TempMin}°C à ${tolerance1TempMax}°C`);
     }
+    const tol2Defined = tolerance2TempMin !== undefined && tolerance2TempMax !== undefined;
+    if (tol2Defined) {
+      labelParts.push(`Tol.2: ${tolerance2TempMin}°C à ${tolerance2TempMax}°C`);
+    }
+    const finalTargetLabel = labelParts.join(' / ');
+    
+    const categorizedTemps = new Map<number, 'target' | 'tolerance1' | 'tolerance2' | 'rejection'>();
 
-
-    const targetZoneValues: number[] = [];
-    const toleranceZoneValues: number[] = [];
-    const rejectionZoneValues: number[] = [];
-
-    for (let temp = minTemp; temp <= maxTemp; temp++) {
+    for (const temp of allDisplayTemps) {
       if (temp >= effTargetMin && temp <= effTargetMax) {
-        targetZoneValues.push(temp);
-      } else if (selectedEquipmentData?.toleranceTempMin !== undefined && selectedEquipmentData?.toleranceTempMax !== undefined && temp >= effToleranceMin && temp <= effToleranceMax) {
-        toleranceZoneValues.push(temp);
+        categorizedTemps.set(temp, 'target');
+      } else if (tol1Defined && temp >= tolerance1TempMin! && temp <= tolerance1TempMax!) {
+        categorizedTemps.set(temp, 'tolerance1');
+      } else if (tol2Defined && temp >= tolerance2TempMin! && temp <= tolerance2TempMax!) {
+        categorizedTemps.set(temp, 'tolerance2');
       } else {
-        rejectionZoneValues.push(temp);
+        categorizedTemps.set(temp, 'rejection');
       }
     }
-    
-    if (rejectionZoneValues.length > 0) {
-      zones.push({ label: "ZONE DE REJET", values: rejectionZoneValues, color: "bg-red-100 dark:bg-red-900/50", textColor: "text-red-700 dark:text-red-300", pdfColor: [254, 202, 202]});
-    }
-    if (toleranceZoneValues.length > 0) {
-       zones.push({ label: "ZONE DE TOLERANCE", values: toleranceZoneValues, color: "bg-blue-100 dark:bg-blue-900/50", textColor: "text-blue-700 dark:text-blue-300", pdfColor: [191, 219, 254]});
-    }
-    if (targetZoneValues.length > 0) {
-       zones.push({ label: "ZONE DE T° CIBLE", values: targetZoneValues, color: "bg-green-100 dark:bg-green-900/50", textColor: "text-green-700 dark:text-green-300", pdfColor: [187, 247, 208]});
-    }
-    
-    // Ensure zones are sorted for display (e.g., rejection high, tolerance mid, target low for fridge)
-    // For simplicity, we'll rely on the order they are pushed if that matches the visual needs.
-    // A more robust sort might be needed for arbitrary custom ranges.
-    // Current logic puts rejection first, then tolerance, then target. If ranges are distinct, this can work.
 
-    return { temperatureValues: values, dynamicTempZones: zones, targetLabel: label };
+    let currentZoneType: 'target' | 'tolerance1' | 'tolerance2' | 'rejection' | null = null;
+    let currentZoneTemps: number[] = [];
+
+    for (const temp of allDisplayTemps) {
+      const typeForThisTemp = categorizedTemps.get(temp)!;
+      if (currentZoneType !== typeForThisTemp && currentZoneTemps.length > 0) {
+        let zoneLabel = "";
+        let color = "";
+        let textColor = "";
+        let pdfC: [number,number,number] = [200,200,200];
+
+        if(currentZoneType === 'target') { zoneLabel="ZONE DE T° CIBLE"; color="bg-green-100 dark:bg-green-900/50"; textColor="text-green-700 dark:text-green-300"; pdfC = [187, 247, 208];}
+        else if(currentZoneType === 'tolerance1') { zoneLabel="ZONE DE TOLERANCE 1"; color="bg-blue-100 dark:bg-blue-900/50"; textColor="text-blue-700 dark:text-blue-300"; pdfC = [191, 219, 254];}
+        else if(currentZoneType === 'tolerance2') { zoneLabel="ZONE DE TOLERANCE 2"; color="bg-yellow-100 dark:bg-yellow-800/50"; textColor="text-yellow-700 dark:text-yellow-300"; pdfC = [254, 249, 195];}
+        else if(currentZoneType === 'rejection') { zoneLabel="ZONE DE REJET"; color="bg-red-100 dark:bg-red-900/50"; textColor="text-red-700 dark:text-red-300"; pdfC = [254, 202, 202];}
+        
+        zones.push({ label: zoneLabel, type: currentZoneType!, color, textColor, pdfColor: pdfC, values: [...currentZoneTemps] });
+        currentZoneTemps = [];
+      }
+      currentZoneType = typeForThisTemp;
+      currentZoneTemps.push(temp);
+    }
+     if (currentZoneType && currentZoneTemps.length > 0) {
+        let zoneLabel = "";
+        let color = "";
+        let textColor = "";
+        let pdfC: [number,number,number] = [200,200,200];
+        if(currentZoneType === 'target') { zoneLabel="ZONE DE T° CIBLE"; color="bg-green-100 dark:bg-green-900/50"; textColor="text-green-700 dark:text-green-300"; pdfC = [187, 247, 208];}
+        else if(currentZoneType === 'tolerance1') { zoneLabel="ZONE DE TOLERANCE 1"; color="bg-blue-100 dark:bg-blue-900/50"; textColor="text-blue-700 dark:text-blue-300"; pdfC = [191, 219, 254];}
+        else if(currentZoneType === 'tolerance2') { zoneLabel="ZONE DE TOLERANCE 2"; color="bg-yellow-100 dark:bg-yellow-800/50"; textColor="text-yellow-700 dark:text-yellow-300"; pdfC = [254, 249, 195];}
+        else if(currentZoneType === 'rejection') { zoneLabel="ZONE DE REJET"; color="bg-red-100 dark:bg-red-900/50"; textColor="text-red-700 dark:text-red-300"; pdfC = [254, 202, 202];}
+        zones.push({ label: zoneLabel, type: currentZoneType, color, textColor, pdfColor: pdfC, values: [...currentZoneTemps] });
+    }
+    
+    zones.sort((a, b) => Math.min(...b.values) - Math.min(...a.values));
+
+
+    return { temperatureValues: allDisplayTemps, dynamicTempZones: zones, targetLabel: finalTargetLabel };
   }, [selectedEquipmentData]);
 
 
@@ -169,9 +194,9 @@ export default function TemperatureMonitoring() {
       const newMarkedValue = currentRecord.markedTemperatureValue === tempValue ? undefined : tempValue;
       let newTime = currentRecord.time;
 
-      if (newMarkedValue !== undefined && !currentRecord.time) { // Temperature is being marked AND time isn't already set
+      if (newMarkedValue !== undefined && (!currentRecord.time || currentRecord.markedTemperatureValue === undefined)) {
         newTime = format(new Date(), 'HH:mm');
-      } else if (newMarkedValue === undefined) { // Temperature is being unmarked
+      } else if (newMarkedValue === undefined) { 
         newTime = ''; 
       }
 
@@ -207,7 +232,7 @@ export default function TemperatureMonitoring() {
     if (confirm(`Êtes-vous sûr de vouloir effacer toutes les données de température pour ${selectedEquipmentData?.name} pour ${monthsArray[parseInt(selectedMonth)].label} ${selectedYear} ? Cette action est irréversible.`)) {
       const newRecords = { ...temperatureRecords };
       monthData.forEach(day => {
-        if (selectedEquipmentId) { // ensure selectedEquipmentId is defined
+        if (selectedEquipmentId) { 
           delete newRecords[`${day.date}_${selectedEquipmentId}`];
         }
       });
@@ -234,7 +259,7 @@ export default function TemperatureMonitoring() {
       
       const title = `Suivi Température - ${selectedEquipmentData.name} - ${monthLabel} ${selectedYear}`;
       doc.setFontSize(16); doc.text(title, 14, currentY); currentY += 6;
-      doc.setFontSize(12); doc.text(targetLabel, 14, currentY); currentY += 6;
+      doc.setFontSize(10); doc.text(targetLabel, 14, currentY); currentY += 6;
       doc.setFontSize(10); doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY); currentY += 8;
       
       const head: any[] = [
@@ -244,78 +269,60 @@ export default function TemperatureMonitoring() {
           ...monthData.map(day => ({ content: `${day.dayOfMonth}\n${day.dayName.substring(0,1)}`, styles: { halign: 'center', fontSize: 6, cellWidth: 7, minCellHeight: 8 } }))
         ]
       ];
-      // Add an empty row for the second part of the header (for day names if needed, or just structure)
       head.push(monthData.map(() => ({content: '', styles: {minCellHeight: 2}})));
 
 
       const body: any[][] = [];
-      // Iterate in reverse to display higher temperatures at the top
-      temperatureValues.slice().reverse().forEach(tempVal => {
-        const row: any[] = [];
-        let zoneForThisTemp: TempZoneStyle | undefined;
-        
-        // Find which dynamic zone this temperature value falls into
-        for (const zone of dynamicTempZones) {
-            if (zone.values.includes(tempVal)) {
-                zoneForThisTemp = zone;
-                break;
-            }
-        }
-        
-        // Add zone label cell if this is the first temperature value in that zone's display
-        // This requires knowing the "highest" temp in each zone for rowSpanning
-        // For simplicity, we check if this tempVal is the max in its zone's values array
-        if (zoneForThisTemp && tempVal === Math.max(...zoneForThisTemp.values)) {
+      dynamicTempZones.forEach(zone => {
+        zone.values.slice().reverse().forEach((tempVal, indexInZoneValues) => { 
+          const row: any[] = [];
+          if (indexInZoneValues === 0) { 
              row.push({ 
-                content: zoneForThisTemp.label, 
-                rowSpan: zoneForThisTemp.values.length, 
+                content: zone.label, 
+                rowSpan: zone.values.length, 
                 styles: { 
                     valign: 'middle', 
                     halign: 'center', 
                     fontStyle: 'bold', 
                     fontSize: 7, 
-                    fillColor: zoneForThisTemp.pdfColor,
+                    fillColor: zone.pdfColor,
                 } 
             });
-        } else if (!zoneForThisTemp) {
-            // Should not happen if all temps are covered by zones
-             row.push({content: '', styles: {}});
-        }
-        // else, this cell is covered by a previous rowSpan, so nothing is added to `row` for the zone label
-
-        row.push({ content: `${tempVal}°C`, styles: { halign: 'center', fontSize: 7, cellPadding: 0.5 } });
-
-        monthData.forEach(day => {
-          const record = getRecord(day.date, selectedEquipmentData.id);
-          row.push({
-            content: record.markedTemperatureValue === tempVal ? 'X' : '',
-            styles: { halign: 'center', fontSize: 8, cellPadding: 0.5 }
+          }
+          row.push({ content: `${tempVal}°C`, styles: { halign: 'center', fontSize: 7, cellPadding: 0.5 } });
+          monthData.forEach(day => {
+            const record = getRecord(day.date, selectedEquipmentData.id);
+            row.push({
+              content: record.markedTemperatureValue === tempVal ? 'X' : '',
+              styles: { halign: 'center', fontSize: 8, cellPadding: 0.5, fillColor: day.isWeekend ? [230,230,230] : undefined }
+            });
           });
+          body.push(row);
         });
-        body.push(row);
       });
       
       const timeRow: any[] = [{content: 'Heure Relevé', colSpan: 2, styles: {fontStyle: 'bold', fontSize: 7, halign: 'right', cellPadding: 0.5}}];
       monthData.forEach(day => {
         const record = getRecord(day.date, selectedEquipmentData.id);
-        timeRow.push({content: record.time || '-', styles: {halign: 'center', fontSize: 7, cellPadding: 0.5}});
+        timeRow.push({content: record.time || '-', styles: {halign: 'center', fontSize: 7, cellPadding: 0.5, fillColor: day.isWeekend ? [230,230,230] : undefined }});
       });
       body.push(timeRow);
 
       const operatorRow: any[] = [{content: 'Opérateur', colSpan: 2, styles: {fontStyle: 'bold', fontSize: 7, halign: 'right', cellPadding: 0.5}}];
       monthData.forEach(day => {
         const record = getRecord(day.date, selectedEquipmentData.id);
-        operatorRow.push({content: record.operator || '-', styles: {halign: 'center', fontSize: 7, cellPadding: 0.5}});
+        operatorRow.push({content: record.operator || '-', styles: {halign: 'center', fontSize: 7, cellPadding: 0.5, fillColor: day.isWeekend ? [230,230,230] : undefined}});
       });
       body.push(operatorRow);
 
+      const primaryColorForPdf = hexToRgb(pdfSettings.primaryColor || "#DCDCDC") || [220,220,220];
       doc.autoTable({
         startY: currentY,
         head: head,
         body: body,
         theme: 'grid',
-        headStyles: { halign: 'center', fontSize: 7, cellPadding: 1, fillColor: [220,220,220], textColor: [0,0,0] },
-        styles: { fontSize: 7, cellPadding: 0.5, minCellHeight: 5 }, // Reduced cell padding and min height
+        headStyles: { halign: 'center', fontSize: 7, cellPadding: 1, fillColor: primaryColorForPdf, textColor: [0,0,0] },
+        styles: { fontSize: 7, cellPadding: 0.5, minCellHeight: 5 }, 
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
           if (pdfSettings.footerText) {
@@ -345,103 +352,90 @@ export default function TemperatureMonitoring() {
          {targetLabel}. Sélectionnez un équipement pour enregistrer ou visualiser les relevés.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4"> {/* Reduced space-y for compactness */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 items-end mb-3"> {/* Reduced gap and mb */}
+      <CardContent className="space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 items-end mb-2">
           <div><Label htmlFor="year-select-temp" className="text-xs">Année</Label><Select value={selectedYear} onValueChange={setSelectedYear}><SelectTrigger id="year-select-temp" className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent>{yearsArray.map(y => <SelectItem key={y} value={y.toString()} className="text-xs">{y}</SelectItem>)}</SelectContent></Select></div>
           <div><Label htmlFor="month-select-temp" className="text-xs">Mois</Label><Select value={selectedMonth} onValueChange={setSelectedMonth}><SelectTrigger id="month-select-temp" className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent>{monthsArray.map(m => <SelectItem key={m.value} value={m.value} className="text-xs">{m.label}</SelectItem>)}</SelectContent></Select></div>
-          <div className="flex flex-col sm:flex-row gap-2 md:col-span-1 md:justify-self-end">
-            <Button onClick={generatePdfForEquipment} size="sm" disabled={isLoading || !selectedEquipmentData || monthData.length === 0 || configuredEquipments.length === 0} className="w-full sm:w-auto text-xs">
+          <div className="flex flex-col sm:flex-row gap-1.5 md:col-span-1 md:justify-self-end">
+            <Button onClick={generatePdfForEquipment} size="sm" disabled={isLoading || !selectedEquipmentData || monthData.length === 0 || configuredEquipments.length === 0} className="w-full sm:w-auto text-xs h-8">
               {isLoading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FileText className="mr-1.5 h-3.5 w-3.5" />}
               PDF
             </Button>
-            <Button variant="destructive" size="sm" onClick={handleClearMonthData} disabled={isLoading || !selectedEquipmentId || Object.keys(temperatureRecords).filter(k => k.endsWith(`_${selectedEquipmentId}`)).length === 0} className="w-full sm:w-auto text-xs">
+            <Button variant="destructive" size="sm" onClick={handleClearMonthData} disabled={isLoading || !selectedEquipmentId || Object.keys(temperatureRecords).filter(k => k.endsWith(`_${selectedEquipmentId}`)).length === 0} className="w-full sm:w-auto text-xs h-8">
               <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Eff. Mois
             </Button>
           </div>
         </div>
         
         {isLoading ? (
-          <div className="flex justify-center items-center py-8"><Loader2 className="h-7 w-7 animate-spin text-primary" /> Chargement...</div>
+          <div className="flex justify-center items-center py-6"><Loader2 className="h-6 w-6 animate-spin text-primary" /> Chargement...</div>
         ) : configuredEquipments.length === 0 ? (
-           <div className="text-center py-8 border-2 border-dashed border-muted-foreground/30 rounded-lg">
-            <AlertCircle className="mx-auto h-10 w-10 text-muted-foreground" />
-            <p className="mt-1.5 text-sm text-muted-foreground">Aucun équipement configuré. Veuillez les définir dans "Paramètres PMS".</p>
+           <div className="text-center py-6 border-2 border-dashed border-muted-foreground/30 rounded-lg">
+            <AlertCircle className="mx-auto h-8 w-8 text-muted-foreground" />
+            <p className="mt-1 text-sm text-muted-foreground">Aucun équipement configuré. Veuillez les définir dans "Paramètres PMS".</p>
           </div>
         ) : (
           <>
-            <div className="mb-3"><Label className="text-xs font-medium mb-1.5 block">Sélectionner un Équipement :</Label><div className="flex flex-wrap gap-1.5">{configuredEquipments.map(eq => (<Button key={eq.id} variant={selectedEquipmentId === eq.id ? "default" : "outline"} onClick={() => setSelectedEquipmentId(eq.id)} size="sm" className="text-xs px-2 py-1 h-7">{eq.name}</Button>))}</div></div>
-            {!selectedEquipmentId ? (<div className="text-center py-8 border-2 border-dashed border-muted-foreground/30 rounded-lg"><ListFilter className="mx-auto h-10 w-10 text-muted-foreground" /><p className="mt-1.5 text-sm text-muted-foreground">Sélectionnez un équipement.</p></div>
+            <div className="mb-2"><Label className="text-xs font-medium mb-1 block">Sélectionner un Équipement :</Label><div className="flex flex-wrap gap-1">{configuredEquipments.map(eq => (<Button key={eq.id} variant={selectedEquipmentId === eq.id ? "default" : "outline"} onClick={() => setSelectedEquipmentId(eq.id)} size="sm" className="text-xs px-2 py-0.5 h-7">{eq.name}</Button>))}</div></div>
+            {!selectedEquipmentId ? (<div className="text-center py-6 border-2 border-dashed border-muted-foreground/30 rounded-lg"><ListFilter className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-1 text-sm text-muted-foreground">Sélectionnez un équipement.</p></div>
             ) : selectedEquipmentData && monthData.length > 0 ? (
-              <div className="overflow-x-auto border rounded-md">
-                <Table className="min-w-full table-fixed text-[10px]"> {/* Base font size for table */}
+              <div className="overflow-x-auto border rounded-md max-h-[calc(65vh-40px)]"> {/* Adjusted max-h based on parent's space-y */}
+                <Table className="min-w-full table-fixed text-[9px]">
                   <TableHeader className="sticky top-0 z-30 bg-card shadow-sm">
-                    <TableRow className="h-7"> {/* Reduced height */}
-                      <TableHead className="w-10 sm:w-14 sticky left-0 z-20 bg-card border-r text-center p-0.5 align-middle text-[9px]">Zone</TableHead>
-                      <TableHead className="w-10 sm:w-14 sticky left-10 sm:left-14 z-20 bg-card border-r text-center p-0.5 align-middle text-[9px]">T°C</TableHead>
-                      {monthData.map(day => (<TableHead key={day.date} className={cn("text-center p-0.5 w-5 sm:w-6 h-7", day.isWeekend && "bg-muted/30")}>{day.dayOfMonth}<br/>{day.dayName.substring(0,1)}</TableHead>))}
+                    <TableRow className="h-6"> 
+                      <TableHead className="w-10 sm:w-12 sticky left-0 z-20 bg-card border-r text-center p-0.5 align-middle text-[7px]">Zone</TableHead>
+                      <TableHead className="w-10 sm:w-12 sticky left-10 sm:left-12 z-20 bg-card border-r text-center p-0.5 align-middle text-[7px]">T°C</TableHead>
+                      {monthData.map(day => (<TableHead key={day.date} className={cn("text-center p-0.5 w-5 sm:w-[22px] h-6 text-[7px]", day.isWeekend && "bg-muted/30")}>{day.dayOfMonth}<br/>{day.dayName.substring(0,1)}</TableHead>))}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {temperatureValues.slice().reverse().map((tempValue) => {
-                       let zoneForThisRow: TempZoneStyle | undefined;
-                       let isFirstCellOfZone = false;
-                       for(const zone of dynamicTempZones){
-                           if(zone.values.includes(tempValue)){
-                               zoneForThisRow = zone;
-                               if(tempValue === Math.max(...zone.values)){
-                                   isFirstCellOfZone = true;
-                               }
-                               break;
-                           }
-                       }
-                      return (
-                        <TableRow key={tempValue} className="h-4 hover:bg-muted/10"> {/* Reduced height */}
-                          {isFirstCellOfZone && zoneForThisRow ? (
-                            <TableCell
-                              rowSpan={zoneForThisRow.values.length}
-                              className={cn(zoneForThisRow.color, zoneForThisRow.textColor, "font-semibold align-middle text-center text-[8px] p-0 sticky left-0 z-10 border-r w-10 sm:w-14")}
-                            >
-                              <div className="h-full flex items-center justify-center overflow-hidden" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', transform: 'rotate(180deg)'}}>
-                                {zoneForThisRow.label}
-                              </div>
-                            </TableCell>
-                          ) : (dynamicTempZones.some(z => z.values.includes(tempValue) && tempValue !== Math.max(...z.values))) ? null : (
-                             <TableCell className="sticky left-0 z-10 border-r bg-card p-0"></TableCell> 
-                          )}
-                          <TableCell className="font-mono text-[9px] text-center border-r sticky left-10 sm:left-14 z-10 bg-card p-0.5">{tempValue}°</TableCell>
-                          {monthData.map((day) => {
-                            const record = getRecord(day.date, selectedEquipmentData.id);
-                            const isMarked = record.markedTemperatureValue === tempValue;
-                            return (
-                              <TableCell
-                                key={day.date}
-                                className={cn("text-center p-0 h-4 w-5 sm:w-6 cursor-pointer hover:bg-primary/10", day.isWeekend && "bg-muted/25 cursor-not-allowed", isMarked && "bg-primary text-primary-foreground")}
-                                onClick={() => !day.isWeekend && handleTempCellClick(day.date, selectedEquipmentData.id, tempValue)}
-                              >
-                                {isMarked ? <span className="font-bold text-xs leading-none">X</span> : ""}
-                              </TableCell>
-                            );
-                          })}
-                        </TableRow>
-                      );
-                    })}
-                    <TableRow className="bg-card/90 sticky bottom-8 z-20 h-6"> {/* Reduced height, increased bottom */}
-                        <TableCell colSpan={2} className="text-right font-semibold text-[9px] sticky left-0 z-30 bg-card p-0.5 border-t">Heure</TableCell>
+                    {dynamicTempZones.map(zone => 
+                       zone.values.slice().reverse().map((tempValue, indexInZone) => ( 
+                         <TableRow key={`${zone.type}-${tempValue}`} className="h-3 hover:bg-muted/10"> 
+                            {indexInZone === 0 ? (
+                                <TableCell
+                                  rowSpan={zone.values.length}
+                                  className={cn(zone.color, zone.textColor, "font-semibold align-middle text-center text-[6px] p-0 sticky left-0 z-10 border-r w-10 sm:w-12")}
+                                >
+                                <div className="h-full flex items-center justify-center overflow-hidden" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', transform: 'rotate(180deg)'}}>
+                                    {zone.label}
+                                </div>
+                                </TableCell>
+                            ) : null}
+                            <TableCell className="font-mono text-[8px] text-center border-r sticky left-10 sm:left-12 z-10 bg-card p-0.5">{tempValue}°</TableCell>
+                            {monthData.map((day) => {
+                                const record = getRecord(day.date, selectedEquipmentData.id);
+                                const isMarked = record.markedTemperatureValue === tempValue;
+                                return (
+                                <TableCell
+                                    key={day.date}
+                                    className={cn("text-center p-0 h-3 w-5 sm:w-[22px] cursor-pointer hover:bg-primary/10", day.isWeekend && "bg-muted/25 cursor-not-allowed", isMarked && "bg-primary text-primary-foreground")}
+                                    onClick={() => !day.isWeekend && handleTempCellClick(day.date, selectedEquipmentData.id, tempValue)}
+                                >
+                                    {isMarked ? <span className="font-bold text-[9px] leading-none">X</span> : ""}
+                                </TableCell>
+                                );
+                            })}
+                         </TableRow>
+                       ))
+                    )}
+                    <TableRow className="bg-card/90 sticky bottom-4 z-20 h-4"> 
+                        <TableCell colSpan={2} className="text-right font-semibold text-[7px] sticky left-0 z-30 bg-card p-0.5 border-t">Heure</TableCell>
                         {monthData.map(day => (
                             <TableCell key={`time-${day.date}`} className="p-0 border-t">
                                 <Input type="text" placeholder="HH:mm" defaultValue={getRecord(day.date, selectedEquipmentData.id).time} 
                                        onBlur={(e) => handleTimeOperatorChange(day.date, selectedEquipmentData.id, 'time', e.target.value)}
-                                       className="h-5 text-[8px] text-center p-0.5 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring" disabled={day.isWeekend} pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" />
+                                       className="h-3.5 text-[7px] text-center p-0.5 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent" disabled={day.isWeekend} pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" />
                             </TableCell>
                         ))}
                     </TableRow>
-                    <TableRow className="bg-card/90 sticky bottom-0 z-20 h-6"> {/* Reduced height */}
-                        <TableCell colSpan={2} className="text-right font-semibold text-[9px] sticky left-0 z-30 bg-card p-0.5 border-t">Opérateur</TableCell>
+                    <TableRow className="bg-card/90 sticky bottom-0 z-20 h-4"> 
+                        <TableCell colSpan={2} className="text-right font-semibold text-[7px] sticky left-0 z-30 bg-card p-0.5 border-t">Opérateur</TableCell>
                         {monthData.map(day => (
                             <TableCell key={`op-${day.date}`} className="p-0 border-t">
                                 <Input type="text" placeholder="Op." defaultValue={getRecord(day.date, selectedEquipmentData.id).operator} 
                                        onBlur={(e) => handleTimeOperatorChange(day.date, selectedEquipmentData.id, 'operator', e.target.value)}
-                                       className="h-5 text-[8px] text-center p-0.5 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring" disabled={day.isWeekend} maxLength={10}/>
+                                       className="h-3.5 text-[7px] text-center p-0.5 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent" disabled={day.isWeekend} maxLength={10}/>
                             </TableCell>
                         ))}
                     </TableRow>
@@ -449,7 +443,7 @@ export default function TemperatureMonitoring() {
                 </Table>
               </div>
             ) : (
-              <div className="text-center py-8 border-2 border-dashed border-muted-foreground/30 rounded-lg"><AlertCircle className="mx-auto h-10 w-10 text-muted-foreground" /><p className="mt-1.5 text-sm text-muted-foreground">Aucune donnée à afficher.</p></div>
+              <div className="text-center py-6 border-2 border-dashed border-muted-foreground/30 rounded-lg"><AlertCircle className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-1 text-sm text-muted-foreground">Aucune donnée à afficher.</p></div>
             )}
           </>
         )}
