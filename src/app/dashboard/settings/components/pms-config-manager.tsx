@@ -22,7 +22,7 @@ const baseZoneSchema = z.object({
 });
 
 const temperatureEquipmentSchema = baseZoneSchema.extend({
-  equipmentType: z.enum(['refrigerator', 'freezer']).optional(),
+  equipmentType: z.enum(['refrigerator', 'freezer']).default('refrigerator'),
   targetTempMin: z.coerce.number().optional(),
   targetTempMax: z.coerce.number().optional(),
   toleranceTempMin: z.coerce.number().optional(),
@@ -30,20 +30,18 @@ const temperatureEquipmentSchema = baseZoneSchema.extend({
 }).refine(data => {
     const { targetTempMin, targetTempMax, toleranceTempMin, toleranceTempMax } = data;
     if (targetTempMin !== undefined && targetTempMax !== undefined && targetTempMin > targetTempMax) {
-        return false; // Target min cannot be greater than target max
+        return false; 
     }
     if (toleranceTempMin !== undefined && toleranceTempMax !== undefined && toleranceTempMin > toleranceTempMax) {
-        return false; // Tolerance min cannot be greater than tolerance max
+        return false; 
     }
     if (targetTempMax !== undefined && toleranceTempMin !== undefined && targetTempMax >= toleranceTempMin) {
-        // If both defined, target max must be less than tolerance min
-        // And target min must be less than tolerance max (implicitly covered if ranges don't overlap weirdly)
         return false; 
     }
     return true;
 }, {
-    message: "Les plages de température cible/tolérance sont invalides ou se chevauchent incorrectement.",
-    path: ['targetTempMin'] // Arbitrary path, form-level error
+    message: "Les plages de température cible/tolérance sont invalides ou se chevauchent incorrectement. Assurez-vous que Min ≤ Max et que la cible est distincte de la tolérance.",
+    path: ['targetTempMin'] 
 });
 
 
@@ -62,15 +60,15 @@ export default function PmsConfigManager() {
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
   
   const [currentCategoryKey, setCurrentCategoryKey] = useState<string | null>(null);
-  const [editingZone, setEditingZone] = useState<PmsZone | null>(null); // PmsZone can hold equipment data
+  const [editingZone, setEditingZone] = useState<PmsZone | null>(null); 
   const [currentZoneForTask, setCurrentZoneForTask] = useState<PmsZone | null>(null);
   const [editingTask, setEditingTask] = useState<PmsTaskDefinition | null>(null);
 
   const { toast } = useToast();
-
+  
+  // Form hook defined once
   const form = useForm<ZoneFormData | TemperatureEquipmentFormData>({
-    resolver: zodResolver(currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? temperatureEquipmentSchema : baseZoneSchema),
-    defaultValues: { name: '' }, 
+    // The resolver will be dynamically set in useEffect based on currentCategoryKey
   });
   const taskForm = useForm<TaskFormData>({ resolver: zodResolver(taskSchema), defaultValues: { name: '' } });
   
@@ -97,20 +95,27 @@ export default function PmsConfigManager() {
     }
   }, [toast]);
 
-  // Re-initialize form resolver when category changes
+  // Effect to update form resolver and default values when dialog opens or category changes
   useEffect(() => {
-    form.reset(undefined, { keepValues: false }); // Clear previous form values
-    form.setValue('name', editingZone?.name || ''); // Set name if editing
-     if (currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY && editingZone) {
-        form.setValue('equipmentType', editingZone.equipmentType || 'refrigerator');
-        form.setValue('targetTempMin', editingZone.targetTempMin);
-        form.setValue('targetTempMax', editingZone.targetTempMax);
-        form.setValue('toleranceTempMin', editingZone.toleranceTempMin);
-        form.setValue('toleranceTempMax', editingZone.toleranceTempMax);
-    } else if (currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY) {
-        form.setValue('equipmentType', 'refrigerator'); // Default for new temp equipment
+    if (isZoneDialogOpen) {
+        const resolver = currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY 
+            ? zodResolver(temperatureEquipmentSchema) 
+            : zodResolver(baseZoneSchema);
+        
+        let defaultValues: any = { name: editingZone?.name || '' };
+        if (currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY) {
+            defaultValues = {
+                name: editingZone?.name || '',
+                equipmentType: editingZone?.equipmentType || 'refrigerator',
+                targetTempMin: editingZone?.targetTempMin,
+                targetTempMax: editingZone?.targetTempMax,
+                toleranceTempMin: editingZone?.toleranceTempMin,
+                toleranceTempMax: editingZone?.toleranceTempMax,
+            };
+        }
+        
+        form.reset(defaultValues, { resolver } as any); // Use 'as any' if type errors persist with dynamic resolver
     }
-
   }, [isZoneDialogOpen, currentCategoryKey, editingZone, form]);
 
 
@@ -120,32 +125,38 @@ export default function PmsConfigManager() {
   }, []);
 
   const handleOpenZoneDialog = (categoryKey: string, zone?: PmsZone) => {
-    setCurrentCategoryKey(categoryKey);
+    setCurrentCategoryKey(categoryKey); // Set category first
     setEditingZone(zone || null);
-    // Default values are set in the useEffect for form resolver change
-    setIsZoneDialogOpen(true);
+    setIsZoneDialogOpen(true); // This will trigger the useEffect to reset form with new resolver and defaults
   };
 
   const handleZoneSubmit = (data: ZoneFormData | TemperatureEquipmentFormData) => {
     if (!currentCategoryKey) return;
-    const currentItems = pmsConfigs[currentCategoryKey] || []; // items can be zones or equipments
+    const currentItems = pmsConfigs[currentCategoryKey] || []; 
     const itemLabel = currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone";
     
     let updatedItemData: PmsZone;
 
     if (editingZone) {
-      updatedItemData = { ...editingZone, ...data };
+      updatedItemData = { ...editingZone, ...data, id: editingZone.id, tasks: editingZone.tasks || [] };
+       if (currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY) {
+        const tempData = data as TemperatureEquipmentFormData;
+        updatedItemData.equipmentType = tempData.equipmentType;
+        updatedItemData.targetTempMin = tempData.targetTempMin;
+        updatedItemData.targetTempMax = tempData.targetTempMax;
+        updatedItemData.toleranceTempMin = tempData.toleranceTempMin;
+        updatedItemData.toleranceTempMax = tempData.toleranceTempMax;
+      }
       const updatedItems = currentItems.map(item => item.id === editingZone.id ? updatedItemData : item);
       saveConfigs({ ...pmsConfigs, [currentCategoryKey]: updatedItems });
       toast({ title: `${itemLabel} Modifié(e)`, description: `Le/La ${itemLabel.toLowerCase()} "${data.name}" a été mis(e) à jour.` });
     } else {
-      const baseNewItem: Omit<PmsZone, 'id' | 'tasks'> = { name: data.name };
+      const baseNewItem: Omit<PmsZone, 'id' | 'tasks'> & { tasks?: PmsTaskDefinition[] } = { name: data.name, tasks: [] };
        if (currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY) {
         const tempData = data as TemperatureEquipmentFormData;
         updatedItemData = { 
           ...baseNewItem, 
           id: `${currentCategoryKey}_item_${Date.now()}`,
-          tasks: [], // Equipments don't have tasks in this context
           equipmentType: tempData.equipmentType,
           targetTempMin: tempData.targetTempMin,
           targetTempMax: tempData.targetTempMax,
@@ -153,7 +164,7 @@ export default function PmsConfigManager() {
           toleranceTempMax: tempData.toleranceTempMax,
         };
       } else {
-        updatedItemData = { ...baseNewItem, id: `${currentCategoryKey}_item_${Date.now()}`, tasks: [] };
+        updatedItemData = { ...baseNewItem, id: `${currentCategoryKey}_item_${Date.now()}` };
       }
       saveConfigs({ ...pmsConfigs, [currentCategoryKey]: [...currentItems, updatedItemData] });
       toast({ title: `${itemLabel} Ajouté(e)`, description: `Le/La ${itemLabel.toLowerCase()} "${data.name}" a été ajouté(e).` });
@@ -172,9 +183,8 @@ export default function PmsConfigManager() {
     }
   };
 
-  // Task Handlers
   const handleOpenTaskDialog = (categoryKey: string, zone: PmsZone, task?: PmsTaskDefinition) => {
-    setCurrentCategoryKey(categoryKey); // Keep category context
+    setCurrentCategoryKey(categoryKey); 
     setCurrentZoneForTask(zone);
     setEditingTask(task || null);
     taskForm.reset(task ? { name: task.name } : { name: '' });
@@ -243,35 +253,43 @@ export default function PmsConfigManager() {
           ) : (
             <Accordion type="multiple" className="w-full">
               {itemsForCategory.map(item => (
-                <AccordionItem value={item.id} key={item.id} className="group/item">
-                  <div className="flex items-center py-0">
-                    <AccordionTrigger className="flex-grow py-4 text-left">
+                <AccordionItem value={item.id} key={item.id} className="group/item border-b">
+                  <div className="flex items-center justify-between py-1 hover:bg-muted/20">
+                    <AccordionTrigger className="flex-grow py-3 px-2 text-left">
                       {item.name}
                       {categoryKey === PMS_TEMPERATURE_MONITORING_KEY && item.equipmentType && (
                         <span className="text-xs text-muted-foreground ml-2">({item.equipmentType === 'freezer' ? 'Congélateur' : 'Réfrigérateur'})</span>
                       )}
+                       {categoryKey === PMS_TEMPERATURE_MONITORING_KEY && (item.targetTempMin !== undefined || item.targetTempMax !== undefined) && (
+                        <span className="text-xs text-muted-foreground ml-2 italic">
+                            (Cible: {item.targetTempMin ?? 'N/A'} à {item.targetTempMax ?? 'N/A'}°C
+                            { (item.toleranceTempMin !== undefined || item.toleranceTempMax !== undefined) && 
+                                `, Tol: ${item.toleranceTempMin ?? 'N/A'} à ${item.toleranceTempMax ?? 'N/A'}°C`
+                            })
+                        </span>
+                      )}
                     </AccordionTrigger>
                     <div className="pl-2 pr-2 space-x-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
-                      <Button variant="ghost" size="icon" onClick={() => handleOpenZoneDialog(categoryKey, item)} className="h-7 w-7">
+                      <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleOpenZoneDialog(categoryKey, item);}} className="h-7 w-7">
                         <Edit2 className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDeleteZone(categoryKey, item.id)} className="h-7 w-7 hover:text-destructive">
+                      <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleDeleteZone(categoryKey, item.id);}} className="h-7 w-7 hover:text-destructive">
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
                   {showTasksForThisCategory && (item.tasks || []).length > 0 && (
-                    <AccordionContent className="pl-4 pr-2">
-                      <div className="mb-3">
-                        <Button variant="outline" size="sm" onClick={() => handleOpenTaskDialog(categoryKey, item)}>
-                          <PlusCircle className="mr-2 h-3 w-3" /> Ajouter {taskItemLabel}
+                    <AccordionContent className="pl-6 pr-2 pt-0 pb-3">
+                      <div className="mb-2 mt-1">
+                        <Button variant="outline" size="xs" onClick={() => handleOpenTaskDialog(categoryKey, item)}>
+                          <PlusCircle className="mr-1.5 h-3 w-3" /> Ajouter {taskItemLabel}
                         </Button>
                       </div>
-                        <ul className="space-y-1.5">
+                        <ul className="space-y-1">
                           {(item.tasks || []).map(task => (
-                            <li key={task.id} className="flex justify-between items-center p-1.5 rounded hover:bg-muted/50 text-sm">
+                            <li key={task.id} className="flex justify-between items-center p-1.5 rounded hover:bg-muted/30 text-sm">
                               <span>{task.name}</span>
-                              <div className="space-x-1">
+                              <div className="space-x-0.5">
                                 <Button variant="ghost" size="icon" onClick={() => handleOpenTaskDialog(categoryKey, item, task)} className="h-6 w-6">
                                   <Edit2 className="h-3.5 w-3.5" />
                                 </Button>
@@ -285,13 +303,13 @@ export default function PmsConfigManager() {
                     </AccordionContent>
                   )}
                    {showTasksForThisCategory && (!item.tasks || item.tasks.length === 0) && (
-                     <AccordionContent className="pl-4 pr-2">
-                       <div className="mb-3">
-                          <Button variant="outline" size="sm" onClick={() => handleOpenTaskDialog(categoryKey, item)}>
-                            <PlusCircle className="mr-2 h-3 w-3" /> Ajouter {taskItemLabel}
+                     <AccordionContent className="pl-6 pr-2 pt-0 pb-3">
+                       <div className="mb-2 mt-1">
+                          <Button variant="outline" size="xs" onClick={() => handleOpenTaskDialog(categoryKey, item)}>
+                            <PlusCircle className="mr-1.5 h-3 w-3" /> Ajouter {taskItemLabel}
                           </Button>
                         </div>
-                       <p className="text-xs text-muted-foreground py-2">Aucune {taskItemLabel.toLowerCase()} définie pour cet(te) {itemLabel.toLowerCase()}.</p>
+                       <p className="text-xs text-muted-foreground py-1">Aucune {taskItemLabel.toLowerCase()} définie pour cet(te) {itemLabel.toLowerCase()}.</p>
                      </AccordionContent>
                    )}
                 </AccordionItem>
@@ -334,7 +352,7 @@ export default function PmsConfigManager() {
                   <FormField control={form.control} name="equipmentType" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Type d'Équipement</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value || 'refrigerator'}>
+                      <Select onValueChange={field.onChange} value={field.value || 'refrigerator'} defaultValue={field.value || 'refrigerator'}>
                         <FormControl><SelectTrigger><SelectValue placeholder="Sélectionner un type" /></SelectTrigger></FormControl>
                         <SelectContent>
                           <SelectItem value="refrigerator">Réfrigérateur</SelectItem>
@@ -346,20 +364,21 @@ export default function PmsConfigManager() {
                   )} />
                   <div className="grid grid-cols-2 gap-4">
                     <FormField control={form.control} name="targetTempMin" render={({ field }) => (
-                      <FormItem><FormLabel>Cible T° Min (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: 0" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel>Cible T° Min (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: 0" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField control={form.control} name="targetTempMax" render={({ field }) => (
-                      <FormItem><FormLabel>Cible T° Max (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: 4" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel>Cible T° Max (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: 4" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
                     )} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <FormField control={form.control} name="toleranceTempMin" render={({ field }) => (
-                      <FormItem><FormLabel>Tolérance T° Min (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: 5" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel>Tolérance T° Min (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: 5" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField control={form.control} name="toleranceTempMax" render={({ field }) => (
-                      <FormItem><FormLabel>Tolérance T° Max (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: 7" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel>Tolérance T° Max (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: 7" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
                     )} />
                   </div>
+                   <p className="text-xs text-muted-foreground">Laissez les champs de température vides si vous souhaitez utiliser les valeurs par défaut de l'application. Les plages de tolérance sont optionnelles.</p>
                 </>
               )}
 
@@ -410,3 +429,5 @@ export default function PmsConfigManager() {
     </div>
   );
 }
+
+    
