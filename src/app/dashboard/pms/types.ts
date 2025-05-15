@@ -25,9 +25,9 @@ export interface SimplifiedMonthlyKitchenCleaningRecord {
 export type SimplifiedMonthlyRestaurantCleaningRecord = SimplifiedMonthlyKitchenCleaningRecord;
 
 
-// For Temperature Records
+// For Temperature Records (Grid Style)
 export interface DailyTemperatureRecord {
-  markedTemperatureValue?: number; // Storing the numerical value of the temperature marked
+  markedTemperatureValue?: number; 
   time?: string;       // HH:mm format
   operator?: string;
 }
@@ -43,16 +43,37 @@ export interface ReceptionEntry {
   dateTime: string; // ISO string for date and time
   supplierName: string;
   productNameControlled: string;
-  vehicleObservations: string; // For "Véhicule: propreté température"
-  productTemperature?: string; // T°C
+  vehicleObservations: string; 
+  productTemperature?: string; 
   dlcDluo?: string;
   lotNumber?: string;
   packagingAspect?: string;
   quantity?: string;
   productLabeling?: string;
   refused: boolean;
-  refusalReason?: string; // Optional, if refused is true
-  visa?: string; // Initials
+  refusalReason?: string; 
+  visa?: string; 
+}
+
+// For Temperature Change Monitoring (Cooling/Reheating)
+export interface TempChangeEntry {
+  id: string;
+  coolingDate: string; // ISO string
+  productName: string;
+  quantity: string;
+  // Cooling
+  coolingHotProductTime?: string; // HH:mm
+  coolingHotProductTemp?: string; // °C
+  coolingColdProductTime?: string; // HH:mm
+  coolingColdProductTemp?: string; // °C
+  coolingVisa?: string; // Initials
+  // Reheating
+  reheatingDate?: string; // ISO string (can be different)
+  reheatingColdProductTime?: string; // HH:mm
+  reheatingColdProductTemp?: string; // °C
+  reheatingHotProductTime?: string; // HH:mm
+  reheatingHotProductTemp?: string; // °C
+  reheatingVisa?: string; // Initials
 }
 
 
