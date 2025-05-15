@@ -2,18 +2,18 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { AlertCircle, Truck, Construction } from "lucide-react"; // Changed Icon
+import { AlertCircle, ThermometerSnowflake, Construction } from "lucide-react";
 
-export default function ReceptionMonitoring() { // Renamed component
+export default function ColdChainMonitoring() {
   return (
     <Card className="shadow-lg">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Truck className="w-6 h-6 text-primary"/> {/* Changed Icon */}
-          Suivi de Réception des Marchandises
+          <ThermometerSnowflake className="w-6 h-6 text-primary"/>
+          Suivi de la Liaison Froide
         </CardTitle>
         <CardDescription>
-          Contrôle et enregistrement des réceptions de marchandises.
+          Enregistrement et suivi des températures lors du transport et de la réception de produits froids ou surgelés.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -23,7 +23,7 @@ export default function ReceptionMonitoring() { // Renamed component
             Fonctionnalité en cours de développement.
           </p>
           <p className="text-sm text-muted-foreground/80 mt-2">
-            Cette section vous permettra de documenter les contrôles à réception des livraisons (températures, DLC, état des produits, etc.).
+            Cette section permettra de documenter les contrôles de température des produits durant les étapes de la liaison froide.
           </p>
         </div>
       </CardContent>
