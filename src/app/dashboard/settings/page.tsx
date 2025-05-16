@@ -1,14 +1,16 @@
+
 "use client"; 
 
 import Link from 'next/link';
-import { ArrowLeft, Settings as SettingsIcon, FileCog, Settings2 as AppSettingsIcon, ShieldAlert } from 'lucide-react'; // Added ShieldAlert
+import { ArrowLeft, Settings as SettingsIcon, FileCog, Settings2 as AppSettingsIcon, ShieldAlert, Users } from 'lucide-react'; // Added Users
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import PdfLayoutManager from './components/pdf-layout-manager';
 import ApplicationSettingsManager from './components/application-settings-manager';
-import PmsConfigManager from './components/pms-config-manager'; // New Import
+import PmsConfigManager from './components/pms-config-manager';
+import UserManagement from './components/user-management'; // New Import
 import React from 'react';
 
 export default function SettingsPage() {
@@ -47,7 +49,7 @@ export default function SettingsPage() {
       </div>
       
       <Tabs defaultValue="pdf-layout" className="w-full">
-        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 mb-6 bg-card p-1 rounded-lg">
+        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-4 mb-6 bg-card p-1 rounded-lg">
           <TabsTrigger value="pdf-layout" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             <FileCog className="mr-1 sm:mr-2 h-4 w-4" /> Mises en Page PDF
           </TabsTrigger>
@@ -56,6 +58,9 @@ export default function SettingsPage() {
           </TabsTrigger>
           <TabsTrigger value="pms-config" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             <ShieldAlert className="mr-1 sm:mr-2 h-4 w-4" /> Paramètres PMS
+          </TabsTrigger>
+          <TabsTrigger value="user-management" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <Users className="mr-1 sm:mr-2 h-4 w-4" /> Gestion Utilisateurs
           </TabsTrigger>
         </TabsList>
 
@@ -89,6 +94,10 @@ export default function SettingsPage() {
               <PmsConfigManager />
             </CardContent>
           </Card>
+        </TabsContent>
+        
+        <TabsContent value="user-management">
+          <UserManagement />
         </TabsContent>
       </Tabs>
     </div>
