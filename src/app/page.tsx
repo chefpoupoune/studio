@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { CurrentDate } from '@/components/current-date';
 import { ArrowRight } from 'lucide-react';
-import Image from 'next/image'; // Import the Image component
+// Removed Image import as it's no longer used
 
 export default function HomePage() {
   return (
@@ -20,7 +20,8 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Section 2: Homepage Image */}
+      {/* Section 2: Homepage Image - REMOVED */}
+      {/* 
       <div className="my-8 md:my-12">
         <Image
           src="https://placehold.co/600x400.png" 
@@ -31,6 +32,7 @@ export default function HomePage() {
           data-ai-hint="restaurant management" 
         />
       </div>
+      */}
 
       {/* Section 3: Button (Centered in remaining space) */}
       {/* This outer div takes up remaining vertical space and centers its child vertically and horizontally */}
