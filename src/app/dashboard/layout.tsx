@@ -34,13 +34,13 @@ import {
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import type { RubricId } from '@/app/dashboard/settings/components/user-management'; // Import RubricId
+import type { RubricId } from '@/app/dashboard/settings/components/user-management'; 
 
 interface NavItem {
   href: string;
   icon: React.ElementType;
   label: string;
-  rubricId: RubricId; // Added rubricId for permission checking
+  rubricId: RubricId; 
 }
 
 const allNavItems: NavItem[] = [
@@ -57,7 +57,7 @@ const allNavItems: NavItem[] = [
 
 function AppSidebar() {
   const pathname = usePathname();
-  const { state, openMobile, setOpenMobile } = useSidebar();
+  const { openMobile, setOpenMobile } = useSidebar(); // Removed 'state' as it's not directly used here for filtering
   const router = useRouter();
   const [visibleNavItems, setVisibleNavItems] = React.useState<NavItem[]>(allNavItems);
 
@@ -74,14 +74,14 @@ function AppSidebar() {
           const filteredItems = allNavItems.filter(item => storedPermissions[item.rubricId] === true);
           setVisibleNavItems(filteredItems);
         } catch (e) {
-          console.error("Error parsing stored permissions", e);
-          setVisibleNavItems([]); // Default to no items if permissions are corrupted
+          console.error("Error parsing stored permissions for sidebar", e);
+          setVisibleNavItems([]); 
         }
       } else {
-        setVisibleNavItems([]); // No permissions found, show no items
+        setVisibleNavItems([]); 
       }
     }
-  }, [pathname]); // Re-check on pathname change if needed, or on login state change
+  }, [pathname]); 
 
   React.useEffect(() => {
     if (openMobile) {
@@ -94,7 +94,7 @@ function AppSidebar() {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('isLoggedIn');
       localStorage.removeItem('loggedInUsername');
-      localStorage.removeItem('loggedInUserPermissions'); // Clear permissions on logout
+      localStorage.removeItem('loggedInUserPermissions'); 
     }
     router.push('/login');
   };
@@ -187,24 +187,86 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [isClient, setIsClient] = React.useState(false);
+  const [authChecked, setAuthChecked] = React.useState(false);
 
   React.useEffect(() => {
     setIsClient(true);
   }, []);
 
   React.useEffect(() => {
-    if (isClient && typeof window !== 'undefined') {
+    if (isClient) {
       if (localStorage.getItem('isLoggedIn') !== 'true') {
         router.replace('/login');
+      } else {
+        setAuthChecked(true); 
       }
     }
   }, [isClient, router]);
 
-  if (!isClient || (typeof window !== 'undefined' && localStorage.getItem('isLoggedIn') !== 'true')) {
+  React.useEffect(() => {
+    if (isClient && authChecked) {
+      const username = localStorage.getItem('loggedInUsername');
+      if (username?.toLowerCase() === 'chef') {
+        return; // Chef has access to everything
+      }
+
+      const storedPermissionsRaw = localStorage.getItem('loggedInUserPermissions');
+      let userPermissions: Partial<Record<RubricId, boolean>> = {};
+      if (storedPermissionsRaw) {
+        try {
+          userPermissions = JSON.parse(storedPermissionsRaw);
+        } catch (e) {
+          console.error("Error parsing permissions for route access control:", e);
+          router.replace('/dashboard'); // Fallback to dashboard on permission error
+          return;
+        }
+      }
+
+      if (pathname === '/dashboard' || pathname === '/dashboard/') {
+         // Access to /dashboard itself is allowed if the 'dashboard' permission exists or if it's chef
+         // The AppSidebar logic already handles visibility of the dashboard link
+        if (!userPermissions.dashboard && username?.toLowerCase() !== 'chef') {
+          // This scenario implies a user is logged in but explicitly has no dashboard permission.
+          // This should ideally be handled by redirecting to login or a "no access" page
+          // For now, if they are logged in but dashboard permission is false, we could redirect to login to be safe.
+          // However, the primary protection is the sidebar not showing the link.
+          // console.warn("User without dashboard permission tried to access dashboard homepage.");
+        }
+        return;
+      }
+      
+      // For other /dashboard/* routes
+      const pathSegments = pathname.split('/');
+      if (pathSegments.length > 2 && pathSegments[1] === 'dashboard') {
+        const currentTopLevelPath = pathSegments[2];
+        const navItem = allNavItems.find(item => item.href === `/dashboard/${currentTopLevelPath}`);
+        
+        if (navItem) {
+          const requiredPermission = navItem.rubricId;
+          if (!userPermissions[requiredPermission]) {
+            // console.warn(`Access denied to ${pathname}. Missing permission: ${requiredPermission}`);
+            // Consider adding a toast here later if a global toast context is available or via state prop
+            router.replace('/dashboard'); // Redirect to main dashboard
+          }
+        } else {
+          // If the path is like /dashboard/non-existent-rubric, redirect to dashboard.
+          // This prevents access to potentially orphaned or mistyped URLs within the dashboard scope.
+           if (currentTopLevelPath) { // Avoid redirecting for just "/dashboard" if somehow missed above
+            // console.warn(`Access to unknown dashboard path: ${pathname}`);
+            // router.replace('/dashboard');
+           }
+        }
+      }
+    }
+  }, [isClient, authChecked, pathname, router]);
+
+
+  if (!isClient || !authChecked) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <p className="text-muted-foreground">Vérification de l'authentification...</p>
+        <p className="text-muted-foreground">Vérification de l'authentification et des permissions...</p>
       </div>
     );
   }
@@ -217,7 +279,6 @@ export default function DashboardLayout({
           <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 md:hidden">
             <SidebarTrigger />
             <Link href="/dashboard" className="flex items-center gap-2">
-                {/* <div className="w-7 h-7 bg-primary rounded-sm flex items-center justify-center text-primary-foreground font-bold" data-ai-hint="chef hat">E</div> */}
                 <span className="font-semibold text-md">Gestion par L'excellence</span>
             </Link>
           </header>
