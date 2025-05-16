@@ -13,7 +13,6 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-// Removed Select imports as servicePeriod is removed from delivery
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
@@ -38,13 +37,14 @@ interface jsPDFWithAutoTable extends jsPDF {
 }
 
 const todayKey = format(new Date(), 'yyyy-MM-dd');
-const COOLDOWN_LOG_STORAGE_KEY_PREFIX = "pms_cold_chain_cooldown_";
-const DELIVERY_LOG_STORAGE_KEY_PREFIX = "pms_cold_chain_delivery_v2_"; // Versioned key
+const COOLDOWN_LOG_STORAGE_KEY_PREFIX = "pms_cold_chain_cooldown_v2_"; // Versioned key
+const DELIVERY_LOG_STORAGE_KEY_PREFIX = "pms_cold_chain_delivery_v2_"; 
 
 // Schemas
 const coolDownEntrySchema = z.object({
   productName: z.string().min(1, "Nom du produit requis."),
   quantity: z.string().min(1, "Quantité requise."),
+  piecesOrPlats: z.string().optional(), // New field
   startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: "Format HH:MM requis." }).optional().or(z.literal('')),
   startTemp: z.string().optional(),
   endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: "Format HH:MM requis." }).optional().or(z.literal('')),
@@ -86,7 +86,6 @@ export default function ColdChainMonitoring() {
   const getCoolDownStorageKey = useCallback(() => `${COOLDOWN_LOG_STORAGE_KEY_PREFIX}${todayKey}`, []);
   const getDeliveryStorageKey = useCallback(() => `${DELIVERY_LOG_STORAGE_KEY_PREFIX}${todayKey}`, []);
 
-  // Load data
   useEffect(() => {
     setIsLoading(true);
     try {
@@ -105,20 +104,17 @@ export default function ColdChainMonitoring() {
     setIsLoading(false);
   }, [toast, getCoolDownStorageKey, getDeliveryStorageKey]);
 
-  // Save CoolDown data
   useEffect(() => {
     if (!isLoading) localStorage.setItem(getCoolDownStorageKey(), JSON.stringify(coolDownEntries));
   }, [coolDownEntries, isLoading, getCoolDownStorageKey]);
 
-  // Save Delivery data
   useEffect(() => {
     if (!isLoading) localStorage.setItem(getDeliveryStorageKey(), JSON.stringify(deliveryEntries));
   }, [deliveryEntries, isLoading, getDeliveryStorageKey]);
 
-  // CoolDown Handlers
   const handleOpenCoolDownDialog = (entry?: DailyCoolDownEntry) => {
     setEditingCoolDownEntry(entry || null);
-    coolDownForm.reset(entry || { productName: '', quantity: '', startTime: '', startTemp: '', endTime: '', endTemp: '', visa: '' });
+    coolDownForm.reset(entry || { productName: '', quantity: '', piecesOrPlats: '', startTime: '', startTemp: '', endTime: '', endTemp: '', visa: '' });
     setIsCoolDownDialogOpen(true);
   };
 
@@ -139,7 +135,6 @@ export default function ColdChainMonitoring() {
     toast({ title: "Entrée Supprimée", variant: "destructive" });
   };
 
-  // Delivery Handlers
   const handleOpenDeliveryDialog = (entry?: DailyDeliveryEntry) => {
     setEditingDeliveryEntry(entry || null);
     deliveryForm.reset(entry || { productName: '', quantity: '', piecesOrPlats: '', departureTime: '', departureTemp: '', arrivalTime: '', arrivalTemp: '', visaLivreur: '', visaClient: '' });
@@ -196,64 +191,82 @@ export default function ColdChainMonitoring() {
         baseHeadStyles.textColor = (hexToRgb(pdfSettings.primaryColor)![0] * 299 + hexToRgb(pdfSettings.primaryColor)![1] * 587 + hexToRgb(pdfSettings.primaryColor)![2] * 114) / 1000 > 125 ? [0,0,0] : [255,255,255];
       }
 
-      let head: any[], body: any[][], columnStyles: any = {};
+      let head: any[], body: any[][], columnStyles: any = {}, cellStyles: any = {};
+      
+      const orangeBg = [239, 121, 40]; // Orange
+      const blueBg = [155, 194, 230];   // Light Blue
+      const greyBg = [200, 200, 200];   // Light Grey
+      const whiteText: [number, number, number] = [255,255,255];
+      const blackText: [number, number, number] = [0,0,0];
+
+      const coloredHeadStyle = (bgColor: [number,number,number], textColor: [number,number,number]) => ({ ...baseHeadStyles, fillColor: bgColor, textColor: textColor, fontSize: 8 });
+
+
       if (isCooldown) {
-        head = [[
-          { content: 'Produit', styles: baseHeadStyles }, 
-          { content: 'Quantité', styles: baseHeadStyles }, 
-          { content: 'Heure Début', styles: baseHeadStyles }, 
-          { content: 'T° Début (°C)', styles: baseHeadStyles }, 
-          { content: 'Heure Fin', styles: baseHeadStyles }, 
-          { content: 'T° Fin (°C)', styles: baseHeadStyles }, 
-          { content: 'Visa', styles: baseHeadStyles }
-        ]];
-        body = (dataToExport as DailyCoolDownEntry[]).map(e => [e.productName, e.quantity, e.startTime || '-', e.startTemp || '-', e.endTime || '-', e.endTemp || '-', e.visa || '-']);
-      } else {
-        const greenBg = [209, 250, 229]; const yellowBg = [254, 249, 195]; const greyBg = [229, 231, 235];
-        const coloredHeadStyle = (color: [number,number,number]) => ({ ...baseHeadStyles, fillColor: color, textColor: [0,0,0], fontSize: 8 });
-        
         head = [
-          [ // First header row
+          [ 
+            { content: 'Produits', rowSpan: 2, styles: baseHeadStyles }, 
+            { content: 'Quantité', rowSpan: 2, styles: baseHeadStyles },
+            { content: 'Pièces / Plats', rowSpan: 2, styles: baseHeadStyles },
+            { content: 'Debut', colSpan: 2, styles: coloredHeadStyle(orangeBg, whiteText) },
+            { content: 'Fin', colSpan: 2, styles: coloredHeadStyle(blueBg, blackText) },
+            { content: 'VISA', colSpan: 1, styles: coloredHeadStyle(greyBg, blackText) }, // Adjusted colSpan
+          ],
+          [ 
+            { content: 'heure', styles: coloredHeadStyle(orangeBg, whiteText) },
+            { content: 'Temperature', styles: coloredHeadStyle(orangeBg, whiteText) },
+            { content: 'heure', styles: coloredHeadStyle(blueBg, blackText) },
+            { content: 'Temperature', styles: coloredHeadStyle(blueBg, blackText) },
+            { content: 'Signature', styles: coloredHeadStyle(greyBg, blackText) },
+          ]
+        ];
+        body = (dataToExport as DailyCoolDownEntry[]).map(e => [
+            e.productName, 
+            e.quantity, 
+            e.piecesOrPlats || '-', 
+            { content: e.startTime || '-', styles: { fillColor: orangeBg } }, 
+            { content: e.startTemp || '-', styles: { fillColor: orangeBg } }, 
+            { content: e.endTime || '-', styles: { fillColor: blueBg } }, 
+            { content: e.endTemp || '-', styles: { fillColor: blueBg } }, 
+            { content: e.visa || '-', styles: { fillColor: greyBg } }
+        ]);
+      } else { // Delivery
+        const greenBg = [209, 250, 229]; const yellowBg = [254, 249, 195]; 
+        head = [
+          [ 
             { content: 'Produits', rowSpan: 2, styles: baseHeadStyles },
             { content: 'Quantité', rowSpan: 2, styles: baseHeadStyles },
             { content: 'Pièces / Plats', rowSpan: 2, styles: baseHeadStyles },
-            { content: 'Départ', colSpan: 2, styles: coloredHeadStyle(greenBg) },
-            { content: 'Arrivé', colSpan: 2, styles: coloredHeadStyle(yellowBg) },
-            { content: 'VISA', colSpan: 2, styles: coloredHeadStyle(greyBg) }
+            { content: 'Départ', colSpan: 2, styles: coloredHeadStyle(greenBg, blackText) },
+            { content: 'Arrivé', colSpan: 2, styles: coloredHeadStyle(yellowBg, blackText) },
+            { content: 'VISA', colSpan: 2, styles: coloredHeadStyle(greyBg, blackText) }
           ],
-          [ // Second header row (for sub-columns)
-            { content: 'heure', styles: coloredHeadStyle(greenBg) },
-            { content: 'Temperature', styles: coloredHeadStyle(greenBg) },
-            { content: 'heure', styles: coloredHeadStyle(yellowBg) },
-            { content: 'Temperature', styles: coloredHeadStyle(yellowBg) },
-            { content: 'Livreur', styles: coloredHeadStyle(greyBg) },
-            { content: 'Client', styles: coloredHeadStyle(greyBg) }
+          [ 
+            { content: 'heure', styles: coloredHeadStyle(greenBg, blackText) },
+            { content: 'Temperature', styles: coloredHeadStyle(greenBg, blackText) },
+            { content: 'heure', styles: coloredHeadStyle(yellowBg, blackText) },
+            { content: 'Temperature', styles: coloredHeadStyle(yellowBg, blackText) },
+            { content: 'Livreur', styles: coloredHeadStyle(greyBg, blackText) },
+            { content: 'Client', styles: coloredHeadStyle(greyBg, blackText) }
           ]
         ];
         body = (dataToExport as DailyDeliveryEntry[]).map(e => [
           e.productName, 
           e.quantity || '-', 
           e.piecesOrPlats || '-', 
-          e.departureTime || '-', 
-          e.departureTemp || '-', 
-          e.arrivalTime || '-', 
-          e.arrivalTemp || '-', 
-          e.visaLivreur || '-', 
-          e.visaClient || '-'
+          { content: e.departureTime || '-', styles: { fillColor: greenBg } }, 
+          { content: e.departureTemp || '-', styles: { fillColor: greenBg } }, 
+          { content: e.arrivalTime || '-', styles: { fillColor: yellowBg } }, 
+          { content: e.arrivalTemp || '-', styles: { fillColor: yellowBg } }, 
+          { content: e.visaLivreur || '-', styles: { fillColor: greyBg } }, 
+          { content: e.visaClient || '-', styles: { fillColor: greyBg } }
         ]);
-        columnStyles = {
-          3: { fillColor: greenBg }, 4: { fillColor: greenBg },
-          5: { fillColor: yellowBg }, 6: { fillColor: yellowBg },
-          7: { fillColor: greyBg }, 8: { fillColor: greyBg },
-        };
       }
 
       doc.autoTable({
         head, body, startY: currentY, theme: 'grid', 
-        headStyles: baseHeadStyles, // General head styles
         styles: { fontSize: 8, cellPadding: 1.5, valign: 'middle', halign: 'center' },
-        columnStyles: columnStyles,
-        didDrawPage: (data) => { /* Footer logic */ }
+        didDrawPage: (hookData) => { /* Footer logic */ }
       });
       doc.save(`Suivi_${filenameSuffix}_${todayKey}.pdf`);
       toast({ title: "PDF Généré", description: `Le PDF pour ${title.toLowerCase()} a été téléchargé.` });
@@ -266,9 +279,11 @@ export default function ColdChainMonitoring() {
   };
 
   const cellBgClasses = {
+    debut: "bg-orange-400 text-white",
+    fin: "bg-blue-300 text-black",
+    visa: "bg-gray-200 text-black",
     depart: "bg-green-100 dark:bg-green-800/30",
     arrive: "bg-yellow-100 dark:bg-yellow-800/30",
-    visa: "bg-gray-100 dark:bg-gray-700/40",
   };
 
 
@@ -286,16 +301,22 @@ export default function ColdChainMonitoring() {
                 <Form {...coolDownForm}>
                   <form onSubmit={coolDownForm.handleSubmit(handleCoolDownFormSubmit)} className="space-y-3 py-2 max-h-[70vh] overflow-y-auto pr-2">
                     <FormField control={coolDownForm.control} name="productName" render={({ field }) => (<FormItem><FormLabel>Nom du Produit</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={coolDownForm.control} name="quantity" render={({ field }) => (<FormItem><FormLabel>Quantité</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <div className="grid grid-cols-2 gap-3">
+                        <FormField control={coolDownForm.control} name="quantity" render={({ field }) => (<FormItem><FormLabel>Quantité</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField control={coolDownForm.control} name="piecesOrPlats" render={({ field }) => (<FormItem><FormLabel>Pièces / Plats</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    </div>
+                    <h4 className="text-sm font-medium pt-1 text-center">Debut</h4>
                     <div className="grid grid-cols-2 gap-3">
                       <FormField control={coolDownForm.control} name="startTime" render={({ field }) => (<FormItem><FormLabel>Heure Début</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
                       <FormField control={coolDownForm.control} name="startTemp" render={({ field }) => (<FormItem><FormLabel>T° Début (°C)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                     </div>
+                    <h4 className="text-sm font-medium pt-1 text-center">Fin</h4>
                     <div className="grid grid-cols-2 gap-3">
                       <FormField control={coolDownForm.control} name="endTime" render={({ field }) => (<FormItem><FormLabel>Heure Fin (&lt;2h)</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
                       <FormField control={coolDownForm.control} name="endTemp" render={({ field }) => (<FormItem><FormLabel>T° Fin (&lt;10°C)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                     </div>
-                    <FormField control={coolDownForm.control} name="visa" render={({ field }) => (<FormItem><FormLabel>Visa</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <h4 className="text-sm font-medium pt-1 text-center">VISA</h4>
+                    <FormField control={coolDownForm.control} name="visa" render={({ field }) => (<FormItem><FormLabel>Signature</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                     <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit">{editingCoolDownEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
                   </form>
                 </Form>
@@ -308,12 +329,35 @@ export default function ColdChainMonitoring() {
           {isLoading ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : coolDownEntries.length === 0 ? <p className="text-center text-muted-foreground">Aucun produit en refroidissement.</p> : (
             <div className="overflow-x-auto border rounded-md">
               <Table>
-                <TableHeader><TableRow><TableHead>Produit</TableHead><TableHead>Qté</TableHead><TableHead>H.Début</TableHead><TableHead>T°Début</TableHead><TableHead>H.Fin</TableHead><TableHead>T°Fin</TableHead><TableHead>Visa</TableHead><TableHead className="text-center">Actions</TableHead></TableRow></TableHeader>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead rowSpan={2} className="text-center align-middle min-w-[150px]">Produits</TableHead>
+                        <TableHead rowSpan={2} className="text-center align-middle min-w-[80px]">Quantité</TableHead>
+                        <TableHead rowSpan={2} className="text-center align-middle min-w-[100px]">Pièces / Plats</TableHead>
+                        <TableHead colSpan={2} className={cn("text-center", cellBgClasses.debut)}>Debut</TableHead>
+                        <TableHead colSpan={2} className={cn("text-center", cellBgClasses.fin)}>Fin</TableHead>
+                        <TableHead colSpan={1} className={cn("text-center", cellBgClasses.visa)}>VISA</TableHead>
+                        <TableHead rowSpan={2} className="text-center align-middle min-w-[100px]">Actions</TableHead>
+                    </TableRow>
+                    <TableRow>
+                        <TableHead className={cn("text-center", cellBgClasses.debut)}>heure</TableHead>
+                        <TableHead className={cn("text-center", cellBgClasses.debut)}>Temperature</TableHead>
+                        <TableHead className={cn("text-center", cellBgClasses.fin)}>heure</TableHead>
+                        <TableHead className={cn("text-center", cellBgClasses.fin)}>Temperature</TableHead>
+                        <TableHead className={cn("text-center", cellBgClasses.visa)}>Signature</TableHead>
+                    </TableRow>
+                </TableHeader>
                 <TableBody>
                   {coolDownEntries.map(e => (
                     <TableRow key={e.id}>
-                      <TableCell>{e.productName}</TableCell><TableCell>{e.quantity}</TableCell><TableCell>{e.startTime || '-'}</TableCell><TableCell>{e.startTemp || '-'}</TableCell>
-                      <TableCell>{e.endTime || '-'}</TableCell><TableCell>{e.endTemp || '-'}</TableCell><TableCell>{e.visa || '-'}</TableCell>
+                      <TableCell>{e.productName}</TableCell>
+                      <TableCell className="text-center">{e.quantity}</TableCell>
+                      <TableCell className="text-center">{e.piecesOrPlats || '-'}</TableCell>
+                      <TableCell className={cn("text-center", cellBgClasses.debut)}>{e.startTime || '-'}</TableCell>
+                      <TableCell className={cn("text-center", cellBgClasses.debut)}>{e.startTemp || '-'}</TableCell>
+                      <TableCell className={cn("text-center", cellBgClasses.fin)}>{e.endTime || '-'}</TableCell>
+                      <TableCell className={cn("text-center", cellBgClasses.fin)}>{e.endTemp || '-'}</TableCell>
+                      <TableCell className={cn("text-center", cellBgClasses.visa)}>{e.visa || '-'}</TableCell>
                       <TableCell className="text-center space-x-1">
                         <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5"/></Button></AlertDialogTrigger>
                           <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Supprimer "{e.productName}"?</AlertDialogTitle><AlertDialogDescription>Action irréversible.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annuler</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteCoolDownEntry(e.id)}>Supprimer</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
@@ -422,3 +466,4 @@ export default function ColdChainMonitoring() {
     </div>
   );
 }
+

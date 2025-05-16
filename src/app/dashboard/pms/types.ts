@@ -109,11 +109,12 @@ export interface DailyCoolDownEntry {
   id: string;
   productName: string;
   quantity: string;
+  piecesOrPlats?: string; // New field
   startTime?: string; // HH:mm
   startTemp?: string; // °C
   endTime?: string;   // HH:mm
   endTemp?: string;   // °C
-  visa?: string;      // Initials
+  visa?: string;      // Initials / Signature
 }
 
 // For Daily Delivery Monitoring (Livraison du Jour) - Part of Cold Chain
@@ -131,3 +132,4 @@ export interface DailyDeliveryEntry {
 }
 
 export const NO_STATUS_SELECT_VALUE = "_aucun_statut_";
+
