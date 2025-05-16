@@ -1,3 +1,4 @@
+
 import type { Config } from "tailwindcss";
 const defaultTheme = require('tailwindcss/defaultTheme');
 
@@ -13,7 +14,12 @@ export default {
       fontFamily: {
         sans: ['var(--font-geist-sans)', ...defaultTheme.fontFamily.sans],
         serif: ['var(--font-playfair-display)', ...defaultTheme.fontFamily.serif],
-        mono: ['var(--font-geist-mono)', ...defaultTheme.fontFamily.mono],
+        // Removed mono: ['var(--font-geist-mono)', ...defaultTheme.fontFamily.mono],
+        // If you want a specific mono font, ensure Geist_Mono is loaded and set as --font-mono here.
+        // Otherwise, Tailwind's default mono stack will be used.
+        // Example if you want to keep Geist Mono as the default mono:
+        mono: ['var(--font-geist-mono, ui-monospace, SFMono-Regular)', ...defaultTheme.fontFamily.mono],
+
       },
   		colors: {
   			background: 'hsl(var(--background))',
@@ -59,12 +65,12 @@ export default {
   			sidebar: {
   				DEFAULT: 'hsl(var(--sidebar-background))',
   				foreground: 'hsl(var(--sidebar-foreground))',
-  				primary: 'hsl(var(--sidebar-primary))', // This will use the dynamic primary from :root
-  				'primary-foreground': 'hsl(var(--sidebar-primary-foreground))', // This will use dynamic primary-foreground from :root
+  				primary: 'hsl(var(--sidebar-primary))', 
+  				'primary-foreground': 'hsl(var(--sidebar-primary-foreground))', 
   				accent: 'hsl(var(--sidebar-accent))',
   				'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
   				border: 'hsl(var(--sidebar-border))',
-  				ring: 'hsl(var(--sidebar-ring))' // This will use dynamic ring from :root
+  				ring: 'hsl(var(--sidebar-ring))' 
   			}
   		},
   		borderRadius: {
@@ -103,3 +109,4 @@ export default {
   },
   plugins: [require("tailwindcss-animate")],
 } satisfies Config;
+
