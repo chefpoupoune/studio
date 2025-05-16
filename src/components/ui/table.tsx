@@ -1,3 +1,4 @@
+
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
@@ -5,15 +6,27 @@ import { cn } from "@/lib/utils"
 const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
->(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
-    <table
-      ref={ref}
-      className={cn("w-full caption-bottom text-sm", className)}
-      {...props}
-    />
-  </div>
-))
+>(({ className, children, ...props }, ref) => { // Destructure children from props
+  // Filter out whitespace-only string children to prevent hydration errors
+  const validChildren = React.Children.toArray(children).filter(child => {
+    if (typeof child === 'string' && child.trim() === '') {
+      return false;
+    }
+    return true;
+  });
+
+  return (
+    <div className="relative w-full overflow-auto">
+      <table
+        ref={ref}
+        className={cn("w-full caption-bottom text-sm", className)}
+        {...props} // Spread the rest of the props (which no longer includes children)
+      >
+        {validChildren} {/* Render only valid, non-whitespace children */}
+      </table>
+    </div>
+  );
+});
 Table.displayName = "Table"
 
 const TableHeader = React.forwardRef<
