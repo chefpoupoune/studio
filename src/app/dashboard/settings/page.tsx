@@ -2,7 +2,7 @@
 "use client"; 
 
 import Link from 'next/link';
-import { ArrowLeft, Settings as SettingsIcon, FileCog, Settings2 as AppSettingsIcon, ShieldAlert, Users } from 'lucide-react'; // Added Users
+import { ArrowLeft, Settings as SettingsIcon, FileCog, Settings2 as AppSettingsIcon, ShieldAlert, Users, ShieldX } from 'lucide-react'; // Added ShieldX for access denied
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
@@ -10,20 +10,62 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import PdfLayoutManager from './components/pdf-layout-manager';
 import ApplicationSettingsManager from './components/application-settings-manager';
 import PmsConfigManager from './components/pms-config-manager';
-import UserManagement from './components/user-management'; // New Import
-import React from 'react';
+import UserManagement from './components/user-management';
+import React, { useState, useEffect } from 'react'; // Added useState, useEffect
+import type { RubricId } from './components/user-management'; // Import RubricId type
 
 export default function SettingsPage() {
-  const [isClient, setIsClient] = React.useState(false);
+  const [isClient, setIsClient] = useState(false);
+  const [hasAccess, setHasAccess] = useState(false);
   
-  React.useEffect(() => {
+  useEffect(() => {
     setIsClient(true);
+    if (typeof window !== 'undefined') {
+      const username = localStorage.getItem('loggedInUsername');
+      const permissionsRaw = localStorage.getItem('loggedInUserPermissions');
+      
+      if (username?.toLowerCase() === 'chef') {
+        setHasAccess(true);
+      } else if (permissionsRaw) {
+        try {
+          const permissions = JSON.parse(permissionsRaw) as Partial<Record<RubricId, boolean>>;
+          if (permissions.settings === true) {
+            setHasAccess(true);
+          } else {
+            setHasAccess(false);
+          }
+        } catch (e) {
+          console.error("Error parsing permissions for settings access", e);
+          setHasAccess(false);
+        }
+      } else {
+        setHasAccess(false);
+      }
+    }
   }, []);
 
   if (!isClient) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p className="text-lg text-muted-foreground">Chargement des paramètres...</p>
+      </div>
+    );
+  }
+
+  if (!hasAccess) {
+    return (
+      <div className="container mx-auto p-4 md:p-6 lg:p-8 min-h-[calc(100vh-10rem)] flex flex-col items-center justify-center text-center">
+        <ShieldX className="w-24 h-24 text-destructive mb-6" />
+        <h1 className="text-3xl font-bold text-destructive mb-4">Accès Refusé</h1>
+        <p className="text-lg text-muted-foreground mb-6">
+          Vous n'avez pas les permissions nécessaires pour accéder à la section des paramètres.
+        </p>
+        <Link href="/dashboard" passHref>
+          <Button variant="outline">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Retour au Tableau de Bord
+          </Button>
+        </Link>
       </div>
     );
   }
@@ -103,3 +145,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+
