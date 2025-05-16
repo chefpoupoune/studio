@@ -10,12 +10,20 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { User, LockKeyhole, ArrowLeft } from 'lucide-react';
 import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
-import type { AppUser } from '@/app/dashboard/settings/components/user-management'; // Import AppUser type
+import type { AppUser, RubricId } from '@/app/dashboard/settings/components/user-management'; // Import AppUser type
 
 const APP_USERS_STORAGE_KEY = 'app_defined_users_v1';
+const LOGGED_IN_USER_PERMISSIONS_KEY = 'loggedInUserPermissions';
 
 // Simple, non-secure "hashing" function for simulation - MUST MATCH the one in UserManagement
 const simulatedHash = (password: string): string => `sim_hashed_${password}_!`;
+
+// Duplicating for safety as it's a separate page, ideally share from a common place
+const RUBRICS_FOR_PERMISSIONS = [
+  'dashboard', 'inventory', 'benefits', 'timeTracking', 
+  'taskManagement', 'costManagement', 'menuPlanning', 'pms', 'settings'
+] as const;
+
 
 export default function LoginPage() {
   const [definedUsers, setDefinedUsers] = useState<AppUser[]>([]);
@@ -45,12 +53,12 @@ export default function LoginPage() {
           if (Array.isArray(parsedUsers)) {
             users = parsedUsers.filter(
               (u: any) => u && typeof u.id === 'string' && typeof u.username === 'string' && typeof u.passwordRequired === 'boolean'
-            ).map((u: any) => ({ // Ensure all fields of AppUser are mapped
+            ).map((u: any) => ({
               id: u.id,
               username: u.username,
               passwordRequired: u.passwordRequired,
               simulatedStoredPassword: u.simulatedStoredPassword,
-              permissions: u.permissions || {}, // Ensure permissions object exists
+              permissions: u.permissions || {}, 
             }));
           }
         }
@@ -61,22 +69,30 @@ export default function LoginPage() {
 
       const chefUserExists = users.some(u => u.username.toLowerCase() === 'chef');
       if (!chefUserExists) {
+        const chefPermissions = RUBRICS_FOR_PERMISSIONS.reduce((acc, rubric) => {
+            acc[rubric] = true;
+            return acc;
+        }, {} as Partial<Record<RubricId, boolean>>);
+
         users.unshift({ 
           id: 'default_chef', 
           username: 'Chef', 
           passwordRequired: true, 
-          simulatedStoredPassword: simulatedHash('000'), // "Chef" user will use the simulated hash too
-          permissions: RUBRICS.reduce((acc, rubric) => ({...acc, [rubric.id]: true}), {}) // Chef has all permissions
+          simulatedStoredPassword: simulatedHash('000'),
+          permissions: chefPermissions,
         });
       } else {
-        // Ensure chef user always has full permissions and correct simulated password if managed through UI
          users = users.map(u => {
             if (u.username.toLowerCase() === 'chef') {
+                const chefPermissions = RUBRICS_FOR_PERMISSIONS.reduce((acc, rubric) => {
+                    acc[rubric] = true;
+                    return acc;
+                }, {} as Partial<Record<RubricId, boolean>>);
                 return {
                     ...u,
-                    passwordRequired: true, // Chef always requires password
-                    simulatedStoredPassword: u.simulatedStoredPassword || simulatedHash('000'), // Ensure chef has a hashed password
-                    permissions: RUBRICS.reduce((acc, rubric) => ({...acc, [rubric.id]: true}), {})
+                    passwordRequired: true, 
+                    simulatedStoredPassword: u.simulatedStoredPassword || simulatedHash('000'),
+                    permissions: chefPermissions
                 };
             }
             return u;
@@ -86,16 +102,25 @@ export default function LoginPage() {
     }
   }, [isClient, router, toast]);
 
-  const performLogin = (username: string) => {
+  const performLogin = (user: AppUser) => {
     localStorage.setItem('isLoggedIn', 'true');
-    localStorage.setItem('loggedInUsername', username);
+    localStorage.setItem('loggedInUsername', user.username);
+    
+    let permissionsToStore = user.permissions;
+    if (user.username.toLowerCase() === 'chef') {
+        permissionsToStore = RUBRICS_FOR_PERMISSIONS.reduce((acc, rubric) => {
+            acc[rubric] = true;
+            return acc;
+        }, {} as Partial<Record<RubricId, boolean>>);
+    }
+    localStorage.setItem(LOGGED_IN_USER_PERMISSIONS_KEY, JSON.stringify(permissionsToStore));
     router.push('/dashboard');
   };
 
   const handleUserButtonClick = (user: AppUser) => {
     setError('');
     if (!user.passwordRequired) {
-      performLogin(user.username);
+      performLogin(user);
     } else {
       setSelectedUserForPassword(user);
       setPasswordInput(''); 
@@ -109,23 +134,11 @@ export default function LoginPage() {
     const enteredPasswordHash = simulatedHash(passwordInput);
 
     if (selectedUserForPassword.simulatedStoredPassword === enteredPasswordHash) {
-      performLogin(selectedUserForPassword.username);
+      performLogin(selectedUserForPassword);
     } else {
       setError('Mot de passe incorrect.');
     }
   };
-  
-  const RUBRICS = [ // Duplicating for safety as it's a separate page, ideally share from a common place
-    { id: 'dashboard', label: 'Tableau de Bord Principal' },
-    { id: 'inventory', label: 'Gestion Stocks' },
-    { id: 'benefits', label: 'Avantages Nature' },
-    { id: 'timeTracking', label: 'Suivi Heures' },
-    { id: 'taskManagement', label: 'Gestion Tâches' },
-    { id: 'costManagement', label: 'Gestion Coûts' },
-    { id: 'menuPlanning', label: 'Planification Menus' },
-    { id: 'pms', label: 'PMS' },
-    { id: 'settings', label: 'Paramètres' },
-  ] as const;
 
 
   if (!isClient) {

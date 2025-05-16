@@ -34,23 +34,54 @@ import {
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import type { RubricId } from '@/app/dashboard/settings/components/user-management'; // Import RubricId
 
-const navItems = [
-  { href: "/dashboard", icon: LayoutDashboard, label: "Tableau de Bord" },
-  { href: "/dashboard/inventory", icon: Archive, label: "Gestion Stocks" },
-  { href: "/dashboard/benefits", icon: FileSpreadsheet, label: "Avantages Nature" },
-  { href: "/dashboard/time-tracking", icon: Users, label: "Suivi Heures" },
-  { href: "/dashboard/task-management", icon: ClipboardList, label: "Gestion Tâches" },
-  { href: "/dashboard/cost-management", icon: DollarSign, label: "Gestion Coûts" },
-  { href: "/dashboard/menu-planning", icon: BookOpenText, label: "Planification Menus" },
-  { href: "/dashboard/pms", icon: ShieldCheck, label: "PMS" },
-  { href: "/dashboard/settings", icon: Settings, label: "Paramètres" },
+interface NavItem {
+  href: string;
+  icon: React.ElementType;
+  label: string;
+  rubricId: RubricId; // Added rubricId for permission checking
+}
+
+const allNavItems: NavItem[] = [
+  { href: "/dashboard", icon: LayoutDashboard, label: "Tableau de Bord", rubricId: "dashboard" },
+  { href: "/dashboard/inventory", icon: Archive, label: "Gestion Stocks", rubricId: "inventory" },
+  { href: "/dashboard/benefits", icon: FileSpreadsheet, label: "Avantages Nature", rubricId: "benefits" },
+  { href: "/dashboard/time-tracking", icon: Users, label: "Suivi Heures", rubricId: "timeTracking" },
+  { href: "/dashboard/task-management", icon: ClipboardList, label: "Gestion Tâches", rubricId: "taskManagement" },
+  { href: "/dashboard/cost-management", icon: DollarSign, label: "Gestion Coûts", rubricId: "costManagement" },
+  { href: "/dashboard/menu-planning", icon: BookOpenText, label: "Planification Menus", rubricId: "menuPlanning" },
+  { href: "/dashboard/pms", icon: ShieldCheck, label: "PMS", rubricId: "pms" },
+  { href: "/dashboard/settings", icon: Settings, label: "Paramètres", rubricId: "settings" },
 ];
 
 function AppSidebar() {
   const pathname = usePathname();
   const { state, openMobile, setOpenMobile } = useSidebar();
   const router = useRouter();
+  const [visibleNavItems, setVisibleNavItems] = React.useState<NavItem[]>(allNavItems);
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedPermissionsRaw = localStorage.getItem('loggedInUserPermissions');
+      const loggedInUsername = localStorage.getItem('loggedInUsername');
+
+      if (loggedInUsername?.toLowerCase() === 'chef') {
+        setVisibleNavItems(allNavItems);
+      } else if (storedPermissionsRaw) {
+        try {
+          const storedPermissions = JSON.parse(storedPermissionsRaw) as Partial<Record<RubricId, boolean>>;
+          const filteredItems = allNavItems.filter(item => storedPermissions[item.rubricId] === true);
+          setVisibleNavItems(filteredItems);
+        } catch (e) {
+          console.error("Error parsing stored permissions", e);
+          setVisibleNavItems([]); // Default to no items if permissions are corrupted
+        }
+      } else {
+        setVisibleNavItems([]); // No permissions found, show no items
+      }
+    }
+  }, [pathname]); // Re-check on pathname change if needed, or on login state change
 
   React.useEffect(() => {
     if (openMobile) {
@@ -62,7 +93,8 @@ function AppSidebar() {
   const handleLogout = () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('isLoggedIn');
-      localStorage.removeItem('loggedInUsername'); // Clear logged in username
+      localStorage.removeItem('loggedInUsername');
+      localStorage.removeItem('loggedInUserPermissions'); // Clear permissions on logout
     }
     router.push('/login');
   };
@@ -73,7 +105,6 @@ function AppSidebar() {
       <SidebarHeader className="flex items-center justify-between">
         <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
           <Link href="/dashboard" className="flex items-center gap-2">
-            {/* Logo removed per user request */}
             {/* <div className="w-8 h-8 bg-primary rounded-sm flex items-center justify-center text-primary-foreground font-bold text-lg" data-ai-hint="chef hat">E</div> */}
             <span className="font-semibold text-lg text-sidebar-primary">Gestion par L'excellence</span>
           </Link>
@@ -83,7 +114,7 @@ function AppSidebar() {
       <Separator className="my-1 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:my-2 group-data-[collapsible=icon]:w-6" />
       <SidebarContent>
         <SidebarMenu>
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <SidebarMenuItem key={item.href}>
               <SidebarMenuButton
                 asChild
@@ -100,6 +131,13 @@ function AppSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}
+           {visibleNavItems.length === 0 && typeof window !== 'undefined' && localStorage.getItem('loggedInUsername')?.toLowerCase() !== 'chef' && (
+            <SidebarMenuItem>
+                <div className="p-2 text-xs text-sidebar-foreground/60 text-center">
+                    Aucune rubrique accessible. Contactez un administrateur.
+                </div>
+            </SidebarMenuItem>
+           )}
         </SidebarMenu>
       </SidebarContent>
       <SidebarFooter className="mt-auto">
@@ -150,7 +188,6 @@ export default function DashboardLayout({
 }) {
   const router = useRouter();
   const [isClient, setIsClient] = React.useState(false);
-  // const [currentUsername, setCurrentUsername] = React.useState<string | null>(null); // Potential future use
 
   React.useEffect(() => {
     setIsClient(true);
@@ -160,8 +197,6 @@ export default function DashboardLayout({
     if (isClient && typeof window !== 'undefined') {
       if (localStorage.getItem('isLoggedIn') !== 'true') {
         router.replace('/login');
-      } else {
-        // setCurrentUsername(localStorage.getItem('loggedInUsername')); // Potential future use
       }
     }
   }, [isClient, router]);
@@ -186,7 +221,6 @@ export default function DashboardLayout({
                 <span className="font-semibold text-md">Gestion par L'excellence</span>
             </Link>
           </header>
-          {/* Future: Could pass currentUsername to children or display in a top bar */}
           {children}
         </div>
       </SidebarInset>
