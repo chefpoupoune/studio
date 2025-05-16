@@ -23,7 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import type { BenefitEmployee, BenefitDailyStatusCode, FullMonthlyBenefitData, DailyBenefitEntry } from '../types';
 import { BENEFIT_STATUS_CODES, BENEFIT_STATUS_LEGEND, frenchShortDays } from '../types';
-import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings'; // MODIFIED: Import PDF settings utilities
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -128,20 +128,43 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
   const generatePdf = () => {
     setIsLoading(true);
     try {
-      const pdfSettings = getPdfLayoutSettings('benefits');
+      const pdfSettings = getPdfLayoutSettings('benefits'); // MODIFIED: Get settings for 'benefits' PDF type
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
       const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
-      let currentY = 15;
-      if (pdfSettings.headerText) { doc.setFontSize(10); doc.text(pdfSettings.headerText, 14, currentY); currentY += 10; }
-      if (pdfSettings.logoUrl) { doc.setFontSize(8); doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY); currentY += 5; }
+      let currentY = pdfSettings.marginTop; // MODIFIED: Use marginTop from settings
+
+      // MODIFIED: Add custom header text if defined
+      if (pdfSettings.headerText) {
+        doc.setFontSize(pdfSettings.defaultFontSize - 2); // Smaller for header
+        const headerLines = pdfSettings.headerText.split('\n');
+        headerLines.forEach(line => {
+            doc.text(line, pdfSettings.marginLeft, currentY);
+            currentY += (pdfSettings.defaultFontSize - 2) * 0.35; // Basic line height
+        });
+        currentY += 5; // Extra space after header
+      }
+      
+      // MODIFIED: Attempt to add logo if URL is provided (simplified, no actual image fetching in this example)
+      // In a real scenario, you'd fetch and embed the image or use a pre-loaded one.
+      if (pdfSettings.logoUrl) {
+        doc.setFontSize(8);
+        doc.text(`[Logo: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); // Placeholder for logo
+        currentY += 5;
+      }
       
       const title = `Suivi Avantages en Nature - ${monthLabel} ${selectedYear}`;
-      doc.setFontSize(18); doc.text(title, 14, currentY); currentY += 8;
-      doc.setFontSize(10); doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY); currentY += 7;
+      doc.setFontSize(18); // Title font size can be fixed or also part of settings
+      doc.text(title, pdfSettings.marginLeft, currentY); currentY += 8;
+      doc.setFontSize(pdfSettings.defaultFontSize);
+      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); currentY += 7;
 
-      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string } = { fontStyle: 'bold' };
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, fontSize?: number } = { 
+        fontStyle: 'bold',
+        fontSize: pdfSettings.defaultFontSize -1, // MODIFIED: Use defaultFontSize
+      };
+      // MODIFIED: Use primaryColor from settings
       if (pdfSettings.primaryColor) {
         const primaryRgb = hexToRgb(pdfSettings.primaryColor);
         if (primaryRgb) {
@@ -158,7 +181,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
       
       daysInSelectedMonth.forEach(day => {
         (head[0] as any[]).push({ content: day.dayNumber.toString(), styles: { ...headStyles, halign: 'center' } });
-        (head[1] as any[]).push({ content: day.dayLetter, styles: { ...headStyles, halign: 'center', fontSize: 8, fillColor: day.isWeekend ? [200, 220, 255] : undefined } });
+        (head[1] as any[]).push({ content: day.dayLetter, styles: { ...headStyles, halign: 'center', fontSize: (pdfSettings.defaultFontSize - 2), fillColor: day.isWeekend ? [200, 220, 255] : headStyles.fillColor } });
       });
       (head[0] as any[]).push({ content: 'TOTAL', rowSpan: 2, styles: { ...headStyles, valign: 'middle'} });
 
@@ -171,8 +194,8 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
           const dateKey = `${selectedYear}-${(parseInt(selectedMonth) + 1).toString().padStart(2, '0')}-${day.dayNumber.toString().padStart(2, '0')}`;
           const entry = benefitData[employee.id]?.[dateKey] || { planning: "", repasPris: "" };
           
-          const cellStyle = { halign: 'center', fontSize: 8, fillColor: day.isWeekend ? [229, 231, 235] : (entry.planning === "X" ? [209,250,229] : undefined) };
-          const cellStyleRepas = { halign: 'center', fontSize: 8, fillColor: day.isWeekend ? [229, 231, 235] : (entry.repasPris === "X" ? [209,250,229] : undefined) };
+          const cellStyle = { halign: 'center', fontSize: pdfSettings.defaultFontSize - 2, fillColor: day.isWeekend ? [229, 231, 235] : (entry.planning === "X" ? [209,250,229] : undefined) };
+          const cellStyleRepas = { halign: 'center', fontSize: pdfSettings.defaultFontSize - 2, fillColor: day.isWeekend ? [229, 231, 235] : (entry.repasPris === "X" ? [209,250,229] : undefined) };
 
           planningRow.push({ content: entry.planning, styles: cellStyle });
           repasPrisRow.push({ content: entry.repasPris, styles: cellStyleRepas });
@@ -187,11 +210,23 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
         head: head,
         body: body,
         theme: 'grid',
+        margin: { 
+            top: pdfSettings.marginTop, 
+            right: pdfSettings.marginRight, 
+            bottom: pdfSettings.marginBottom, 
+            left: pdfSettings.marginLeft 
+        },
+        styles: { fontSize: pdfSettings.defaultFontSize - 2 },
         didDrawPage: (data) => {
+          // MODIFIED: Use footerText from settings
           const pageCount = doc.internal.getNumberOfPages();
           if (pdfSettings.footerText) {
-            let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', data.pageNumber.toString()).replace('{totalPages}', pageCount.toString());
-            doc.setFontSize(9); doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+            let footerStr = pdfSettings.footerText
+              .replace('{date}', generationDateFormatted)
+              .replace('{pageNumber}', data.pageNumber.toString())
+              .replace('{totalPages}', pageCount.toString());
+            doc.setFontSize(pdfSettings.defaultFontSize - 2 > 6 ? pdfSettings.defaultFontSize - 2 : 7);
+            doc.text(footerStr, pdfSettings.marginLeft, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
           }
         },
       });
@@ -353,4 +388,6 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
     </div>
   );
 }
+    
+
     
