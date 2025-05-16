@@ -10,19 +10,19 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { User, LockKeyhole, ArrowLeft } from 'lucide-react';
 import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
-import type { AppUser, RubricId } from '@/app/dashboard/settings/components/user-management'; // Import AppUser type
+import type { AppUser, RubricId, ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management';
 
 const APP_USERS_STORAGE_KEY = 'app_defined_users_v1';
 const LOGGED_IN_USER_PERMISSIONS_KEY = 'loggedInUserPermissions';
+const LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY = 'loggedInUserHourViewConfig';
 
-// Simple, non-secure "hashing" function for simulation - MUST MATCH the one in UserManagement
+
 const simulatedHash = (password: string): string => `sim_hashed_${password}_!`;
 
-// Duplicating for safety as it's a separate page, ideally share from a common place
-const RUBRICS_FOR_PERMISSIONS = [
+const RUBRICS_FOR_PERMISSIONS: RubricId[] = [
   'dashboard', 'inventory', 'benefits', 'timeTracking', 
   'taskManagement', 'costManagement', 'menuPlanning', 'pms', 'settings'
-] as const;
+];
 
 
 export default function LoginPage() {
@@ -51,14 +51,13 @@ export default function LoginPage() {
         if (storedUsersRaw) {
           const parsedUsers = JSON.parse(storedUsersRaw);
           if (Array.isArray(parsedUsers)) {
-            users = parsedUsers.filter(
-              (u: any) => u && typeof u.id === 'string' && typeof u.username === 'string' && typeof u.passwordRequired === 'boolean'
-            ).map((u: any) => ({
-              id: u.id,
-              username: u.username,
-              passwordRequired: u.passwordRequired,
+            users = parsedUsers.map((u: any) => ({ // Ensure AppUser structure
+              id: u.id || `imported_user_${Math.random().toString(36).substring(7)}`,
+              username: u.username || "Utilisateur Inconnu",
+              passwordRequired: typeof u.passwordRequired === 'boolean' ? u.passwordRequired : false,
               simulatedStoredPassword: u.simulatedStoredPassword,
-              permissions: u.permissions || {}, 
+              permissions: u.permissions || {},
+              viewableHourSummaryConfig: u.viewableHourSummaryConfig || { type: 'none' },
             }));
           }
         }
@@ -68,37 +67,35 @@ export default function LoginPage() {
       }
 
       const chefUserExists = users.some(u => u.username.toLowerCase() === 'chef');
-      if (!chefUserExists) {
-        const chefPermissions = RUBRICS_FOR_PERMISSIONS.reduce((acc, rubric) => {
-            acc[rubric] = true;
-            return acc;
-        }, {} as Partial<Record<RubricId, boolean>>);
+      const defaultChefPermissions = RUBRICS_FOR_PERMISSIONS.reduce((acc, rubric) => {
+          acc[rubric] = true;
+          return acc;
+      }, {} as Partial<Record<RubricId, boolean>>);
 
+      if (!chefUserExists) {
         users.unshift({ 
           id: 'default_chef', 
           username: 'Chef', 
           passwordRequired: true, 
           simulatedStoredPassword: simulatedHash('000'),
-          permissions: chefPermissions,
+          permissions: defaultChefPermissions,
+          viewableHourSummaryConfig: { type: 'all' },
         });
       } else {
          users = users.map(u => {
             if (u.username.toLowerCase() === 'chef') {
-                const chefPermissions = RUBRICS_FOR_PERMISSIONS.reduce((acc, rubric) => {
-                    acc[rubric] = true;
-                    return acc;
-                }, {} as Partial<Record<RubricId, boolean>>);
                 return {
                     ...u,
                     passwordRequired: true, 
                     simulatedStoredPassword: u.simulatedStoredPassword || simulatedHash('000'),
-                    permissions: chefPermissions
+                    permissions: defaultChefPermissions, // Ensure chef always has all permissions
+                    viewableHourSummaryConfig: { type: 'all' }, // Chef sees all hours
                 };
             }
             return u;
         });
       }
-      setDefinedUsers(users);
+      setDefinedUsers(users.sort((a,b) => a.username.localeCompare(b.username)));
     }
   }, [isClient, router, toast]);
 
@@ -107,13 +104,17 @@ export default function LoginPage() {
     localStorage.setItem('loggedInUsername', user.username);
     
     let permissionsToStore = user.permissions;
+    let hourViewConfigToStore = user.viewableHourSummaryConfig || { type: 'none' as const };
+
     if (user.username.toLowerCase() === 'chef') {
         permissionsToStore = RUBRICS_FOR_PERMISSIONS.reduce((acc, rubric) => {
             acc[rubric] = true;
             return acc;
         }, {} as Partial<Record<RubricId, boolean>>);
+        hourViewConfigToStore = { type: 'all' as const };
     }
     localStorage.setItem(LOGGED_IN_USER_PERMISSIONS_KEY, JSON.stringify(permissionsToStore));
+    localStorage.setItem(LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY, JSON.stringify(hourViewConfigToStore));
     router.push('/dashboard');
   };
 
@@ -178,12 +179,13 @@ export default function LoginPage() {
                         <span className="font-medium">{user.username}</span>
                         <span className="text-xs text-muted-foreground">
                           {user.passwordRequired ? "Mot de passe requis" : "Accès direct"}
+                          {user.passwordRequired && !user.simulatedStoredPassword && <span className="text-destructive text-xs">(Aucun mdp défini)</span>}
                         </span>
                       </span>
                     </Button>
                   ))
                 ) : (
-                  <p className="text-center text-muted-foreground col-span-full">Chargement des utilisateurs...</p>
+                  <p className="text-center text-muted-foreground col-span-full">Aucun utilisateur configuré. Seul "Chef" est disponible.</p>
                 )}
               </div>
             </>
@@ -229,7 +231,7 @@ export default function LoginPage() {
         </CardContent>
          <CardFooter className="text-center text-xs text-muted-foreground pt-6">
           <p>
-            {selectedUserForPassword && selectedUserForPassword.username.toLowerCase() === 'chef' 
+            {selectedUserForPassword && selectedUserForPassword.username.toLowerCase() === 'chef' && !selectedUserForPassword.simulatedStoredPassword
               ? "Mot de passe par défaut pour Chef : 000" 
               : "Entrez le mot de passe configuré."
             }
@@ -239,3 +241,5 @@ export default function LoginPage() {
     </main>
   );
 }
+
+    

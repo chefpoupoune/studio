@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Users, AlertTriangle, PlusCircle, Edit2, Trash2, KeyRound } from 'lucide-react';
+import { Users, AlertTriangle, PlusCircle, Edit2, Trash2, KeyRound, Eye } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -17,6 +17,8 @@ import * as z from 'zod';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import type { BrigadeMember } from '@/app/dashboard/time-tracking/types';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,7 +31,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-const APP_USERS_STORAGE_KEY = 'app_defined_users_v1'; // Key can remain same if structure is compatible or data is reset
+const APP_USERS_STORAGE_KEY = 'app_defined_users_v1';
+const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members';
 
 const RUBRICS = [
   { id: 'dashboard', label: 'Tableau de Bord Principal' },
@@ -43,14 +46,20 @@ const RUBRICS = [
   { id: 'settings', label: 'Paramètres' },
 ] as const;
 
-type RubricId = typeof RUBRICS[number]['id'];
+export type RubricId = typeof RUBRICS[number]['id'];
 
-export interface AppUser { // Exporting for use in login page
+export interface ViewableHourSummaryConfig {
+  type: 'none' | 'own' | 'all' | 'specific';
+  specificMemberId?: string;
+}
+
+export interface AppUser {
   id: string;
   username: string;
   passwordRequired: boolean;
-  simulatedStoredPassword?: string; // Stores "hashed" password
+  simulatedStoredPassword?: string;
   permissions: Partial<Record<RubricId, boolean>>;
+  viewableHourSummaryConfig?: ViewableHourSummaryConfig;
 }
 
 const userFormSchema = z.object({
@@ -64,9 +73,11 @@ const userFormSchema = z.object({
       return acc;
     }, {} as Record<RubricId, z.ZodBoolean>)
   ).default({}),
+  viewableHourSummary_type: z.enum(['none', 'own', 'all', 'specific']).default('none'),
+  viewableHourSummary_specificMemberId: z.string().optional(),
 }).refine(data => {
     if (data.passwordRequired && data.newPassword && data.newPassword.length < 3) {
-        return false; // New password must be at least 3 chars if provided
+        return false;
     }
     return true;
 }, {
@@ -75,15 +86,23 @@ const userFormSchema = z.object({
 }).refine(data => data.newPassword === data.confirmNewPassword, {
     message: "Les nouveaux mots de passe ne correspondent pas.",
     path: ['confirmNewPassword'],
+}).refine(data => {
+    if (data.viewableHourSummary_type === 'specific' && !data.viewableHourSummary_specificMemberId) {
+        return false;
+    }
+    return true;
+}, {
+    message: "Veuillez sélectionner un employé spécifique.",
+    path: ['viewableHourSummary_specificMemberId']
 });
 
 type UserFormData = z.infer<typeof userFormSchema>;
 
-// Simple, non-secure "hashing" function for simulation
 const simulatedHash = (password: string): string => `sim_hashed_${password}_!`;
 
 export default function UserManagement() {
   const [appUsers, setAppUsers] = useState<AppUser[]>([]);
+  const [brigadeMembers, setBrigadeMembers] = useState<BrigadeMember[]>([]);
   const [isUserFormOpen, setIsUserFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
   const { toast } = useToast();
@@ -96,18 +115,21 @@ export default function UserManagement() {
       newPassword: '',
       confirmNewPassword: '',
       permissions: RUBRICS.reduce((acc, rubric) => ({ ...acc, [rubric.id]: false }), {}),
+      viewableHourSummary_type: 'none',
+      viewableHourSummary_specificMemberId: undefined,
     },
   });
 
   useEffect(() => {
     try {
       const storedUsers = localStorage.getItem(APP_USERS_STORAGE_KEY);
-      if (storedUsers) {
-        setAppUsers(JSON.parse(storedUsers));
-      }
+      if (storedUsers) setAppUsers(JSON.parse(storedUsers));
+      
+      const storedBrigadeMembers = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
+      if (storedBrigadeMembers) setBrigadeMembers(JSON.parse(storedBrigadeMembers));
     } catch (error) {
-      console.error("Error loading users:", error);
-      toast({ title: "Erreur de chargement des utilisateurs", variant: "destructive" });
+      console.error("Error loading data:", error);
+      toast({ title: "Erreur de chargement des données de configuration utilisateurs", variant: "destructive" });
     }
   }, [toast]);
 
@@ -121,18 +143,14 @@ export default function UserManagement() {
       form.reset({
         username: user.username,
         passwordRequired: user.passwordRequired,
-        newPassword: '', // Always clear password fields for editing
-        confirmNewPassword: '',
-        permissions: RUBRICS.reduce((acc, rubric) => ({ ...acc, [rubric.id]: !!user.permissions[rubric.id] }), {}),
-      });
-    } else {
-      form.reset({
-        username: '',
-        passwordRequired: false,
         newPassword: '',
         confirmNewPassword: '',
-        permissions: RUBRICS.reduce((acc, rubric) => ({ ...acc, [rubric.id]: false }), {}),
+        permissions: RUBRICS.reduce((acc, rubric) => ({ ...acc, [rubric.id]: !!user.permissions[rubric.id] }), {}),
+        viewableHourSummary_type: user.viewableHourSummaryConfig?.type || 'none',
+        viewableHourSummary_specificMemberId: user.viewableHourSummaryConfig?.specificMemberId || undefined,
       });
+    } else {
+      form.reset({ /* defaultValues already set */ });
     }
     setIsUserFormOpen(true);
   };
@@ -143,13 +161,19 @@ export default function UserManagement() {
         passwordToStore = simulatedHash(data.newPassword);
     }
 
+    const summaryConfig: ViewableHourSummaryConfig = {
+        type: data.viewableHourSummary_type,
+        specificMemberId: data.viewableHourSummary_type === 'specific' ? data.viewableHourSummary_specificMemberId : undefined,
+    };
+
     if (editingUser) {
       setAppUsers(prev => prev.map(u => u.id === editingUser.id ? { 
           ...editingUser, 
           username: data.username,
           passwordRequired: data.passwordRequired,
           simulatedStoredPassword: data.passwordRequired ? (passwordToStore || editingUser.simulatedStoredPassword) : undefined,
-          permissions: data.permissions 
+          permissions: data.permissions,
+          viewableHourSummaryConfig: summaryConfig,
         } : u));
       toast({ title: "Utilisateur Modifié", description: `L'utilisateur "${data.username}" a été mis à jour.` });
     } else {
@@ -158,7 +182,8 @@ export default function UserManagement() {
         username: data.username,
         passwordRequired: data.passwordRequired,
         simulatedStoredPassword: passwordToStore,
-        permissions: data.permissions 
+        permissions: data.permissions,
+        viewableHourSummaryConfig: summaryConfig,
       };
       setAppUsers(prev => [...prev, newUser]);
       toast({ title: "Utilisateur Créé", description: `L'utilisateur "${data.username}" a été créé.` });
@@ -176,6 +201,10 @@ export default function UserManagement() {
     toast({ title: "Utilisateur Supprimé", description: "L'utilisateur a été supprimé.", variant: "destructive" });
   };
 
+  const currentSelectedSummaryType = form.watch('viewableHourSummary_type');
+  const isChefEditing = editingUser?.username.toLowerCase() === 'chef';
+
+
   return (
     <Card className="shadow-lg">
       <CardHeader>
@@ -184,18 +213,16 @@ export default function UserManagement() {
           Gestion des Utilisateurs
         </CardTitle>
         <CardDescription>
-          Définissez des utilisateurs, leurs mots de passe (simulés) et leurs permissions d'accès aux rubriques.
+          Définissez des utilisateurs, leurs mots de passe (simulés) et leurs permissions d'accès.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <Alert variant="destructive" className="border-destructive/50 bg-destructive/10">
           <AlertTriangle className="h-5 w-5 text-destructive" />
-          <AlertTitle className="text-destructive font-semibold">Avertissement de Sécurité Important</AlertTitle>
+          <AlertTitle className="text-destructive font-semibold">Avertissement de Sécurité</AlertTitle>
           <AlertDescription className="text-destructive/90">
-            Ce système de gestion d'utilisateurs et de mots de passe est à des fins de **démonstration et de prototypage uniquement**. 
-            Les mots de passe ne sont **pas stockés de manière sécurisée** et les permissions ne sont pas encore strictement appliquées.
-            Ne pas utiliser en production avec des données sensibles.
-            Seul l'utilisateur 'chef' (mdp: '000') est actuellement utilisé par le système de connexion principal.
+            Ce système est pour la démonstration. Les mots de passe ne sont pas stockés de manière sécurisée.
+            L'utilisateur 'chef' (mdp: '000') est le compte administrateur par défaut.
           </AlertDescription>
         </Alert>
 
@@ -210,12 +237,12 @@ export default function UserManagement() {
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(handleUserFormSubmit)} className="space-y-4 py-4">
-                <ScrollArea className="h-[65vh] pr-4">
+                <ScrollArea className="h-[70vh] pr-4">
                   <div className="space-y-4">
                     <FormField control={form.control} name="username" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Nom d'utilisateur</FormLabel>
-                        <FormControl><Input placeholder="Ex: jdupont" {...field} disabled={editingUser?.username.toLowerCase() === 'chef'} /></FormControl>
+                        <FormControl><Input placeholder="Ex: jdupont" {...field} disabled={isChefEditing} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )} />
@@ -224,14 +251,14 @@ export default function UserManagement() {
                         <div className="space-y-0.5">
                           <FormLabel>Mot de passe requis ?</FormLabel>
                           <FormDescription className="text-xs">
-                            Si coché, un mot de passe sera nécessaire pour cet utilisateur.
+                            Si coché, un mot de passe sera nécessaire.
                           </FormDescription>
                         </div>
-                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={editingUser?.username.toLowerCase() === 'chef'} /></FormControl>
+                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={isChefEditing} /></FormControl>
                       </FormItem>
                     )} />
                     
-                    {form.watch('passwordRequired') && (
+                    {form.watch('passwordRequired') && !isChefEditing && (
                       <div className="p-3 border rounded-md space-y-3 bg-muted/30">
                          <FormField control={form.control} name="newPassword" render={({ field }) => (
                           <FormItem>
@@ -264,7 +291,7 @@ export default function UserManagement() {
                                   <Checkbox
                                     checked={field.value}
                                     onCheckedChange={field.onChange}
-                                    disabled={(rubric.id === 'settings' && form.getValues('username').toLowerCase() !== 'chef') || (editingUser?.username.toLowerCase() === 'chef')}
+                                    disabled={isChefEditing || (rubric.id === 'settings' && form.getValues('username').toLowerCase() !== 'chef')}
                                   />
                                 </FormControl>
                                 <FormLabel className="font-normal text-sm cursor-pointer flex-grow">{rubric.label}</FormLabel>
@@ -274,11 +301,52 @@ export default function UserManagement() {
                         ))}
                       </div>
                     </div>
+
+                    {!isChefEditing && (
+                        <div className="pt-4 border-t">
+                          <h3 className="text-md font-semibold mb-2 mt-2 flex items-center gap-1"><Eye className="w-4 h-4"/> Vue des Relevés d'Heures</h3>
+                          <FormField control={form.control} name="viewableHourSummary_type" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Type de vue</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl><SelectTrigger><SelectValue placeholder="Choisir type de vue..." /></SelectTrigger></FormControl>
+                                <SelectContent>
+                                    <SelectItem value="none">Aucun relevé</SelectItem>
+                                    <SelectItem value="own">Son propre relevé uniquement</SelectItem>
+                                    <SelectItem value="all">Tous les relevés</SelectItem>
+                                    <SelectItem value="specific">Relevé d'un employé spécifique</SelectItem>
+                                </SelectContent>
+                                </Select>
+                                <FormMessage />
+                            </FormItem>
+                            )}
+                          />
+                          {currentSelectedSummaryType === 'specific' && (
+                            <FormField control={form.control} name="viewableHourSummary_specificMemberId" render={({ field }) => (
+                                <FormItem className="mt-2">
+                                <FormLabel>Employé spécifique</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                    <FormControl><SelectTrigger><SelectValue placeholder="Choisir un employé..." /></SelectTrigger></FormControl>
+                                    <SelectContent>
+                                    {brigadeMembers.length > 0 ? brigadeMembers.map(member => (
+                                        <SelectItem key={member.id} value={member.id}>{member.name} ({member.role})</SelectItem>
+                                    )) : <SelectItem value="disabled" disabled>Aucun membre de brigade</SelectItem>}
+                                    </SelectContent>
+                                </Select>
+                                <FormMessage />
+                                </FormItem>
+                            )}
+                            />
+                          )}
+                        </div>
+                    )}
+
+
                   </div>
                 </ScrollArea>
                 <DialogFooter className="pt-4">
                   <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                  <Button type="submit" disabled={editingUser?.username.toLowerCase() === 'chef' && form.getValues('username').toLowerCase() !== 'chef'}>{editingUser ? "Enregistrer Modifications" : "Créer Utilisateur"}</Button>
+                  <Button type="submit" disabled={isChefEditing && form.getValues('username').toLowerCase() !== 'chef'}>{editingUser ? "Enregistrer Modifications" : "Créer Utilisateur"}</Button>
                 </DialogFooter>
               </form>
             </Form>
@@ -323,15 +391,32 @@ export default function UserManagement() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="px-4 pb-3">
-                  <p className="text-xs font-medium mb-1">Permissions accordées :</p>
-                  <ul className="list-disc list-inside pl-2 text-xs space-y-0.5">
-                    {RUBRICS.filter(rubric => user.permissions[rubric.id]).map(rubric => (
-                      <li key={rubric.id}>{rubric.label}</li>
-                    ))}
-                    {RUBRICS.filter(rubric => user.permissions[rubric.id]).length === 0 && (
-                        <li className="italic text-muted-foreground">Aucune permission spécifique.</li>
-                    )}
-                  </ul>
+                  <div className="grid grid-cols-2 gap-x-4">
+                    <div>
+                        <p className="text-xs font-medium mb-1">Permissions rubriques :</p>
+                        <ul className="list-disc list-inside pl-2 text-xs space-y-0.5">
+                            {RUBRICS.filter(rubric => user.permissions[rubric.id]).map(rubric => (
+                            <li key={rubric.id}>{rubric.label}</li>
+                            ))}
+                            {RUBRICS.filter(rubric => user.permissions[rubric.id]).length === 0 && (
+                                <li className="italic text-muted-foreground">Aucune permission rubrique.</li>
+                            )}
+                        </ul>
+                    </div>
+                    <div>
+                        <p className="text-xs font-medium mb-1">Vue Relevés d'Heures :</p>
+                        <p className="text-xs">
+                            {user.username.toLowerCase() === 'chef' ? "Tous les relevés (Admin)" :
+                             user.viewableHourSummaryConfig?.type === 'none' ? "Aucun relevé" :
+                             user.viewableHourSummaryConfig?.type === 'own' ? "Son propre relevé uniquement" :
+                             user.viewableHourSummaryConfig?.type === 'all' ? "Tous les relevés" :
+                             user.viewableHourSummaryConfig?.type === 'specific' ? 
+                                `Relevé de: ${brigadeMembers.find(bm => bm.id === user.viewableHourSummaryConfig?.specificMemberId)?.name || 'N/D'}` :
+                                "Non configuré"
+                            }
+                        </p>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -344,3 +429,4 @@ export default function UserManagement() {
   );
 }
 
+    
