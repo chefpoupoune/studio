@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { ArrowLeft, FileSpreadsheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import ExcelBenefitManager from './components/excel-benefit-manager';
+import BenefitTrackingTable from './components/excel-benefit-manager'; // Renamed, but path is still similar for now
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
 
@@ -29,15 +29,16 @@ export default function BenefitsPage() {
       
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>Traitement des Fichiers Excel</CardTitle>
+          <CardTitle>Suivi Mensuel des Avantages en Nature</CardTitle>
           <CardDescription>
-            Sélectionnez un mois et une année, téléchargez votre fichier Excel (format .xlsx ou .xls) pour visualiser les données et générer un PDF.
+            Sélectionnez un mois et une année, puis remplissez le tableau de suivi. Les données sont sauvegardées automatiquement.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ExcelBenefitManager />
+          <BenefitTrackingTable />
         </CardContent>
       </Card>
     </div>
   );
 }
+    
