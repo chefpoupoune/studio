@@ -1,32 +1,338 @@
 
 "use client";
 
+import React, { useState, useEffect, useCallback } from 'react';
+import type { DailyCoolDownEntry, DailyDeliveryEntry } from '../types';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { AlertCircle, ThermometerSnowflake, Construction } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { PlusCircle, Edit2, Trash2, FileText, Loader2, ThermometerSnowflake, ArrowDownCircle, Truck } from 'lucide-react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { useToast } from '@/hooks/use-toast';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+
+interface jsPDFWithAutoTable extends jsPDF {
+  autoTable: (options: any) => jsPDF;
+}
+
+const todayKey = format(new Date(), 'yyyy-MM-dd');
+const COOLDOWN_LOG_STORAGE_KEY_PREFIX = "pms_cold_chain_cooldown_";
+const DELIVERY_LOG_STORAGE_KEY_PREFIX = "pms_cold_chain_delivery_";
+
+// Schemas
+const coolDownEntrySchema = z.object({
+  productName: z.string().min(1, "Nom du produit requis."),
+  quantity: z.string().min(1, "Quantité requise."),
+  startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: "Format HH:MM requis." }).optional().or(z.literal('')),
+  startTemp: z.string().optional(),
+  endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: "Format HH:MM requis." }).optional().or(z.literal('')),
+  endTemp: z.string().optional(),
+  visa: z.string().optional(),
+});
+type CoolDownFormData = z.infer<typeof coolDownEntrySchema>;
+
+const deliveryEntrySchema = z.object({
+  productName: z.string().min(1, "Nom du plat/produit requis."),
+  servicePeriod: z.enum(['midi', 'soir', 'autre'], { required_error: "Période de service requise."}),
+  departureTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: "Format HH:MM requis." }).optional().or(z.literal('')),
+  departureTemp: z.string().optional(),
+  arrivalTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: "Format HH:MM requis." }).optional().or(z.literal('')),
+  arrivalTemp: z.string().optional(),
+  deliveryVisa: z.string().optional(),
+});
+type DeliveryFormData = z.infer<typeof deliveryEntrySchema>;
+
 
 export default function ColdChainMonitoring() {
+  const [coolDownEntries, setCoolDownEntries] = useState<DailyCoolDownEntry[]>([]);
+  const [deliveryEntries, setDeliveryEntries] = useState<DailyDeliveryEntry[]>([]);
+  
+  const [isCoolDownDialogOpen, setIsCoolDownDialogOpen] = useState(false);
+  const [editingCoolDownEntry, setEditingCoolDownEntry] = useState<DailyCoolDownEntry | null>(null);
+  
+  const [isDeliveryDialogOpen, setIsDeliveryDialogOpen] = useState(false);
+  const [editingDeliveryEntry, setEditingDeliveryEntry] = useState<DailyDeliveryEntry | null>(null);
+
+  const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
+
+  const coolDownForm = useForm<CoolDownFormData>({ resolver: zodResolver(coolDownEntrySchema) });
+  const deliveryForm = useForm<DeliveryFormData>({ resolver: zodResolver(deliveryEntrySchema) });
+
+  const getCoolDownStorageKey = useCallback(() => `${COOLDOWN_LOG_STORAGE_KEY_PREFIX}${todayKey}`, []);
+  const getDeliveryStorageKey = useCallback(() => `${DELIVERY_LOG_STORAGE_KEY_PREFIX}${todayKey}`, []);
+
+  // Load data
+  useEffect(() => {
+    setIsLoading(true);
+    try {
+      const storedCoolDown = localStorage.getItem(getCoolDownStorageKey());
+      if (storedCoolDown) setCoolDownEntries(JSON.parse(storedCoolDown));
+      else setCoolDownEntries([]);
+
+      const storedDelivery = localStorage.getItem(getDeliveryStorageKey());
+      if (storedDelivery) setDeliveryEntries(JSON.parse(storedDelivery));
+      else setDeliveryEntries([]);
+
+    } catch (error) {
+      console.error("Error loading cold chain data:", error);
+      toast({ title: "Erreur de chargement", description: "Données de liaison froide corrompues.", variant: "destructive" });
+    }
+    setIsLoading(false);
+  }, [toast, getCoolDownStorageKey, getDeliveryStorageKey]);
+
+  // Save CoolDown data
+  useEffect(() => {
+    if (!isLoading) localStorage.setItem(getCoolDownStorageKey(), JSON.stringify(coolDownEntries));
+  }, [coolDownEntries, isLoading, getCoolDownStorageKey]);
+
+  // Save Delivery data
+  useEffect(() => {
+    if (!isLoading) localStorage.setItem(getDeliveryStorageKey(), JSON.stringify(deliveryEntries));
+  }, [deliveryEntries, isLoading, getDeliveryStorageKey]);
+
+  // CoolDown Handlers
+  const handleOpenCoolDownDialog = (entry?: DailyCoolDownEntry) => {
+    setEditingCoolDownEntry(entry || null);
+    coolDownForm.reset(entry || { productName: '', quantity: '', startTime: '', startTemp: '', endTime: '', endTemp: '', visa: '' });
+    setIsCoolDownDialogOpen(true);
+  };
+
+  const handleCoolDownFormSubmit = (data: CoolDownFormData) => {
+    if (editingCoolDownEntry) {
+      setCoolDownEntries(prev => prev.map(e => e.id === editingCoolDownEntry.id ? { ...editingCoolDownEntry, ...data } : e));
+      toast({ title: "Modification Enregistrée", description: "L'entrée de baisse en température a été mise à jour." });
+    } else {
+      const newEntry: DailyCoolDownEntry = { ...data, id: `cd_${Date.now()}` };
+      setCoolDownEntries(prev => [newEntry, ...prev]);
+      toast({ title: "Nouvelle Entrée Ajoutée", description: "Baisse en température enregistrée." });
+    }
+    setIsCoolDownDialogOpen(false);
+  };
+
+  const handleDeleteCoolDownEntry = (entryId: string) => {
+    setCoolDownEntries(prev => prev.filter(e => e.id !== entryId));
+    toast({ title: "Entrée Supprimée", variant: "destructive" });
+  };
+
+  // Delivery Handlers
+  const handleOpenDeliveryDialog = (entry?: DailyDeliveryEntry) => {
+    setEditingDeliveryEntry(entry || null);
+    deliveryForm.reset(entry || { productName: '', servicePeriod: 'midi', departureTime: '', departureTemp: '', arrivalTime: '', arrivalTemp: '', deliveryVisa: '' });
+    setIsDeliveryDialogOpen(true);
+  };
+
+  const handleDeliveryFormSubmit = (data: DeliveryFormData) => {
+    if (editingDeliveryEntry) {
+      setDeliveryEntries(prev => prev.map(e => e.id === editingDeliveryEntry.id ? { ...editingDeliveryEntry, ...data } : e));
+      toast({ title: "Modification Enregistrée", description: "L'entrée de livraison a été mise à jour." });
+    } else {
+      const newEntry: DailyDeliveryEntry = { ...data, id: `del_${Date.now()}` };
+      setDeliveryEntries(prev => [newEntry, ...prev]);
+      toast({ title: "Nouvelle Entrée Ajoutée", description: "Livraison enregistrée." });
+    }
+    setIsDeliveryDialogOpen(false);
+  };
+
+  const handleDeleteDeliveryEntry = (entryId: string) => {
+    setDeliveryEntries(prev => prev.filter(e => e.id !== entryId));
+    toast({ title: "Entrée Supprimée", variant: "destructive" });
+  };
+  
+  const generatePdf = (dataType: 'cooldown' | 'delivery') => {
+    setIsLoading(true);
+    try {
+      const isCooldown = dataType === 'cooldown';
+      const dataToExport = isCooldown ? coolDownEntries : deliveryEntries;
+      const title = isCooldown ? "Suivi Baisse en Température du Jour" : "Suivi Livraison du Jour";
+      const filenameSuffix = isCooldown ? "Baisse_Temperature" : "Livraison";
+      const settingsKey = isCooldown ? 'pms_cooldown_monitoring' : 'pms_delivery_monitoring';
+
+      if(dataToExport.length === 0) {
+        toast({title: "Aucune donnée", description: `Aucune donnée à exporter pour ${title.toLowerCase()}.`, variant: "destructive"});
+        setIsLoading(false);
+        return;
+      }
+
+      const pdfSettings = getPdfLayoutSettings(settingsKey); 
+      const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
+      const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
+
+      let currentY = 15;
+      if (pdfSettings.headerText) { doc.setFontSize(10); doc.text(pdfSettings.headerText, 14, currentY); currentY += 10; }
+      if (pdfSettings.logoUrl) { doc.setFontSize(8); doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY); currentY += 5; }
+      
+      doc.setFontSize(16); doc.text(`${title} - ${format(new Date(), "dd/MM/yyyy", {locale: fr})}`, 14, currentY); currentY += 8;
+      doc.setFontSize(10); doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY); currentY += 7;
+
+      const headStyles: any = { fontSize: 9, fontStyle: 'bold', halign: 'center', valign: 'middle' };
+      if (pdfSettings.primaryColor) {
+        const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
+        if (primaryColorRgb) headStyles.fillColor = primaryColorRgb;
+        headStyles.textColor = (hexToRgb(pdfSettings.primaryColor)![0] * 299 + hexToRgb(pdfSettings.primaryColor)![1] * 587 + hexToRgb(pdfSettings.primaryColor)![2] * 114) / 1000 > 125 ? [0,0,0] : [255,255,255];
+      }
+
+      let head: any[], body: any[][];
+      if (isCooldown) {
+        head = [['Produit', 'Quantité', 'Heure Début', 'T° Début (°C)', 'Heure Fin', 'T° Fin (°C)', 'Visa']];
+        body = (dataToExport as DailyCoolDownEntry[]).map(e => [e.productName, e.quantity, e.startTime || '-', e.startTemp || '-', e.endTime || '-', e.endTemp || '-', e.visa || '-']);
+      } else {
+        head = [['Produit/Plat', 'Service', 'Heure Départ', 'T° Départ (°C)', 'Heure Arrivée', 'T° Arrivée (°C)', 'Visa']];
+        body = (dataToExport as DailyDeliveryEntry[]).map(e => [e.productName, e.servicePeriod, e.departureTime || '-', e.departureTemp || '-', e.arrivalTime || '-', e.arrivalTemp || '-', e.deliveryVisa || '-']);
+      }
+
+      doc.autoTable({
+        head, body, startY: currentY, theme: 'grid', headStyles, styles: { fontSize: 8, cellPadding: 1.5, valign: 'middle', halign: 'center' },
+        didDrawPage: (data) => { /* Footer logic */ }
+      });
+      doc.save(`Suivi_${filenameSuffix}_${todayKey}.pdf`);
+      toast({ title: "PDF Généré", description: `Le PDF pour ${title.toLowerCase()} a été téléchargé.` });
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      toast({ title: "Erreur PDF", description: "La génération du PDF a échoué.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+
   return (
-    <Card className="shadow-lg">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <ThermometerSnowflake className="w-6 h-6 text-primary"/>
-          Suivi de la Liaison Froide
-        </CardTitle>
-        <CardDescription>
-          Enregistrement et suivi des températures lors du transport et de la réception de produits froids ou surgelés.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col items-center justify-center text-center p-10 border-2 border-dashed border-muted-foreground/20 rounded-lg bg-card/50 min-h-[200px]">
-          <Construction className="w-12 h-12 text-muted-foreground mb-4" />
-          <p className="text-lg font-medium text-muted-foreground">
-            Fonctionnalité en cours de développement.
-          </p>
-          <p className="text-sm text-muted-foreground/80 mt-2">
-            Cette section permettra de documenter les contrôles de température des produits durant les étapes de la liaison froide.
-          </p>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="space-y-6">
+      {/* Baisse en Température */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2"><ArrowDownCircle className="w-6 h-6 text-primary"/>Baisse en Température du Jour</div>
+            <Dialog open={isCoolDownDialogOpen} onOpenChange={setIsCoolDownDialogOpen}>
+              <DialogTrigger asChild><Button onClick={() => handleOpenCoolDownDialog()}><PlusCircle className="mr-2 h-4 w-4"/>Ajouter Produit</Button></DialogTrigger>
+              <DialogContent className="sm:max-w-lg">
+                <DialogHeader><DialogTitle>{editingCoolDownEntry ? "Modifier" : "Nouveau"} Produit en Refroidissement</DialogTitle></DialogHeader>
+                <Form {...coolDownForm}>
+                  <form onSubmit={coolDownForm.handleSubmit(handleCoolDownFormSubmit)} className="space-y-3 py-2 max-h-[70vh] overflow-y-auto pr-2">
+                    <FormField control={coolDownForm.control} name="productName" render={({ field }) => (<FormItem><FormLabel>Nom du Produit</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={coolDownForm.control} name="quantity" render={({ field }) => (<FormItem><FormLabel>Quantité</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField control={coolDownForm.control} name="startTime" render={({ field }) => (<FormItem><FormLabel>Heure Début</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={coolDownForm.control} name="startTemp" render={({ field }) => (<FormItem><FormLabel>T° Début (°C)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField control={coolDownForm.control} name="endTime" render={({ field }) => (<FormItem><FormLabel>Heure Fin (&lt;2h)</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={coolDownForm.control} name="endTemp" render={({ field }) => (<FormItem><FormLabel>T° Fin (&lt;10°C)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    </div>
+                    <FormField control={coolDownForm.control} name="visa" render={({ field }) => (<FormItem><FormLabel>Visa</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit">{editingCoolDownEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
+                  </form>
+                </Form>
+              </DialogContent>
+            </Dialog>
+          </CardTitle>
+          <CardDescription>Suivi des produits mis en refroidissement rapide pour la journée en cours.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : coolDownEntries.length === 0 ? <p className="text-center text-muted-foreground">Aucun produit en refroidissement.</p> : (
+            <div className="overflow-x-auto border rounded-md">
+              <Table>
+                <TableHeader><TableRow><TableHead>Produit</TableHead><TableHead>Qté</TableHead><TableHead>H.Début</TableHead><TableHead>T°Début</TableHead><TableHead>H.Fin</TableHead><TableHead>T°Fin</TableHead><TableHead>Visa</TableHead><TableHead className="text-center">Actions</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {coolDownEntries.map(e => (
+                    <TableRow key={e.id}>
+                      <TableCell>{e.productName}</TableCell><TableCell>{e.quantity}</TableCell><TableCell>{e.startTime || '-'}</TableCell><TableCell>{e.startTemp || '-'}</TableCell>
+                      <TableCell>{e.endTime || '-'}</TableCell><TableCell>{e.endTemp || '-'}</TableCell><TableCell>{e.visa || '-'}</TableCell>
+                      <TableCell className="text-center space-x-1">
+                        <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5"/></Button></AlertDialogTrigger>
+                          <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Supprimer "{e.productName}"?</AlertDialogTitle><AlertDialogDescription>Action irréversible.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annuler</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteCoolDownEntry(e.id)}>Supprimer</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+                        </AlertDialog>
+                        <Button variant="outline" size="icon" onClick={() => handleOpenCoolDownDialog(e)} className="h-7 w-7"><Edit2 className="h-3.5 w-3.5"/></Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          {coolDownEntries.length > 0 && <div className="mt-4 flex justify-end"><Button onClick={() => generatePdf('cooldown')} size="sm" disabled={isLoading}>{isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/>:<FileText className="mr-2 h-4 w-4"/>} Générer PDF</Button></div>}
+        </CardContent>
+      </Card>
+
+      {/* Livraison du Jour */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2"><Truck className="w-6 h-6 text-primary"/>Livraison du Jour</div>
+            <Dialog open={isDeliveryDialogOpen} onOpenChange={setIsDeliveryDialogOpen}>
+              <DialogTrigger asChild><Button onClick={() => handleOpenDeliveryDialog()}><PlusCircle className="mr-2 h-4 w-4"/>Ajouter Livraison</Button></DialogTrigger>
+              <DialogContent className="sm:max-w-lg">
+                <DialogHeader><DialogTitle>{editingDeliveryEntry ? "Modifier" : "Nouvelle"} Livraison</DialogTitle></DialogHeader>
+                <Form {...deliveryForm}>
+                  <form onSubmit={deliveryForm.handleSubmit(handleDeliveryFormSubmit)} className="space-y-3 py-2 max-h-[70vh] overflow-y-auto pr-2">
+                    <FormField control={deliveryForm.control} name="productName" render={({ field }) => (<FormItem><FormLabel>Produit/Plat</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={deliveryForm.control} name="servicePeriod" render={({ field }) => (<FormItem><FormLabel>Service</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Choisir service"/></SelectTrigger></FormControl>
+                        <SelectContent><SelectItem value="midi">Midi</SelectItem><SelectItem value="soir">Soir</SelectItem><SelectItem value="autre">Autre</SelectItem></SelectContent>
+                      </Select><FormMessage /></FormItem>)} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField control={deliveryForm.control} name="departureTime" render={({ field }) => (<FormItem><FormLabel>Heure Départ</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={deliveryForm.control} name="departureTemp" render={({ field }) => (<FormItem><FormLabel>T° Départ (°C)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField control={deliveryForm.control} name="arrivalTime" render={({ field }) => (<FormItem><FormLabel>Heure Arrivée</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={deliveryForm.control} name="arrivalTemp" render={({ field }) => (<FormItem><FormLabel>T° Arrivée (°C)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    </div>
+                    <FormField control={deliveryForm.control} name="deliveryVisa" render={({ field }) => (<FormItem><FormLabel>Visa</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit">{editingDeliveryEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
+                  </form>
+                </Form>
+              </DialogContent>
+            </Dialog>
+          </CardTitle>
+          <CardDescription>Suivi des livraisons (Midi/Soir) pour la journée en cours.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : deliveryEntries.length === 0 ? <p className="text-center text-muted-foreground">Aucune livraison enregistrée.</p> : (
+            <div className="overflow-x-auto border rounded-md">
+              <Table>
+                <TableHeader><TableRow><TableHead>Produit/Plat</TableHead><TableHead>Service</TableHead><TableHead>H.Départ</TableHead><TableHead>T°Départ</TableHead><TableHead>H.Arrivée</TableHead><TableHead>T°Arrivée</TableHead><TableHead>Visa</TableHead><TableHead className="text-center">Actions</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {deliveryEntries.map(e => (
+                    <TableRow key={e.id}>
+                      <TableCell>{e.productName}</TableCell><TableCell>{e.servicePeriod}</TableCell><TableCell>{e.departureTime || '-'}</TableCell><TableCell>{e.departureTemp || '-'}</TableCell>
+                      <TableCell>{e.arrivalTime || '-'}</TableCell><TableCell>{e.arrivalTemp || '-'}</TableCell><TableCell>{e.deliveryVisa || '-'}</TableCell>
+                      <TableCell className="text-center space-x-1">
+                        <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5"/></Button></AlertDialogTrigger>
+                          <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Supprimer livraison de "{e.productName}"?</AlertDialogTitle><AlertDialogDescription>Action irréversible.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annuler</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteDeliveryEntry(e.id)}>Supprimer</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+                        </AlertDialog>
+                        <Button variant="outline" size="icon" onClick={() => handleOpenDeliveryDialog(e)} className="h-7 w-7"><Edit2 className="h-3.5 w-3.5"/></Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          {deliveryEntries.length > 0 && <div className="mt-4 flex justify-end"><Button onClick={() => generatePdf('delivery')} size="sm" disabled={isLoading}>{isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/>:<FileText className="mr-2 h-4 w-4"/>} Générer PDF</Button></div>}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

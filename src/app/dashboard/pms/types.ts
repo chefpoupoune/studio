@@ -1,13 +1,26 @@
 
+
 export interface PmsTaskDefinition {
   id: string;
   name: string;
 }
 
-export interface PmsZoneWithTasksDefinition { // Used by monitoring components
+export interface PmsZone { // Can also represent an "Equipment"
   id: string;
   name: string;
-  tasks: PmsTaskDefinition[];
+  tasks?: PmsTaskDefinition[]; 
+  
+  equipmentType?: 'refrigerator' | 'freezer';
+  targetTempMin?: number;
+  targetTempMax?: number;
+  tolerance1TempMin?: number; 
+  tolerance1TempMax?: number; 
+  tolerance2TempMin?: number; 
+  tolerance2TempMax?: number; 
+}
+
+export interface PmsConfigurations {
+  [categoryKey: string]: PmsZone[];
 }
 
 // For Cleaning Records
@@ -92,6 +105,28 @@ export interface DefrostingEntry {
   initialsEnd?: string | null; // Operator initials for end/use (optional)
 }
 
+// For Daily Cool Down Monitoring (Baisse en Température du Jour) - Part of Cold Chain
+export interface DailyCoolDownEntry {
+  id: string;
+  productName: string;
+  quantity: string;
+  startTime?: string; // HH:mm
+  startTemp?: string; // °C
+  endTime?: string;   // HH:mm
+  endTemp?: string;   // °C
+  visa?: string;      // Initials
+}
+
+// For Daily Delivery Monitoring (Livraison du Jour) - Part of Cold Chain
+export interface DailyDeliveryEntry {
+  id: string;
+  productName: string;
+  servicePeriod: 'midi' | 'soir' | 'autre';
+  departureTime?: string; // HH:mm
+  departureTemp?: string; // °C
+  arrivalTime?: string;   // HH:mm
+  arrivalTemp?: string;   // °C
+  deliveryVisa?: string;  // Initials
+}
 
 export const NO_STATUS_SELECT_VALUE = "_aucun_statut_";
-
