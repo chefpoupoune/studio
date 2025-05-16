@@ -28,7 +28,7 @@ export default function HomePage() {
           width={600}
           height={400}
           className="rounded-lg shadow-lg"
-          data-ai-hint="excellence restaurant management" 
+          data-ai-hint="restaurant management" 
         />
       </div>
 
@@ -50,3 +50,4 @@ export default function HomePage() {
     </main>
   );
 }
+
