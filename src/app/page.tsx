@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { CurrentDate } from '@/components/current-date';
 import { ArrowRight } from 'lucide-react';
+import Image from 'next/image'; // Import the Image component
 
 export default function HomePage() {
   return (
@@ -19,9 +20,21 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Section 2: Button (Centered in remaining space) */}
+      {/* Section 2: Homepage Image */}
+      <div className="my-8 md:my-12">
+        <Image
+          src="https://placehold.co/600x400.png" 
+          alt="Excellence in Restaurant Management"
+          width={600}
+          height={400}
+          className="rounded-lg shadow-lg"
+          data-ai-hint="excellence restaurant management" 
+        />
+      </div>
+
+      {/* Section 3: Button (Centered in remaining space) */}
       {/* This outer div takes up remaining vertical space and centers its child vertically and horizontally */}
-      <div className="flex-grow flex flex-col items-center justify-center w-full"> 
+      <div className="flex-grow flex flex-col items-center justify-center w-full pb-12"> 
         <div className="text-center space-y-6 md:space-y-8 py-8"> {/* Container for button, with vertical spacing and padding */}
           <Link href="/dashboard" passHref>
             <Button 
@@ -37,4 +50,3 @@ export default function HomePage() {
     </main>
   );
 }
-
