@@ -30,10 +30,10 @@ import {
   ShieldCheck,
   PanelLeft,
   Home,
+  LogOut, // Added LogOut icon
 } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation"; // Added useRouter
 import { cn } from "@/lib/utils";
-// Removed Image import as it's no longer used
 
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Tableau de Bord" },
@@ -50,6 +50,7 @@ const navItems = [
 function AppSidebar() {
   const pathname = usePathname();
   const { state, openMobile, setOpenMobile } = useSidebar();
+  const router = useRouter(); // Added for logout
 
   // Close mobile sidebar on navigation
   React.useEffect(() => {
@@ -59,13 +60,21 @@ function AppSidebar() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, openMobile]);
 
+  const handleLogout = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('isLoggedIn');
+    }
+    router.push('/login');
+  };
+
 
   return (
     <Sidebar collapsible="icon" variant="sidebar" side="left">
       <SidebarHeader className="flex items-center justify-between">
         <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
           <Link href="/dashboard" className="flex items-center gap-2">
-            {/* Logo removed here */}
+            {/* Logo placeholder */}
+            {/* <div className="w-8 h-8 bg-primary rounded-sm flex items-center justify-center text-primary-foreground font-bold text-lg" data-ai-hint="chef hat">E</div> */}
             <span className="font-semibold text-lg text-sidebar-primary">Gestion par L'excellence</span>
           </Link>
         </div>
@@ -111,6 +120,18 @@ function AppSidebar() {
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
+          <SidebarMenuItem>
+             <SidebarMenuButton
+                onClick={handleLogout}
+                tooltip={{
+                  children: "Déconnexion",
+                  className: "group-data-[collapsible=icon]:block hidden",
+                }}
+              >
+                <LogOut />
+                <span>Déconnexion</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem className="group-data-[collapsible=icon]:hidden">
             <div className="p-2 text-xs text-sidebar-foreground/60">
               Version 1.0.0
@@ -128,6 +149,31 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
+  const [isClient, setIsClient] = React.useState(false);
+
+  React.useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (isClient && typeof window !== 'undefined') {
+      if (localStorage.getItem('isLoggedIn') !== 'true') {
+        router.replace('/login');
+      }
+    }
+  }, [isClient, router]);
+
+  if (!isClient || (typeof window !== 'undefined' && localStorage.getItem('isLoggedIn') !== 'true')) {
+    // Render a loading state or null while checking auth and redirecting
+    // This avoids flashing the dashboard content if not authenticated
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <p className="text-muted-foreground">Vérification de l'authentification...</p>
+      </div>
+    );
+  }
+
   return (
     <SidebarProvider defaultOpen={true}>
       <AppSidebar />
@@ -137,7 +183,7 @@ export default function DashboardLayout({
           <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 md:hidden">
             <SidebarTrigger />
             <Link href="/dashboard" className="flex items-center gap-2">
-                {/* Logo removed here */}
+                {/* <div className="w-7 h-7 bg-primary rounded-sm flex items-center justify-center text-primary-foreground font-bold" data-ai-hint="chef hat">E</div> */}
                 <span className="font-semibold text-md">Gestion par L'excellence</span>
             </Link>
           </header>
