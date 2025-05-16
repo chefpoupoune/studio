@@ -65,7 +65,7 @@ function AppSidebar() {
       <SidebarHeader className="flex items-center justify-between">
         <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
           <Link href="/dashboard" className="flex items-center gap-2">
-            <Image src="https://placehold.co/32x32.png" alt="App Logo" width={32} height={32} className="rounded-sm" data-ai-hint="logo abstract" />
+            <Image src="https://placehold.co/32x32.png" alt="App Logo" width={32} height={32} className="rounded-sm" data-ai-hint="chef hat knife" />
             <span className="font-semibold text-lg text-sidebar-primary">ExcellenceApp</span>
           </Link>
         </div>
@@ -137,7 +137,7 @@ export default function DashboardLayout({
           <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 md:hidden">
             <SidebarTrigger />
             <Link href="/dashboard" className="flex items-center gap-2">
-                <Image src="https://placehold.co/24x24.png" alt="App Logo" width={24} height={24} className="rounded-sm" data-ai-hint="logo abstract" />
+                <Image src="https://placehold.co/24x24.png" alt="App Logo" width={24} height={24} className="rounded-sm" data-ai-hint="chef hat knife" />
                 <span className="font-semibold text-md">ExcellenceApp</span>
             </Link>
           </header>
