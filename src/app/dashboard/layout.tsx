@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import Image from 'next/image';
+// Removed Image import as it's no longer used
 
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Tableau de Bord" },
@@ -65,7 +65,7 @@ function AppSidebar() {
       <SidebarHeader className="flex items-center justify-between">
         <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
           <Link href="/dashboard" className="flex items-center gap-2">
-            <Image src="https://placehold.co/32x32.png" alt="App Logo" width={32} height={32} className="rounded-sm" data-ai-hint="chef hat" />
+            {/* Logo removed here */}
             <span className="font-semibold text-lg text-sidebar-primary">Gestion par L'excellence</span>
           </Link>
         </div>
@@ -137,7 +137,7 @@ export default function DashboardLayout({
           <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 md:hidden">
             <SidebarTrigger />
             <Link href="/dashboard" className="flex items-center gap-2">
-                <Image src="https://placehold.co/24x24.png" alt="App Logo" width={24} height={24} className="rounded-sm" data-ai-hint="chef hat" />
+                {/* Logo removed here */}
                 <span className="font-semibold text-md">Gestion par L'excellence</span>
             </Link>
           </header>
