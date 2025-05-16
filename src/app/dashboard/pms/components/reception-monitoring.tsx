@@ -24,6 +24,17 @@ import { cn } from '@/lib/utils';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -103,11 +114,11 @@ export default function ReceptionMonitoring() {
     if (entry) {
       form.reset({
         ...entry,
-        dateTime: parseISO(entry.dateTime), // Convert ISO string back to Date for the form
+        dateTime: parseISO(entry.dateTime), 
       });
     } else {
       form.reset({
-        dateTime: new Date(), // Default to now for new entries
+        dateTime: new Date(), 
         supplierName: '', productNameControlled: '', vehicleObservations: '',
         productTemperature: '', dlcDluo: '', lotNumber: '', packagingAspect: '',
         quantity: '', productLabeling: '', refused: false, refusalReason: '', visa: '',
@@ -117,7 +128,7 @@ export default function ReceptionMonitoring() {
   };
 
   const handleFormSubmit = (data: ReceptionFormData) => {
-    const entryData = { ...data, dateTime: data.dateTime.toISOString() }; // Store date as ISO string
+    const entryData = { ...data, dateTime: data.dateTime.toISOString() }; 
     if (editingEntry) {
       setReceptionEntries(prev => prev.map(e => e.id === editingEntry.id ? { ...editingEntry, ...entryData } : e));
       toast({ title: "Enregistrement Modifié", description: "La réception a été mise à jour." });
@@ -130,16 +141,14 @@ export default function ReceptionMonitoring() {
   };
 
   const handleDeleteEntry = (entryId: string) => {
-    if (confirm("Êtes-vous sûr de vouloir supprimer cet enregistrement de réception ?")) {
-      setReceptionEntries(prev => prev.filter(e => e.id !== entryId));
-      toast({ title: "Enregistrement Supprimé", variant: "destructive" });
-    }
+    setReceptionEntries(prev => prev.filter(e => e.id !== entryId));
+    toast({ title: "Enregistrement Supprimé", variant: "destructive" });
   };
 
   const generatePdf = () => {
     setIsLoading(true);
     try {
-      const pdfSettings = getPdfLayoutSettings('pms_reception_monitoring'); // Assuming new key
+      const pdfSettings = getPdfLayoutSettings('pms_reception_monitoring'); 
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
@@ -159,7 +168,7 @@ export default function ReceptionMonitoring() {
           headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
         }
       } else {
-        headStyles.fillColor = [144, 202, 249]; // Default light green if no primary color
+        headStyles.fillColor = [144, 202, 249]; 
         headStyles.textColor = [0,0,0];
       }
 
@@ -174,7 +183,6 @@ export default function ReceptionMonitoring() {
           { content: 'Visa', rowSpan: 2, styles: headStyles },
         ],
         [
-          // Sub-headers for "Produits"
           { content: 'T° C', styles: headStyles },
           { content: 'DLC DLUO', styles: headStyles },
           { content: 'N° du lot', styles: headStyles },
@@ -205,8 +213,8 @@ export default function ReceptionMonitoring() {
         startY: currentY,
         theme: 'grid',
         styles: { fontSize: 7, cellPadding: 1.5, valign: 'middle' },
-        headStyles: {halign: 'center', valign: 'middle', fontStyle: 'bold', fillColor: headStyles.fillColor, textColor: headStyles.textColor, fontSize: 7}, // Apply custom header style
-        columnStyles: { // Approximate widths
+        headStyles: {halign: 'center', valign: 'middle', fontStyle: 'bold', fillColor: headStyles.fillColor, textColor: headStyles.textColor, fontSize: 7}, 
+        columnStyles: { 
           0: { cellWidth: 25 }, 1: { cellWidth: 30 }, 2: { cellWidth: 35 }, 3: { cellWidth: 30 },
           4: { cellWidth: 12 }, 5: { cellWidth: 18 }, 6: { cellWidth: 18 }, 7: { cellWidth: 30 }, 8: { cellWidth: 15 }, 9: { cellWidth: 30 },
           10: { cellWidth: 25 }, 11: { cellWidth: 12 },
@@ -229,7 +237,6 @@ export default function ReceptionMonitoring() {
     }
   };
 
-
   return (
     <Card className="shadow-lg">
       <CardHeader>
@@ -242,7 +249,7 @@ export default function ReceptionMonitoring() {
             <DialogTrigger asChild>
                 <Button onClick={() => handleOpenDialog()}><PlusCircle className="mr-2 h-4 w-4"/> Ajouter Réception</Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-2xl md:max-w-3xl"> {/* Wider dialog */}
+            <DialogContent className="sm:max-w-2xl md:max-w-3xl"> 
                 <DialogHeader><DialogTitle>{editingEntry ? "Modifier" : "Nouvel"} Enregistrement de Réception</DialogTitle></DialogHeader>
                 <Form {...form}>
                 <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-3 py-2 max-h-[70vh] overflow-y-auto pr-2">
@@ -348,8 +355,28 @@ export default function ReceptionMonitoring() {
                     </TableCell>
                     <TableCell className="text-center">{entry.visa || '-'}</TableCell>
                     <TableCell className="text-center sticky right-0 bg-card group-hover:bg-muted/50 transition-colors">
-                        <Button variant="outline" size="icon" onClick={() => handleOpenDialog(entry)} className="mr-1 h-7 w-7"><Edit2 className="h-4 w-4"/></Button>
-                        <Button variant="destructive" size="icon" onClick={() => handleDeleteEntry(entry.id)} className="h-7 w-7"><Trash2 className="h-4 w-4"/></Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="destructive" size="icon" className="h-7 w-7">
+                            <Trash2 className="h-4 w-4"/>
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Êtes-vous sûr de vouloir supprimer cet enregistrement ?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Cette action est irréversible. L'enregistrement pour {entry.productNameControlled} du {format(parseISO(entry.dateTime), "dd/MM/yyyy", { locale: fr })} sera supprimé.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Annuler</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDeleteEntry(entry.id)}>
+                              Supprimer
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(entry)} className="ml-1 h-7 w-7"><Edit2 className="h-4 w-4"/></Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -369,4 +396,3 @@ export default function ReceptionMonitoring() {
     </Card>
   );
 }
-

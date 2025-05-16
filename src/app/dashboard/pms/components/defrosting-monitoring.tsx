@@ -23,6 +23,17 @@ import { cn } from '@/lib/utils';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -43,7 +54,7 @@ const defrostingEntrySchema = z.object({
   tempOnUse: z.string().optional(),
   initialsEnd: z.string().optional(),
 }).refine(data => {
-    if (data.useDate && !data.useTime) return false; // If useDate is set, useTime must also be set
+    if (data.useDate && !data.useTime) return false; 
     return true;
 }, { message: "L'heure d'utilisation est requise si la date d'utilisation est définie.", path: ['useTime']});
 
@@ -125,17 +136,15 @@ export default function DefrostingMonitoring() {
   };
 
   const handleDeleteEntry = (entryId: string) => {
-    if (confirm("Êtes-vous sûr de vouloir supprimer cet enregistrement ?")) {
-      setEntries(prev => prev.filter(e => e.id !== entryId));
-      toast({ title: "Enregistrement Supprimé", variant: "destructive" });
-    }
+    setEntries(prev => prev.filter(e => e.id !== entryId));
+    toast({ title: "Enregistrement Supprimé", variant: "destructive" });
   };
   
   const generatePdf = () => {
     setIsLoading(true);
     try {
       const pdfSettings = getPdfLayoutSettings('pms_defrosting_monitoring'); 
-      const doc = new jsPDF('landscape') as jsPDFWithAutoTable; // Landscape A4
+      const doc = new jsPDF('landscape') as jsPDFWithAutoTable; 
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
       let currentY = 15;
@@ -145,20 +154,20 @@ export default function DefrostingMonitoring() {
       doc.setFontSize(16); doc.text("Suivi de Décongélation", 14, currentY); currentY += 8;
       doc.setFontSize(10); doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY); currentY += 7;
 
-      const headStylesBase = { fontSize: 8, fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1, textColor: [255,255,255] };
+      const headStylesBase = { fontSize: 8, fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1, textColor: [0,0,0] }; // Changed text color to black
       
       const head: any[] = [
         [
-          { content: 'Date', styles: {...headStylesBase, fillColor: hexToRgb('#4A86E8')} }, // Blue
+          { content: 'Date', styles: {...headStylesBase, fillColor: hexToRgb('#4A86E8')} }, 
           { content: 'Produit', styles: {...headStylesBase, fillColor: hexToRgb('#4A86E8')} },
           { content: 'Quantité', styles: {...headStylesBase, fillColor: hexToRgb('#4A86E8')} },
-          { content: 'T° Sortie Cong.', styles: {...headStylesBase, fillColor: hexToRgb('#FF9900')} }, // Orange
+          { content: 'T° Sortie Cong.', styles: {...headStylesBase, fillColor: hexToRgb('#FF9900')} }, 
           { content: 'Heure Sortie', styles: {...headStylesBase, fillColor: hexToRgb('#FF9900')} },
-          { content: 'Initial Dém.', styles: {...headStylesBase, fillColor: hexToRgb('#B6B6B6')} }, // Grey
-          { content: 'Date Utilisation', styles: {...headStylesBase, fillColor: hexToRgb('#FFD966')} }, // Yellow
+          { content: 'Initial Dém.', styles: {...headStylesBase, fillColor: hexToRgb('#B6B6B6')} }, 
+          { content: 'Date Utilisation', styles: {...headStylesBase, fillColor: hexToRgb('#FFD966')} }, 
           { content: 'Heure Utilisation', styles: {...headStylesBase, fillColor: hexToRgb('#FFD966')} },
           { content: 'T° Utilisation', styles: {...headStylesBase, fillColor: hexToRgb('#FFD966')} },
-          { content: 'Visa Fin', styles: {...headStylesBase, fillColor: hexToRgb('#B6B6B6')} }, // Grey
+          { content: 'Visa Fin', styles: {...headStylesBase, fillColor: hexToRgb('#B6B6B6')} }, 
         ]
       ];
       
@@ -207,8 +216,8 @@ export default function DefrostingMonitoring() {
 
   const columnHeaderStyle = (color: string) => ({
     backgroundColor: color,
-    color: 'white', // Assuming white text on colored backgrounds
-    fontWeight: 'bold',
+    color: '#000000', // Black text color
+    fontWeight: 'bold' as 'bold',
     textAlign: 'center' as 'center',
     padding: '4px 2px',
     fontSize: '0.7rem',
@@ -314,8 +323,28 @@ export default function DefrostingMonitoring() {
                     <TableCell className="border-r text-center">{entry.tempOnUse || '-'}</TableCell>
                     <TableCell className="text-center">{entry.initialsEnd || '-'}</TableCell>
                     <TableCell className="text-center sticky right-0 bg-card group-hover:bg-muted/50 transition-colors">
-                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(entry)} className="mr-1 h-7 w-7"><Edit2 className="h-3.5 w-3.5"/></Button>
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteEntry(entry.id)} className="h-7 w-7"><Trash2 className="h-3.5 w-3.5"/></Button>
+                       <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="destructive" size="icon" className="h-7 w-7">
+                            <Trash2 className="h-3.5 w-3.5"/>
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Êtes-vous sûr de vouloir supprimer cet enregistrement ?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Cette action est irréversible. L'enregistrement pour {entry.productName} du {format(parseISO(entry.defrostStartDate), "dd/MM/yyyy", { locale: fr })} sera supprimé.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Annuler</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDeleteEntry(entry.id)}>
+                              Supprimer
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(entry)} className="ml-1 h-7 w-7"><Edit2 className="h-3.5 w-3.5"/></Button>
                     </TableCell>
                   </TableRow>
                 ))}

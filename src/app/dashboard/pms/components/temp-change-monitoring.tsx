@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import type { TempChangeEntry } from '../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea'; // Might not be needed based on image
+import { Textarea } from '@/components/ui/textarea'; 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -23,6 +23,17 @@ import { cn } from '@/lib/utils';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -121,16 +132,14 @@ export default function TempChangeMonitoring() {
   };
 
   const handleDeleteEntry = (entryId: string) => {
-    if (confirm("Êtes-vous sûr de vouloir supprimer cet enregistrement ?")) {
-      setEntries(prev => prev.filter(e => e.id !== entryId));
-      toast({ title: "Enregistrement Supprimé", variant: "destructive" });
-    }
+    setEntries(prev => prev.filter(e => e.id !== entryId));
+    toast({ title: "Enregistrement Supprimé", variant: "destructive" });
   };
   
   const generatePdf = () => {
     setIsLoading(true);
     try {
-      const pdfSettings = getPdfLayoutSettings('pms_temp_change_monitoring'); // New PDF type key
+      const pdfSettings = getPdfLayoutSettings('pms_temp_change_monitoring'); 
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
@@ -142,34 +151,32 @@ export default function TempChangeMonitoring() {
       doc.setFontSize(10); doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY); currentY += 7;
 
       const headStylesBase: any = { fontSize: 7, fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1 };
-      const primaryColorRgb = hexToRgb(pdfSettings.primaryColor || '#CCCCCC'); // Default gray if no primary
+      const primaryColorRgb = hexToRgb(pdfSettings.primaryColor || '#CCCCCC'); 
       if (primaryColorRgb) {
         headStylesBase.fillColor = primaryColorRgb;
         const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
         headStylesBase.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
       }
 
-      const orangeColor = [255, 165, 0]; // Orange
-      const blueColor = [173, 216, 230]; // Light Blue
+      const orangeColor = [255, 165, 0]; 
+      const blueColor = [173, 216, 230]; 
 
       const head: any[] = [
         [
-          { content: '', colSpan: 3, styles: { ...headStylesBase, fillColor: [255,255,255] } }, // Empty for top-left
+          { content: '', colSpan: 3, styles: { ...headStylesBase, fillColor: [255,255,255], textColor: [0,0,0] } }, 
           { content: 'REFROIDISSEMENT RAPIDE', colSpan: 5, styles: headStylesBase },
-          { content: 'REMISE EN TEMPERATURE', colSpan: 5, styles: headStylesBase },
+          { content: 'REMISE EN TEMPERATURE', colSpan: 6, styles: headStylesBase }, //colspan is 6 now
         ],
         [
           { content: 'Date', styles: headStylesBase },
           { content: 'Produit', styles: headStylesBase },
           { content: 'Quantité', styles: headStylesBase },
-          // Refroidissement
           { content: 'Produit chauds\nHeure', styles: {...headStylesBase, fillColor: orangeColor, textColor: [0,0,0]} },
           { content: 'Produit chauds\nT°', styles: {...headStylesBase, fillColor: orangeColor, textColor: [0,0,0]} },
           { content: 'Produit froids\nHeure', styles: {...headStylesBase, fillColor: blueColor, textColor: [0,0,0]} },
           { content: 'Produit froids\nT°', styles: {...headStylesBase, fillColor: blueColor, textColor: [0,0,0]} },
           { content: 'Visa', styles: headStylesBase },
-          // Remise
-          { content: 'Date', styles: headStylesBase }, // Note: Added Date for reheating section as per image (can be different)
+          { content: 'Date', styles: headStylesBase }, 
           { content: 'Produit froids\nHeure', styles: {...headStylesBase, fillColor: blueColor, textColor: [0,0,0]} },
           { content: 'Produit froids\nT°', styles: {...headStylesBase, fillColor: blueColor, textColor: [0,0,0]} },
           { content: 'Produit chauds\nHeure', styles: {...headStylesBase, fillColor: orangeColor, textColor: [0,0,0]} },
@@ -202,21 +209,10 @@ export default function TempChangeMonitoring() {
         theme: 'grid',
         styles: { fontSize: 7, cellPadding: 1, valign: 'middle', halign: 'center' },
         headStyles: {halign: 'center', valign: 'middle', fontStyle: 'bold', cellPadding: 1, fontSize: 6.5},
-        columnStyles: { // Adjust widths as needed, this is approximate
-            0: { cellWidth: 15 }, 1: { cellWidth: 30 }, 2: { cellWidth: 20 }, // Date, Produit, Qté
-            3: { cellWidth: 15 }, 4: { cellWidth: 12 }, 5: { cellWidth: 15 }, 6: { cellWidth: 12 }, 7: { cellWidth: 10 }, // Refroid.
-            8: { cellWidth: 15 }, 9: { cellWidth: 15 }, 10: { cellWidth: 12 }, 11: { cellWidth: 15 }, 12: { cellWidth: 12 }, 13: { cellWidth: 10 }, // Remise
-        },
-        didDrawCell: (data) => { // Custom cell coloring for body (if needed, usually handled by headStyles/columnStyles in simple cases)
-            // Example for specific cell coloring if autoTable styles are not enough
-            // For "Produit chauds" columns in body
-            if (data.section === 'body' && (data.column.index === 3 || data.column.index === 4 || data.column.index === 11 || data.column.index === 12)) {
-                 // data.cell.styles.fillColor = orangeColor; // Be careful, this might override other styles
-            }
-            // For "Produit froids" columns in body
-            if (data.section === 'body' && (data.column.index === 5 || data.column.index === 6 || data.column.index === 9 || data.column.index === 10)) {
-                // data.cell.styles.fillColor = blueColor; // Be careful
-            }
+        columnStyles: { 
+            0: { cellWidth: 15 }, 1: { cellWidth: 30 }, 2: { cellWidth: 20 }, 
+            3: { cellWidth: 15 }, 4: { cellWidth: 12 }, 5: { cellWidth: 15 }, 6: { cellWidth: 12 }, 7: { cellWidth: 10 }, 
+            8: { cellWidth: 15 }, 9: { cellWidth: 15 }, 10: { cellWidth: 12 }, 11: { cellWidth: 15 }, 12: { cellWidth: 12 }, 13: { cellWidth: 10 }, 
         },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
@@ -236,7 +232,6 @@ export default function TempChangeMonitoring() {
     }
   };
 
-
   return (
     <Card className="shadow-lg">
       <CardHeader>
@@ -249,7 +244,7 @@ export default function TempChangeMonitoring() {
             <DialogTrigger asChild>
               <Button onClick={() => handleOpenDialog()}><PlusCircle className="mr-2 h-4 w-4"/> Ajouter Enregistrement</Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-3xl md:max-w-4xl"> {/* Wider dialog */}
+            <DialogContent className="sm:max-w-3xl md:max-w-4xl"> 
               <DialogHeader><DialogTitle>{editingEntry ? "Modifier" : "Nouvel"} Enregistrement</DialogTitle></DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-3 py-2 max-h-[75vh] overflow-y-auto pr-2">
@@ -280,9 +275,9 @@ export default function TempChangeMonitoring() {
 
                   <div className="pt-3">
                     <h4 className="text-md font-semibold mb-1 border-b pb-1">REMISE EN TEMPERATURE</h4>
-                     <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mt-2">
+                     <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mt-2"> {/* Changed to 5 columns to match the table */}
                        <FormField control={form.control} name="reheatingDate" render={({ field }) => (
-                        <FormItem className="flex flex-col"><FormLabel>Date Remise (si diff.)</FormLabel>
+                        <FormItem className="flex flex-col"><FormLabel>Date Remise</FormLabel>
                         <Popover><PopoverTrigger asChild><FormControl><Button variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
                             {field.value ? format(field.value, "dd/MM/yyyy", { locale: fr }) : <span>Choisir date</span>}
                             <LucideCalendarIcon className="ml-auto h-4 w-4 opacity-50" />
@@ -318,23 +313,21 @@ export default function TempChangeMonitoring() {
           <p className="text-muted-foreground text-center py-8">Aucun enregistrement. Cliquez sur "Ajouter Enregistrement" pour commencer.</p>
         ) : (
           <div className="overflow-x-auto border rounded-md">
-            <Table className="min-w-[1200px]"> {/* Ensure table is wide enough */}
+            <Table className="min-w-[1200px]"> 
               <TableHeader>
                 <TableRow className="bg-primary/10 text-xs">
                   <TableHead rowSpan={2} className="text-center align-middle border-r min-w-[80px]">Date</TableHead>
                   <TableHead rowSpan={2} className="text-center align-middle border-r min-w-[150px]">Produit</TableHead>
                   <TableHead rowSpan={2} className="text-center align-middle border-r min-w-[100px]">Quantité</TableHead>
                   <TableHead colSpan={5} className="text-center font-semibold border-r py-1">REFROIDISSEMENT RAPIDE</TableHead>
-                  <TableHead colSpan={6} className="text-center font-semibold py-1">REMISE EN TEMPERATURE</TableHead>
+                  <TableHead colSpan={6} className="text-center font-semibold py-1">REMISE EN TEMPERATURE</TableHead> 
                 </TableRow>
                 <TableRow className="bg-primary/10 text-xs">
-                  {/* Refroidissement */}
                   <TableHead className="text-center border-r bg-orange-200 dark:bg-orange-700/50 min-w-[70px]">P.Chauds<br/>Heure</TableHead>
                   <TableHead className="text-center border-r bg-orange-200 dark:bg-orange-700/50 min-w-[60px]">P.Chauds<br/>T°</TableHead>
                   <TableHead className="text-center border-r bg-blue-200 dark:bg-blue-700/50 min-w-[70px]">P.Froids<br/>Heure</TableHead>
                   <TableHead className="text-center border-r bg-blue-200 dark:bg-blue-700/50 min-w-[60px]">P.Froids<br/>T°</TableHead>
                   <TableHead className="text-center border-r min-w-[60px]">Visa</TableHead>
-                  {/* Remise en T° */}
                   <TableHead className="text-center border-r min-w-[80px]">Date</TableHead>
                   <TableHead className="text-center border-r bg-blue-200 dark:bg-blue-700/50 min-w-[70px]">P.Froids<br/>Heure</TableHead>
                   <TableHead className="text-center border-r bg-blue-200 dark:bg-blue-700/50 min-w-[60px]">P.Froids<br/>T°</TableHead>
@@ -350,13 +343,11 @@ export default function TempChangeMonitoring() {
                     <TableCell className="border-r text-center">{format(parseISO(entry.coolingDate), "dd/MM/yy", { locale: fr })}</TableCell>
                     <TableCell className="border-r">{entry.productName}</TableCell>
                     <TableCell className="border-r text-center">{entry.quantity}</TableCell>
-                    {/* Refroidissement */}
                     <TableCell className="border-r text-center">{entry.coolingHotProductTime || '-'}</TableCell>
                     <TableCell className="border-r text-center">{entry.coolingHotProductTemp || '-'}</TableCell>
                     <TableCell className="border-r text-center">{entry.coolingColdProductTime || '-'}</TableCell>
                     <TableCell className="border-r text-center">{entry.coolingColdProductTemp || '-'}</TableCell>
                     <TableCell className="border-r text-center">{entry.coolingVisa || '-'}</TableCell>
-                    {/* Remise en T° */}
                     <TableCell className="border-r text-center">{entry.reheatingDate ? format(parseISO(entry.reheatingDate), "dd/MM/yy", { locale: fr }) : '-'}</TableCell>
                     <TableCell className="border-r text-center">{entry.reheatingColdProductTime || '-'}</TableCell>
                     <TableCell className="border-r text-center">{entry.reheatingColdProductTemp || '-'}</TableCell>
@@ -364,8 +355,28 @@ export default function TempChangeMonitoring() {
                     <TableCell className="border-r text-center">{entry.reheatingHotProductTemp || '-'}</TableCell>
                     <TableCell className="text-center">{entry.reheatingVisa || '-'}</TableCell>
                     <TableCell className="text-center sticky right-0 bg-card group-hover:bg-muted/50 transition-colors">
-                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(entry)} className="mr-1 h-7 w-7"><Edit2 className="h-3.5 w-3.5"/></Button>
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteEntry(entry.id)} className="h-7 w-7"><Trash2 className="h-3.5 w-3.5"/></Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                           <Button variant="destructive" size="icon" className="h-7 w-7">
+                            <Trash2 className="h-3.5 w-3.5"/>
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Êtes-vous sûr de vouloir supprimer cet enregistrement ?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Cette action est irréversible. L'enregistrement pour {entry.productName} du {format(parseISO(entry.coolingDate), "dd/MM/yyyy", { locale: fr })} sera supprimé.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Annuler</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDeleteEntry(entry.id)}>
+                              Supprimer
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(entry)} className="ml-1 h-7 w-7"><Edit2 className="h-3.5 w-3.5"/></Button>
                     </TableCell>
                   </TableRow>
                 ))}

@@ -23,6 +23,17 @@ import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const taskFormSchema = z.object({
   title: z.string().min(1, "Le titre est requis.").max(100, "Le titre ne peut excéder 100 caractères."),
@@ -117,10 +128,10 @@ export default function ManageTasks({ tasks, onAddTask, onUpdateTask, onDeleteTa
   
   const getStatusBadgeVariant = (status: TaskStatus) => {
     switch (status) {
-      case 'termine': return 'default'; // Green-like (using primary for now)
+      case 'termine': return 'default'; 
       case 'annule': return 'destructive';
-      case 'en_cours': return 'secondary'; // Blue-like
-      case 'rendez_vous': return 'outline'; // Yellow-like (using accent)
+      case 'en_cours': return 'secondary'; 
+      case 'rendez_vous': return 'outline'; 
       default: return 'outline';
     }
   };
@@ -162,7 +173,6 @@ export default function ManageTasks({ tasks, onAddTask, onUpdateTask, onDeleteTa
         </DialogContent>
       </Dialog>
 
-      {/* Status Update Dialog */}
       <Dialog open={isStatusUpdateOpen} onOpenChange={setIsStatusUpdateOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -229,7 +239,6 @@ export default function ManageTasks({ tasks, onAddTask, onUpdateTask, onDeleteTa
         </DialogContent>
       </Dialog>
 
-      {/* History Dialog */}
        <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -238,14 +247,14 @@ export default function ManageTasks({ tasks, onAddTask, onUpdateTask, onDeleteTa
           <ScrollArea className="h-[400px] pr-4 my-4">
             {taskForHistory && taskForHistory.statusHistory.length > 0 ? (
               <ul className="space-y-4">
-                {taskForHistory.statusHistory.slice().reverse().map((log, index) => ( // Show newest first
+                {taskForHistory.statusHistory.slice().reverse().map((log, index) => ( 
                   <li key={index} className="p-3 border rounded-md bg-muted/50">
                     <p className="font-semibold">{taskStatusLabels[log.status]}</p>
                     <p className="text-xs text-muted-foreground">
                       {format(new Date(log.date), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}
                     </p>
                     {log.notes && <p className="text-sm mt-1 italic">Notes: {log.notes}</p>}
-                     {log.status === 'rendez_vous' && taskForHistory.appointmentDate && index === 0 && ( // Only show for current RV status
+                     {log.status === 'rendez_vous' && taskForHistory.appointmentDate && index === 0 && ( 
                         <p className="text-sm mt-1">
                             Date RDV: {format(new Date(taskForHistory.appointmentDate), "dd MMMM yyyy", { locale: fr })}
                         </p>
@@ -262,7 +271,6 @@ export default function ManageTasks({ tasks, onAddTask, onUpdateTask, onDeleteTa
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
 
       {tasks.length === 0 ? (
         <p className="text-muted-foreground text-center py-10">Aucune tâche ou problème enregistré. Commencez par en ajouter.</p>
@@ -302,13 +310,27 @@ export default function ManageTasks({ tasks, onAddTask, onUpdateTask, onDeleteTa
                 <Button variant="outline" size="sm" onClick={() => handleOpenTaskForm(task)} title="Modifier">
                   <Edit2 className="h-4 w-4" /> <span className="sr-only sm:not-sr-only sm:ml-1">Modifier</span>
                 </Button>
-                <Button variant="destructive" size="sm" onClick={() => {
-                  if(confirm(`Êtes-vous sûr de vouloir supprimer la tâche "${task.title}" ?`)) {
-                    onDeleteTask(task.id);
-                  }
-                }} title="Supprimer">
-                  <Trash2 className="h-4 w-4" /> <span className="sr-only sm:not-sr-only sm:ml-1">Supprimer</span>
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="sm" title="Supprimer">
+                      <Trash2 className="h-4 w-4" /> <span className="sr-only sm:not-sr-only sm:ml-1">Supprimer</span>
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Êtes-vous sûr de vouloir supprimer cette tâche ?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Cette action est irréversible. La tâche "{task.title}" et son historique seront supprimés.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Annuler</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => onDeleteTask(task.id)}>
+                        Supprimer
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </CardFooter>
             </Card>
           ))}

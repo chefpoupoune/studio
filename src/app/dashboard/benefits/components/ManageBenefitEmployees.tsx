@@ -13,6 +13,17 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const employeeSchema = z.object({
   name: z.string().min(1, "Le nom de l'employé est requis.").max(100, "Le nom ne peut excéder 100 caractères."),
@@ -27,7 +38,7 @@ interface ManageBenefitEmployeesProps {
 }
 
 export default function ManageBenefitEmployees({ employees, onAddEmployee, onUpdateEmployee, onDeleteEmployee }: ManageBenefitEmployeesProps) {
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<BenefitEmployee | null>(null);
 
   const form = useForm<EmployeeFormData>({
@@ -35,14 +46,14 @@ export default function ManageBenefitEmployees({ employees, onAddEmployee, onUpd
     defaultValues: { name: '' },
   });
 
-  const handleOpenDialog = (employee?: BenefitEmployee) => {
+  const handleOpenFormDialog = (employee?: BenefitEmployee) => {
     setEditingEmployee(employee || null);
     if (employee) {
       form.reset({ name: employee.name });
     } else {
       form.reset({ name: '' });
     }
-    setIsDialogOpen(true);
+    setIsFormDialogOpen(true);
   };
 
   const handleFormSubmit = (data: EmployeeFormData) => {
@@ -51,7 +62,7 @@ export default function ManageBenefitEmployees({ employees, onAddEmployee, onUpd
     } else {
       onAddEmployee(data.name);
     }
-    setIsDialogOpen(false);
+    setIsFormDialogOpen(false);
   };
 
   return (
@@ -64,9 +75,9 @@ export default function ManageBenefitEmployees({ employees, onAddEmployee, onUpd
             </CardTitle>
             <CardDescription>Ajoutez, modifiez ou supprimez les employés pour le suivi des avantages.</CardDescription>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={() => handleOpenDialog()} className="w-full sm:w-auto">
+            <Button onClick={() => handleOpenFormDialog()} className="w-full sm:w-auto">
               <PlusCircle className="mr-2 h-4 w-4" /> Ajouter Employé
             </Button>
           </DialogTrigger>
@@ -109,16 +120,31 @@ export default function ManageBenefitEmployees({ employees, onAddEmployee, onUpd
                   <TableRow key={emp.id}>
                     <TableCell className="font-medium">{emp.name}</TableCell>
                     <TableCell className="text-center space-x-1">
-                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(emp)} className="h-8 w-8">
+                      <Button variant="outline" size="icon" onClick={() => handleOpenFormDialog(emp)} className="h-8 w-8">
                         <Edit2 className="h-4 w-4" />
                       </Button>
-                      <Button variant="destructive" size="icon" onClick={() => {
-                          if (confirm(`Êtes-vous sûr de vouloir supprimer ${emp.name} ? Ses données d'avantages pourraient être conservées mais l'employé sera retiré de la liste de saisie.`)) {
-                              onDeleteEmployee(emp.id);
-                          }
-                      }} className="h-8 w-8">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="destructive" size="icon" className="h-8 w-8">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Êtes-vous sûr de vouloir supprimer cet employé ?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Cette action est irréversible. L'employé "{emp.name}" sera supprimé.
+                              Ses données d'avantages pourraient être conservées mais l'employé sera retiré de la liste de saisie.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Annuler</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => onDeleteEmployee(emp.id)}>
+                              Supprimer
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </TableCell>
                   </TableRow>
                 ))}

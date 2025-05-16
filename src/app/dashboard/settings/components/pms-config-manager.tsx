@@ -16,6 +16,17 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useToast } from '@/hooks/use-toast';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const baseZoneSchema = z.object({
   name: z.string().min(1, "Le nom de la zone/équipement est requis."),
@@ -40,10 +51,8 @@ const temperatureEquipmentSchema = baseZoneSchema.extend({
   message: "Tolérance 2 T° Min doit être ≤ Tolérance 2 T° Max.", path: ['tolerance2TempMin']
 });
 
-
 type ZoneFormData = z.infer<typeof baseZoneSchema>;
 type TemperatureEquipmentFormData = z.infer<typeof temperatureEquipmentSchema>;
-
 
 const taskSchema = z.object({
   name: z.string().min(1, "Le nom de la tâche est requis."),
@@ -97,24 +106,27 @@ export default function PmsConfigManager() {
             : zodResolver(baseZoneSchema);
         
         let defaultValues: any = { name: editingZone?.name || '' };
-        if (currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY) {
+        if (currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY && editingZone) {
             defaultValues = {
-                name: editingZone?.name || '',
-                equipmentType: editingZone?.equipmentType || 'refrigerator',
-                targetTempMin: editingZone?.targetTempMin,
-                targetTempMax: editingZone?.targetTempMax,
-                tolerance1TempMin: editingZone?.tolerance1TempMin,
-                tolerance1TempMax: editingZone?.tolerance1TempMax,
-                tolerance2TempMin: editingZone?.tolerance2TempMin,
-                tolerance2TempMax: editingZone?.tolerance2TempMax,
+                name: editingZone.name || '',
+                equipmentType: editingZone.equipmentType || 'refrigerator',
+                targetTempMin: editingZone.targetTempMin,
+                targetTempMax: editingZone.targetTempMax,
+                tolerance1TempMin: editingZone.tolerance1TempMin,
+                tolerance1TempMax: editingZone.tolerance1TempMax,
+                tolerance2TempMin: editingZone.tolerance2TempMin,
+                tolerance2TempMax: editingZone.tolerance2TempMax,
             };
+        } else if (currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY && !editingZone) {
+             defaultValues = {
+                name: '',
+                equipmentType: 'refrigerator',
+             };
         }
         
-        form.reset(defaultValues);
         form.reset(defaultValues, { resolver } as any);
     }
   }, [isZoneDialogOpen, currentCategoryKey, editingZone, form]);
-
 
   const saveConfigs = useCallback((updatedConfigs: PmsConfigurations) => {
     setPmsConfigs(updatedConfigs);
@@ -165,7 +177,7 @@ export default function PmsConfigManager() {
           tolerance2TempMax: tempData.tolerance2TempMax,
         };
       } else {
-        updatedItemData = { ...baseNewItem, id: `${currentCategoryKey}_item_${Date.now()}` };
+        updatedItemData = { ...baseNewItem, id: `${currentCategoryKey}_item_${Date.now()}`, tasks: [] };
       }
       saveConfigs({ ...pmsConfigs, [currentCategoryKey]: [...currentItems, updatedItemData] });
       toast({ title: `${itemLabel} Ajouté(e)`, description: `Le/La ${itemLabel.toLowerCase()} "${data.name}" a été ajouté(e).` });
@@ -173,15 +185,14 @@ export default function PmsConfigManager() {
     setIsZoneDialogOpen(false);
   };
 
-  const handleDeleteZone = (categoryKey: string, itemId: string) => {
+  const handleDeleteZone = (categoryKey: string, itemId: string, itemName: string) => {
     const itemLabelSingular = categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "cet équipement" : "cette zone";
     const itemLabelPlural = categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "ses configurations" : "ses tâches";
-    if (confirm(`Êtes-vous sûr de vouloir supprimer ${itemLabelSingular} et tous ${itemLabelPlural} associés ?`)) {
-      const currentItems = pmsConfigs[categoryKey] || [];
-      const updatedItems = currentItems.filter(item => item.id !== itemId);
-      saveConfigs({ ...pmsConfigs, [currentCategoryKey]: updatedItems });
-      toast({ title: `${categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone"} Supprimé(e)`, variant: "destructive" });
-    }
+    
+    const currentItems = pmsConfigs[categoryKey] || [];
+    const updatedItems = currentItems.filter(item => item.id !== itemId);
+    saveConfigs({ ...pmsConfigs, [currentCategoryKey]: updatedItems });
+    toast({ title: `${categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone"} Supprimé(e)`, description: `L'élément "${itemName}" a été supprimé.`, variant: "destructive" });
   };
 
   const handleOpenTaskDialog = (categoryKey: string, zone: PmsZone, task?: PmsTaskDefinition) => {
@@ -215,18 +226,16 @@ export default function PmsConfigManager() {
     setIsTaskDialogOpen(false);
   };
 
-  const handleDeleteTask = (categoryKey: string, zoneId: string, taskId: string) => {
-     if (confirm("Êtes-vous sûr de vouloir supprimer cette tâche ?")) {
-      const currentItems = pmsConfigs[categoryKey] || [];
-      const updatedItems = currentItems.map(item => {
-        if (item.id === zoneId) {
-          return { ...item, tasks: (item.tasks || []).filter(t => t.id !== taskId) };
-        }
-        return item;
-      });
-      saveConfigs({ ...pmsConfigs, [categoryKey]: updatedItems });
-      toast({ title: "Tâche Supprimée", variant: "destructive" });
-    }
+  const handleDeleteTask = (categoryKey: string, zoneId: string, taskId: string, taskName: string) => {
+    const currentItems = pmsConfigs[categoryKey] || [];
+    const updatedItems = currentItems.map(item => {
+      if (item.id === zoneId) {
+        return { ...item, tasks: (item.tasks || []).filter(t => t.id !== taskId) };
+      }
+      return item;
+    });
+    saveConfigs({ ...pmsConfigs, [currentCategoryKey]: updatedItems });
+    toast({ title: "Tâche Supprimée", description: `La tâche "${taskName}" a été supprimée.`, variant: "destructive" });
   };
 
   const renderCategoryConfig = (categoryKey: string, categoryLabel: string, IconComponent: React.ElementType, itemLabel: string = "Zone", taskItemLabel: string = "Tâche") => {
@@ -277,9 +286,27 @@ export default function PmsConfigManager() {
                       <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleOpenZoneDialog(categoryKey, item);}} className="h-7 w-7">
                         <Edit2 className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleDeleteZone(categoryKey, item.id);}} className="h-7 w-7 hover:text-destructive">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                       <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                           <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()} className="h-7 w-7 hover:text-destructive">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Êtes-vous sûr de vouloir supprimer "{item.name}"?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Cette action est irréversible et supprimera l'élément ainsi que toutes ses tâches associées (le cas échéant).
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Annuler</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDeleteZone(categoryKey, item.id, item.name)}>
+                              Supprimer
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </div>
                   </div>
                   {showTasksForThisCategory && (item.tasks || []).length > 0 && (
@@ -297,9 +324,27 @@ export default function PmsConfigManager() {
                                 <Button variant="ghost" size="icon" onClick={() => handleOpenTaskDialog(categoryKey, item, task)} className="h-6 w-6">
                                   <Edit2 className="h-3.5 w-3.5" />
                                 </Button>
-                                <Button variant="ghost" size="icon" onClick={() => handleDeleteTask(categoryKey, item.id, task.id)} className="h-6 w-6 hover:text-destructive">
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-6 w-6 hover:text-destructive">
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Êtes-vous sûr de vouloir supprimer la tâche "{task.name}"?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Cette action est irréversible.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Annuler</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => handleDeleteTask(categoryKey, item.id, task.id, task.name)}>
+                                        Supprimer Tâche
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
                               </div>
                             </li>
                           ))}
@@ -356,7 +401,7 @@ export default function PmsConfigManager() {
                   <FormField control={form.control} name="equipmentType" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Type d'Équipement</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || 'refrigerator'} defaultValue={field.value || 'refrigerator'}>
+                      <Select onValueChange={field.onChange} value={field.value as string || 'refrigerator'} defaultValue={field.value as string || 'refrigerator'}>
                         <FormControl><SelectTrigger><SelectValue placeholder="Sélectionner un type" /></SelectTrigger></FormControl>
                         <SelectContent>
                           <SelectItem value="refrigerator">Réfrigérateur</SelectItem>
@@ -390,7 +435,7 @@ export default function PmsConfigManager() {
                       <FormItem><FormLabel>Tolérance 2 T° Max (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: 7" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
                     )} />
                   </div>
-                   <p className="text-xs text-muted-foreground">Laissez les champs de température vides si vous souhaitez utiliser les valeurs par défaut de l'application. Les plages de tolérance sont optionnelles et doivent être logiquement distinctes de la cible.</p>
+                   <p className="text-xs text-muted-foreground">Laissez les champs de température vides si vous souhaitez utiliser les valeurs par défaut de l'application. Les plages de tolérance sont optionnelles.</p>
                 </>
               )}
 

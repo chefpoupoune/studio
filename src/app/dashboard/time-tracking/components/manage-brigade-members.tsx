@@ -13,6 +13,17 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const memberSchema = z.object({
   name: z.string().min(1, "Le nom est requis."),
@@ -29,7 +40,7 @@ interface ManageBrigadeMembersProps {
 }
 
 export default function ManageBrigadeMembers({ members, onAddMember, onUpdateMember, onDeleteMember }: ManageBrigadeMembersProps) {
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<BrigadeMember | null>(null);
 
   const form = useForm<MemberFormData>({
@@ -41,15 +52,17 @@ export default function ManageBrigadeMembers({ members, onAddMember, onUpdateMem
   });
 
   React.useEffect(() => {
-    if (editingMember) {
-      form.reset({
-        name: editingMember.name,
-        role: editingMember.role,
-      });
-    } else {
-      form.reset({ name: '', role: '' });
+    if (isFormDialogOpen) {
+      if (editingMember) {
+        form.reset({
+          name: editingMember.name,
+          role: editingMember.role,
+        });
+      } else {
+        form.reset({ name: '', role: '' });
+      }
     }
-  }, [editingMember, form, isDialogOpen]);
+  }, [editingMember, form, isFormDialogOpen]);
 
   const onSubmit = (data: MemberFormData) => {
     if (editingMember) {
@@ -57,18 +70,17 @@ export default function ManageBrigadeMembers({ members, onAddMember, onUpdateMem
     } else {
       onAddMember(data);
     }
-    setIsDialogOpen(false);
+    setIsFormDialogOpen(false);
     setEditingMember(null);
-    form.reset();
   };
 
-  const handleOpenDialog = (member?: BrigadeMember) => {
+  const handleOpenFormDialog = (member?: BrigadeMember) => {
     setEditingMember(member || null);
-    setIsDialogOpen(true);
+    setIsFormDialogOpen(true);
   };
   
-  const handleCloseDialog = () => {
-    setIsDialogOpen(false);
+  const handleCloseFormDialog = () => {
+    setIsFormDialogOpen(false);
     setEditingMember(null);
     form.reset();
   };
@@ -83,9 +95,9 @@ export default function ManageBrigadeMembers({ members, onAddMember, onUpdateMem
           </CardTitle>
           <CardDescription>Ajoutez, modifiez ou supprimez des membres de votre brigade.</CardDescription>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={handleCloseDialog}>
+        <Dialog open={isFormDialogOpen} onOpenChange={handleCloseFormDialog}>
           <DialogTrigger asChild>
-            <Button onClick={() => handleOpenDialog()} className="w-full sm:w-auto">
+            <Button onClick={() => handleOpenFormDialog()} className="w-full sm:w-auto">
               <PlusCircle className="mr-2 h-4 w-4" /> Ajouter Membre
             </Button>
           </DialogTrigger>
@@ -151,14 +163,32 @@ export default function ManageBrigadeMembers({ members, onAddMember, onUpdateMem
                     <TableCell className="font-medium">{member.name}</TableCell>
                     <TableCell>{member.role}</TableCell>
                     <TableCell className="text-center space-x-2">
-                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(member)}>
+                      <Button variant="outline" size="icon" onClick={() => handleOpenFormDialog(member)}>
                         <Edit2 className="h-4 w-4" />
                         <span className="sr-only">Modifier</span>
                       </Button>
-                      <Button variant="destructive" size="icon" onClick={() => onDeleteMember(member.id)}>
-                        <Trash2 className="h-4 w-4" />
-                        <span className="sr-only">Supprimer</span>
-                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                           <Button variant="destructive" size="icon">
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">Supprimer</span>
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Êtes-vous sûr de vouloir supprimer ce membre ?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Cette action est irréversible. Le membre "{member.name}" sera supprimé.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Annuler</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => onDeleteMember(member.id)}>
+                              Supprimer
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </TableCell>
                   </TableRow>
                 ))}

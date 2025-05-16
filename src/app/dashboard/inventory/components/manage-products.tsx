@@ -8,11 +8,22 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PlusCircle, Edit2, Trash2 } from 'lucide-react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const productSchema = z.object({
   name: z.string().min(1, "Le nom est requis."),
@@ -30,7 +41,7 @@ interface ManageProductsProps {
 }
 
 export default function ManageProducts({ products, onAddProduct, onUpdateProduct, onDeleteProduct }: ManageProductsProps) {
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   const form = useForm<ProductFormData>({
@@ -43,16 +54,18 @@ export default function ManageProducts({ products, onAddProduct, onUpdateProduct
   });
 
   React.useEffect(() => {
-    if (editingProduct) {
-      form.reset({
-        name: editingProduct.name,
-        reference: editingProduct.reference,
-        quantity: editingProduct.quantity,
-      });
-    } else {
-      form.reset({ name: '', reference: '', quantity: 0 });
+    if (isFormDialogOpen) {
+      if (editingProduct) {
+        form.reset({
+          name: editingProduct.name,
+          reference: editingProduct.reference,
+          quantity: editingProduct.quantity,
+        });
+      } else {
+        form.reset({ name: '', reference: '', quantity: 0 });
+      }
     }
-  }, [editingProduct, form, isDialogOpen]);
+  }, [editingProduct, form, isFormDialogOpen]);
 
 
   const onSubmit = (data: ProductFormData) => {
@@ -61,18 +74,17 @@ export default function ManageProducts({ products, onAddProduct, onUpdateProduct
     } else {
       onAddProduct(data);
     }
-    setIsDialogOpen(false);
+    setIsFormDialogOpen(false);
     setEditingProduct(null);
-    form.reset();
   };
 
-  const handleOpenDialog = (product?: Product) => {
+  const handleOpenFormDialog = (product?: Product) => {
     setEditingProduct(product || null);
-    setIsDialogOpen(true);
+    setIsFormDialogOpen(true);
   };
   
-  const handleCloseDialog = () => {
-    setIsDialogOpen(false);
+  const handleCloseFormDialog = () => {
+    setIsFormDialogOpen(false);
     setEditingProduct(null);
     form.reset();
   }
@@ -81,9 +93,9 @@ export default function ManageProducts({ products, onAddProduct, onUpdateProduct
     <Card className="shadow-lg">
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Liste des Produits</CardTitle>
-        <Dialog open={isDialogOpen} onOpenChange={handleCloseDialog}>
+        <Dialog open={isFormDialogOpen} onOpenChange={handleCloseFormDialog}>
           <DialogTrigger asChild>
-            <Button onClick={() => handleOpenDialog()}>
+            <Button onClick={() => handleOpenFormDialog()}>
               <PlusCircle className="mr-2 h-4 w-4" /> Ajouter Produit
             </Button>
           </DialogTrigger>
@@ -164,14 +176,32 @@ export default function ManageProducts({ products, onAddProduct, onUpdateProduct
                     <TableCell>{product.reference}</TableCell>
                     <TableCell className="text-right">{product.quantity}</TableCell>
                     <TableCell className="text-center space-x-2">
-                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(product)}>
+                      <Button variant="outline" size="icon" onClick={() => handleOpenFormDialog(product)}>
                         <Edit2 className="h-4 w-4" />
                         <span className="sr-only">Modifier</span>
                       </Button>
-                      <Button variant="destructive" size="icon" onClick={() => onDeleteProduct(product.id)}>
-                        <Trash2 className="h-4 w-4" />
-                        <span className="sr-only">Supprimer</span>
-                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="destructive" size="icon">
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">Supprimer</span>
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Êtes-vous sûr de vouloir supprimer ce produit ?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Cette action est irréversible. Le produit "{product.name}" sera supprimé.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Annuler</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => onDeleteProduct(product.id)}>
+                              Supprimer
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </TableCell>
                   </TableRow>
                 ))}
