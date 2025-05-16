@@ -76,5 +76,22 @@ export interface TempChangeEntry {
   reheatingVisa?: string; // Initials
 }
 
+// For Defrosting Monitoring
+export interface DefrostingEntry {
+  id: string;
+  defrostStartDate: string; // ISO string (date only)
+  defrostStartTime: string; // HH:mm
+  productName: string;
+  quantity: string;
+  tempOnRemoval?: string; // e.g., "-18°C"
+  initialsStart?: string; // Operator initials for starting defrost
+  
+  useDate?: string | null; // ISO string (date only, optional)
+  useTime?: string | null; // HH:mm (optional)
+  tempOnUse?: string | null; // e.g., "4°C" (optional)
+  initialsEnd?: string | null; // Operator initials for end/use (optional)
+}
+
 
 export const NO_STATUS_SELECT_VALUE = "_aucun_statut_";
+
