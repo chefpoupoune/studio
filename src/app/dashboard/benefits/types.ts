@@ -9,11 +9,15 @@ export const BENEFIT_STATUS_LEGEND: { code: BenefitDailyStatusCode | string; lab
   { code: "M", label: "Maladie" },
   { code: "F", label: "Fermeture" },
   { code: "CP", label: "Congé Payé" },
+  // Adding an entry for the empty string to make it explicit in the legend if desired.
+  // If not needed, this line can be removed.
+  // { code: "", label: "Non Renseigné" } 
 ];
 
 export interface BenefitEmployee {
   id: string;
   name: string;
+  // Add other employee-specific fields if needed in the future, e.g., role, contract type
 }
 
 export interface DailyBenefitEntry {

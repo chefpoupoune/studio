@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { FileText, Loader2, Trash2, Users } from 'lucide-react'; // Added Users
+import { FileText, Loader2, Trash2, Users } from 'lucide-react';
 import { format, getDaysInMonth, getDate, getDay, startOfMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
@@ -36,15 +36,13 @@ const months = Array.from({ length: 12 }, (_, i) => ({
   label: format(new Date(currentYear, i), "MMMM", { locale: fr }),
 }));
 
-// DUMMY_EMPLOYEES constant removed.
-// The component will need a way to get employee data in the future.
-// For now, the table will render no employee rows.
-const employeesToRender: BenefitEmployee[] = [];
+const SELECT_EMPTY_VALUE_PLACEHOLDER = "_SELECT_EMPTY_";
 
+interface BenefitTrackingTableProps {
+  employees: BenefitEmployee[];
+}
 
-const SELECT_EMPTY_VALUE_PLACEHOLDER = "_SELECT_EMPTY_"; // Unique value for SelectItem empty state
-
-export default function BenefitTrackingTable() {
+export default function BenefitTrackingTable({ employees }: BenefitTrackingTableProps) {
   const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().getMonth().toString());
   const [benefitData, setBenefitData] = useState<FullMonthlyBenefitData>({});
@@ -88,7 +86,7 @@ export default function BenefitTrackingTable() {
       return {
         dayNumber: i + 1,
         dayLetter: frenchShortDays[getDay(date)],
-        isWeekend: getDay(date) === 0 || getDay(date) === 6, // 0 for Sunday, 6 for Saturday
+        isWeekend: getDay(date) === 0 || getDay(date) === 6,
       };
     });
   }, [selectedYear, selectedMonth]);
@@ -97,7 +95,7 @@ export default function BenefitTrackingTable() {
     employeeId: string,
     dayNumber: number,
     type: 'planning' | 'repasPris',
-    valueFromSelect: string // This value can be SELECT_EMPTY_VALUE_PLACEHOLDER or a BenefitDailyStatusCode
+    valueFromSelect: string
   ) => {
     const actualValueToStore = valueFromSelect === SELECT_EMPTY_VALUE_PLACEHOLDER ? "" : valueFromSelect as BenefitDailyStatusCode;
     const dateKey = `${selectedYear}-${(parseInt(selectedMonth) + 1).toString().padStart(2, '0')}-${dayNumber.toString().padStart(2, '0')}`;
@@ -155,7 +153,7 @@ export default function BenefitTrackingTable() {
 
       const head: any = [
         [{ content: 'Employé', rowSpan: 2, styles: { ...headStyles, valign: 'middle'} }, { content: 'Type', rowSpan: 2, styles: { ...headStyles, valign: 'middle'} }],
-        [] // Second header row for day letters
+        [] 
       ];
       
       daysInSelectedMonth.forEach(day => {
@@ -165,7 +163,7 @@ export default function BenefitTrackingTable() {
       (head[0] as any[]).push({ content: 'TOTAL', rowSpan: 2, styles: { ...headStyles, valign: 'middle'} });
 
 
-      const body = employeesToRender.flatMap(employee => { // Use employeesToRender which is currently empty
+      const body = employees.flatMap(employee => { 
         const planningRow: any[] = [{ content: employee.name, rowSpan: 2, styles: { valign: 'middle', fontStyle: 'bold'} }, 'Planning'];
         const repasPrisRow: any[] = ['Repas Pris'];
 
@@ -228,7 +226,7 @@ export default function BenefitTrackingTable() {
           </Select>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 md:col-span-1 md:justify-self-end pt-2">
-            <Button onClick={generatePdf} disabled={isLoading || employeesToRender.length === 0} className="w-full sm:w-auto">
+            <Button onClick={generatePdf} disabled={isLoading || employees.length === 0} className="w-full sm:w-auto">
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
                 Générer PDF
             </Button>
@@ -253,14 +251,11 @@ export default function BenefitTrackingTable() {
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <span className="ml-2 text-muted-foreground">Chargement des données...</span>
         </div>
-      ) : employeesToRender.length === 0 ? (
+      ) : employees.length === 0 ? (
         <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
             <Users className="mx-auto h-12 w-12 text-muted-foreground" />
             <p className="mt-2 text-sm text-muted-foreground">
-                Aucun employé à afficher. Veuillez ajouter des employés pour commencer le suivi.
-            </p>
-            <p className="text-xs text-muted-foreground/70">
-                (Fonctionnalité de gestion des employés à venir)
+                Aucun employé à afficher. Veuillez ajouter des employés dans la section "Gestion des Employés" ci-dessus.
             </p>
         </div>
       ) : (
@@ -289,7 +284,7 @@ export default function BenefitTrackingTable() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {employeesToRender.map(employee => (
+              {employees.map(employee => (
                 <React.Fragment key={employee.id}>
                   {(['planning', 'repasPris'] as const).map((type, typeIndex) => {
                     const dayRow = daysInSelectedMonth.map(day => {
