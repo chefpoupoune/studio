@@ -6,8 +6,7 @@ import { cn } from "@/lib/utils"
 const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
->(({ className, children, ...props }, ref) => { // Destructure children from props
-  // Filter out whitespace-only string children to prevent hydration errors
+>(({ className, children, ...props }, ref) => { 
   const validChildren = React.Children.toArray(children).filter(child => {
     if (typeof child === 'string' && child.trim() === '') {
       return false;
@@ -20,9 +19,9 @@ const Table = React.forwardRef<
       <table
         ref={ref}
         className={cn("w-full caption-bottom text-sm", className)}
-        {...props} // Spread the rest of the props (which no longer includes children)
+        {...props} 
       >
-        {validChildren} {/* Render only valid, non-whitespace children */}
+        {validChildren} 
       </table>
     </div>
   );
@@ -68,7 +67,6 @@ const TableRow = React.forwardRef<
   HTMLTableRowElement,
   React.HTMLAttributes<HTMLTableRowElement>
 >(({ className, children, ...props }, ref) => {
-  // Filter out whitespace-only string children to prevent hydration errors
   const validChildren = React.Children.toArray(children).filter(child => {
     if (typeof child === 'string' && child.trim() === '') {
       return false;
