@@ -1,8 +1,8 @@
 
 import Link from 'next/link';
-import { ArrowLeft, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, Users } from 'lucide-react'; // Added Users icon
 import { Button } from '@/components/ui/button';
-import BenefitTrackingTable from './components/excel-benefit-manager'; // Renamed, but path is still similar for now
+import BenefitTrackingTable from './components/excel-benefit-manager'; // Path is still similar for now
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
 
@@ -31,7 +31,8 @@ export default function BenefitsPage() {
         <CardHeader>
           <CardTitle>Suivi Mensuel des Avantages en Nature</CardTitle>
           <CardDescription>
-            Sélectionnez un mois et une année, puis remplissez le tableau de suivi. Les données sont sauvegardées automatiquement.
+            Sélectionnez un mois et une année, puis remplissez le tableau de suivi. Les données sont sauvegardées automatiquement. 
+            (La gestion des employés pour cette section sera ajoutée prochainement.)
           </CardDescription>
         </CardHeader>
         <CardContent>

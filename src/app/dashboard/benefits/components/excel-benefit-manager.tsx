@@ -36,15 +36,11 @@ const months = Array.from({ length: 12 }, (_, i) => ({
   label: format(new Date(currentYear, i), "MMMM", { locale: fr }),
 }));
 
-// TODO: Replace with dynamic employee management in the future
-const DUMMY_EMPLOYEES: BenefitEmployee[] = [
-  { id: 'emp1', name: 'Dernoncourt Julien' },
-  { id: 'emp2', name: 'Varlet Marjorie' },
-  { id: 'emp3', name: 'Masclef Myriam' },
-  { id: 'emp4', name: 'Demazieres Reinata' },
-  { id: 'emp5', name: 'Hulot Sandrine' },
-  { id: 'emp6', name: 'Legrand Marie' },
-];
+// DUMMY_EMPLOYEES constant removed.
+// The component will need a way to get employee data in the future.
+// For now, the table will render no employee rows.
+const employeesToRender: BenefitEmployee[] = [];
+
 
 const SELECT_EMPTY_VALUE_PLACEHOLDER = "_SELECT_EMPTY_"; // Unique value for SelectItem empty state
 
@@ -169,7 +165,7 @@ export default function BenefitTrackingTable() {
       (head[0] as any[]).push({ content: 'TOTAL', rowSpan: 2, styles: { ...headStyles, valign: 'middle'} });
 
 
-      const body = DUMMY_EMPLOYEES.flatMap(employee => {
+      const body = employeesToRender.flatMap(employee => { // Use employeesToRender which is currently empty
         const planningRow: any[] = [{ content: employee.name, rowSpan: 2, styles: { valign: 'middle', fontStyle: 'bold'} }, 'Planning'];
         const repasPrisRow: any[] = ['Repas Pris'];
 
@@ -232,7 +228,7 @@ export default function BenefitTrackingTable() {
           </Select>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 md:col-span-1 md:justify-self-end pt-2">
-            <Button onClick={generatePdf} disabled={isLoading} className="w-full sm:w-auto">
+            <Button onClick={generatePdf} disabled={isLoading || employeesToRender.length === 0} className="w-full sm:w-auto">
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
                 Générer PDF
             </Button>
@@ -256,6 +252,16 @@ export default function BenefitTrackingTable() {
         <div className="flex justify-center items-center py-10">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <span className="ml-2 text-muted-foreground">Chargement des données...</span>
+        </div>
+      ) : employeesToRender.length === 0 ? (
+        <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
+            <Users className="mx-auto h-12 w-12 text-muted-foreground" />
+            <p className="mt-2 text-sm text-muted-foreground">
+                Aucun employé à afficher. Veuillez ajouter des employés pour commencer le suivi.
+            </p>
+            <p className="text-xs text-muted-foreground/70">
+                (Fonctionnalité de gestion des employés à venir)
+            </p>
         </div>
       ) : (
         <div className="overflow-x-auto border rounded-md shadow-sm">
@@ -283,7 +289,7 @@ export default function BenefitTrackingTable() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {DUMMY_EMPLOYEES.map(employee => (
+              {employeesToRender.map(employee => (
                 <React.Fragment key={employee.id}>
                   {(['planning', 'repasPris'] as const).map((type, typeIndex) => {
                     const dayRow = daysInSelectedMonth.map(day => {
