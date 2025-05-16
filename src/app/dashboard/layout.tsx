@@ -30,9 +30,9 @@ import {
   ShieldCheck,
   PanelLeft,
   Home,
-  LogOut, // Added LogOut icon
+  LogOut,
 } from "lucide-react";
-import { usePathname, useRouter } from "next/navigation"; // Added useRouter
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -50,9 +50,8 @@ const navItems = [
 function AppSidebar() {
   const pathname = usePathname();
   const { state, openMobile, setOpenMobile } = useSidebar();
-  const router = useRouter(); // Added for logout
+  const router = useRouter();
 
-  // Close mobile sidebar on navigation
   React.useEffect(() => {
     if (openMobile) {
       setOpenMobile(false);
@@ -63,6 +62,7 @@ function AppSidebar() {
   const handleLogout = () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('isLoggedIn');
+      localStorage.removeItem('loggedInUsername'); // Clear logged in username
     }
     router.push('/login');
   };
@@ -73,12 +73,11 @@ function AppSidebar() {
       <SidebarHeader className="flex items-center justify-between">
         <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
           <Link href="/dashboard" className="flex items-center gap-2">
-            {/* Logo placeholder */}
+            {/* Logo removed per user request */}
             {/* <div className="w-8 h-8 bg-primary rounded-sm flex items-center justify-center text-primary-foreground font-bold text-lg" data-ai-hint="chef hat">E</div> */}
             <span className="font-semibold text-lg text-sidebar-primary">Gestion par L'excellence</span>
           </Link>
         </div>
-         {/* SidebarTrigger is only for mobile view in this setup */}
         <SidebarTrigger className="md:hidden" />
       </SidebarHeader>
       <Separator className="my-1 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:my-2 group-data-[collapsible=icon]:w-6" />
@@ -151,6 +150,7 @@ export default function DashboardLayout({
 }) {
   const router = useRouter();
   const [isClient, setIsClient] = React.useState(false);
+  // const [currentUsername, setCurrentUsername] = React.useState<string | null>(null); // Potential future use
 
   React.useEffect(() => {
     setIsClient(true);
@@ -160,13 +160,13 @@ export default function DashboardLayout({
     if (isClient && typeof window !== 'undefined') {
       if (localStorage.getItem('isLoggedIn') !== 'true') {
         router.replace('/login');
+      } else {
+        // setCurrentUsername(localStorage.getItem('loggedInUsername')); // Potential future use
       }
     }
   }, [isClient, router]);
 
   if (!isClient || (typeof window !== 'undefined' && localStorage.getItem('isLoggedIn') !== 'true')) {
-    // Render a loading state or null while checking auth and redirecting
-    // This avoids flashing the dashboard content if not authenticated
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <p className="text-muted-foreground">Vérification de l'authentification...</p>
@@ -179,7 +179,6 @@ export default function DashboardLayout({
       <AppSidebar />
       <SidebarInset>
         <div className="min-h-screen w-full">
-           {/* Mobile-only header with trigger */}
           <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 md:hidden">
             <SidebarTrigger />
             <Link href="/dashboard" className="flex items-center gap-2">
@@ -187,6 +186,7 @@ export default function DashboardLayout({
                 <span className="font-semibold text-md">Gestion par L'excellence</span>
             </Link>
           </header>
+          {/* Future: Could pass currentUsername to children or display in a top bar */}
           {children}
         </div>
       </SidebarInset>
