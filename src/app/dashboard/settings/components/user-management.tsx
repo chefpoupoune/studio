@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Users, AlertTriangle, PlusCircle, Edit2, Trash2 } from 'lucide-react';
+import { Users, AlertTriangle, PlusCircle, Edit2, Trash2, KeyRound } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -29,7 +29,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-const APP_USERS_STORAGE_KEY = 'app_defined_users_v1';
+const APP_USERS_STORAGE_KEY = 'app_defined_users_v1'; // Key can remain same if structure is compatible or data is reset
 
 const RUBRICS = [
   { id: 'dashboard', label: 'Tableau de Bord Principal' },
@@ -45,17 +45,19 @@ const RUBRICS = [
 
 type RubricId = typeof RUBRICS[number]['id'];
 
-interface AppUser {
+export interface AppUser { // Exporting for use in login page
   id: string;
   username: string;
   passwordRequired: boolean;
-  permissions: Partial<Record<RubricId, boolean>>; // true if has access
+  simulatedStoredPassword?: string; // Stores "hashed" password
+  permissions: Partial<Record<RubricId, boolean>>;
 }
 
 const userFormSchema = z.object({
-  username: z.string().min(3, "Le nom d'utilisateur doit contenir au moins 3 caractères."),
+  username: z.string().min(3, "Le nom d'utilisateur doit contenir au moins 3 caractères.").max(50, "Le nom d'utilisateur ne peut excéder 50 caractères."),
   passwordRequired: z.boolean().default(false),
-  password: z.string().optional(), // Not stored, just for UI simulation
+  newPassword: z.string().optional(),
+  confirmNewPassword: z.string().optional(),
   permissions: z.object(
     RUBRICS.reduce((acc, rubric) => {
       acc[rubric.id] = z.boolean().default(false);
@@ -63,18 +65,22 @@ const userFormSchema = z.object({
     }, {} as Record<RubricId, z.ZodBoolean>)
   ).default({}),
 }).refine(data => {
-    if (data.passwordRequired && (!data.password || data.password.length < 3)) {
-        // This validation won't actually prevent submission if password field is not actively part of the form schema for storage
-        // But it's good for concept
-        return false;
+    if (data.passwordRequired && data.newPassword && data.newPassword.length < 3) {
+        return false; // New password must be at least 3 chars if provided
     }
     return true;
 }, {
-    message: "Un mot de passe d'au moins 3 caractères est requis si 'Mot de passe requis' est coché.",
-    path: ['password'],
+    message: "Le nouveau mot de passe doit contenir au moins 3 caractères.",
+    path: ['newPassword'],
+}).refine(data => data.newPassword === data.confirmNewPassword, {
+    message: "Les nouveaux mots de passe ne correspondent pas.",
+    path: ['confirmNewPassword'],
 });
 
 type UserFormData = z.infer<typeof userFormSchema>;
+
+// Simple, non-secure "hashing" function for simulation
+const simulatedHash = (password: string): string => `sim_hashed_${password}_!`;
 
 export default function UserManagement() {
   const [appUsers, setAppUsers] = useState<AppUser[]>([]);
@@ -87,7 +93,8 @@ export default function UserManagement() {
     defaultValues: {
       username: '',
       passwordRequired: false,
-      password: '',
+      newPassword: '',
+      confirmNewPassword: '',
       permissions: RUBRICS.reduce((acc, rubric) => ({ ...acc, [rubric.id]: false }), {}),
     },
   });
@@ -114,14 +121,16 @@ export default function UserManagement() {
       form.reset({
         username: user.username,
         passwordRequired: user.passwordRequired,
-        password: '', // Password is not re-loaded for editing
+        newPassword: '', // Always clear password fields for editing
+        confirmNewPassword: '',
         permissions: RUBRICS.reduce((acc, rubric) => ({ ...acc, [rubric.id]: !!user.permissions[rubric.id] }), {}),
       });
     } else {
       form.reset({
         username: '',
         passwordRequired: false,
-        password: '',
+        newPassword: '',
+        confirmNewPassword: '',
         permissions: RUBRICS.reduce((acc, rubric) => ({ ...acc, [rubric.id]: false }), {}),
       });
     }
@@ -129,11 +138,28 @@ export default function UserManagement() {
   };
 
   const handleUserFormSubmit = (data: UserFormData) => {
+    let passwordToStore: string | undefined = undefined;
+    if (data.passwordRequired && data.newPassword) {
+        passwordToStore = simulatedHash(data.newPassword);
+    }
+
     if (editingUser) {
-      setAppUsers(prev => prev.map(u => u.id === editingUser.id ? { ...editingUser, ...data } : u));
+      setAppUsers(prev => prev.map(u => u.id === editingUser.id ? { 
+          ...editingUser, 
+          username: data.username,
+          passwordRequired: data.passwordRequired,
+          simulatedStoredPassword: data.passwordRequired ? (passwordToStore || editingUser.simulatedStoredPassword) : undefined,
+          permissions: data.permissions 
+        } : u));
       toast({ title: "Utilisateur Modifié", description: `L'utilisateur "${data.username}" a été mis à jour.` });
     } else {
-      const newUser: AppUser = { ...data, id: `user_${Date.now()}` };
+      const newUser: AppUser = { 
+        id: `user_${Date.now()}`, 
+        username: data.username,
+        passwordRequired: data.passwordRequired,
+        simulatedStoredPassword: passwordToStore,
+        permissions: data.permissions 
+      };
       setAppUsers(prev => [...prev, newUser]);
       toast({ title: "Utilisateur Créé", description: `L'utilisateur "${data.username}" a été créé.` });
     }
@@ -142,7 +168,7 @@ export default function UserManagement() {
 
   const handleDeleteUser = (userId: string) => {
     const userToDelete = appUsers.find(u => u.id === userId);
-    if (userToDelete?.username === 'chef') {
+    if (userToDelete?.username.toLowerCase() === 'chef') {
       toast({ title: "Suppression Interdite", description: "L'utilisateur 'chef' ne peut pas être supprimé.", variant: "destructive" });
       return;
     }
@@ -155,40 +181,41 @@ export default function UserManagement() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Users className="w-6 h-6 text-primary"/>
-          Gestion des Utilisateurs (Simulation)
+          Gestion des Utilisateurs
         </CardTitle>
         <CardDescription>
-          Définissez des utilisateurs et leurs permissions d'accès aux rubriques.
+          Définissez des utilisateurs, leurs mots de passe (simulés) et leurs permissions d'accès aux rubriques.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <Alert variant="default" className="border-amber-500/50 bg-amber-500/10">
-          <AlertTriangle className="h-5 w-5 text-amber-600" />
-          <AlertTitle className="text-amber-700 dark:text-amber-500 font-semibold">Fonctionnalité en Développement</AlertTitle>
-          <AlertDescription className="text-amber-700 dark:text-amber-600">
-            Cette interface permet de définir des utilisateurs et leurs permissions à des fins de conception.
-            Le système de connexion actuel ne gère que l'utilisateur 'chef' (mdp: '000').
-            Les mots de passe saisis ici ne sont pas stockés de manière sécurisée et les permissions ne sont pas encore appliquées.
+        <Alert variant="destructive" className="border-destructive/50 bg-destructive/10">
+          <AlertTriangle className="h-5 w-5 text-destructive" />
+          <AlertTitle className="text-destructive font-semibold">Avertissement de Sécurité Important</AlertTitle>
+          <AlertDescription className="text-destructive/90">
+            Ce système de gestion d'utilisateurs et de mots de passe est à des fins de **démonstration et de prototypage uniquement**. 
+            Les mots de passe ne sont **pas stockés de manière sécurisée** et les permissions ne sont pas encore strictement appliquées.
+            Ne pas utiliser en production avec des données sensibles.
+            Seul l'utilisateur 'chef' (mdp: '000') est actuellement utilisé par le système de connexion principal.
           </AlertDescription>
         </Alert>
 
         <Button onClick={() => handleOpenUserForm()}>
-          <PlusCircle className="mr-2 h-4 w-4" /> Créer un Nouvel Utilisateur (Simulation)
+          <PlusCircle className="mr-2 h-4 w-4" /> Créer un Nouvel Utilisateur
         </Button>
 
         <Dialog open={isUserFormOpen} onOpenChange={setIsUserFormOpen}>
           <DialogContent className="sm:max-w-lg md:max-w-2xl">
             <DialogHeader>
-              <DialogTitle>{editingUser ? "Modifier" : "Créer"} Utilisateur (Simulation)</DialogTitle>
+              <DialogTitle>{editingUser ? "Modifier" : "Créer"} Utilisateur</DialogTitle>
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(handleUserFormSubmit)} className="space-y-4 py-4">
-                <ScrollArea className="h-[60vh] pr-4">
+                <ScrollArea className="h-[65vh] pr-4">
                   <div className="space-y-4">
                     <FormField control={form.control} name="username" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Nom d'utilisateur</FormLabel>
-                        <FormControl><Input placeholder="Ex: jdupont" {...field} /></FormControl>
+                        <FormControl><Input placeholder="Ex: jdupont" {...field} disabled={editingUser?.username.toLowerCase() === 'chef'} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )} />
@@ -197,25 +224,34 @@ export default function UserManagement() {
                         <div className="space-y-0.5">
                           <FormLabel>Mot de passe requis ?</FormLabel>
                           <FormDescription className="text-xs">
-                            Si coché, un mot de passe sera conceptuellement nécessaire.
+                            Si coché, un mot de passe sera nécessaire pour cet utilisateur.
                           </FormDescription>
                         </div>
-                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={editingUser?.username.toLowerCase() === 'chef'} /></FormControl>
                       </FormItem>
                     )} />
+                    
                     {form.watch('passwordRequired') && (
-                      <FormField control={form.control} name="password" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Mot de passe (Simulation)</FormLabel>
-                          <FormControl><Input type="password" placeholder="Saisir un mot de passe..." {...field} /></FormControl>
-                          <FormDescription className="text-xs">Ne sera pas utilisé pour la connexion réelle à ce stade.</FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
+                      <div className="p-3 border rounded-md space-y-3 bg-muted/30">
+                         <FormField control={form.control} name="newPassword" render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="flex items-center gap-1"><KeyRound className="w-4 h-4" />Nouveau mot de passe {editingUser ? '(Laisser vide pour ne pas changer)' : ''}</FormLabel>
+                            <FormControl><Input type="password" placeholder="Saisir un mot de passe..." {...field} /></FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )} />
+                        <FormField control={form.control} name="confirmNewPassword" render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Confirmer nouveau mot de passe</FormLabel>
+                            <FormControl><Input type="password" placeholder="Confirmer le mot de passe..." {...field} /></FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )} />
+                      </div>
                     )}
                     
                     <div>
-                      <h3 className="text-md font-semibold mb-2">Permissions d'accès aux rubriques :</h3>
+                      <h3 className="text-md font-semibold mb-2 mt-3">Permissions d'accès aux rubriques :</h3>
                       <div className="space-y-2">
                         {RUBRICS.map(rubric => (
                           <FormField
@@ -223,15 +259,15 @@ export default function UserManagement() {
                             control={form.control}
                             name={`permissions.${rubric.id}`}
                             render={({ field }) => (
-                              <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                              <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 hover:bg-muted/20">
                                 <FormControl>
                                   <Checkbox
                                     checked={field.value}
                                     onCheckedChange={field.onChange}
-                                    disabled={rubric.id === 'settings' && form.getValues('username') !== 'chef'}
+                                    disabled={(rubric.id === 'settings' && form.getValues('username').toLowerCase() !== 'chef') || (editingUser?.username.toLowerCase() === 'chef')}
                                   />
                                 </FormControl>
-                                <FormLabel className="font-normal text-sm">{rubric.label}</FormLabel>
+                                <FormLabel className="font-normal text-sm cursor-pointer flex-grow">{rubric.label}</FormLabel>
                               </FormItem>
                             )}
                           />
@@ -242,7 +278,7 @@ export default function UserManagement() {
                 </ScrollArea>
                 <DialogFooter className="pt-4">
                   <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                  <Button type="submit">{editingUser ? "Enregistrer Modifications" : "Créer Utilisateur"}</Button>
+                  <Button type="submit" disabled={editingUser?.username.toLowerCase() === 'chef' && form.getValues('username').toLowerCase() !== 'chef'}>{editingUser ? "Enregistrer Modifications" : "Créer Utilisateur"}</Button>
                 </DialogFooter>
               </form>
             </Form>
@@ -263,14 +299,14 @@ export default function UserManagement() {
                       </Button>
                        <AlertDialog>
                         <AlertDialogTrigger asChild>
-                           <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" disabled={user.username === 'chef'}>
+                           <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" disabled={user.username.toLowerCase() === 'chef'}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
                             <AlertDialogTitle>Supprimer "{user.username}"?</AlertDialogTitle>
-                            <AlertDialogDescription>Cette action est conceptuelle et ne supprimera pas un vrai compte.</AlertDialogDescription>
+                            <AlertDialogDescription>Cette action est irréversible.</AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Annuler</AlertDialogCancel>
@@ -282,6 +318,8 @@ export default function UserManagement() {
                   </div>
                   <CardDescription className="text-xs">
                     Mot de passe requis : {user.passwordRequired ? "Oui" : "Non"}
+                    {user.passwordRequired && user.simulatedStoredPassword && <span className="ml-2 text-green-600">(Mot de passe défini)</span>}
+                    {user.passwordRequired && !user.simulatedStoredPassword && <span className="ml-2 text-destructive">(Aucun mot de passe défini !)</span>}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="px-4 pb-3">
@@ -299,9 +337,10 @@ export default function UserManagement() {
             ))}
           </div>
         ) : (
-          <p className="text-muted-foreground text-center py-6">Aucun utilisateur (autre que 'chef') défini.</p>
+          <p className="text-muted-foreground text-center py-6">Aucun utilisateur défini (autre que 'chef' implicite).</p>
         )}
       </CardContent>
     </Card>
   );
 }
+

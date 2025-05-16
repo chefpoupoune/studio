@@ -10,21 +10,16 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { User, LockKeyhole, ArrowLeft } from 'lucide-react';
 import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
+import type { AppUser } from '@/app/dashboard/settings/components/user-management'; // Import AppUser type
 
-// Key used in UserManagement to store defined users
 const APP_USERS_STORAGE_KEY = 'app_defined_users_v1';
 
-// Simplified user type for login purposes
-interface LoginAppUser {
-  id: string;
-  username: string;
-  passwordRequired: boolean;
-  // permissions are not needed for login logic
-}
+// Simple, non-secure "hashing" function for simulation - MUST MATCH the one in UserManagement
+const simulatedHash = (password: string): string => `sim_hashed_${password}_!`;
 
 export default function LoginPage() {
-  const [definedUsers, setDefinedUsers] = useState<LoginAppUser[]>([]);
-  const [selectedUserForPassword, setSelectedUserForPassword] = useState<LoginAppUser | null>(null);
+  const [definedUsers, setDefinedUsers] = useState<AppUser[]>([]);
+  const [selectedUserForPassword, setSelectedUserForPassword] = useState<AppUser | null>(null);
   const [passwordInput, setPasswordInput] = useState('');
   const [error, setError] = useState('');
   const [isClient, setIsClient] = useState(false);
@@ -42,19 +37,20 @@ export default function LoginPage() {
         return;
       }
 
-      let users: LoginAppUser[] = [];
+      let users: AppUser[] = [];
       try {
         const storedUsersRaw = localStorage.getItem(APP_USERS_STORAGE_KEY);
         if (storedUsersRaw) {
           const parsedUsers = JSON.parse(storedUsersRaw);
-          // Ensure parsedUsers is an array and items have expected props
           if (Array.isArray(parsedUsers)) {
             users = parsedUsers.filter(
               (u: any) => u && typeof u.id === 'string' && typeof u.username === 'string' && typeof u.passwordRequired === 'boolean'
-            ).map((u: any) => ({
+            ).map((u: any) => ({ // Ensure all fields of AppUser are mapped
               id: u.id,
               username: u.username,
               passwordRequired: u.passwordRequired,
+              simulatedStoredPassword: u.simulatedStoredPassword,
+              permissions: u.permissions || {}, // Ensure permissions object exists
             }));
           }
         }
@@ -63,10 +59,28 @@ export default function LoginPage() {
         toast({ title: "Erreur de chargement des utilisateurs", variant: "destructive"});
       }
 
-      // Ensure 'chef' user is always available for login
       const chefUserExists = users.some(u => u.username.toLowerCase() === 'chef');
       if (!chefUserExists) {
-        users.push({ id: 'default_chef', username: 'Chef', passwordRequired: true });
+        users.unshift({ 
+          id: 'default_chef', 
+          username: 'Chef', 
+          passwordRequired: true, 
+          simulatedStoredPassword: simulatedHash('000'), // "Chef" user will use the simulated hash too
+          permissions: RUBRICS.reduce((acc, rubric) => ({...acc, [rubric.id]: true}), {}) // Chef has all permissions
+        });
+      } else {
+        // Ensure chef user always has full permissions and correct simulated password if managed through UI
+         users = users.map(u => {
+            if (u.username.toLowerCase() === 'chef') {
+                return {
+                    ...u,
+                    passwordRequired: true, // Chef always requires password
+                    simulatedStoredPassword: u.simulatedStoredPassword || simulatedHash('000'), // Ensure chef has a hashed password
+                    permissions: RUBRICS.reduce((acc, rubric) => ({...acc, [rubric.id]: true}), {})
+                };
+            }
+            return u;
+        });
       }
       setDefinedUsers(users);
     }
@@ -78,13 +92,13 @@ export default function LoginPage() {
     router.push('/dashboard');
   };
 
-  const handleUserButtonClick = (user: LoginAppUser) => {
+  const handleUserButtonClick = (user: AppUser) => {
     setError('');
     if (!user.passwordRequired) {
       performLogin(user.username);
     } else {
       setSelectedUserForPassword(user);
-      setPasswordInput(''); // Clear password field when a new user is selected
+      setPasswordInput(''); 
     }
   };
 
@@ -92,18 +106,27 @@ export default function LoginPage() {
     e.preventDefault();
     if (!selectedUserForPassword) return;
 
-    if (selectedUserForPassword.username.toLowerCase() === 'chef' && passwordInput === '000') {
+    const enteredPasswordHash = simulatedHash(passwordInput);
+
+    if (selectedUserForPassword.simulatedStoredPassword === enteredPasswordHash) {
       performLogin(selectedUserForPassword.username);
-    } else if (selectedUserForPassword.username.toLowerCase() !== 'chef' && selectedUserForPassword.passwordRequired && passwordInput.length > 0) {
-      // For other users requiring password, accept any non-empty password (simulation)
-      performLogin(selectedUserForPassword.username);
-      toast({ title: "Connexion Réussie (Simulation)", description: `Mot de passe simulé accepté pour ${selectedUserForPassword.username}.`});
-    } else if (selectedUserForPassword.username.toLowerCase() === 'chef') {
-      setError('Mot de passe incorrect pour Chef.');
     } else {
-      setError('Mot de passe requis ou incorrect (simulation).');
+      setError('Mot de passe incorrect.');
     }
   };
+  
+  const RUBRICS = [ // Duplicating for safety as it's a separate page, ideally share from a common place
+    { id: 'dashboard', label: 'Tableau de Bord Principal' },
+    { id: 'inventory', label: 'Gestion Stocks' },
+    { id: 'benefits', label: 'Avantages Nature' },
+    { id: 'timeTracking', label: 'Suivi Heures' },
+    { id: 'taskManagement', label: 'Gestion Tâches' },
+    { id: 'costManagement', label: 'Gestion Coûts' },
+    { id: 'menuPlanning', label: 'Planification Menus' },
+    { id: 'pms', label: 'PMS' },
+    { id: 'settings', label: 'Paramètres' },
+  ] as const;
+
 
   if (!isClient) {
     return (
@@ -191,13 +214,11 @@ export default function LoginPage() {
             </form>
           )}
         </CardContent>
-        <CardFooter className="text-center text-xs text-muted-foreground pt-6">
+         <CardFooter className="text-center text-xs text-muted-foreground pt-6">
           <p>
             {selectedUserForPassword && selectedUserForPassword.username.toLowerCase() === 'chef' 
               ? "Mot de passe par défaut pour Chef : 000" 
-              : selectedUserForPassword && selectedUserForPassword.passwordRequired 
-              ? "Simulation : Entrez n'importe quel mot de passe."
-              : "Sélectionnez un utilisateur."
+              : "Entrez le mot de passe configuré."
             }
           </p>
         </CardFooter>
