@@ -46,6 +46,8 @@ const DUMMY_EMPLOYEES: BenefitEmployee[] = [
   { id: 'emp6', name: 'Legrand Marie' },
 ];
 
+const SELECT_EMPTY_VALUE_PLACEHOLDER = "_SELECT_EMPTY_"; // Unique value for SelectItem empty state
+
 export default function BenefitTrackingTable() {
   const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().getMonth().toString());
@@ -85,7 +87,6 @@ export default function BenefitTrackingTable() {
     const year = parseInt(selectedYear);
     const month = parseInt(selectedMonth);
     const numDays = getDaysInMonth(new Date(year, month));
-    const firstDayOfMonth = startOfMonth(new Date(year, month));
     return Array.from({ length: numDays }, (_, i) => {
       const date = new Date(year, month, i + 1);
       return {
@@ -100,8 +101,9 @@ export default function BenefitTrackingTable() {
     employeeId: string,
     dayNumber: number,
     type: 'planning' | 'repasPris',
-    value: BenefitDailyStatusCode
+    valueFromSelect: string // This value can be SELECT_EMPTY_VALUE_PLACEHOLDER or a BenefitDailyStatusCode
   ) => {
+    const actualValueToStore = valueFromSelect === SELECT_EMPTY_VALUE_PLACEHOLDER ? "" : valueFromSelect as BenefitDailyStatusCode;
     const dateKey = `${selectedYear}-${(parseInt(selectedMonth) + 1).toString().padStart(2, '0')}-${dayNumber.toString().padStart(2, '0')}`;
     setBenefitData(prev => {
       const employeeData = prev[employeeId] || {};
@@ -110,7 +112,7 @@ export default function BenefitTrackingTable() {
         ...prev,
         [employeeId]: {
           ...employeeData,
-          [dateKey]: { ...dayEntry, [type]: value },
+          [dateKey]: { ...dayEntry, [type]: actualValueToStore },
         },
       };
     });
@@ -132,7 +134,7 @@ export default function BenefitTrackingTable() {
   const generatePdf = () => {
     setIsLoading(true);
     try {
-      const pdfSettings = getPdfLayoutSettings('benefits'); // Reuse existing or create new
+      const pdfSettings = getPdfLayoutSettings('benefits');
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
       const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
@@ -283,45 +285,53 @@ export default function BenefitTrackingTable() {
             <TableBody>
               {DUMMY_EMPLOYEES.map(employee => (
                 <React.Fragment key={employee.id}>
-                  {(['planning', 'repasPris'] as const).map((type, typeIndex) => (
-                    <TableRow key={`${employee.id}-${type}`} className={typeIndex === 0 ? "border-t-2 border-primary/50" : ""}>
-                      {typeIndex === 0 && (
-                        <TableCell rowSpan={2} className="font-medium align-middle sticky left-0 z-10 bg-card/90 backdrop-blur-sm">
-                          {employee.name}
+                  {(['planning', 'repasPris'] as const).map((type, typeIndex) => {
+                    const dayRow = daysInSelectedMonth.map(day => {
+                      const dateKey = `${selectedYear}-${(parseInt(selectedMonth) + 1).toString().padStart(2, '0')}-${day.dayNumber.toString().padStart(2, '0')}`;
+                      const entry = benefitData[employee.id]?.[dateKey] || { planning: "", repasPris: "" };
+                      const cellValue = entry[type];
+                      return (
+                        <TableCell key={`${employee.id}-${day.dayNumber}-${type}`} className={cn("p-0.5 text-center", day.isWeekend && "bg-blue-100 dark:bg-blue-800/20")}>
+                          <Select
+                            value={cellValue === "" ? SELECT_EMPTY_VALUE_PLACEHOLDER : cellValue}
+                            onValueChange={(value) => handleStatusChange(employee.id, day.dayNumber, type, value)}
+                          >
+                            <SelectTrigger className={cn("h-7 text-xs min-w-[45px] p-1 justify-center", cellValue === "X" && "bg-green-100 dark:bg-green-800/30")}>
+                              <SelectValue placeholder="-" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {BENEFIT_STATUS_CODES.map(code => (
+                                <SelectItem 
+                                  key={code === "" ? SELECT_EMPTY_VALUE_PLACEHOLDER : code} 
+                                  value={code === "" ? SELECT_EMPTY_VALUE_PLACEHOLDER : code} 
+                                  className="text-xs"
+                                >
+                                  {code === "" ? "-" : code}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </TableCell>
-                      )}
-                      <TableCell className="text-xs sticky left-[180px] z-10 bg-card/90 backdrop-blur-sm">
-                        {type === 'planning' ? 'Planning' : 'Repas Pris'}
-                      </TableCell>
-                      {daysInSelectedMonth.map(day => {
-                        const dateKey = `${selectedYear}-${(parseInt(selectedMonth) + 1).toString().padStart(2, '0')}-${day.dayNumber.toString().padStart(2, '0')}`;
-                        const entry = benefitData[employee.id]?.[dateKey] || { planning: "", repasPris: "" };
-                        const cellValue = entry[type];
-                        return (
-                          <TableCell key={`${employee.id}-${day.dayNumber}-${type}`} className={cn("p-0.5 text-center", day.isWeekend && "bg-blue-100 dark:bg-blue-800/20")}>
-                            <Select
-                              value={cellValue}
-                              onValueChange={(value) => handleStatusChange(employee.id, day.dayNumber, type, value as BenefitDailyStatusCode)}
-                            >
-                              <SelectTrigger className={cn("h-7 text-xs min-w-[45px] p-1 justify-center", cellValue === "X" && "bg-green-100 dark:bg-green-800/30")}>
-                                <SelectValue placeholder="-" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {BENEFIT_STATUS_CODES.map(code => (
-                                  <SelectItem key={code} value={code} className="text-xs">
-                                    {code === "" ? "-" : code}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                      );
+                    });
+
+                    return (
+                      <TableRow key={`${employee.id}-${type}`} className={typeIndex === 0 ? "border-t-2 border-primary/50" : ""}>
+                        {typeIndex === 0 && (
+                          <TableCell rowSpan={2} className="font-medium align-middle sticky left-0 z-10 bg-card/90 backdrop-blur-sm">
+                            {employee.name}
                           </TableCell>
-                        );
-                      })}
-                      <TableCell className="text-center font-bold sticky right-0 z-10 bg-card/90 backdrop-blur-sm">
-                        {calculateTotal(employee.id, type)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        )}
+                        <TableCell className="text-xs sticky left-[180px] z-10 bg-card/90 backdrop-blur-sm">
+                          {type === 'planning' ? 'Planning' : 'Repas Pris'}
+                        </TableCell>
+                        {dayRow}
+                        <TableCell className="text-center font-bold sticky right-0 z-10 bg-card/90 backdrop-blur-sm">
+                          {calculateTotal(employee.id, type)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </React.Fragment>
               ))}
             </TableBody>
