@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { ArrowLeft, ShieldCheck, SprayCan, Sparkles, Thermometer, Truck, ThermometerSnowflake, ArrowDownUp, History } from 'lucide-react'; // Added ThermometerSnowflake, ArrowDownUp
+import { ArrowLeft, ShieldCheck, SprayCan, Sparkles, Thermometer, Truck, ThermometerSnowflake, ArrowDownUp, Snowflake } from 'lucide-react'; // Added Snowflake
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
@@ -11,9 +11,10 @@ import React from 'react';
 import KitchenCleaningMonitoring from './components/kitchen-cleaning-monitoring';
 import RestaurantCleaningMonitoring from './components/restaurant-cleaning-monitoring';
 import TemperatureMonitoring from './components/temperature-monitoring';
-import ReceptionMonitoring from './components/reception-monitoring'; // Renamed import
+import ReceptionMonitoring from './components/reception-monitoring';
 import ColdChainMonitoring from './components/cold-chain-monitoring';
 import TempChangeMonitoring from './components/temp-change-monitoring';
+import DefrostingMonitoring from './components/defrosting-monitoring'; // New import
 
 
 export default function PmsPage() {
@@ -71,8 +72,8 @@ export default function PmsPage() {
           <TabsTrigger value="reception-monitoring" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             <Truck className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Réception
           </TabsTrigger>
-           <TabsTrigger value="historical-records" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-            <History className="mr-1 sm:mr-2 h-4 w-4" /> Historique Enregistrements
+           <TabsTrigger value="defrosting-monitoring" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <Snowflake className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Décongélation
           </TabsTrigger>
         </TabsList>
 
@@ -94,29 +95,8 @@ export default function PmsPage() {
         <TabsContent value="reception-monitoring">
           <ReceptionMonitoring />
         </TabsContent>
-        <TabsContent value="historical-records">
-            <Card className="shadow-lg">
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                    <History className="w-6 h-6 text-primary"/>
-                    Historique des Enregistrements PMS
-                    </CardTitle>
-                    <CardDescription>
-                    Consultez les archives de tous les enregistrements PMS. (Fonctionnalité à développer)
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="flex flex-col items-center justify-center text-center p-10 border-2 border-dashed border-muted-foreground/20 rounded-lg bg-card/50 min-h-[200px]">
-                        <History className="w-12 h-12 text-muted-foreground mb-4" />
-                        <p className="text-lg font-medium text-muted-foreground">
-                            Section d'historique en cours de développement.
-                        </p>
-                        <p className="text-sm text-muted-foreground/80 mt-2">
-                            Cette section permettra de rechercher et visualiser les anciens enregistrements de tous les modules PMS.
-                        </p>
-                    </div>
-                </CardContent>
-            </Card>
+        <TabsContent value="defrosting-monitoring">
+            <DefrostingMonitoring />
         </TabsContent>
       </Tabs>
     </div>
