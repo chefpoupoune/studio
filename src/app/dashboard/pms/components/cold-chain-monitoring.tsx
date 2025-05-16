@@ -8,18 +8,19 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, Edit2, Trash2, FileText, Loader2, ThermometerSnowflake, ArrowDownCircle, Truck } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, FileText, Loader2, ArrowDownCircle, Truck } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+// Removed Select imports as servicePeriod is removed from delivery
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+import { cn } from '@/lib/utils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,7 +39,7 @@ interface jsPDFWithAutoTable extends jsPDF {
 
 const todayKey = format(new Date(), 'yyyy-MM-dd');
 const COOLDOWN_LOG_STORAGE_KEY_PREFIX = "pms_cold_chain_cooldown_";
-const DELIVERY_LOG_STORAGE_KEY_PREFIX = "pms_cold_chain_delivery_";
+const DELIVERY_LOG_STORAGE_KEY_PREFIX = "pms_cold_chain_delivery_v2_"; // Versioned key
 
 // Schemas
 const coolDownEntrySchema = z.object({
@@ -54,12 +55,14 @@ type CoolDownFormData = z.infer<typeof coolDownEntrySchema>;
 
 const deliveryEntrySchema = z.object({
   productName: z.string().min(1, "Nom du plat/produit requis."),
-  servicePeriod: z.enum(['midi', 'soir', 'autre'], { required_error: "Période de service requise."}),
+  quantity: z.string().optional(),
+  piecesOrPlats: z.string().optional(),
   departureTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: "Format HH:MM requis." }).optional().or(z.literal('')),
   departureTemp: z.string().optional(),
   arrivalTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: "Format HH:MM requis." }).optional().or(z.literal('')),
   arrivalTemp: z.string().optional(),
-  deliveryVisa: z.string().optional(),
+  visaLivreur: z.string().optional(),
+  visaClient: z.string().optional(),
 });
 type DeliveryFormData = z.infer<typeof deliveryEntrySchema>;
 
@@ -139,7 +142,7 @@ export default function ColdChainMonitoring() {
   // Delivery Handlers
   const handleOpenDeliveryDialog = (entry?: DailyDeliveryEntry) => {
     setEditingDeliveryEntry(entry || null);
-    deliveryForm.reset(entry || { productName: '', servicePeriod: 'midi', departureTime: '', departureTemp: '', arrivalTime: '', arrivalTemp: '', deliveryVisa: '' });
+    deliveryForm.reset(entry || { productName: '', quantity: '', piecesOrPlats: '', departureTime: '', departureTemp: '', arrivalTime: '', arrivalTemp: '', visaLivreur: '', visaClient: '' });
     setIsDeliveryDialogOpen(true);
   };
 
@@ -186,24 +189,70 @@ export default function ColdChainMonitoring() {
       doc.setFontSize(16); doc.text(`${title} - ${format(new Date(), "dd/MM/yyyy", {locale: fr})}`, 14, currentY); currentY += 8;
       doc.setFontSize(10); doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY); currentY += 7;
 
-      const headStyles: any = { fontSize: 9, fontStyle: 'bold', halign: 'center', valign: 'middle' };
+      const baseHeadStyles: any = { fontSize: 9, fontStyle: 'bold', halign: 'center', valign: 'middle' };
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
-        if (primaryColorRgb) headStyles.fillColor = primaryColorRgb;
-        headStyles.textColor = (hexToRgb(pdfSettings.primaryColor)![0] * 299 + hexToRgb(pdfSettings.primaryColor)![1] * 587 + hexToRgb(pdfSettings.primaryColor)![2] * 114) / 1000 > 125 ? [0,0,0] : [255,255,255];
+        if (primaryColorRgb) baseHeadStyles.fillColor = primaryColorRgb;
+        baseHeadStyles.textColor = (hexToRgb(pdfSettings.primaryColor)![0] * 299 + hexToRgb(pdfSettings.primaryColor)![1] * 587 + hexToRgb(pdfSettings.primaryColor)![2] * 114) / 1000 > 125 ? [0,0,0] : [255,255,255];
       }
 
-      let head: any[], body: any[][];
+      let head: any[], body: any[][], columnStyles: any = {};
       if (isCooldown) {
-        head = [['Produit', 'Quantité', 'Heure Début', 'T° Début (°C)', 'Heure Fin', 'T° Fin (°C)', 'Visa']];
+        head = [[
+          { content: 'Produit', styles: baseHeadStyles }, 
+          { content: 'Quantité', styles: baseHeadStyles }, 
+          { content: 'Heure Début', styles: baseHeadStyles }, 
+          { content: 'T° Début (°C)', styles: baseHeadStyles }, 
+          { content: 'Heure Fin', styles: baseHeadStyles }, 
+          { content: 'T° Fin (°C)', styles: baseHeadStyles }, 
+          { content: 'Visa', styles: baseHeadStyles }
+        ]];
         body = (dataToExport as DailyCoolDownEntry[]).map(e => [e.productName, e.quantity, e.startTime || '-', e.startTemp || '-', e.endTime || '-', e.endTemp || '-', e.visa || '-']);
       } else {
-        head = [['Produit/Plat', 'Service', 'Heure Départ', 'T° Départ (°C)', 'Heure Arrivée', 'T° Arrivée (°C)', 'Visa']];
-        body = (dataToExport as DailyDeliveryEntry[]).map(e => [e.productName, e.servicePeriod, e.departureTime || '-', e.departureTemp || '-', e.arrivalTime || '-', e.arrivalTemp || '-', e.deliveryVisa || '-']);
+        const greenBg = [209, 250, 229]; const yellowBg = [254, 249, 195]; const greyBg = [229, 231, 235];
+        const coloredHeadStyle = (color: [number,number,number]) => ({ ...baseHeadStyles, fillColor: color, textColor: [0,0,0], fontSize: 8 });
+        
+        head = [
+          [ // First header row
+            { content: 'Produits', rowSpan: 2, styles: baseHeadStyles },
+            { content: 'Quantité', rowSpan: 2, styles: baseHeadStyles },
+            { content: 'Pièces / Plats', rowSpan: 2, styles: baseHeadStyles },
+            { content: 'Départ', colSpan: 2, styles: coloredHeadStyle(greenBg) },
+            { content: 'Arrivé', colSpan: 2, styles: coloredHeadStyle(yellowBg) },
+            { content: 'VISA', colSpan: 2, styles: coloredHeadStyle(greyBg) }
+          ],
+          [ // Second header row (for sub-columns)
+            { content: 'heure', styles: coloredHeadStyle(greenBg) },
+            { content: 'Temperature', styles: coloredHeadStyle(greenBg) },
+            { content: 'heure', styles: coloredHeadStyle(yellowBg) },
+            { content: 'Temperature', styles: coloredHeadStyle(yellowBg) },
+            { content: 'Livreur', styles: coloredHeadStyle(greyBg) },
+            { content: 'Client', styles: coloredHeadStyle(greyBg) }
+          ]
+        ];
+        body = (dataToExport as DailyDeliveryEntry[]).map(e => [
+          e.productName, 
+          e.quantity || '-', 
+          e.piecesOrPlats || '-', 
+          e.departureTime || '-', 
+          e.departureTemp || '-', 
+          e.arrivalTime || '-', 
+          e.arrivalTemp || '-', 
+          e.visaLivreur || '-', 
+          e.visaClient || '-'
+        ]);
+        columnStyles = {
+          3: { fillColor: greenBg }, 4: { fillColor: greenBg },
+          5: { fillColor: yellowBg }, 6: { fillColor: yellowBg },
+          7: { fillColor: greyBg }, 8: { fillColor: greyBg },
+        };
       }
 
       doc.autoTable({
-        head, body, startY: currentY, theme: 'grid', headStyles, styles: { fontSize: 8, cellPadding: 1.5, valign: 'middle', halign: 'center' },
+        head, body, startY: currentY, theme: 'grid', 
+        headStyles: baseHeadStyles, // General head styles
+        styles: { fontSize: 8, cellPadding: 1.5, valign: 'middle', halign: 'center' },
+        columnStyles: columnStyles,
         didDrawPage: (data) => { /* Footer logic */ }
       });
       doc.save(`Suivi_${filenameSuffix}_${todayKey}.pdf`);
@@ -214,6 +263,12 @@ export default function ColdChainMonitoring() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const cellBgClasses = {
+    depart: "bg-green-100 dark:bg-green-800/30",
+    arrive: "bg-yellow-100 dark:bg-yellow-800/30",
+    visa: "bg-gray-100 dark:bg-gray-700/40",
   };
 
 
@@ -282,42 +337,73 @@ export default function ColdChainMonitoring() {
             <div className="flex items-center gap-2"><Truck className="w-6 h-6 text-primary"/>Livraison du Jour</div>
             <Dialog open={isDeliveryDialogOpen} onOpenChange={setIsDeliveryDialogOpen}>
               <DialogTrigger asChild><Button onClick={() => handleOpenDeliveryDialog()}><PlusCircle className="mr-2 h-4 w-4"/>Ajouter Livraison</Button></DialogTrigger>
-              <DialogContent className="sm:max-w-lg">
+              <DialogContent className="sm:max-w-xl md:max-w-2xl">
                 <DialogHeader><DialogTitle>{editingDeliveryEntry ? "Modifier" : "Nouvelle"} Livraison</DialogTitle></DialogHeader>
                 <Form {...deliveryForm}>
                   <form onSubmit={deliveryForm.handleSubmit(handleDeliveryFormSubmit)} className="space-y-3 py-2 max-h-[70vh] overflow-y-auto pr-2">
                     <FormField control={deliveryForm.control} name="productName" render={({ field }) => (<FormItem><FormLabel>Produit/Plat</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={deliveryForm.control} name="servicePeriod" render={({ field }) => (<FormItem><FormLabel>Service</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Choisir service"/></SelectTrigger></FormControl>
-                        <SelectContent><SelectItem value="midi">Midi</SelectItem><SelectItem value="soir">Soir</SelectItem><SelectItem value="autre">Autre</SelectItem></SelectContent>
-                      </Select><FormMessage /></FormItem>)} />
+                    <div className="grid grid-cols-2 gap-3">
+                        <FormField control={deliveryForm.control} name="quantity" render={({ field }) => (<FormItem><FormLabel>Quantité</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField control={deliveryForm.control} name="piecesOrPlats" render={({ field }) => (<FormItem><FormLabel>Pièces / Plats</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    </div>
+                    <h4 className="text-sm font-medium pt-1 text-center">Départ</h4>
                     <div className="grid grid-cols-2 gap-3">
                       <FormField control={deliveryForm.control} name="departureTime" render={({ field }) => (<FormItem><FormLabel>Heure Départ</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
                       <FormField control={deliveryForm.control} name="departureTemp" render={({ field }) => (<FormItem><FormLabel>T° Départ (°C)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                     </div>
+                     <h4 className="text-sm font-medium pt-1 text-center">Arrivé</h4>
                     <div className="grid grid-cols-2 gap-3">
                       <FormField control={deliveryForm.control} name="arrivalTime" render={({ field }) => (<FormItem><FormLabel>Heure Arrivée</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
                       <FormField control={deliveryForm.control} name="arrivalTemp" render={({ field }) => (<FormItem><FormLabel>T° Arrivée (°C)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                     </div>
-                    <FormField control={deliveryForm.control} name="deliveryVisa" render={({ field }) => (<FormItem><FormLabel>Visa</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <h4 className="text-sm font-medium pt-1 text-center">VISA</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                        <FormField control={deliveryForm.control} name="visaLivreur" render={({ field }) => (<FormItem><FormLabel>Visa Livreur</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField control={deliveryForm.control} name="visaClient" render={({ field }) => (<FormItem><FormLabel>Visa Client</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    </div>
                     <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit">{editingDeliveryEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
                   </form>
                 </Form>
               </DialogContent>
             </Dialog>
           </CardTitle>
-          <CardDescription>Suivi des livraisons (Midi/Soir) pour la journée en cours.</CardDescription>
+          <CardDescription>Suivi des livraisons pour la journée en cours.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : deliveryEntries.length === 0 ? <p className="text-center text-muted-foreground">Aucune livraison enregistrée.</p> : (
             <div className="overflow-x-auto border rounded-md">
               <Table>
-                <TableHeader><TableRow><TableHead>Produit/Plat</TableHead><TableHead>Service</TableHead><TableHead>H.Départ</TableHead><TableHead>T°Départ</TableHead><TableHead>H.Arrivée</TableHead><TableHead>T°Arrivée</TableHead><TableHead>Visa</TableHead><TableHead className="text-center">Actions</TableHead></TableRow></TableHeader>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead rowSpan={2} className="text-center align-middle min-w-[150px]">Produits</TableHead>
+                        <TableHead rowSpan={2} className="text-center align-middle min-w-[80px]">Quantité</TableHead>
+                        <TableHead rowSpan={2} className="text-center align-middle min-w-[100px]">Pièces / Plats</TableHead>
+                        <TableHead colSpan={2} className={cn("text-center", cellBgClasses.depart)}>Départ</TableHead>
+                        <TableHead colSpan={2} className={cn("text-center", cellBgClasses.arrive)}>Arrivé</TableHead>
+                        <TableHead colSpan={2} className={cn("text-center", cellBgClasses.visa)}>VISA</TableHead>
+                        <TableHead rowSpan={2} className="text-center align-middle min-w-[100px]">Actions</TableHead>
+                    </TableRow>
+                    <TableRow>
+                        <TableHead className={cn("text-center", cellBgClasses.depart)}>heure</TableHead>
+                        <TableHead className={cn("text-center", cellBgClasses.depart)}>Temperature</TableHead>
+                        <TableHead className={cn("text-center", cellBgClasses.arrive)}>heure</TableHead>
+                        <TableHead className={cn("text-center", cellBgClasses.arrive)}>Temperature</TableHead>
+                        <TableHead className={cn("text-center", cellBgClasses.visa)}>Livreur</TableHead>
+                        <TableHead className={cn("text-center", cellBgClasses.visa)}>Client</TableHead>
+                    </TableRow>
+                </TableHeader>
                 <TableBody>
                   {deliveryEntries.map(e => (
                     <TableRow key={e.id}>
-                      <TableCell>{e.productName}</TableCell><TableCell>{e.servicePeriod}</TableCell><TableCell>{e.departureTime || '-'}</TableCell><TableCell>{e.departureTemp || '-'}</TableCell>
-                      <TableCell>{e.arrivalTime || '-'}</TableCell><TableCell>{e.arrivalTemp || '-'}</TableCell><TableCell>{e.deliveryVisa || '-'}</TableCell>
+                      <TableCell>{e.productName}</TableCell>
+                      <TableCell className="text-center">{e.quantity || '-'}</TableCell>
+                      <TableCell className="text-center">{e.piecesOrPlats || '-'}</TableCell>
+                      <TableCell className={cn("text-center", cellBgClasses.depart)}>{e.departureTime || '-'}</TableCell>
+                      <TableCell className={cn("text-center", cellBgClasses.depart)}>{e.departureTemp || '-'}</TableCell>
+                      <TableCell className={cn("text-center", cellBgClasses.arrive)}>{e.arrivalTime || '-'}</TableCell>
+                      <TableCell className={cn("text-center", cellBgClasses.arrive)}>{e.arrivalTemp || '-'}</TableCell>
+                      <TableCell className={cn("text-center", cellBgClasses.visa)}>{e.visaLivreur || '-'}</TableCell>
+                      <TableCell className={cn("text-center", cellBgClasses.visa)}>{e.visaClient || '-'}</TableCell>
                       <TableCell className="text-center space-x-1">
                         <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5"/></Button></AlertDialogTrigger>
                           <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Supprimer livraison de "{e.productName}"?</AlertDialogTitle><AlertDialogDescription>Action irréversible.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annuler</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteDeliveryEntry(e.id)}>Supprimer</AlertDialogAction></AlertDialogFooter></AlertDialogContent>

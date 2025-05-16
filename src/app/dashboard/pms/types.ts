@@ -1,5 +1,4 @@
 
-
 export interface PmsTaskDefinition {
   id: string;
   name: string;
@@ -121,12 +120,14 @@ export interface DailyCoolDownEntry {
 export interface DailyDeliveryEntry {
   id: string;
   productName: string;
-  servicePeriod: 'midi' | 'soir' | 'autre';
+  quantity?: string;
+  piecesOrPlats?: string;
   departureTime?: string; // HH:mm
   departureTemp?: string; // °C
   arrivalTime?: string;   // HH:mm
   arrivalTemp?: string;   // °C
-  deliveryVisa?: string;  // Initials
+  visaLivreur?: string;  // Initials
+  visaClient?: string;   // Initials
 }
 
 export const NO_STATUS_SELECT_VALUE = "_aucun_statut_";
