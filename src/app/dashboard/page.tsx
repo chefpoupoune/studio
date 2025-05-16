@@ -30,63 +30,19 @@ export default function DashboardPage() {
       </div>
 
       <p className="mb-6 text-md text-muted-foreground max-w-2xl">
-        Naviguez vers les différentes sections pour gérer votre établissement.
+        Utilisez la barre de navigation latérale pour accéder aux différentes sections de l'application.
       </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        <DashboardCard
-          title="Gestion des Stocks Entretien"
-          description="Gérez produits, stocks, inventaires et commandes."
-          href="/dashboard/inventory"
-          icon={<Archive className="w-7 h-7 text-primary" />}
-        />
-         <DashboardCard
-          title="Avantages en Nature"
-          description="Suivi mensuel des avantages et export PDF."
-          href="/dashboard/benefits"
-          icon={<FileSpreadsheet className="w-7 h-7 text-primary" />}
-        />
-        <DashboardCard
-          title="Suivi des Heures Brigade"
-          description="Gérez heures, absences et générez des relevés."
-          href="/dashboard/time-tracking"
-          icon={<Users className="w-7 h-7 text-primary" />}
-        />
-        <DashboardCard
-          title="Gestion des Tâches & Problèmes"
-          description="Suivez tâches, problèmes et leur avancement."
-          href="/dashboard/task-management"
-          icon={<ClipboardList className="w-7 h-7 text-primary" />}
-        />
-        <DashboardCard
-          title="Gestion des Coûts"
-          description="Analysez les coûts de revient et gérez les dépenses."
-          href="/dashboard/cost-management"
-          icon={<DollarSign className="w-7 h-7 text-primary" />}
-        />
-        <DashboardCard
-          title="Planification des Menus"
-          description="Planifiez les menus et générez des fiches de commande."
-          href="/dashboard/menu-planning"
-          icon={<BookOpenText className="w-7 h-7 text-primary" />}
-        />
-         <DashboardCard
-          title="PMS"
-          description="Gérez nettoyage, températures et livraisons."
-          href="/dashboard/pms"
-          icon={<ShieldCheck className="w-7 h-7 text-primary" />}
-        />
-        <DashboardCard
-          title="Paramètres"
-          description="Configurez les PDF et paramètres de l'app."
-          href="/dashboard/settings"
-          icon={<Settings className="w-7 h-7 text-primary" />}
-        />
-      </div>
+      {/* La grille de navigation a été supprimée d'ici */}
+      
     </div>
   );
 }
 
+// Le composant DashboardCard n'est plus nécessaire ici s'il n'est plus utilisé sur cette page.
+// Si DashboardCard est utilisé ailleurs, il peut rester, sinon il peut être supprimé de ce fichier.
+// Pour l'instant, je le laisse commenté au cas où.
+/*
 interface DashboardCardProps {
   title: string;
   description: string;
@@ -126,3 +82,4 @@ function DashboardCard({ title, description, href, icon, disabled }: DashboardCa
 
   return <Link href={href} className="h-full block">{cardContent}</Link>;
 }
+*/
