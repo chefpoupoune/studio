@@ -239,9 +239,14 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
 
       <div className="my-4 p-3 border rounded-md bg-muted/50">
         <p className="font-semibold text-sm mb-2">Légende :</p>
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+        <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs">
           {BENEFIT_STATUS_LEGEND.map(item => (
-            <span key={item.code}><b>{item.code || "Vide"}</b>: {item.label}</span>
+            <div key={item.code} className="flex items-center gap-1.5">
+              <span className={cn("px-1.5 py-0.5 rounded-sm text-xs font-medium", item.displayClass)}>
+                {item.code || "-"}
+              </span>
+              <span>: {item.label}</span>
+            </div>
           ))}
         </div>
       </div>
@@ -291,13 +296,19 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
                       const dateKey = `${selectedYear}-${(parseInt(selectedMonth) + 1).toString().padStart(2, '0')}-${day.dayNumber.toString().padStart(2, '0')}`;
                       const entry = benefitData[employee.id]?.[dateKey] || { planning: "", repasPris: "" };
                       const cellValue = entry[type];
+                      const statusConfig = BENEFIT_STATUS_LEGEND.find(s => s.code === cellValue);
+                      const cellDisplayClass = statusConfig ? statusConfig.displayClass : "border border-muted-foreground/30";
+
                       return (
                         <TableCell key={`${employee.id}-${day.dayNumber}-${type}`} className={cn("p-0.5 text-center", day.isWeekend && "bg-blue-100 dark:bg-blue-800/20")}>
                           <Select
                             value={cellValue === "" ? SELECT_EMPTY_VALUE_PLACEHOLDER : cellValue}
                             onValueChange={(value) => handleStatusChange(employee.id, day.dayNumber, type, value)}
                           >
-                            <SelectTrigger className={cn("h-7 text-xs min-w-[45px] p-1 justify-center", cellValue === "X" && "bg-green-100 dark:bg-green-800/30")}>
+                            <SelectTrigger className={cn(
+                              "h-7 text-xs min-w-[45px] p-1 justify-center",
+                              cellDisplayClass
+                            )}>
                               <SelectValue placeholder="-" />
                             </SelectTrigger>
                             <SelectContent>
