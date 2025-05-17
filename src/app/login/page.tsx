@@ -3,12 +3,12 @@
 
 import { useState, useEffect, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image'; // Importation de next/image
+// Removed Image import
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { User, LockKeyhole, ArrowLeft, Utensils } from 'lucide-react'; // Ajout de Utensils pour l'icône
+import { User, LockKeyhole, ArrowLeft, Utensils } from 'lucide-react';
 import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
 import type { AppUser, RubricId, ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management';
@@ -153,18 +153,8 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4 md:p-8 bg-background">
-      <div className="mb-8">
-        <Image
-          src="https://placehold.co/400x200.png" // Placeholder, vous pouvez changer l'URL et la taille
-          alt="Ambiance cuisine"
-          width={400}
-          height={200}
-          className="rounded-lg shadow-lg object-cover"
-          data-ai-hint="cuisine restaurant" // Indice pour une image de cuisine/restaurant
-          priority // Charger l'image prioritairement
-        />
-      </div>
-      <Card className="w-full max-w-md shadow-2xl">
+      {/* Image removed from here */}
+      <Card className="w-full max-w-md shadow-2xl mt-8 sm:mt-0"> {/* Added margin-top for spacing if needed */}
         <CardHeader className="text-center">
           <div className="flex items-center justify-center mb-2">
             <Utensils className="w-8 h-8 text-primary mr-2" />
