@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -61,7 +62,7 @@ export default function EmployeeHoursSummary() {
   }, [isClient]);
 
   useEffect(() => {
-    if (isLoading || !viewConfig || !isClient) { // Added !isClient to prevent premature processing
+    if (isLoading || !viewConfig || !isClient) { 
       setProcessedHours([]);
       return;
     }
@@ -79,7 +80,7 @@ export default function EmployeeHoursSummary() {
       hoursToDisplay = allMembers.map(member => {
         const { added, deducted, net } = calculateHoursForMember(member.id);
         return { memberId: member.id, name: member.name, role: member.role, added, deducted, net };
-      }).sort((a,b) => b.net - a.net); // Sort by net hours descending for 'all' view
+      }).sort((a,b) => b.net - a.net); 
     } else if (viewConfig.type === 'own' && loggedInUsername) {
       const ownMember = allMembers.find(m => m.name.toLowerCase() === loggedInUsername.toLowerCase());
       if (ownMember) {
@@ -155,8 +156,8 @@ export default function EmployeeHoursSummary() {
     // For 'own' or 'specific'
     const singleMemberData = processedHours[0];
     return (
-      <div className="space-y-1.5 text-sm">
-        <p className="font-semibold text-lg text-center mb-1">{singleMemberData.name} <span className="text-base text-muted-foreground">({singleMemberData.role})</span></p>
+      <div className="space-y-2 text-sm">
+        <p className="font-semibold text-lg text-center mb-3">{singleMemberData.name} <span className="text-base text-muted-foreground">({singleMemberData.role})</span></p>
         <div className="flex justify-between items-center p-2 bg-green-50 dark:bg-green-900/30 rounded-md">
           <span className="flex items-center"><TrendingUp className="h-4 w-4 mr-1.5 text-green-600 dark:text-green-400"/>Heures Ajoutées:</span>
           <span className="font-bold text-green-600 dark:text-green-400">{singleMemberData.added.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} h</span>
@@ -166,7 +167,7 @@ export default function EmployeeHoursSummary() {
           <span className="font-bold text-red-600 dark:text-red-400">{singleMemberData.deducted.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} h</span>
         </div>
         <div className={`flex justify-between items-center p-2 rounded-md ${singleMemberData.net >= 0 ? 'bg-blue-50 dark:bg-blue-900/30' : 'bg-orange-50 dark:bg-orange-900/30'}`}>
-          <span className="flex items-center"><Scale className="h-4 w-4 mr-1.5 ${singleMemberData.net >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-orange-600 dark:text-orange-400'}"/>Solde d'Heures:</span>
+          <span className="flex items-center"><Scale className={`h-4 w-4 mr-1.5 ${singleMemberData.net >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-orange-600 dark:text-orange-400'}`}/>Solde d'Heures:</span>
           <span className={`font-bold text-lg ${singleMemberData.net >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-orange-600 dark:text-orange-400'}`}>
             {singleMemberData.net.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} h
           </span>
@@ -182,13 +183,13 @@ export default function EmployeeHoursSummary() {
   };
   
   const getCardDescription = () => {
-    if (viewConfig?.type === 'all') return "Solde d'heures pour chaque membre.";
-    if (viewConfig?.type === 'own' && loggedInUsername) return `Votre solde d'heures (${loggedInUsername}).`;
+    if (viewConfig?.type === 'all') return "Aperçu du solde horaire pour chaque membre.";
+    if (viewConfig?.type === 'own' && loggedInUsername) return `Votre solde horaire personnel (${loggedInUsername}).`;
     if (viewConfig?.type === 'specific') {
         const memberName = allMembers.find(m => m.id === viewConfig.specificMemberId)?.name;
-        return memberName ? `Solde d'heures pour ${memberName}.` : "Solde d'heures pour un employé.";
+        return memberName ? `Solde horaire de ${memberName}.` : "Solde horaire pour un employé.";
     }
-    return "Récapitulatif des heures.";
+    return "Configuration de l'accès aux heures requise.";
   }
 
 
@@ -209,3 +210,4 @@ export default function EmployeeHoursSummary() {
     </Card>
   );
 }
+
