@@ -3,11 +3,12 @@
 
 import { useState, useEffect, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image'; // Importation de next/image
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { User, LockKeyhole, ArrowLeft } from 'lucide-react';
+import { User, LockKeyhole, ArrowLeft, Utensils } from 'lucide-react'; // Ajout de Utensils pour l'icône
 import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
 import type { AppUser, RubricId, ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management';
@@ -51,7 +52,7 @@ export default function LoginPage() {
         if (storedUsersRaw) {
           const parsedUsers = JSON.parse(storedUsersRaw);
           if (Array.isArray(parsedUsers)) {
-            users = parsedUsers.map((u: any) => ({ // Ensure AppUser structure
+            users = parsedUsers.map((u: any) => ({ 
               id: u.id || `imported_user_${Math.random().toString(36).substring(7)}`,
               username: u.username || "Utilisateur Inconnu",
               passwordRequired: typeof u.passwordRequired === 'boolean' ? u.passwordRequired : false,
@@ -88,8 +89,8 @@ export default function LoginPage() {
                     ...u,
                     passwordRequired: true, 
                     simulatedStoredPassword: u.simulatedStoredPassword || simulatedHash('000'),
-                    permissions: defaultChefPermissions, // Ensure chef always has all permissions
-                    viewableHourSummaryConfig: { type: 'all' }, // Chef sees all hours
+                    permissions: defaultChefPermissions, 
+                    viewableHourSummaryConfig: { type: 'all' }, 
                 };
             }
             return u;
@@ -152,18 +153,32 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4 md:p-8 bg-background">
+      <div className="mb-8">
+        <Image
+          src="https://placehold.co/400x200.png" // Placeholder, vous pouvez changer l'URL et la taille
+          alt="Ambiance cuisine"
+          width={400}
+          height={200}
+          className="rounded-lg shadow-lg object-cover"
+          data-ai-hint="cuisine restaurant" // Indice pour une image de cuisine/restaurant
+          priority // Charger l'image prioritairement
+        />
+      </div>
       <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="text-center">
-          <h1 className="text-4xl font-serif font-bold text-foreground title-glow mb-2">
-            Gestion par l'excellence
-          </h1>
+          <div className="flex items-center justify-center mb-2">
+            <Utensils className="w-8 h-8 text-primary mr-2" />
+            <h1 className="text-4xl font-serif font-bold text-foreground title-glow">
+              Gestion par l'excellence
+            </h1>
+          </div>
           <CurrentDate />
         </CardHeader>
-        <CardContent className="mt-4">
+        <CardContent className="mt-2">
           {!selectedUserForPassword ? (
             <>
-              <CardDescription className="text-center mb-6">
-                Veuillez sélectionner un utilisateur pour vous connecter.
+              <CardDescription className="text-center mb-4 text-md">
+                Bienvenue ! Veuillez sélectionner un utilisateur pour vous connecter.
               </CardDescription>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {definedUsers.length > 0 ? (
@@ -241,5 +256,3 @@ export default function LoginPage() {
     </main>
   );
 }
-
-    
