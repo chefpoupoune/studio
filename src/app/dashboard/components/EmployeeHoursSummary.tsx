@@ -159,15 +159,24 @@ export default function EmployeeHoursSummary() {
       <div className="space-y-2 text-sm">
         <p className="font-semibold text-lg text-center mb-3">{singleMemberData.name} <span className="text-base text-muted-foreground">({singleMemberData.role})</span></p>
         <div className="flex justify-between items-center p-2 bg-green-50 dark:bg-green-900/30 rounded-md">
-          <span className="flex items-center"><TrendingUp className="h-4 w-4 mr-1.5 text-green-600 dark:text-green-400"/>Heures Ajoutées:</span>
+          <span className="flex items-center">
+            <TrendingUp className="h-4 w-4 mr-1.5 text-green-600 dark:text-green-400"/>
+            <span className="text-black dark:text-white">Heures Ajoutées:</span>
+          </span>
           <span className="font-bold text-green-600 dark:text-green-400">{singleMemberData.added.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} h</span>
         </div>
         <div className="flex justify-between items-center p-2 bg-red-50 dark:bg-red-900/30 rounded-md">
-          <span className="flex items-center"><TrendingDown className="h-4 w-4 mr-1.5 text-red-600 dark:text-red-400"/>Heures Déduites:</span>
+          <span className="flex items-center">
+            <TrendingDown className="h-4 w-4 mr-1.5 text-red-600 dark:text-red-400"/>
+            <span className="text-black dark:text-white">Heures Déduites:</span>
+          </span>
           <span className="font-bold text-red-600 dark:text-red-400">{singleMemberData.deducted.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} h</span>
         </div>
         <div className={`flex justify-between items-center p-2 rounded-md ${singleMemberData.net >= 0 ? 'bg-blue-50 dark:bg-blue-900/30' : 'bg-orange-50 dark:bg-orange-900/30'}`}>
-          <span className="flex items-center"><Scale className={`h-4 w-4 mr-1.5 ${singleMemberData.net >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-orange-600 dark:text-orange-400'}`}/>Solde d'Heures:</span>
+          <span className="flex items-center">
+            <Scale className={`h-4 w-4 mr-1.5 ${singleMemberData.net >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-orange-600 dark:text-orange-400'}`}/>
+            <span className="text-black dark:text-white">Solde d'Heures:</span>
+          </span>
           <span className={`font-bold text-lg ${singleMemberData.net >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-orange-600 dark:text-orange-400'}`}>
             {singleMemberData.net.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} h
           </span>
