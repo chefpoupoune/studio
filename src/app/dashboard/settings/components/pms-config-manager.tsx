@@ -3,12 +3,18 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import type { PmsZone, PmsTaskDefinition, PmsConfigurations } from '../types';
-import { PMS_KITCHEN_CLEANING_KEY, PMS_RESTAURANT_CLEANING_KEY, PMS_TEMPERATURE_MONITORING_KEY, PMS_CONFIG_STORAGE_KEY } from '../types';
+import { 
+  PMS_KITCHEN_CLEANING_KEY, 
+  PMS_RESTAURANT_CLEANING_KEY, 
+  PMS_TEMPERATURE_MONITORING_KEY, 
+  PMS_FRYER_OIL_MONITORING_KEY, // Import new key
+  PMS_CONFIG_STORAGE_KEY 
+} from '../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { PlusCircle, Edit2, Trash2, ShieldAlert, ClipboardEdit, SprayCan, Sparkles, Thermometer } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, ShieldAlert, ClipboardEdit, SprayCan, Sparkles, Thermometer, Flame } from 'lucide-react'; // Added Flame
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -29,7 +35,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const baseZoneSchema = z.object({
-  name: z.string().min(1, "Le nom de la zone/équipement est requis."),
+  name: z.string().min(1, "Le nom de la zone/équipement/friteuse est requis."),
 });
 
 const temperatureEquipmentSchema = baseZoneSchema.extend({
@@ -55,7 +61,7 @@ type ZoneFormData = z.infer<typeof baseZoneSchema>;
 type TemperatureEquipmentFormData = z.infer<typeof temperatureEquipmentSchema>;
 
 const taskSchema = z.object({
-  name: z.string().min(1, "Le nom de la tâche est requis."),
+  name: z.string().min(1, "Le nom de la tâche/critère est requis."),
 });
 type TaskFormData = z.infer<typeof taskSchema>;
 
@@ -85,7 +91,8 @@ export default function PmsConfigManager() {
         setPmsConfigs({ 
             [PMS_KITCHEN_CLEANING_KEY]: [], 
             [PMS_RESTAURANT_CLEANING_KEY]: [],
-            [PMS_TEMPERATURE_MONITORING_KEY]: [] 
+            [PMS_TEMPERATURE_MONITORING_KEY]: [],
+            [PMS_FRYER_OIL_MONITORING_KEY]: [], // Initialize new category
         });
       }
     } catch (error) {
@@ -93,7 +100,8 @@ export default function PmsConfigManager() {
       setPmsConfigs({ 
           [PMS_KITCHEN_CLEANING_KEY]: [], 
           [PMS_RESTAURANT_CLEANING_KEY]: [],
-          [PMS_TEMPERATURE_MONITORING_KEY]: [] 
+          [PMS_TEMPERATURE_MONITORING_KEY]: [],
+          [PMS_FRYER_OIL_MONITORING_KEY]: [], // Initialize new category
       });
       toast({ title: "Erreur de chargement", description: "Configurations PMS corrompues.", variant: "destructive" });
     }
@@ -142,7 +150,8 @@ export default function PmsConfigManager() {
   const handleZoneSubmit = (data: ZoneFormData | TemperatureEquipmentFormData) => {
     if (!currentCategoryKey) return;
     const currentItems = pmsConfigs[currentCategoryKey] || []; 
-    const itemLabel = currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone";
+    const itemLabel = currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : 
+                      currentCategoryKey === PMS_FRYER_OIL_MONITORING_KEY ? "Friteuse" : "Zone";
     
     let updatedItemData: PmsZone;
 
@@ -186,13 +195,14 @@ export default function PmsConfigManager() {
   };
 
   const handleDeleteZone = (categoryKey: string, itemId: string, itemName: string) => {
-    const itemLabelSingular = categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "cet équipement" : "cette zone";
-    const itemLabelPlural = categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "ses configurations" : "ses tâches";
+    const itemLabelSingular = categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "cet équipement" : 
+                               categoryKey === PMS_FRYER_OIL_MONITORING_KEY ? "cette friteuse" : "cette zone";
+    const itemLabelPlural = categoryKey === PMS_TEMPERATURE_MONITORING_KEY || categoryKey === PMS_FRYER_OIL_MONITORING_KEY ? "ses configurations" : "ses tâches";
     
     const currentItems = pmsConfigs[categoryKey] || [];
     const updatedItems = currentItems.filter(item => item.id !== itemId);
     saveConfigs({ ...pmsConfigs, [currentCategoryKey]: updatedItems });
-    toast({ title: `${categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone"} Supprimé(e)`, description: `L'élément "${itemName}" a été supprimé.`, variant: "destructive" });
+    toast({ title: `${categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : categoryKey === PMS_FRYER_OIL_MONITORING_KEY ? "Friteuse" : "Zone"} Supprimé(e)`, description: `L'élément "${itemName}" a été supprimé.`, variant: "destructive" });
   };
 
   const handleOpenTaskDialog = (categoryKey: string, zone: PmsZone, task?: PmsTaskDefinition) => {
@@ -212,11 +222,11 @@ export default function PmsConfigManager() {
         let updatedTasks: PmsTaskDefinition[];
         if (editingTask) {
           updatedTasks = (item.tasks || []).map(t => t.id === editingTask.id ? { ...t, ...data } : t);
-          toast({ title: "Tâche Modifiée", description: `La tâche "${data.name}" a été mise à jour.` });
+          toast({ title: "Tâche/Critère Modifié(e)", description: `L'élément "${data.name}" a été mis à jour.` });
         } else {
           const newTask: PmsTaskDefinition = { ...data, id: `${currentCategoryKey}_task_${Date.now()}` };
           updatedTasks = [...(item.tasks || []), newTask];
-          toast({ title: "Tâche Ajoutée", description: `La tâche "${data.name}" a été ajoutée à ${item.name}.` });
+          toast({ title: "Tâche/Critère Ajouté(e)", description: `L'élément "${data.name}" a été ajouté(e) à ${item.name}.` });
         }
         return { ...item, tasks: updatedTasks };
       }
@@ -235,10 +245,10 @@ export default function PmsConfigManager() {
       return item;
     });
     saveConfigs({ ...pmsConfigs, [currentCategoryKey]: updatedItems });
-    toast({ title: "Tâche Supprimée", description: `La tâche "${taskName}" a été supprimée.`, variant: "destructive" });
+    toast({ title: "Tâche/Critère Supprimé(e)", description: `L'élément "${taskName}" a été supprimé.`, variant: "destructive" });
   };
 
-  const renderCategoryConfig = (categoryKey: string, categoryLabel: string, IconComponent: React.ElementType, itemLabel: string = "Zone", taskItemLabel: string = "Tâche") => {
+  const renderCategoryConfig = (categoryKey: string, categoryLabel: string, IconComponent: React.ElementType, itemLabel: string = "Zone", taskItemLabel: string = "Tâche/Critère") => {
     const itemsForCategory = pmsConfigs[categoryKey] || [];
     const showTasksForThisCategory = categoryKey !== PMS_TEMPERATURE_MONITORING_KEY;
 
@@ -249,12 +259,12 @@ export default function PmsConfigManager() {
             <IconComponent className="w-5 h-5 text-primary"/>
             {categoryLabel}
           </CardTitle>
-          <CardDescription>Gérez les {itemLabel.toLowerCase()}s {showTasksForThisCategory ? `et leurs ${taskItemLabel.toLowerCase()}s associées` : ''} pour {categoryLabel.toLowerCase()}.</CardDescription>
+          <CardDescription>Gérez les {itemLabel.toLowerCase()}s {showTasksForThisCategory ? `et leurs ${taskItemLabel.toLowerCase()}s associés` : ''} pour {categoryLabel.toLowerCase()}.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="mb-4">
             <Button onClick={() => handleOpenZoneDialog(categoryKey)}>
-              <PlusCircle className="mr-2 h-4 w-4" /> Ajouter {itemLabel === "Zone" ? "une" : "un"} {itemLabel.toLowerCase()}
+              <PlusCircle className="mr-2 h-4 w-4" /> Ajouter {itemLabel === "Zone" || itemLabel === "Friteuse" ? "une" : "un"} {itemLabel.toLowerCase()}
             </Button>
           </div>
 
@@ -296,7 +306,7 @@ export default function PmsConfigManager() {
                           <AlertDialogHeader>
                             <AlertDialogTitle>Êtes-vous sûr de vouloir supprimer "{item.name}"?</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Cette action est irréversible et supprimera l'élément ainsi que toutes ses tâches associées (le cas échéant).
+                              Cette action est irréversible et supprimera l'élément ainsi que tous ses {taskItemLabel.toLowerCase()}s associés (le cas échéant).
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
@@ -332,7 +342,7 @@ export default function PmsConfigManager() {
                                   </AlertDialogTrigger>
                                   <AlertDialogContent>
                                     <AlertDialogHeader>
-                                      <AlertDialogTitle>Êtes-vous sûr de vouloir supprimer la tâche "{task.name}"?</AlertDialogTitle>
+                                      <AlertDialogTitle>Êtes-vous sûr de vouloir supprimer "{task.name}"?</AlertDialogTitle>
                                       <AlertDialogDescription>
                                         Cette action est irréversible.
                                       </AlertDialogDescription>
@@ -340,7 +350,7 @@ export default function PmsConfigManager() {
                                     <AlertDialogFooter>
                                       <AlertDialogCancel>Annuler</AlertDialogCancel>
                                       <AlertDialogAction onClick={() => handleDeleteTask(categoryKey, item.id, task.id, task.name)}>
-                                        Supprimer Tâche
+                                        Supprimer {taskItemLabel}
                                       </AlertDialogAction>
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
@@ -358,7 +368,7 @@ export default function PmsConfigManager() {
                             <PlusCircle className="mr-1.5 h-3 w-3" /> Ajouter {taskItemLabel}
                           </Button>
                         </div>
-                       <p className="text-xs text-muted-foreground py-1">Aucune {taskItemLabel.toLowerCase()} définie pour cet(te) {itemLabel.toLowerCase()}.</p>
+                       <p className="text-xs text-muted-foreground py-1">Aucun(e) {taskItemLabel.toLowerCase()} défini(e) pour cet(te) {itemLabel.toLowerCase()}.</p>
                      </AccordionContent>
                    )}
                 </AccordionItem>
@@ -375,23 +385,30 @@ export default function PmsConfigManager() {
       {renderCategoryConfig(PMS_KITCHEN_CLEANING_KEY, "Suivi Nettoyage Cuisine", SprayCan, "Zone", "Tâche de Nettoyage")}
       {renderCategoryConfig(PMS_RESTAURANT_CLEANING_KEY, "Suivi Nettoyage Restaurant", Sparkles, "Zone", "Tâche de Nettoyage")}
       {renderCategoryConfig(PMS_TEMPERATURE_MONITORING_KEY, "Suivi des Températures", Thermometer, "Équipement")}
+      {renderCategoryConfig(PMS_FRYER_OIL_MONITORING_KEY, "Suivi des Huiles de Friteuse", Flame, "Friteuse", "Point de Contrôle")}
       
       <Dialog open={isZoneDialogOpen} onOpenChange={setIsZoneDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editingZone ? "Modifier" : "Nouvel"} {currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone"}</DialogTitle>
+            <DialogTitle>{editingZone ? "Modifier" : "Nouvel"} {currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : currentCategoryKey === PMS_FRYER_OIL_MONITORING_KEY ? "Friteuse" : "Zone"}</DialogTitle>
             {currentCategoryKey && <CardDescription>Pour: {
                 currentCategoryKey === PMS_KITCHEN_CLEANING_KEY ? "Nettoyage Cuisine" : 
                 currentCategoryKey === PMS_RESTAURANT_CLEANING_KEY ? "Nettoyage Restaurant" :
-                "Suivi des Températures"
+                currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Suivi des Températures" :
+                currentCategoryKey === PMS_FRYER_OIL_MONITORING_KEY ? "Suivi des Huiles de Friteuse" : ""
             }</CardDescription>}
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handleZoneSubmit)} className="space-y-4 py-4">
               <FormField control={form.control} name="name" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Nom de l' {currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone"}</FormLabel>
-                  <FormControl><Input placeholder={currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Ex: Frigo Positif Cuisine" : "Ex: Plans de travail"} {...field} /></FormControl>
+                  <FormLabel>Nom de l' {currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : currentCategoryKey === PMS_FRYER_OIL_MONITORING_KEY ? "Friteuse" : "Zone"}</FormLabel>
+                  <FormControl><Input placeholder={
+                      currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Ex: Frigo Positif Cuisine" : 
+                      currentCategoryKey === PMS_FRYER_OIL_MONITORING_KEY ? "Ex: Friteuse 1" : 
+                      "Ex: Plans de travail"
+                    } {...field} />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -452,15 +469,19 @@ export default function PmsConfigManager() {
         <Dialog open={isTaskDialogOpen} onOpenChange={setIsTaskDialogOpen}>
             <DialogContent className="sm:max-w-md">
             <DialogHeader>
-                <DialogTitle>{editingTask ? "Modifier la Tâche" : "Nouvelle Tâche"}</DialogTitle>
+                <DialogTitle>{editingTask ? "Modifier la Tâche/Critère" : "Nouvelle Tâche/Critère"}</DialogTitle>
                 {currentZoneForTask && <CardDescription>Pour: {currentZoneForTask.name}</CardDescription>}
             </DialogHeader>
             <Form {...taskForm}>
                 <form onSubmit={taskForm.handleSubmit(handleTaskSubmit)} className="space-y-4 py-4">
                 <FormField control={taskForm.control} name="name" render={({ field }) => (
                     <FormItem>
-                    <FormLabel>Nom de la Tâche</FormLabel>
-                    <FormControl><Input placeholder="Ex: Nettoyage et désinfection" {...field} /></FormControl>
+                    <FormLabel>Nom de la Tâche/Critère</FormLabel>
+                    <FormControl><Input placeholder={
+                        currentCategoryKey === PMS_FRYER_OIL_MONITORING_KEY ? "Ex: Testeur d'huile" :
+                        "Ex: Nettoyage et désinfection"
+                        } {...field} />
+                    </FormControl>
                     <FormMessage />
                     </FormItem>
                 )} />
@@ -486,3 +507,4 @@ export default function PmsConfigManager() {
     </div>
   );
 }
+
