@@ -57,7 +57,7 @@ const allNavItems: NavItem[] = [
 
 function AppSidebar() {
   const pathname = usePathname();
-  const { openMobile, setOpenMobile } = useSidebar(); // Removed 'state' as it's not directly used here for filtering
+  const { openMobile, setOpenMobile } = useSidebar();
   const router = useRouter();
   const [visibleNavItems, setVisibleNavItems] = React.useState<NavItem[]>(allNavItems);
 
@@ -94,7 +94,8 @@ function AppSidebar() {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('isLoggedIn');
       localStorage.removeItem('loggedInUsername');
-      localStorage.removeItem('loggedInUserPermissions'); 
+      localStorage.removeItem('loggedInUserPermissions');
+      localStorage.removeItem('loggedInUserHourViewConfig'); 
     }
     router.push('/login');
   };
@@ -105,7 +106,7 @@ function AppSidebar() {
       <SidebarHeader className="flex items-center justify-between">
         <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
           <Link href="/dashboard" className="flex items-center gap-2">
-            {/* <div className="w-8 h-8 bg-primary rounded-sm flex items-center justify-center text-primary-foreground font-bold text-lg" data-ai-hint="chef hat">E</div> */}
+            {/* <Image src="https://placehold.co/32x32.png" alt="App Logo" width={32} height={32} className="rounded-sm" data-ai-hint="chef hat" /> */}
             <span className="font-semibold text-lg text-sidebar-primary">Gestion par L'excellence</span>
           </Link>
         </div>
@@ -143,20 +144,6 @@ function AppSidebar() {
       <SidebarFooter className="mt-auto">
         <Separator className="my-1 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:my-2 group-data-[collapsible=icon]:w-6" />
         <SidebarMenu>
-          <SidebarMenuItem>
-             <SidebarMenuButton
-                asChild
-                tooltip={{
-                  children: "Retour à l'accueil",
-                  className: "group-data-[collapsible=icon]:block hidden",
-                }}
-              >
-              <Link href="/">
-                <Home />
-                <span>Accueil Principal</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
           <SidebarMenuItem>
              <SidebarMenuButton
                 onClick={handleLogout}
@@ -225,19 +212,13 @@ export default function DashboardLayout({
       }
 
       if (pathname === '/dashboard' || pathname === '/dashboard/') {
-         // Access to /dashboard itself is allowed if the 'dashboard' permission exists or if it's chef
-         // The AppSidebar logic already handles visibility of the dashboard link
         if (!userPermissions.dashboard && username?.toLowerCase() !== 'chef') {
           // This scenario implies a user is logged in but explicitly has no dashboard permission.
           // This should ideally be handled by redirecting to login or a "no access" page
-          // For now, if they are logged in but dashboard permission is false, we could redirect to login to be safe.
-          // However, the primary protection is the sidebar not showing the link.
-          // console.warn("User without dashboard permission tried to access dashboard homepage.");
         }
         return;
       }
       
-      // For other /dashboard/* routes
       const pathSegments = pathname.split('/');
       if (pathSegments.length > 2 && pathSegments[1] === 'dashboard') {
         const currentTopLevelPath = pathSegments[2];
@@ -246,16 +227,11 @@ export default function DashboardLayout({
         if (navItem) {
           const requiredPermission = navItem.rubricId;
           if (!userPermissions[requiredPermission]) {
-            // console.warn(`Access denied to ${pathname}. Missing permission: ${requiredPermission}`);
-            // Consider adding a toast here later if a global toast context is available or via state prop
-            router.replace('/dashboard'); // Redirect to main dashboard
+            router.replace('/dashboard'); 
           }
         } else {
-          // If the path is like /dashboard/non-existent-rubric, redirect to dashboard.
-          // This prevents access to potentially orphaned or mistyped URLs within the dashboard scope.
-           if (currentTopLevelPath) { // Avoid redirecting for just "/dashboard" if somehow missed above
-            // console.warn(`Access to unknown dashboard path: ${pathname}`);
-            // router.replace('/dashboard');
+           if (currentTopLevelPath) { 
+            // router.replace('/dashboard'); // Optionally redirect unknown dashboard paths
            }
         }
       }
@@ -279,6 +255,7 @@ export default function DashboardLayout({
           <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 md:hidden">
             <SidebarTrigger />
             <Link href="/dashboard" className="flex items-center gap-2">
+                {/* <Image src="https://placehold.co/32x32.png" alt="App Logo" width={32} height={32} className="rounded-sm" data-ai-hint="chef hat" /> */}
                 <span className="font-semibold text-md">Gestion par L'excellence</span>
             </Link>
           </header>
