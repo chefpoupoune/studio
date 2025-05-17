@@ -5,6 +5,7 @@ import { Archive, Settings, FileSpreadsheet, Users, ClipboardList, DollarSign, B
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import WeeklyMenuSummary from './components/WeeklyMenuSummary';
 import OngoingTasksSummary from './components/OngoingTasksSummary';
+import EmployeeHoursSummary from './components/EmployeeHoursSummary'; // New Import
 import { CurrentDate } from '@/components/current-date';
 
 
@@ -21,12 +22,12 @@ export default function DashboardPage() {
       <div className="mb-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
           <WeeklyMenuSummary />
-        </div>
-        <div className="lg:col-span-1">
+        </div>        <div className="lg:col-span-1">
           <OngoingTasksSummary />
         </div>
-        {/* Placeholder pour une future 3ème "bulle" si besoin */}
-        {/* <div className="lg:col-span-1 bg-card rounded-lg shadow-lg p-6"> <p className="text-muted-foreground">Autre info...</p></div> */}
+        <div className="lg:col-span-1"> {/* New Bubble */}
+          <EmployeeHoursSummary />
+        </div>
       </div>
 
       <p className="mb-6 text-md text-muted-foreground max-w-2xl">
