@@ -23,7 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import type { BenefitEmployee, BenefitDailyStatusCode, FullMonthlyBenefitData, DailyBenefitEntry } from '../types';
 import { BENEFIT_STATUS_CODES, BENEFIT_STATUS_LEGEND, frenchShortDays } from '../types';
-import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings'; // MODIFIED: Import PDF settings utilities
+import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings'; 
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -128,43 +128,60 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
   const generatePdf = () => {
     setIsLoading(true);
     try {
-      const pdfSettings = getPdfLayoutSettings('benefits'); // MODIFIED: Get settings for 'benefits' PDF type
+      const pdfSettings = getPdfLayoutSettings('benefits');
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
       const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
-      let currentY = pdfSettings.marginTop; // MODIFIED: Use marginTop from settings
+      let currentY = pdfSettings.marginTop;
 
-      // MODIFIED: Add custom header text if defined
+      // Header Table
       if (pdfSettings.headerText) {
-        doc.setFontSize(pdfSettings.defaultFontSize - 2); // Smaller for header
-        const headerLines = pdfSettings.headerText.split('\n');
-        headerLines.forEach(line => {
-            doc.text(line, pdfSettings.marginLeft, currentY);
-            currentY += (pdfSettings.defaultFontSize - 2) * 0.35; // Basic line height
+        const headerRows = pdfSettings.headerText.split('\n').map(rowText => 
+          rowText.split('|').map(cellText => cellText.trim())
+        );
+        
+        const headerTableBody = headerRows.map(row => row.map(cell => cell === '{logo}' ? '' : cell));
+
+        doc.autoTable({
+          body: headerTableBody,
+          startY: currentY,
+          theme: 'plain',
+          styles: { fontSize: pdfSettings.defaultFontSize -2, cellPadding: 1 },
+          columnStyles: { 0: { cellWidth: 'auto'} }, // Adjust as needed
+          didDrawCell: (data) => {
+            if (pdfSettings.logoUrl && headerRows[data.row.index][data.column.index] === '{logo}') {
+              // Placeholder for logo - actual image drawing is more complex
+              doc.setFillColor(230, 230, 230);
+              doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
+              doc.setFontSize(8);
+              doc.setTextColor(100);
+              doc.text("LOGO", data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2, { 
+                align: 'center', 
+                baseline: 'middle' 
+              });
+            }
+          },
+          margin: { top: pdfSettings.marginTop, left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
         });
-        currentY += 5; // Extra space after header
-      }
-      
-      // MODIFIED: Attempt to add logo if URL is provided (simplified, no actual image fetching in this example)
-      // In a real scenario, you'd fetch and embed the image or use a pre-loaded one.
-      if (pdfSettings.logoUrl) {
+        currentY = (doc as any).lastAutoTable.finalY + 5;
+      } else if (pdfSettings.logoUrl) { // Fallback if no headerText but logoUrl exists
         doc.setFontSize(8);
-        doc.text(`[Logo: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); // Placeholder for logo
+        doc.text(`[Logo: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); 
         currentY += 5;
       }
       
       const title = `Suivi Avantages en Nature - ${monthLabel} ${selectedYear}`;
-      doc.setFontSize(18); // Title font size can be fixed or also part of settings
+      doc.setFontSize(18); 
       doc.text(title, pdfSettings.marginLeft, currentY); currentY += 8;
       doc.setFontSize(pdfSettings.defaultFontSize);
       doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); currentY += 7;
 
       const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, fontSize?: number } = { 
         fontStyle: 'bold',
-        fontSize: pdfSettings.defaultFontSize -1, // MODIFIED: Use defaultFontSize
+        fontSize: pdfSettings.defaultFontSize -1, 
       };
-      // MODIFIED: Use primaryColor from settings
+      
       if (pdfSettings.primaryColor) {
         const primaryRgb = hexToRgb(pdfSettings.primaryColor);
         if (primaryRgb) {
@@ -218,7 +235,6 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
         },
         styles: { fontSize: pdfSettings.defaultFontSize - 2 },
         didDrawPage: (data) => {
-          // MODIFIED: Use footerText from settings
           const pageCount = doc.internal.getNumberOfPages();
           if (pdfSettings.footerText) {
             let footerStr = pdfSettings.footerText

@@ -38,7 +38,15 @@ const pdfTypes = [
   { value: 'time_tracking_summary', label: 'Relevé d\'Heures Individuel' },
   { value: 'menu_planning_monthly', label: 'Planification des Menus Mensuelle' },
   { value: 'temperature_sheet_monthly', label: 'Fiche de Température Mensuelle' },
-  { value: 'weekly_order_sheet', label: 'Fiche de Commande Hebdomadaire' }
+  { value: 'weekly_order_sheet', label: 'Fiche de Commande Hebdomadaire' },
+  { value: 'pms_kitchen_cleaning_monthly', label: 'PMS - Nettoyage Cuisine (Mensuel)' },
+  { value: 'pms_restaurant_cleaning_monthly', label: 'PMS - Nettoyage Restaurant (Mensuel)' },
+  { value: 'pms_temperature_monitoring_monthly', label: 'PMS - Suivi Températures (Mensuel)' },
+  { value: 'pms_reception_monitoring', label: 'PMS - Suivi Réception Marchandises' },
+  { value: 'pms_temp_change_monitoring', label: 'PMS - Suivi Baisse/Remise Température' },
+  { value: 'pms_defrosting_monitoring', label: 'PMS - Suivi Décongélation' },
+  { value: 'pms_cooldown_monitoring', label: 'PMS - Liaison Froide (Baisse Temp.)' },
+  { value: 'pms_delivery_monitoring', label: 'PMS - Liaison Froide (Livraison)' },
 ];
 
 const GENERAL_CONFIG_DISPLAY_LABEL = "Configuration Générale / Par Défaut";
@@ -264,6 +272,7 @@ export default function PdfLayoutManager() {
                         onLoad={(e) => {
                              (e.target as HTMLImageElement).style.display = 'block';
                         }}
+                        unoptimized
                     />
                   </div>
                 )}
@@ -328,14 +337,14 @@ export default function PdfLayoutManager() {
                     <Label htmlFor="header-text-input" className="flex items-center gap-1"><Type className="w-4 h-4"/> Texte d'En-tête</Label>
                     <Textarea 
                         id="header-text-input"
-                        placeholder="Ex: Confidentiel - Mon Entreprise"
+                        placeholder="Pour un en-tête tabulaire : utilisez '|' pour séparer les cellules, un saut de ligne pour une nouvelle rangée. Utilisez {logo} pour placer le logo. Ex: {logo} | Titre Principal\n | Sous-titre"
                         value={headerTextInput}
                         onChange={(e) => setHeaderTextInput(e.target.value)}
                         className="mt-1"
-                        rows={2}
+                        rows={3}
                     />
-                    {currentEffectiveSettings.headerText && <p className="text-xs text-muted-foreground mt-1">Effectif : {currentEffectiveSettings.headerText}</p>}
-                     {!currentEffectiveSettings.headerText && <p className="text-xs text-muted-foreground mt-1">Aucun texte d'en-tête défini.</p>}
+                    {currentEffectiveSettings.headerText && <p className="text-xs text-muted-foreground mt-1">Effectif : <pre className="whitespace-pre-wrap text-xs">{currentEffectiveSettings.headerText}</pre></p>}
+                    {!currentEffectiveSettings.headerText && <p className="text-xs text-muted-foreground mt-1">Aucun texte d'en-tête défini.</p>}
                 </div>
                 <Button onClick={handleSaveHeaderText}>
                     <Save className="mr-2 h-4 w-4"/> Enregistrer En-tête
@@ -385,22 +394,31 @@ export default function PdfLayoutManager() {
             >
               {/* Header Area */}
               <div className="mb-auto flex-shrink-0">
-                {currentEffectiveSettings.logoUrl && (
-                  <div className="mb-1 h-6 w-auto flex items-center">
-                    <Image
-                      src={currentEffectiveSettings.logoUrl}
-                      alt="Aperçu Logo"
-                      width={40} height={20}
-                      className="object-contain max-h-full max-w-full"
-                      data-ai-hint="logo company"
-                      onError={(e) => (e.currentTarget.style.display = 'none')}
-                      unoptimized // Useful for arbitrary URLs if not whitelisted
-                    />
-                  </div>
-                )}
-                {currentEffectiveSettings.headerText && (
-                  <div className="text-[0.8em] text-neutral-600 dark:text-neutral-300 truncate leading-tight">
-                    {currentEffectiveSettings.headerText.split('\n')[0]}
+                {/* Simulate table header if headerText is structured */}
+                {(currentEffectiveSettings.headerText || currentEffectiveSettings.logoUrl) && (
+                  <div className="text-[0.8em] text-neutral-600 dark:text-neutral-300 leading-tight border-b border-neutral-300 dark:border-neutral-600 pb-0.5 mb-0.5">
+                    {currentEffectiveSettings.headerText.includes("{logo}") && currentEffectiveSettings.logoUrl ? (
+                      <div className="flex gap-1">
+                        <div className="w-1/4 flex items-center justify-center">
+                           <div className="w-6 h-4 bg-neutral-300 dark:bg-neutral-600 rounded-sm text-[0.5em] flex items-center justify-center">LOGO</div>
+                        </div>
+                        <div className="w-3/4 whitespace-pre-wrap">
+                          {currentEffectiveSettings.headerText.replace("{logo}","").split("\n")[0]?.split("|")[1] || currentEffectiveSettings.headerText.replace("{logo}","").split("\n")[0] || "Titre..."}
+                        </div>
+                      </div>
+                    ) : currentEffectiveSettings.logoUrl ? (
+                       <div className="flex gap-1">
+                         <div className="w-1/4 flex items-center justify-center">
+                           <div className="w-6 h-4 bg-neutral-300 dark:bg-neutral-600 rounded-sm text-[0.5em] flex items-center justify-center">LOGO</div>
+                         </div>
+                         <div className="w-3/4 whitespace-pre-wrap">{currentEffectiveSettings.headerText.split("\n")[0] || "En-tête..."}</div>
+                       </div>
+                    ) : (
+                      <div className="whitespace-pre-wrap">{currentEffectiveSettings.headerText.split("\n")[0] || "En-tête..."}</div>
+                    )}
+                    {currentEffectiveSettings.headerText.split("\n").slice(1).map((line, idx) => (
+                        <div key={idx} className="whitespace-pre-wrap">{line.replace("{logo}","").startsWith("|") ? line.replace("{logo}","").substring(1) : line.replace("{logo}","")}</div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -421,7 +439,7 @@ export default function PdfLayoutManager() {
               {/* Footer Area */}
               <div className="mt-auto flex-shrink-0">
                 {currentEffectiveSettings.footerText && (
-                  <div className="text-[0.8em] text-neutral-500 dark:text-neutral-400 truncate leading-tight">
+                  <div className="text-[0.8em] text-neutral-500 dark:text-neutral-400 truncate leading-tight border-t border-neutral-300 dark:border-neutral-600 pt-0.5 mt-0.5">
                     {currentEffectiveSettings.footerText
                       .replace('{date}', format(new Date(), "dd/MM/yy HH:mm", { locale: fr }))
                       .replace('{pageNumber}', '1')
@@ -443,9 +461,11 @@ export default function PdfLayoutManager() {
         <AlertTitle className="text-primary font-semibold">Note sur l'Application des Paramètres</AlertTitle>
         <AlertDescription>
           Les configurations enregistrées ici (logo, couleur, marges, police, en-têtes, pieds de page) seront utilisées lors de la génération des PDFs correspondants.
+          Pour l'en-tête, vous pouvez définir un format tabulaire simple.
         </AlertDescription>
       </Alert>
     </div>
   );
 }
 
+    
