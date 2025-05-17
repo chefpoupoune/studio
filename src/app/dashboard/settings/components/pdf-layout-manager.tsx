@@ -343,7 +343,7 @@ export default function PdfLayoutManager() {
                         className="mt-1"
                         rows={3}
                     />
-                    {currentEffectiveSettings.headerText && <p className="text-xs text-muted-foreground mt-1">Effectif : <pre className="whitespace-pre-wrap text-xs">{currentEffectiveSettings.headerText}</pre></p>}
+                    {currentEffectiveSettings.headerText && <div className="text-xs text-muted-foreground mt-1">Effectif : <pre className="whitespace-pre-wrap text-xs">{currentEffectiveSettings.headerText}</pre></div>}
                     {!currentEffectiveSettings.headerText && <p className="text-xs text-muted-foreground mt-1">Aucun texte d'en-tête défini.</p>}
                 </div>
                 <Button onClick={handleSaveHeaderText}>
