@@ -61,6 +61,10 @@ export default function ManageBrigadeMembers({ members, onAddMember, onUpdateMem
       } else {
         form.reset({ name: '', role: '' });
       }
+    } else {
+      // Dialog has been closed, perform cleanup
+      setEditingMember(null);
+      form.reset({ name: '', role: '' });
     }
   }, [editingMember, form, isFormDialogOpen]);
 
@@ -70,21 +74,14 @@ export default function ManageBrigadeMembers({ members, onAddMember, onUpdateMem
     } else {
       onAddMember(data);
     }
-    setIsFormDialogOpen(false);
-    setEditingMember(null);
+    setIsFormDialogOpen(false); // This will trigger the useEffect cleanup
   };
 
   const handleOpenFormDialog = (member?: BrigadeMember) => {
     setEditingMember(member || null);
-    setIsFormDialogOpen(true);
+    setIsFormDialogOpen(true); // This will trigger the useEffect to reset the form
   };
   
-  const handleCloseFormDialog = () => {
-    setIsFormDialogOpen(false);
-    setEditingMember(null);
-    form.reset();
-  };
-
   return (
     <Card className="shadow-lg">
       <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -95,7 +92,7 @@ export default function ManageBrigadeMembers({ members, onAddMember, onUpdateMem
           </CardTitle>
           <CardDescription>Ajoutez, modifiez ou supprimez des membres de votre brigade.</CardDescription>
         </div>
-        <Dialog open={isFormDialogOpen} onOpenChange={handleCloseFormDialog}>
+        <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
           <DialogTrigger asChild>
             <Button onClick={() => handleOpenFormDialog()} className="w-full sm:w-auto">
               <PlusCircle className="mr-2 h-4 w-4" /> Ajouter Membre
