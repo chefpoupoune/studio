@@ -129,57 +129,65 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
     setIsLoading(true);
     try {
       const pdfSettings = getPdfLayoutSettings('benefits');
-      const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
+      const doc = new jsPDF({
+        orientation: pdfSettings.orientation,
+        unit: 'pt',
+        format: pdfSettings.pageSize,
+      }) as jsPDFWithAutoTable;
+      
+      doc.setFont(pdfSettings.fontFamily);
+
       const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
       let currentY = pdfSettings.marginTop;
 
-      // Header Table
+      // Header Table from settings
       if (pdfSettings.headerText) {
         const headerRows = pdfSettings.headerText.split('\n').map(rowText => 
           rowText.split('|').map(cellText => cellText.trim())
         );
-        
         const headerTableBody = headerRows.map(row => row.map(cell => cell === '{logo}' ? '' : cell));
 
         doc.autoTable({
           body: headerTableBody,
           startY: currentY,
           theme: 'plain',
-          styles: { fontSize: pdfSettings.defaultFontSize -2, cellPadding: 1 },
-          columnStyles: { 0: { cellWidth: 'auto'} }, // Adjust as needed
+          styles: { fontSize: pdfSettings.headerFontSize, cellPadding: 1, font: pdfSettings.fontFamily },
+          columnStyles: { 0: { cellWidth: 'auto'} },
+          margin: { top: pdfSettings.marginTop, left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
           didDrawCell: (data) => {
             if (pdfSettings.logoUrl && headerRows[data.row.index][data.column.index] === '{logo}') {
-              // Placeholder for logo - actual image drawing is more complex
-              doc.setFillColor(230, 230, 230);
-              doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
-              doc.setFontSize(8);
-              doc.setTextColor(100);
-              doc.text("LOGO", data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2, { 
-                align: 'center', 
-                baseline: 'middle' 
-              });
+              try {
+                // This is a placeholder; actual image embedding is more complex
+                // and might require pre-loading or CORS-enabled image URLs.
+                // For simplicity, we draw a box.
+                doc.setFillColor(230, 230, 230);
+                doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
+                doc.setFontSize(8); doc.setTextColor(100);
+                doc.text("LOGO", data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2, { align: 'center', baseline: 'middle' });
+              } catch (e) { console.error("Error drawing logo placeholder:", e); }
             }
           },
-          margin: { top: pdfSettings.marginTop, left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
         });
         currentY = (doc as any).lastAutoTable.finalY + 5;
-      } else if (pdfSettings.logoUrl) { // Fallback if no headerText but logoUrl exists
-        doc.setFontSize(8);
+      } else if (pdfSettings.logoUrl) { 
+         // Placeholder for logo if no header text but logo URL exists
+        doc.setFontSize(pdfSettings.headerFontSize);
         doc.text(`[Logo: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); 
-        currentY += 5;
+        currentY += pdfSettings.headerFontSize + 5;
       }
       
       const title = `Suivi Avantages en Nature - ${monthLabel} ${selectedYear}`;
-      doc.setFontSize(18); 
-      doc.text(title, pdfSettings.marginLeft, currentY); currentY += 8;
+      doc.setFontSize(pdfSettings.headerFontSize + 4); // Larger for main title
+      doc.text(title, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.headerFontSize + 4) * 0.7;
       doc.setFontSize(pdfSettings.defaultFontSize);
-      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); currentY += 7;
+      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 5;
 
-      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, fontSize?: number } = { 
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, fontSize?: number, font?: string } = { 
         fontStyle: 'bold',
-        fontSize: pdfSettings.defaultFontSize -1, 
+        fontSize: pdfSettings.tableHeaderFontSize, 
+        font: pdfSettings.fontFamily,
       };
       
       if (pdfSettings.primaryColor) {
@@ -198,7 +206,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
       
       daysInSelectedMonth.forEach(day => {
         (head[0] as any[]).push({ content: day.dayNumber.toString(), styles: { ...headStyles, halign: 'center' } });
-        (head[1] as any[]).push({ content: day.dayLetter, styles: { ...headStyles, halign: 'center', fontSize: (pdfSettings.defaultFontSize - 2), fillColor: day.isWeekend ? [200, 220, 255] : headStyles.fillColor } });
+        (head[1] as any[]).push({ content: day.dayLetter, styles: { ...headStyles, halign: 'center', fontSize: pdfSettings.tableHeaderFontSize -1, fillColor: day.isWeekend ? [200, 220, 255] : headStyles.fillColor } });
       });
       (head[0] as any[]).push({ content: 'TOTAL', rowSpan: 2, styles: { ...headStyles, valign: 'middle'} });
 
@@ -211,8 +219,8 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
           const dateKey = `${selectedYear}-${(parseInt(selectedMonth) + 1).toString().padStart(2, '0')}-${day.dayNumber.toString().padStart(2, '0')}`;
           const entry = benefitData[employee.id]?.[dateKey] || { planning: "", repasPris: "" };
           
-          const cellStyle = { halign: 'center', fontSize: pdfSettings.defaultFontSize - 2, fillColor: day.isWeekend ? [229, 231, 235] : (entry.planning === "X" ? [209,250,229] : undefined) };
-          const cellStyleRepas = { halign: 'center', fontSize: pdfSettings.defaultFontSize - 2, fillColor: day.isWeekend ? [229, 231, 235] : (entry.repasPris === "X" ? [209,250,229] : undefined) };
+          const cellStyle = { halign: 'center', fontSize: pdfSettings.tableBodyFontSize, fillColor: day.isWeekend ? [229, 231, 235] : (entry.planning === "X" ? [209,250,229] : undefined) };
+          const cellStyleRepas = { halign: 'center', fontSize: pdfSettings.tableBodyFontSize, fillColor: day.isWeekend ? [229, 231, 235] : (entry.repasPris === "X" ? [209,250,229] : undefined) };
 
           planningRow.push({ content: entry.planning, styles: cellStyle });
           repasPrisRow.push({ content: entry.repasPris, styles: cellStyleRepas });
@@ -233,7 +241,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
             bottom: pdfSettings.marginBottom, 
             left: pdfSettings.marginLeft 
         },
-        styles: { fontSize: pdfSettings.defaultFontSize - 2 },
+        styles: { fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
           if (pdfSettings.footerText) {
@@ -241,7 +249,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
               .replace('{date}', generationDateFormatted)
               .replace('{pageNumber}', data.pageNumber.toString())
               .replace('{totalPages}', pageCount.toString());
-            doc.setFontSize(pdfSettings.defaultFontSize - 2 > 6 ? pdfSettings.defaultFontSize - 2 : 7);
+            doc.setFontSize(pdfSettings.footerFontSize);
             doc.text(footerStr, pdfSettings.marginLeft, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
           }
         },
@@ -405,5 +413,4 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
   );
 }
     
-
     

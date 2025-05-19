@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare, ArrowRightLeft, TextCursorInput, Eye } from 'lucide-react';
+import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare, ArrowRightLeft, TextCursorInput, Eye, FileTextIcon, AlignHorizontalSpaceAround, Maximize, Minus } from 'lucide-react';
 import type { PdfLayoutSettings } from '../types';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -21,7 +21,14 @@ import {
   DEFAULT_HEADER_TEXT,
   DEFAULT_FOOTER_TEXT,
   DEFAULT_MARGIN,
-  DEFAULT_FONT_SIZE
+  DEFAULT_FONT_SIZE,
+  DEFAULT_FONT_FAMILY,
+  DEFAULT_HEADER_FONT_SIZE,
+  DEFAULT_FOOTER_FONT_SIZE,
+  DEFAULT_TABLE_HEADER_FONT_SIZE,
+  DEFAULT_TABLE_BODY_FONT_SIZE,
+  DEFAULT_ORIENTATION,
+  DEFAULT_PAGE_SIZE,
 } from '@/lib/pdf-settings';
 import { DEFAULT_APP_PRIMARY_COLOR } from '@/config/colors';
 import { format } from 'date-fns';
@@ -51,6 +58,27 @@ const pdfTypes = [
 
 const GENERAL_CONFIG_DISPLAY_LABEL = "Configuration Générale / Par Défaut";
 
+const fontFamilies: { value: NonNullable<PdfLayoutSettings['fontFamily']>, label: string }[] = [
+    { value: 'helvetica', label: 'Helvetica (sans-serif)' },
+    { value: 'times', label: 'Times New Roman (serif)' },
+    { value: 'courier', label: 'Courier (monospace)' },
+    { value: 'arial', label: 'Arial (sans-serif)'},
+    { value: 'verdana', label: 'Verdana (sans-serif)'},
+];
+
+const pageOrientations: { value: NonNullable<PdfLayoutSettings['orientation']>, label: string }[] = [
+    { value: 'portrait', label: 'Portrait' },
+    { value: 'landscape', label: 'Paysage' },
+];
+
+const pageSizes: { value: NonNullable<PdfLayoutSettings['pageSize']>, label: string }[] = [
+    { value: 'a3', label: 'A3' },
+    { value: 'a4', label: 'A4' },
+    { value: 'a5', label: 'A5' },
+    { value: 'letter', label: 'Lettre US' },
+    { value: 'legal', label: 'Légal US' },
+];
+
 
 export default function PdfLayoutManager() {
   const [selectedPdfType, setSelectedPdfType] = useState<string>(GENERAL_CONFIG_KEY);
@@ -66,6 +94,14 @@ export default function PdfLayoutManager() {
   const [marginLeftInput, setMarginLeftInput] = useState<string>(String(DEFAULT_MARGIN));
   const [defaultFontSizeInput, setDefaultFontSizeInput] = useState<string>(String(DEFAULT_FONT_SIZE));
 
+  // New state for new settings
+  const [fontFamilyInput, setFontFamilyInput] = useState<NonNullable<PdfLayoutSettings['fontFamily']>>(DEFAULT_FONT_FAMILY);
+  const [headerFontSizeInput, setHeaderFontSizeInput] = useState<string>(String(DEFAULT_HEADER_FONT_SIZE));
+  const [footerFontSizeInput, setFooterFontSizeInput] = useState<string>(String(DEFAULT_FOOTER_FONT_SIZE));
+  const [tableHeaderFontSizeInput, setTableHeaderFontSizeInput] = useState<string>(String(DEFAULT_TABLE_HEADER_FONT_SIZE));
+  const [tableBodyFontSizeInput, setTableBodyFontSizeInput] = useState<string>(String(DEFAULT_TABLE_BODY_FONT_SIZE));
+  const [orientationInput, setOrientationInput] = useState<NonNullable<PdfLayoutSettings['orientation']>>(DEFAULT_ORIENTATION);
+  const [pageSizeInput, setPageSizeInput] = useState<NonNullable<PdfLayoutSettings['pageSize']>>(DEFAULT_PAGE_SIZE);
 
   const { toast } = useToast();
 
@@ -85,6 +121,13 @@ export default function PdfLayoutManager() {
             defaultFontSize: DEFAULT_FONT_SIZE,
             logoUrl: DEFAULT_LOGO_URL,
             headerText: DEFAULT_HEADER_TEXT,
+            fontFamily: DEFAULT_FONT_FAMILY,
+            headerFontSize: DEFAULT_HEADER_FONT_SIZE,
+            footerFontSize: DEFAULT_FOOTER_FONT_SIZE,
+            tableHeaderFontSize: DEFAULT_TABLE_HEADER_FONT_SIZE,
+            tableBodyFontSize: DEFAULT_TABLE_BODY_FONT_SIZE,
+            orientation: DEFAULT_ORIENTATION,
+            pageSize: DEFAULT_PAGE_SIZE,
         } }); 
       }
     } catch (error) {
@@ -94,17 +137,11 @@ export default function PdfLayoutManager() {
         description: "Impossible de charger les configurations de mise en page PDF.",
         variant: "destructive",
       });
-      setPdfConfigs({ [GENERAL_CONFIG_KEY]: { 
+       setPdfConfigs({ [GENERAL_CONFIG_KEY]: { 
             primaryColor: DEFAULT_APP_PRIMARY_COLOR, 
             footerText: DEFAULT_FOOTER_TEXT,
-            marginTop: DEFAULT_MARGIN,
-            marginRight: DEFAULT_MARGIN,
-            marginBottom: DEFAULT_MARGIN,
-            marginLeft: DEFAULT_MARGIN,
-            defaultFontSize: DEFAULT_FONT_SIZE,
-            logoUrl: DEFAULT_LOGO_URL,
-            headerText: DEFAULT_HEADER_TEXT,
-      } });
+            // ... other defaults
+        } });
     }
   }, [toast]);
 
@@ -122,6 +159,15 @@ export default function PdfLayoutManager() {
     setMarginBottomInput(String(specificSettings.marginBottom ?? effectiveSettings.marginBottom));
     setMarginLeftInput(String(specificSettings.marginLeft ?? effectiveSettings.marginLeft));
     setDefaultFontSizeInput(String(specificSettings.defaultFontSize ?? effectiveSettings.defaultFontSize));
+    
+    // Set new states
+    setFontFamilyInput(specificSettings.fontFamily ?? effectiveSettings.fontFamily);
+    setHeaderFontSizeInput(String(specificSettings.headerFontSize ?? effectiveSettings.headerFontSize));
+    setFooterFontSizeInput(String(specificSettings.footerFontSize ?? effectiveSettings.footerFontSize));
+    setTableHeaderFontSizeInput(String(specificSettings.tableHeaderFontSize ?? effectiveSettings.tableHeaderFontSize));
+    setTableBodyFontSizeInput(String(specificSettings.tableBodyFontSize ?? effectiveSettings.tableBodyFontSize));
+    setOrientationInput(specificSettings.orientation ?? effectiveSettings.orientation);
+    setPageSizeInput(specificSettings.pageSize ?? effectiveSettings.pageSize);
 
   }, [selectedPdfType, pdfConfigs]);
 
@@ -133,7 +179,7 @@ export default function PdfLayoutManager() {
     return foundPdf ? foundPdf.label : GENERAL_CONFIG_DISPLAY_LABEL;
   }, [selectedPdfType]);
 
-  const saveConfig = (updates: Partial<PdfLayoutSettings>, successMessage: string) => {
+  const saveConfig = useCallback((updates: Partial<PdfLayoutSettings>, successMessagePrefix: string) => {
     const activeConfigKey = selectedPdfType || GENERAL_CONFIG_KEY;
     
     const newSpecificConfig: Partial<PdfLayoutSettings> = { ...(pdfConfigs[activeConfigKey] || {}) };
@@ -149,6 +195,13 @@ export default function PdfLayoutManager() {
             case 'footerText': defaultValue = DEFAULT_FOOTER_TEXT; break;
             case 'marginTop': case 'marginRight': case 'marginBottom': case 'marginLeft': defaultValue = DEFAULT_MARGIN; break;
             case 'defaultFontSize': defaultValue = DEFAULT_FONT_SIZE; break;
+            case 'fontFamily': defaultValue = DEFAULT_FONT_FAMILY; break;
+            case 'headerFontSize': defaultValue = DEFAULT_HEADER_FONT_SIZE; break;
+            case 'footerFontSize': defaultValue = DEFAULT_FOOTER_FONT_SIZE; break;
+            case 'tableHeaderFontSize': defaultValue = DEFAULT_TABLE_HEADER_FONT_SIZE; break;
+            case 'tableBodyFontSize': defaultValue = DEFAULT_TABLE_BODY_FONT_SIZE; break;
+            case 'orientation': defaultValue = DEFAULT_ORIENTATION; break;
+            case 'pageSize': defaultValue = DEFAULT_PAGE_SIZE; break;
         }
         
         if (valueToSave === undefined || (valueToSave === defaultValue && activeConfigKey !== GENERAL_CONFIG_KEY) ) {
@@ -169,15 +222,15 @@ export default function PdfLayoutManager() {
     localStorage.setItem(PDF_LAYOUT_CONFIGS_KEY, JSON.stringify(updatedConfigs));
     toast({
       title: "Configuration Enregistrée",
-      description: `${successMessage} pour "${selectedPdfLabel}" a été enregistrée.`,
+      description: `${successMessagePrefix} pour "${selectedPdfLabel}" a été enregistrée.`,
     });
-  };
+  }, [selectedPdfType, pdfConfigs, toast, selectedPdfLabel]);
 
   const handleSaveLogoUrl = () => saveConfig({ logoUrl: logoUrlInput || undefined }, "L'URL du logo");
   const handleSaveHeaderText = () => saveConfig({ headerText: headerTextInput || undefined }, "Le texte d'en-tête");
   const handleSaveFooterText = () => saveConfig({ footerText: footerTextInput || undefined }, "Le texte de pied de page");
 
-  const handleSaveLayoutStyles = () => {
+  const handleSaveLayoutAndFontStyles = () => {
     const updates: Partial<PdfLayoutSettings> = {
       primaryColor: primaryColorInput,
       marginTop: parseFloat(marginTopInput) || undefined,
@@ -185,12 +238,18 @@ export default function PdfLayoutManager() {
       marginBottom: parseFloat(marginBottomInput) || undefined,
       marginLeft: parseFloat(marginLeftInput) || undefined,
       defaultFontSize: parseFloat(defaultFontSizeInput) || undefined,
+      fontFamily: fontFamilyInput || undefined,
+      headerFontSize: parseFloat(headerFontSizeInput) || undefined,
+      footerFontSize: parseFloat(footerFontSizeInput) || undefined,
+      tableHeaderFontSize: parseFloat(tableHeaderFontSizeInput) || undefined,
+      tableBodyFontSize: parseFloat(tableBodyFontSizeInput) || undefined,
+      orientation: orientationInput || undefined,
+      pageSize: pageSizeInput || undefined,
     };
-    saveConfig(updates, "Les styles de mise en page");
+    saveConfig(updates, "Les styles de mise en page et de police");
   };
 
   const currentEffectiveSettings = useMemo(() => fetchPdfSettings(selectedPdfType), [selectedPdfType, pdfConfigs]);
-
 
   return (
     <div className="space-y-6">
@@ -282,10 +341,55 @@ export default function PdfLayoutManager() {
 
             <div className="p-6 border rounded-lg shadow-sm bg-card/50 hover:shadow-md transition-shadow">
               <div className="flex items-center gap-3 mb-3">
-                <Palette className="w-6 h-6 text-accent" />
-                <h3 className="text-lg font-semibold text-foreground">Mise en Page et Styles</h3>
+                <FileTextIcon className="w-6 h-6 text-accent" />
+                <h3 className="text-lg font-semibold text-foreground">Format et Police</h3>
               </div>
               <div className="space-y-4">
+                <div>
+                  <Label htmlFor="orientation-select">Orientation de Page</Label>
+                  <Select value={orientationInput} onValueChange={(val) => setOrientationInput(val as NonNullable<PdfLayoutSettings['orientation']>)}>
+                    <SelectTrigger id="orientation-select"><SelectValue /></SelectTrigger>
+                    <SelectContent>{pageOrientations.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+                  </Select>
+                   <p className="text-xs text-muted-foreground mt-1">Effective: {currentEffectiveSettings.orientation === 'landscape' ? 'Paysage' : 'Portrait'}</p>
+                </div>
+                <div>
+                  <Label htmlFor="page-size-select">Format de Page</Label>
+                  <Select value={pageSizeInput} onValueChange={(val) => setPageSizeInput(val as NonNullable<PdfLayoutSettings['pageSize']>)}>
+                    <SelectTrigger id="page-size-select"><SelectValue /></SelectTrigger>
+                    <SelectContent>{pageSizes.map(ps => <SelectItem key={ps.value} value={ps.value}>{ps.label}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">Effectif: {currentEffectiveSettings.pageSize.toUpperCase()}</p>
+                </div>
+                <div>
+                  <Label htmlFor="font-family-select">Police de Caractères</Label>
+                  <Select value={fontFamilyInput} onValueChange={(val) => setFontFamilyInput(val as NonNullable<PdfLayoutSettings['fontFamily']>)}>
+                    <SelectTrigger id="font-family-select"><SelectValue /></SelectTrigger>
+                    <SelectContent>{fontFamilies.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
+                  </Select>
+                   <p className="text-xs text-muted-foreground mt-1">Effective: {fontFamilies.find(f => f.value === currentEffectiveSettings.fontFamily)?.label || currentEffectiveSettings.fontFamily}</p>
+                </div>
+                <Label className="flex items-center gap-1"><TextCursorInput className="w-4 h-4"/> Tailles de Police (pt)</Label>
+                <div className="grid grid-cols-2 gap-3">
+                    <div><Label htmlFor="default-font-size-input" className="text-xs">Défaut</Label><Input id="default-font-size-input" type="number" value={defaultFontSizeInput} onChange={e => setDefaultFontSizeInput(e.target.value)} className="h-8"/></div>
+                    <div><Label htmlFor="header-font-size-input" className="text-xs">En-tête Doc.</Label><Input id="header-font-size-input" type="number" value={headerFontSizeInput} onChange={e => setHeaderFontSizeInput(e.target.value)} className="h-8"/></div>
+                    <div><Label htmlFor="footer-font-size-input" className="text-xs">Pied de Page</Label><Input id="footer-font-size-input" type="number" value={footerFontSizeInput} onChange={e => setFooterFontSizeInput(e.target.value)} className="h-8"/></div>
+                    <div><Label htmlFor="table-header-font-size-input" className="text-xs">En-tête Tableau</Label><Input id="table-header-font-size-input" type="number" value={tableHeaderFontSizeInput} onChange={e => setTableHeaderFontSizeInput(e.target.value)} className="h-8"/></div>
+                    <div><Label htmlFor="table-body-font-size-input" className="text-xs">Corps Tableau</Label><Input id="table-body-font-size-input" type="number" value={tableBodyFontSizeInput} onChange={e => setTableBodyFontSizeInput(e.target.value)} className="h-8"/></div>
+                </div>
+                 <p className="text-xs text-muted-foreground mt-1">
+                    Effectives: Défaut {currentEffectiveSettings.defaultFontSize}pt, En-tête Doc {currentEffectiveSettings.headerFontSize}pt, Pied {currentEffectiveSettings.footerFontSize}pt, En-tête Tab. {currentEffectiveSettings.tableHeaderFontSize}pt, Corps Tab. {currentEffectiveSettings.tableBodyFontSize}pt
+                </p>
+              </div>
+            </div>
+          </div>
+          
+           <div className="p-6 border rounded-lg shadow-sm bg-card/50 hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-3 mb-3">
+                <Palette className="w-6 h-6 text-accent" />
+                <h3 className="text-lg font-semibold text-foreground">Couleurs & Marges</h3>
+              </div>
+              <div className="grid md:grid-cols-2 gap-6">
                 <div>
                     <Label htmlFor="primary-color-input">Couleur Primaire (Hex)</Label>
                      <div className="flex items-center gap-2 mt-1">
@@ -306,44 +410,36 @@ export default function PdfLayoutManager() {
                     </div>
                      <p className="text-xs text-muted-foreground mt-1">Effective: <span style={{backgroundColor: currentEffectiveSettings.primaryColor, padding: '2px 6px', borderRadius: '3px', color: '#fff', textShadow: '0 0 2px #000' }}>{currentEffectiveSettings.primaryColor}</span></p>
                 </div>
-                <Label className="flex items-center gap-1"><ArrowRightLeft className="w-4 h-4"/> Marges (en points PDF, 1pt ≈ 0.35mm)</Label>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><Label htmlFor="margin-top-input" className="text-xs">Haut</Label><Input id="margin-top-input" type="number" value={marginTopInput} onChange={e => setMarginTopInput(e.target.value)} placeholder={String(DEFAULT_MARGIN)} className="h-8"/></div>
-                  <div><Label htmlFor="margin-bottom-input" className="text-xs">Bas</Label><Input id="margin-bottom-input" type="number" value={marginBottomInput} onChange={e => setMarginBottomInput(e.target.value)} placeholder={String(DEFAULT_MARGIN)} className="h-8"/></div>
-                  <div><Label htmlFor="margin-left-input" className="text-xs">Gauche</Label><Input id="margin-left-input" type="number" value={marginLeftInput} onChange={e => setMarginLeftInput(e.target.value)} placeholder={String(DEFAULT_MARGIN)} className="h-8"/></div>
-                  <div><Label htmlFor="margin-right-input" className="text-xs">Droite</Label><Input id="margin-right-input" type="number" value={marginRightInput} onChange={e => setMarginRightInput(e.target.value)} placeholder={String(DEFAULT_MARGIN)} className="h-8"/></div>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">Effectives: H:{currentEffectiveSettings.marginTop}pt, B:{currentEffectiveSettings.marginBottom}pt, G:{currentEffectiveSettings.marginLeft}pt, D:{currentEffectiveSettings.marginRight}pt</p>
-                
                 <div>
-                    <Label htmlFor="default-font-size-input" className="flex items-center gap-1"><TextCursorInput className="w-4 h-4"/> Taille de Police par Défaut (pt)</Label>
-                    <Input id="default-font-size-input" type="number" value={defaultFontSizeInput} onChange={e => setDefaultFontSizeInput(e.target.value)} placeholder={String(DEFAULT_FONT_SIZE)} className="h-8 mt-1"/>
-                    <p className="text-xs text-muted-foreground mt-1">Effective: {currentEffectiveSettings.defaultFontSize}pt</p>
+                  <Label className="flex items-center gap-1"><ArrowRightLeft className="w-4 h-4"/> Marges (en points PDF, 1pt ≈ 0.35mm)</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><Label htmlFor="margin-top-input" className="text-xs">Haut</Label><Input id="margin-top-input" type="number" value={marginTopInput} onChange={e => setMarginTopInput(e.target.value)} placeholder={String(DEFAULT_MARGIN)} className="h-8"/></div>
+                    <div><Label htmlFor="margin-bottom-input" className="text-xs">Bas</Label><Input id="margin-bottom-input" type="number" value={marginBottomInput} onChange={e => setMarginBottomInput(e.target.value)} placeholder={String(DEFAULT_MARGIN)} className="h-8"/></div>
+                    <div><Label htmlFor="margin-left-input" className="text-xs">Gauche</Label><Input id="margin-left-input" type="number" value={marginLeftInput} onChange={e => setMarginLeftInput(e.target.value)} placeholder={String(DEFAULT_MARGIN)} className="h-8"/></div>
+                    <div><Label htmlFor="margin-right-input" className="text-xs">Droite</Label><Input id="margin-right-input" type="number" value={marginRightInput} onChange={e => setMarginRightInput(e.target.value)} placeholder={String(DEFAULT_MARGIN)} className="h-8"/></div>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Effectives: H:{currentEffectiveSettings.marginTop}pt, B:{currentEffectiveSettings.marginBottom}pt, G:{currentEffectiveSettings.marginLeft}pt, D:{currentEffectiveSettings.marginRight}pt</p>
                 </div>
-
-                 <Button onClick={handleSaveLayoutStyles}>
-                    <Save className="mr-2 h-4 w-4"/> Enregistrer Styles de Mise en Page
-                </Button>
               </div>
             </div>
-          </div>
+          
            <div className="p-6 border rounded-lg shadow-sm bg-card/50 hover:shadow-md transition-shadow">
               <div className="flex items-center gap-3 mb-3">
                 <FileCog className="w-6 h-6 text-accent" />
-                <h3 className="text-lg font-semibold text-foreground">En-têtes et Pieds de Page</h3>
+                <h3 className="text-lg font-semibold text-foreground">Contenu En-têtes et Pieds de Page</h3>
               </div>
               <div className="space-y-4">
                 <div>
                     <Label htmlFor="header-text-input" className="flex items-center gap-1"><Type className="w-4 h-4"/> Texte d'En-tête</Label>
                     <Textarea 
                         id="header-text-input"
-                        placeholder="Pour un en-tête tabulaire : utilisez '|' pour séparer les cellules, un saut de ligne pour une nouvelle rangée. Utilisez {logo} pour placer le logo. Ex: {logo} | Titre Principal\n | Sous-titre"
+                        placeholder="Pour un en-tête tabulaire : utilisez '|' pour séparer les cellules, un saut de ligne pour une nouvelle rangée. Utilisez {logo} pour placer le logo. Ex: {logo} | Mon Titre Principal\n | Sous-titre"
                         value={headerTextInput}
                         onChange={(e) => setHeaderTextInput(e.target.value)}
                         className="mt-1"
                         rows={3}
                     />
-                    {currentEffectiveSettings.headerText && <div className="text-xs text-muted-foreground mt-1">Effectif : <pre className="whitespace-pre-wrap text-xs">{currentEffectiveSettings.headerText}</pre></div>}
+                    {currentEffectiveSettings.headerText && <div className="text-xs text-muted-foreground mt-1">Effectif : <pre className="whitespace-pre-wrap text-xs bg-muted/50 p-1 rounded">{currentEffectiveSettings.headerText}</pre></div>}
                     {!currentEffectiveSettings.headerText && <p className="text-xs text-muted-foreground mt-1">Aucun texte d'en-tête défini.</p>}
                 </div>
                 <Button onClick={handleSaveHeaderText}>
@@ -367,6 +463,11 @@ export default function PdfLayoutManager() {
                 </Button>
               </div>
             </div>
+            <div className="flex justify-end mt-6">
+                <Button onClick={handleSaveLayoutAndFontStyles} size="lg">
+                    <Save className="mr-2 h-5 w-5"/> Enregistrer Toutes les Configurations de Mise en Page & Police
+                </Button>
+            </div>
         </CardContent>
       </Card>
 
@@ -377,26 +478,27 @@ export default function PdfLayoutManager() {
             Aperçu de la Mise en Page PDF (Simulation)
           </CardTitle>
           <CardDescription>
-            Visualisation approximative basée sur les paramètres actuels pour "{selectedPdfLabel}".
+            Visualisation approximative basée sur les paramètres actuels pour "{selectedPdfLabel}". L'orientation et le format sont indiqués.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="bg-white dark:bg-neutral-800 p-4 rounded-md shadow-inner aspect-[210/297] w-full max-w-sm mx-auto overflow-hidden border border-muted">
+            <div className="text-sm mb-2">Orientation: <span className="font-semibold">{currentEffectiveSettings.orientation === 'landscape' ? 'Paysage' : 'Portrait'}</span>, Format: <span className="font-semibold">{currentEffectiveSettings.pageSize.toUpperCase()}</span></div>
+          <div className={`bg-white dark:bg-neutral-800 p-4 rounded-md shadow-inner w-full ${currentEffectiveSettings.orientation === 'landscape' ? 'aspect-[297/210] max-w-md' : 'aspect-[210/297] max-w-sm'} mx-auto overflow-hidden border border-muted`}>
             <div
               className="h-full w-full bg-neutral-50 dark:bg-neutral-700 relative flex flex-col"
               style={{
-                paddingTop: `${Math.max(2, currentEffectiveSettings.marginTop / 4)}px`, // Scaled margins
+                paddingTop: `${Math.max(2, currentEffectiveSettings.marginTop / 4)}px`, 
                 paddingBottom: `${Math.max(2, currentEffectiveSettings.marginBottom / 4)}px`,
                 paddingLeft: `${Math.max(2, currentEffectiveSettings.marginLeft / 4)}px`,
                 paddingRight: `${Math.max(2, currentEffectiveSettings.marginRight / 4)}px`,
-                fontSize: `${Math.max(6, currentEffectiveSettings.defaultFontSize / 1.8)}px`, // Scaled font
+                fontSize: `${Math.max(6, (currentEffectiveSettings.defaultFontSize || DEFAULT_FONT_SIZE) / 1.8)}px`, 
+                fontFamily: currentEffectiveSettings.fontFamily || DEFAULT_FONT_FAMILY,
               }}
             >
               {/* Header Area */}
               <div className="mb-auto flex-shrink-0">
-                {/* Simulate table header if headerText is structured */}
                 {(currentEffectiveSettings.headerText || currentEffectiveSettings.logoUrl) && (
-                  <div className="text-[0.8em] text-neutral-600 dark:text-neutral-300 leading-tight border-b border-neutral-300 dark:border-neutral-600 pb-0.5 mb-0.5">
+                  <div className="text-neutral-600 dark:text-neutral-300 leading-tight border-b border-neutral-300 dark:border-neutral-600 pb-0.5 mb-0.5" style={{fontSize: `${Math.max(5, (currentEffectiveSettings.headerFontSize || DEFAULT_HEADER_FONT_SIZE) / 1.8)}px`}}>
                     {currentEffectiveSettings.headerText.includes("{logo}") && currentEffectiveSettings.logoUrl ? (
                       <div className="flex gap-1">
                         <div className="w-1/4 flex items-center justify-center">
@@ -429,8 +531,8 @@ export default function PdfLayoutManager() {
                   className="h-2 w-full rounded-sm"
                   style={{ backgroundColor: currentEffectiveSettings.primaryColor }}
                 />
-                <div className="h-1 w-11/12 bg-neutral-300 dark:bg-neutral-600 rounded-sm" />
-                <div className="h-1 w-full bg-neutral-300 dark:bg-neutral-600 rounded-sm" />
+                <div className="h-1 w-11/12 bg-neutral-300 dark:bg-neutral-600 rounded-sm" style={{fontSize: `${Math.max(5, (currentEffectiveSettings.tableHeaderFontSize || DEFAULT_TABLE_HEADER_FONT_SIZE) / 1.8)}px`}} />
+                <div className="h-1 w-full bg-neutral-300 dark:bg-neutral-600 rounded-sm" style={{fontSize: `${Math.max(5, (currentEffectiveSettings.tableBodyFontSize || DEFAULT_TABLE_BODY_FONT_SIZE) / 1.8)}px`}} />
                 <div className="h-1 w-10/12 bg-neutral-300 dark:bg-neutral-600 rounded-sm" />
                 <div className="h-1 w-full bg-neutral-300 dark:bg-neutral-600 rounded-sm" />
                 <div className="h-1 w-9/12 bg-neutral-300 dark:bg-neutral-600 rounded-sm" />
@@ -439,7 +541,7 @@ export default function PdfLayoutManager() {
               {/* Footer Area */}
               <div className="mt-auto flex-shrink-0">
                 {currentEffectiveSettings.footerText && (
-                  <div className="text-[0.8em] text-neutral-500 dark:text-neutral-400 truncate leading-tight border-t border-neutral-300 dark:border-neutral-600 pt-0.5 mt-0.5">
+                  <div className="text-neutral-500 dark:text-neutral-400 truncate leading-tight border-t border-neutral-300 dark:border-neutral-600 pt-0.5 mt-0.5" style={{fontSize: `${Math.max(4, (currentEffectiveSettings.footerFontSize || DEFAULT_FOOTER_FONT_SIZE) / 1.8)}px`}}>
                     {currentEffectiveSettings.footerText
                       .replace('{date}', format(new Date(), "dd/MM/yy HH:mm", { locale: fr }))
                       .replace('{pageNumber}', '1')
@@ -460,12 +562,11 @@ export default function PdfLayoutManager() {
         <FileCog className="h-5 w-5 text-primary" />
         <AlertTitle className="text-primary font-semibold">Note sur l'Application des Paramètres</AlertTitle>
         <AlertDescription>
-          Les configurations enregistrées ici (logo, couleur, marges, police, en-têtes, pieds de page) seront utilisées lors de la génération des PDFs correspondants.
-          Pour l'en-tête, vous pouvez définir un format tabulaire simple.
+          Les configurations enregistrées ici seront utilisées lors de la génération des PDFs correspondants.
+          Les polices standards disponibles sont : Helvetica, Times New Roman, Courier, Arial, Verdana.
         </AlertDescription>
       </Alert>
     </div>
   );
 }
-
     
