@@ -78,7 +78,16 @@ export default function FryerOilOverallMonitoring() {
   const { toast } = useToast();
 
   const maintenanceForm = useForm<MaintenanceLogFormData>({ resolver: zodResolver(maintenanceLogSchema) });
-  const tpmForm = useForm<TpmLogFormData>({ resolver: zodResolver(tpmLogSchema) });
+  const tpmForm = useForm<TpmLogFormData>({ 
+    resolver: zodResolver(tpmLogSchema),
+    defaultValues: {
+      date: new Date(),
+      operator: '',
+      ledTpmStatus: '',
+      fryerIdentifier: '',
+      tpmPercentage: '',
+    }
+  });
 
   useEffect(() => {
     setIsLoading(true);
@@ -106,7 +115,12 @@ export default function FryerOilOverallMonitoring() {
       filterDate: entry.filterDate ? parseISO(entry.filterDate) : null,
       cleaningDate: entry.cleaningDate ? parseISO(entry.cleaningDate) : null,
       changeDate: entry.changeDate ? parseISO(entry.changeDate) : null,
-    } : { useDate: new Date() });
+    } : { 
+      useDate: new Date(),
+      filterDate: null, filterSignature: '',
+      cleaningDate: null, cleaningSignature: '',
+      changeDate: null, changeSignature: '',
+    });
     setIsMaintenanceDialogOpen(true);
   };
 
@@ -136,7 +150,20 @@ export default function FryerOilOverallMonitoring() {
   // TPM Log Handlers
   const handleOpenTpmDialog = (entry?: FryerOilTpmLogEntry) => {
     setEditingTpmEntry(entry || null);
-    tpmForm.reset(entry ? { ...entry, date: parseISO(entry.date) } : { date: new Date(), ledTpmStatus: '', fryerIdentifier: '' });
+    tpmForm.reset(entry ? { 
+      ...entry, 
+      date: parseISO(entry.date),
+      operator: entry.operator || '',
+      fryerIdentifier: entry.fryerIdentifier || '',
+      tpmPercentage: entry.tpmPercentage || '',
+      ledTpmStatus: entry.ledTpmStatus || '',
+     } : { 
+      date: new Date(), 
+      operator: '', 
+      ledTpmStatus: '', 
+      fryerIdentifier: '',
+      tpmPercentage: '',
+     });
     setIsTpmDialogOpen(true);
   };
 
@@ -164,7 +191,7 @@ export default function FryerOilOverallMonitoring() {
         const dataToExport = isMaintenance ? maintenanceLog : tpmLog;
         const title = isMaintenance ? "Suivi Maintenance Friteuses" : "Suivi des Huiles (TPM)";
         const filenameSuffix = isMaintenance ? "Maintenance_Friteuses" : "Suivi_Huiles_TPM";
-        const settingsKey = isMaintenance ? 'pms_fryer_maintenance_log' : 'pms_fryer_oil_tpm_log'; // Example keys for pdf-settings
+        const settingsKey = isMaintenance ? 'pms_fryer_maintenance_log' : 'pms_fryer_oil_tpm_log'; 
 
         if(dataToExport.length === 0) {
             toast({title: "Aucune donnée", description: `Aucune donnée à exporter pour ${title.toLowerCase()}.`, variant: "destructive"});
@@ -187,8 +214,13 @@ export default function FryerOilOverallMonitoring() {
         if (pdfSettings.primaryColor) {
             const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
             if (primaryColorRgb) headStyles.fillColor = primaryColorRgb;
-            headStyles.textColor = (hexToRgb(pdfSettings.primaryColor)![0] * 299 + hexToRgb(pdfSettings.primaryColor)![1] * 587 + hexToRgb(pdfSettings.primaryColor)![2] * 114) / 1000 > 125 ? [0,0,0] : [255,255,255];
+            const brightness = (hexToRgb(pdfSettings.primaryColor)![0] * 299 + hexToRgb(pdfSettings.primaryColor)![1] * 587 + hexToRgb(pdfSettings.primaryColor)![2] * 114) / 1000;
+            headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
+        } else {
+            headStyles.fillColor = [220,220,220];
+            headStyles.textColor = [0,0,0];
         }
+
 
         let head: any[], body: any[][], columnStyles: any = {};
         
@@ -208,9 +240,9 @@ export default function FryerOilOverallMonitoring() {
             ];
             body = (dataToExport as FryerMaintenanceLogEntry[]).map(e => [
                 format(parseISO(e.useDate), "dd/MM/yyyy", { locale: fr }),
-                e.filterDate ? format(parseISO(e.filterDate), "dd/MM/yyyy", { locale: fr }) : '-', e.filterSignature || '-',
-                e.cleaningDate ? format(parseISO(e.cleaningDate), "dd/MM/yyyy", { locale: fr }) : '-', e.cleaningSignature || '-',
-                e.changeDate ? format(parseISO(e.changeDate), "dd/MM/yyyy", { locale: fr }) : '-', e.changeSignature || '-',
+                e.filterDate ? format(parseISO(e.filterDate), "dd/MM/yyyy") : '-', e.filterSignature || '-',
+                e.cleaningDate ? format(parseISO(e.cleaningDate), "dd/MM/yyyy") : '-', e.cleaningSignature || '-',
+                e.changeDate ? format(parseISO(e.changeDate), "dd/MM/yyyy") : '-', e.changeSignature || '-',
             ]);
             columnStyles = { 0: {cellWidth: 40}, 1:{cellWidth:30}, 2:{cellWidth:30}, 3:{cellWidth:30}, 4:{cellWidth:30}, 5:{cellWidth:30}, 6:{cellWidth:30}};
         } else { // TPM Log
@@ -233,7 +265,17 @@ export default function FryerOilOverallMonitoring() {
 
         doc.autoTable({
             head, body, startY: currentY, theme: 'grid', styles: { fontSize: 8, cellPadding: 2 }, headStyles: headStyles, columnStyles: columnStyles,
-            didDrawPage: (data) => { /* Footer logic */ }
+            didDrawPage: (data) => { 
+                const pageCount = doc.internal.getNumberOfPages();
+                if (pdfSettings.footerText) {
+                    let footerStr = pdfSettings.footerText
+                    .replace('{date}', generationDateFormatted)
+                    .replace('{pageNumber}', data.pageNumber.toString())
+                    .replace('{totalPages}', pageCount.toString());
+                    doc.setFontSize(9);
+                    doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+                }
+            }
         });
         doc.save(`PMS_${filenameSuffix}_${format(new Date(), "yyyyMMdd")}.pdf`);
         toast({ title: "PDF Généré", description: `Le PDF pour ${title.toLowerCase()} a été téléchargé.` });
@@ -245,21 +287,15 @@ export default function FryerOilOverallMonitoring() {
     }
 };
 
-  const renderDateField = (form: any, name: "useDate" | "filterDate" | "cleaningDate" | "changeDate" | "date") => (
-    <FormField control={form.control} name={name} render={({ field }) => (
+  const renderDateField = (formInstance: any, name: "useDate" | "filterDate" | "cleaningDate" | "changeDate" | "date", label: string) => (
+    <FormField control={formInstance.control} name={name} render={({ field }) => (
       <FormItem className="flex flex-col">
-        <FormLabel>{name.startsWith("use") ? "Date Utilisation" : name.startsWith("filter") ? "Date Filtration" : name.startsWith("cleaning") ? "Date Nettoyage" : name.startsWith("change") ? "Date Changement" : "Date"}</FormLabel>
-        <Popover>
-          <PopoverTrigger asChild>
-            <FormControl>
-              <Button variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
-                {field.value ? format(field.value, "dd/MM/yyyy", { locale: fr }) : <span>Choisir date</span>}
-                <LucideCalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-              </Button>
-            </FormControl>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={field.value as Date | undefined} onSelect={field.onChange} initialFocus locale={fr} /></PopoverContent>
-        </Popover>
+        <FormLabel>{label}</FormLabel>
+        <Popover><PopoverTrigger asChild><FormControl><Button variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+            {field.value ? format(field.value, "dd/MM/yyyy", { locale: fr }) : <span>Choisir date</span>}
+            <LucideCalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+        </Button></FormControl></PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={field.value as Date | undefined} onSelect={field.onChange} initialFocus locale={fr} /></PopoverContent></Popover>
         <FormMessage />
       </FormItem>
     )} />
@@ -278,23 +314,23 @@ export default function FryerOilOverallMonitoring() {
                 <DialogHeader><DialogTitle>{editingMaintenanceEntry ? "Modifier" : "Nouvelle"} Entrée de Maintenance</DialogTitle></DialogHeader>
                 <Form {...maintenanceForm}>
                   <form onSubmit={maintenanceForm.handleSubmit(handleMaintenanceFormSubmit)} className="space-y-3 py-2 max-h-[70vh] overflow-y-auto pr-2">
-                    {renderDateField(maintenanceForm, "useDate")}
+                    {renderDateField(maintenanceForm, "useDate", "Date Utilisation Friture")}
                     <fieldset className="border p-3 rounded-md"><legend className="text-sm font-medium px-1">Filtration de l'Huile</legend>
                         <div className="grid grid-cols-2 gap-3">
-                            {renderDateField(maintenanceForm, "filterDate")}
-                            <FormField control={maintenanceForm.control} name="filterSignature" render={({ field }) => (<FormItem><FormLabel>Emargement</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            {renderDateField(maintenanceForm, "filterDate", "Date Filtration")}
+                            <FormField control={maintenanceForm.control} name="filterSignature" render={({ field }) => (<FormItem><FormLabel>Emargement</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                         </div>
                     </fieldset>
                     <fieldset className="border p-3 rounded-md"><legend className="text-sm font-medium px-1">Nettoyage de la Friteuse</legend>
                         <div className="grid grid-cols-2 gap-3">
-                            {renderDateField(maintenanceForm, "cleaningDate")}
-                            <FormField control={maintenanceForm.control} name="cleaningSignature" render={({ field }) => (<FormItem><FormLabel>Emargement</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            {renderDateField(maintenanceForm, "cleaningDate", "Date Nettoyage")}
+                            <FormField control={maintenanceForm.control} name="cleaningSignature" render={({ field }) => (<FormItem><FormLabel>Emargement</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                         </div>
                     </fieldset>
                      <fieldset className="border p-3 rounded-md"><legend className="text-sm font-medium px-1">Changement d'Huile</legend>
                         <div className="grid grid-cols-2 gap-3">
-                            {renderDateField(maintenanceForm, "changeDate")}
-                            <FormField control={maintenanceForm.control} name="changeSignature" render={({ field }) => (<FormItem><FormLabel>Emargement</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            {renderDateField(maintenanceForm, "changeDate", "Date Changement")}
+                            <FormField control={maintenanceForm.control} name="changeSignature" render={({ field }) => (<FormItem><FormLabel>Emargement</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                         </div>
                     </fieldset>
                     <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit">{editingMaintenanceEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
@@ -305,7 +341,7 @@ export default function FryerOilOverallMonitoring() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? <Loader2/> : maintenanceLog.length === 0 ? <p className="text-center text-muted-foreground">Aucune entrée de maintenance.</p> : (
+          {isLoading ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : maintenanceLog.length === 0 ? <p className="text-center text-muted-foreground">Aucune entrée de maintenance.</p> : (
             <div className="overflow-x-auto border rounded-md">
               <Table>
                 <TableHeader>
@@ -340,7 +376,7 @@ export default function FryerOilOverallMonitoring() {
               </Table>
             </div>
           )}
-          {maintenanceLog.length > 0 && <div className="mt-4 flex justify-end"><Button onClick={() => generatePdf('maintenance')} size="sm" disabled={isLoading}>{isLoading ? <Loader2 /> : <FileText />} Générer PDF</Button></div>}
+          {maintenanceLog.length > 0 && <div className="mt-4 flex justify-end"><Button onClick={() => generatePdf('maintenance')} size="sm" disabled={isLoading}>{isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileText className="mr-2 h-4 w-4"/>} Générer PDF</Button></div>}
         </CardContent>
       </Card>
 
@@ -355,10 +391,10 @@ export default function FryerOilOverallMonitoring() {
                 <DialogHeader><DialogTitle>{editingTpmEntry ? "Modifier" : "Nouveau"} Contrôle TPM</DialogTitle></DialogHeader>
                 <Form {...tpmForm}>
                   <form onSubmit={tpmForm.handleSubmit(handleTpmFormSubmit)} className="space-y-3 py-2 max-h-[70vh] overflow-y-auto pr-2">
-                    {renderDateField(tpmForm, "date")}
-                    <FormField control={tpmForm.control} name="operator" render={({ field }) => (<FormItem><FormLabel>Opérateur</FormLabel><FormControl><Input placeholder="Initiales" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={tpmForm.control} name="fryerIdentifier" render={({ field }) => (<FormItem><FormLabel>Friteuse N°/Nom</FormLabel><FormControl><Input placeholder="Ex: 1, Gauche" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={tpmForm.control} name="tpmPercentage" render={({ field }) => (<FormItem><FormLabel>% TPM</FormLabel><FormControl><Input placeholder="Ex: 22%" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    {renderDateField(tpmForm, "date", "Date du Contrôle")}
+                    <FormField control={tpmForm.control} name="operator" render={({ field }) => (<FormItem><FormLabel>Opérateur</FormLabel><FormControl><Input placeholder="Initiales" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={tpmForm.control} name="fryerIdentifier" render={({ field }) => (<FormItem><FormLabel>Friteuse N°/Nom</FormLabel><FormControl><Input placeholder="Ex: 1, Gauche" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={tpmForm.control} name="tpmPercentage" render={({ field }) => (<FormItem><FormLabel>% TPM</FormLabel><FormControl><Input placeholder="Ex: 22%" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                     <FormField control={tpmForm.control} name="ledTpmStatus" render={({ field }) => (
                         <FormItem><FormLabel>Indicateur LED TPM</FormLabel><FormControl>
                             <RadioGroup onValueChange={field.onChange} value={field.value} className="flex space-x-2 pt-1">
@@ -377,7 +413,7 @@ export default function FryerOilOverallMonitoring() {
           <CardDescription>Légende TPM: <span className="px-1.5 py-0.5 rounded-sm text-xs font-medium bg-green-500 text-white">Conservation</span> / <span className="px-1.5 py-0.5 rounded-sm text-xs font-medium bg-yellow-400 text-black">Surveillance</span> / <span className="px-1.5 py-0.5 rounded-sm text-xs font-medium bg-red-500 text-white">Changement</span></CardDescription>
         </CardHeader>
         <CardContent>
-           {isLoading ? <Loader2/> : tpmLog.length === 0 ? <p className="text-center text-muted-foreground">Aucun contrôle TPM enregistré.</p> : (
+           {isLoading ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : tpmLog.length === 0 ? <p className="text-center text-muted-foreground">Aucun contrôle TPM enregistré.</p> : (
             <div className="overflow-x-auto border rounded-md">
               <Table>
                 <TableHeader>
@@ -394,9 +430,9 @@ export default function FryerOilOverallMonitoring() {
                       <TableCell className="text-center">{e.operator || '-'}</TableCell>
                       <TableCell className="text-center">
                         <div className="flex justify-center space-x-1">
-                            <span className={cn("w-4 h-4 rounded-sm border border-gray-400", e.ledTpmStatus === 'lt_20' && "bg-green-500 ring-2 ring-offset-1 ring-black")}></span>
-                            <span className={cn("w-4 h-4 rounded-sm border border-gray-400", e.ledTpmStatus === '20_24' && "bg-yellow-400 ring-2 ring-offset-1 ring-black")}></span>
-                            <span className={cn("w-4 h-4 rounded-sm border border-gray-400", e.ledTpmStatus === 'gt_24' && "bg-red-500 ring-2 ring-offset-1 ring-black")}></span>
+                            <span className={cn("w-4 h-4 rounded-sm border border-gray-400 inline-flex items-center justify-center", e.ledTpmStatus === 'lt_20' && "bg-green-500 ring-2 ring-offset-1 ring-black")}>{e.ledTpmStatus === 'lt_20' && <Check className="h-3 w-3 text-white"/>}</span>
+                            <span className={cn("w-4 h-4 rounded-sm border border-gray-400 inline-flex items-center justify-center", e.ledTpmStatus === '20_24' && "bg-yellow-400 ring-2 ring-offset-1 ring-black")}>{e.ledTpmStatus === '20_24' && <Check className="h-3 w-3 text-black"/>}</span>
+                            <span className={cn("w-4 h-4 rounded-sm border border-gray-400 inline-flex items-center justify-center", e.ledTpmStatus === 'gt_24' && "bg-red-500 ring-2 ring-offset-1 ring-black")}>{e.ledTpmStatus === 'gt_24' && <Check className="h-3 w-3 text-white"/>}</span>
                         </div>
                       </TableCell>
                       <TableCell className="text-center">{e.fryerIdentifier}</TableCell>
@@ -412,9 +448,11 @@ export default function FryerOilOverallMonitoring() {
               </Table>
             </div>
           )}
-          {tpmLog.length > 0 && <div className="mt-4 flex justify-end"><Button onClick={() => generatePdf('tpm')} size="sm" disabled={isLoading}>{isLoading ? <Loader2 /> : <FileText />} Générer PDF</Button></div>}
+          {tpmLog.length > 0 && <div className="mt-4 flex justify-end"><Button onClick={() => generatePdf('tpm')} size="sm" disabled={isLoading}>{isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileText className="mr-2 h-4 w-4"/>} Générer PDF</Button></div>}
         </CardContent>
       </Card>
     </div>
   );
 }
+
+    
