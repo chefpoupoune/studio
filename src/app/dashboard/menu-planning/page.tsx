@@ -1,8 +1,7 @@
-
 "use client";
 
 import Link from 'next/link';
-import { ArrowLeft, BookOpenText, CalendarDays, ClipboardCheck, Thermometer, FileText as FileTextIcon, Loader2 } from 'lucide-react'; // Added Thermometer, FileTextIcon, Loader2
+import { BookOpenText, CalendarDays, ClipboardCheck, Thermometer, FileText as FileTextIcon, Loader2 } from 'lucide-react'; // Removed ArrowLeft
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
@@ -143,7 +142,6 @@ export default function MenuPlanningPage() {
         currentY += 10;
       }
 
-      // Add Logo URL if available
       if (pdfSettings.logoUrl) {
         doc.setFontSize(8); 
         doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY);
@@ -261,12 +259,7 @@ export default function MenuPlanningPage() {
             Planification des Menus
           </h1>
         </div>
-        <Link href="/dashboard" passHref>
-          <Button variant="outline" size="sm" className="group w-full sm:w-auto">
-            <ArrowLeft className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:-translate-x-1" />
-            Retour au Tableau de Bord
-          </Button>
-        </Link>
+        {/* Back to Dashboard button removed */}
       </div>
       <div className="mb-6 text-center sm:text-left">
         <CurrentDate />
@@ -399,6 +392,3 @@ export default function MenuPlanningPage() {
     </div>
   );
 }
-
-
-    

@@ -1,8 +1,7 @@
-
 "use client";
 
 import Link from 'next/link';
-import { ArrowLeft, Users, Clock, UserCheck, FileText } from 'lucide-react';
+import { Users, Clock, UserCheck, FileText } from 'lucide-react'; // Removed ArrowLeft
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ManageBrigadeMembers from './components/manage-brigade-members';
@@ -12,6 +11,8 @@ import type { BrigadeMember, TimeEntry } from './types';
 import React, { useState, useEffect, useCallback } from 'react';
 import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 const initialBrigadeMembers: BrigadeMember[] = [
   { id: 'member_chef_01', name: 'Moi (Chef)', role: 'Chef de Cuisine' },
@@ -72,7 +73,6 @@ export default function TimeTrackingPage() {
 
   const updateMember = useCallback((updatedMember: BrigadeMember) => {
     setBrigadeMembers(prev => prev.map(m => m.id === updatedMember.id ? updatedMember : m));
-    // Also update memberName in timeEntries if name changed
     setTimeEntries(prevEntries => prevEntries.map(entry => 
         entry.memberId === updatedMember.id ? {...entry, memberName: updatedMember.name} : entry
     ));
@@ -81,7 +81,6 @@ export default function TimeTrackingPage() {
   
   const deleteMember = useCallback((memberId: string) => {
     const memberName = brigadeMembers.find(m => m.id === memberId)?.name || "Le membre";
-    // Optionally, decide what to do with time entries for a deleted member. For now, they remain.
     setBrigadeMembers(prev => prev.filter(m => m.id !== memberId));
     toast({ title: "Membre Supprimé", description: `${memberName} a été retiré de la brigade.`, variant: "destructive" });
   }, [brigadeMembers, toast]);
@@ -97,7 +96,7 @@ export default function TimeTrackingPage() {
         ...entry, 
         id: `te_${Date.now()}`, 
         memberName: member.name,
-        date: new Date(entry.date) // Ensure date is a Date object
+        date: new Date(entry.date) 
     };
 
     setTimeEntries(prev => [newEntry, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
@@ -122,12 +121,7 @@ export default function TimeTrackingPage() {
              Suivi des Heures Brigade
            </h1>
         </div>
-        <Link href="/dashboard" passHref>
-          <Button variant="outline" size="sm" className="group w-full sm:w-auto">
-            <ArrowLeft className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:-translate-x-1" />
-            Retour au Tableau de Bord
-          </Button>
-        </Link>
+        {/* Back to Dashboard button removed */}
       </div>
       <div className="mb-6 text-center sm:text-left">
         <CurrentDate />

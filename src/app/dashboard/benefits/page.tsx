@@ -1,16 +1,15 @@
-
 "use client";
 
 import Link from 'next/link';
-import { ArrowLeft, FileSpreadsheet, Users } from 'lucide-react';
+import { FileSpreadsheet, Users } from 'lucide-react'; // Removed ArrowLeft
 import { Button } from '@/components/ui/button';
 import BenefitTrackingTable from './components/excel-benefit-manager';
-import ManageBenefitEmployees from './components/ManageBenefitEmployees'; // New component
+import ManageBenefitEmployees from './components/ManageBenefitEmployees'; 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
-import React, { useState, useEffect, useCallback } from 'react'; // Added React imports
-import type { BenefitEmployee } from './types'; // Import BenefitEmployee type
-import { useToast } from '@/hooks/use-toast'; // Import useToast
+import React, { useState, useEffect, useCallback } from 'react'; 
+import type { BenefitEmployee } from './types'; 
+import { useToast } from '@/hooks/use-toast'; 
 
 const BENEFITS_EMPLOYEES_STORAGE_KEY = 'benefits_employees_list_v1';
 
@@ -30,7 +29,7 @@ export default function BenefitsPage() {
         if (storedEmployees) {
           setBenefitEmployees(JSON.parse(storedEmployees));
         } else {
-          setBenefitEmployees([]); // Start with an empty list if nothing in storage
+          setBenefitEmployees([]); 
         }
       } catch (e) {
         console.error("Error loading benefit employees from localStorage", e);
@@ -70,7 +69,6 @@ export default function BenefitsPage() {
 
   const handleDeleteEmployee = useCallback((employeeId: string) => {
     const employeeName = benefitEmployees.find(e => e.id === employeeId)?.name || "L'employé";
-     // Also clear their benefit data for all months if needed - for now, just remove employee
     setBenefitEmployees(prev => prev.filter(emp => emp.id !== employeeId));
     toast({ title: "Employé Supprimé", description: `${employeeName} a été supprimé de la liste.`, variant: "destructive" });
   }, [benefitEmployees, toast]);
@@ -93,12 +91,7 @@ export default function BenefitsPage() {
             Gestion des Avantages en Nature
           </h1>
         </div>
-        <Link href="/dashboard" passHref>
-          <Button variant="outline" size="sm" className="group w-full sm:w-auto">
-            <ArrowLeft className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:-translate-x-1" />
-            Retour au Tableau de Bord
-          </Button>
-        </Link>
+        {/* Back to Dashboard button removed */}
       </div>
       <div className="mb-6 text-center sm:text-left">
         <CurrentDate />
@@ -126,4 +119,3 @@ export default function BenefitsPage() {
     </div>
   );
 }
-    

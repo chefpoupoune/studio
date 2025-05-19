@@ -1,13 +1,12 @@
-
 "use client";
 
 import Link from 'next/link';
-import { ArrowLeft, DollarSign, CalendarDays, CalendarRange, CookingPot, UtensilsCrossed } from 'lucide-react';
+import { DollarSign, CalendarDays, CalendarRange, CookingPot, UtensilsCrossed } from 'lucide-react'; // Removed ArrowLeft
 import { Button } from '@/components/ui/button';
 import CostAnalysisTable from './components/cost-analysis-table';
 import AnnualCostAnalysisTable from './components/annual-cost-analysis-table';
 import PicnicCostAnalysis from './components/picnic-cost-analysis';
-import OccasionalMealCostAnalysis from './components/occasional-meal-cost-analysis'; // New import
+import OccasionalMealCostAnalysis from './components/occasional-meal-cost-analysis'; 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -38,12 +37,7 @@ export default function CostManagementPage() {
             Gestion des Coûts
           </h1>
         </div>
-        <Link href="/dashboard" passHref>
-          <Button variant="outline" size="sm" className="group w-full sm:w-auto">
-            <ArrowLeft className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:-translate-x-1" />
-            Retour au Tableau de Bord
-          </Button>
-        </Link>
+        {/* Back to Dashboard button removed */}
       </div>
       <div className="mb-6 text-center sm:text-left">
         <CurrentDate />

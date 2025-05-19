@@ -1,8 +1,7 @@
-
 "use client";
 
 import Link from 'next/link';
-import { ArrowLeft, ShieldCheck, SprayCan, Sparkles, Thermometer, Truck, ThermometerSnowflake, ArrowDownUp, Snowflake, Flame } from 'lucide-react'; // Added Flame
+import { ShieldCheck, SprayCan, Sparkles, Thermometer, Truck, ThermometerSnowflake, ArrowDownUp, Snowflake, Flame } from 'lucide-react'; // Removed ArrowLeft
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
@@ -15,7 +14,7 @@ import ReceptionMonitoring from './components/reception-monitoring';
 import ColdChainMonitoring from './components/cold-chain-monitoring';
 import TempChangeMonitoring from './components/temp-change-monitoring';
 import DefrostingMonitoring from './components/defrosting-monitoring'; 
-import FryerOilOverallMonitoring from './components/fryer-oil-overall-monitoring'; // New component for both fryer/oil logs
+import FryerOilOverallMonitoring from './components/fryer-oil-overall-monitoring'; 
 
 export default function PmsPage() {
   const [isClient, setIsClient] = React.useState(false);
@@ -41,19 +40,14 @@ export default function PmsPage() {
             PMS (Plan de Maîtrise Sanitaire)
           </h1>
         </div>
-        <Link href="/dashboard" passHref>
-          <Button variant="outline" size="sm" className="group w-full sm:w-auto">
-            <ArrowLeft className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:-translate-x-1" />
-            Retour au Tableau de Bord
-          </Button>
-        </Link>
+        {/* Back to Dashboard button removed */}
       </div>
       <div className="mb-6 text-center sm:text-left">
         <CurrentDate />
       </div>
       
       <Tabs defaultValue="kitchen-cleaning" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-8 gap-1 mb-6 bg-card p-1 rounded-lg"> {/* Adjusted for 8 tabs */}
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-8 gap-1 mb-6 bg-card p-1 rounded-lg"> 
           <TabsTrigger value="kitchen-cleaning" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             <SprayCan className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Net. Cuisine
           </TabsTrigger>
@@ -75,7 +69,7 @@ export default function PmsPage() {
            <TabsTrigger value="defrosting-monitoring" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             <Snowflake className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Décongélation
           </TabsTrigger>
-          <TabsTrigger value="fryer-oil-tracking" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"> {/* New Tab */}
+          <TabsTrigger value="fryer-oil-tracking" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"> 
             <Flame className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Friteuse / Huiles
           </TabsTrigger>
         </TabsList>
@@ -101,7 +95,7 @@ export default function PmsPage() {
         <TabsContent value="defrosting-monitoring">
             <DefrostingMonitoring />
         </TabsContent>
-        <TabsContent value="fryer-oil-tracking"> {/* New Content */}
+        <TabsContent value="fryer-oil-tracking"> 
             <FryerOilOverallMonitoring />
         </TabsContent>
       </Tabs>

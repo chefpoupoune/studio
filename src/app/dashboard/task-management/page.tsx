@@ -1,8 +1,7 @@
-
 "use client";
 
 import Link from 'next/link';
-import { ArrowLeft, ClipboardList } from 'lucide-react';
+import { ClipboardList } from 'lucide-react'; // Removed ArrowLeft
 import { Button } from '@/components/ui/button';
 import ManageTasks from './components/manage-tasks';
 import type { Task, TaskStatus, StatusLogEntry } from './types';
@@ -70,7 +69,7 @@ export default function TaskManagementPage() {
           }));
           setTasks(parsedTasks);
         } else {
-          setTasks(initialTasks); // Load initial if nothing in localStorage
+          setTasks(initialTasks); 
         }
       } catch (e) {
         console.error("Error loading tasks from localStorage", e);
@@ -93,7 +92,7 @@ export default function TaskManagementPage() {
       ...taskData,
       createdAt: new Date(),
       updatedAt: new Date(),
-      currentStatus: 'mr_dufay_prevenue', // Default status
+      currentStatus: 'mr_dufay_prevenue', 
       statusHistory: [{ status: 'mr_dufay_prevenue', date: new Date(), notes: 'Tâche créée.' }],
       appointmentDate: null,
     };
@@ -161,12 +160,7 @@ export default function TaskManagementPage() {
              Gestion des Tâches & Problèmes
            </h1>
         </div>
-        <Link href="/dashboard" passHref>
-          <Button variant="outline" size="sm" className="group w-full sm:w-auto">
-            <ArrowLeft className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:-translate-x-1" />
-            Retour au Tableau de Bord
-          </Button>
-        </Link>
+        {/* Back to Dashboard button removed */}
       </div>
       <div className="mb-6 text-center sm:text-left">
         <CurrentDate />
@@ -193,4 +187,3 @@ export default function TaskManagementPage() {
     </div>
   );
 }
-

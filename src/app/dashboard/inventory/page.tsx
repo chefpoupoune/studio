@@ -1,8 +1,7 @@
-
 "use client";
 
 import Link from 'next/link';
-import { ArrowLeft, PackagePlusIcon, ListOrderedIcon, FileTextIcon, ShoppingCartIcon, HistoryIcon } from 'lucide-react';
+import { PackagePlusIcon, ListOrderedIcon, ShoppingCartIcon, HistoryIcon } from 'lucide-react'; // Removed ArrowLeft
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ManageProducts from './components/manage-products';
@@ -39,7 +38,7 @@ export default function InventoryPage() {
         if (storedProducts) {
           setProducts(JSON.parse(storedProducts));
         } else {
-          setProducts(initialProducts); // Load initial if nothing in localStorage
+          setProducts(initialProducts); 
         }
 
         const storedMovements = localStorage.getItem('inventory_stock_movements');
@@ -50,11 +49,10 @@ export default function InventoryPage() {
 
       } catch (e) {
         console.error("Error loading data from localStorage", e);
-        // Clear potentially corrupted data
         localStorage.removeItem('inventory_products');
         localStorage.removeItem('inventory_stock_movements');
         localStorage.removeItem('inventory_purchase_orders');
-        setProducts(initialProducts); // Reset to initial if error
+        setProducts(initialProducts); 
       }
     }
   }, [isClient]);
@@ -139,8 +137,6 @@ export default function InventoryPage() {
   }, [products, toast]);
 
   if (!isClient) {
-    // Render a loading state or null while waiting for client-side mount
-    // to prevent hydration mismatches with localStorage.
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p className="text-lg text-muted-foreground">Chargement de la gestion des stocks...</p>
@@ -157,12 +153,7 @@ export default function InventoryPage() {
              Gestion des Stocks Entretien
            </h1>
         </div>
-        <Link href="/dashboard" passHref>
-          <Button variant="outline" size="sm" className="group w-full sm:w-auto">
-            <ArrowLeft className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:-translate-x-1" />
-            Retour au Tableau de Bord
-          </Button>
-        </Link>
+        {/* Back to Dashboard button removed */}
       </div>
       <div className="mb-6 text-center sm:text-left">
         <CurrentDate />

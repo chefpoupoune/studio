@@ -1,8 +1,7 @@
-
 "use client"; 
 
 import Link from 'next/link';
-import { ArrowLeft, Settings as SettingsIcon, FileCog, Settings2 as AppSettingsIcon, ShieldAlert, Users, ShieldX } from 'lucide-react'; // Added ShieldX for access denied
+import { Settings as SettingsIcon, FileCog, Settings2 as AppSettingsIcon, ShieldAlert, Users, ShieldX } from 'lucide-react'; // Removed ArrowLeft
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
@@ -11,8 +10,8 @@ import PdfLayoutManager from './components/pdf-layout-manager';
 import ApplicationSettingsManager from './components/application-settings-manager';
 import PmsConfigManager from './components/pms-config-manager';
 import UserManagement from './components/user-management';
-import React, { useState, useEffect } from 'react'; // Added useState, useEffect
-import type { RubricId } from './components/user-management'; // Import RubricId type
+import React, { useState, useEffect } from 'react'; 
+import type { RubricId } from './components/user-management'; 
 
 export default function SettingsPage() {
   const [isClient, setIsClient] = useState(false);
@@ -62,7 +61,7 @@ export default function SettingsPage() {
         </p>
         <Link href="/dashboard" passHref>
           <Button variant="outline">
-            <ArrowLeft className="mr-2 h-4 w-4" />
+            {/* <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard button removed from here as well */}
             Retour au Tableau de Bord
           </Button>
         </Link>
@@ -79,12 +78,7 @@ export default function SettingsPage() {
             Paramètres de l'Application
           </h1>
         </div>
-        <Link href="/dashboard" passHref>
-          <Button variant="outline" size="sm" className="group w-full sm:w-auto">
-            <ArrowLeft className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:-translate-x-1" />
-            Retour au Tableau de Bord
-          </Button>
-        </Link>
+        {/* Back to Dashboard button removed */}
       </div>
       <div className="mb-6 text-center sm:text-left">
         <CurrentDate />
@@ -145,4 +139,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
