@@ -1,15 +1,20 @@
 
+
 export interface PmsTaskDefinition {
   id: string;
   name: string;
 }
 
-export interface PmsZone { // Can also represent an "Equipment"
+export interface PmsZoneWithTasksDefinition { // Renamed for clarity, used by Cleaning and Fryer Oil Monitoring
   id: string;
   name: string;
-  tasks?: PmsTaskDefinition[]; 
-  
-  equipmentType?: 'refrigerator' | 'freezer';
+  tasks: PmsTaskDefinition[];
+}
+
+export interface PmsEquipmentDefinition { // Specifically for Temperature Monitoring
+  id: string;
+  name: string;
+  equipmentType: 'refrigerator' | 'freezer';
   targetTempMin?: number;
   targetTempMax?: number;
   tolerance1TempMin?: number; 
@@ -19,22 +24,22 @@ export interface PmsZone { // Can also represent an "Equipment"
 }
 
 export interface PmsConfigurations {
-  [categoryKey: string]: PmsZone[];
+  [categoryKey: string]: (PmsZoneWithTasksDefinition | PmsEquipmentDefinition)[]; // Can hold different types of configurations
 }
 
-// For Cleaning Records
+// For Cleaning Records (Kitchen & Restaurant) and Fryer Oil Points Control
 export interface SimplifiedTaskRecord {
   status: 'fait' | 'non_fait' | 'na' | '';
   operator: string;
 }
 
-// The key will be something like "YYYY-MM-DD_zoneId_taskId"
-export interface SimplifiedMonthlyKitchenCleaningRecord {
-  [date_zoneId_taskId: string]: SimplifiedTaskRecord;
+// The key will be something like "YYYY-MM-DD_zoneId_taskId" or "YYYY-MM-DD_fryerId_taskId"
+export interface SimplifiedMonthlyKitchenCleaningRecord { // Also used for Fryer Log
+  [date_itemId_taskId: string]: SimplifiedTaskRecord;
 }
 
-// Key for Restaurant Cleaning, can reuse SimplifiedMonthlyKitchenCleaningRecord as structure is same
 export type SimplifiedMonthlyRestaurantCleaningRecord = SimplifiedMonthlyKitchenCleaningRecord;
+export type SimplifiedMonthlyFryerLog = SimplifiedMonthlyKitchenCleaningRecord;
 
 
 // For Temperature Records (Grid Style)
@@ -109,7 +114,7 @@ export interface DailyCoolDownEntry {
   id: string;
   productName: string;
   quantity: string;
-  piecesOrPlats?: string; // New field
+  piecesOrPlats?: string;
   startTime?: string; // HH:mm
   startTemp?: string; // °C
   endTime?: string;   // HH:mm
@@ -132,4 +137,3 @@ export interface DailyDeliveryEntry {
 }
 
 export const NO_STATUS_SELECT_VALUE = "_aucun_statut_";
-

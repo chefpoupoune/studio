@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, FileText, Trash2, AlertCircle, ListFilter, Droplet } from 'lucide-react'; // Changed Icon
+import { Loader2, FileText, Trash2, AlertCircle, ListFilter, Droplet } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format, getYear, getMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
