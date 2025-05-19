@@ -247,15 +247,35 @@ export default function FryerOilOverallMonitoring() {
             columnStyles = { 0: {cellWidth: 40}, 1:{cellWidth:30}, 2:{cellWidth:30}, 3:{cellWidth:30}, 4:{cellWidth:30}, 5:{cellWidth:30}, 6:{cellWidth:30}};
         } else { // TPM Log
             head = [["Date", "Opérateur", "LED TPM", "Friteuse N°", "% TPM"]];
+            
+            const ledStatusColors: Record<LedTpmStatus, {fill: [number,number,number], text: [number,number,number]}> = {
+                'lt_20': { fill: [144, 238, 144], text: [0,0,0] }, // Light Green, Black text
+                '20_24': { fill: [255, 249, 195], text: [0,0,0] }, // Light Yellow, Black text
+                'gt_24': { fill: [254, 202, 202], text: [0,0,0] }, // Light Red, Black text
+                '': { fill: [255,255,255], text: [0,0,0] } // White, Black text (default)
+            };
+
             body = (dataToExport as FryerOilTpmLogEntry[]).map(e => {
                 let ledDisplay = '';
-                if (e.ledTpmStatus === 'lt_20') ledDisplay = '<20% (Vert)';
-                else if (e.ledTpmStatus === '20_24') ledDisplay = '20-24% (Jaune)';
-                else if (e.ledTpmStatus === 'gt_24') ledDisplay = '>24% (Rouge)';
+                let cellStyle: {fillColor: [number,number,number], textColor: [number,number,number]} = { 
+                    fillColor: ledStatusColors[''].fill, 
+                    textColor: ledStatusColors[''].text
+                };
+
+                if (e.ledTpmStatus === 'lt_20') {
+                    ledDisplay = '<20% (Vert)';
+                    cellStyle = { fillColor: ledStatusColors.lt_20.fill, textColor: ledStatusColors.lt_20.text };
+                } else if (e.ledTpmStatus === '20_24') {
+                    ledDisplay = '20-24% (Jaune)';
+                    cellStyle = { fillColor: ledStatusColors['20_24'].fill, textColor: ledStatusColors['20_24'].text };
+                } else if (e.ledTpmStatus === 'gt_24') {
+                    ledDisplay = '>24% (Rouge)';
+                    cellStyle = { fillColor: ledStatusColors.gt_24.fill, textColor: ledStatusColors.gt_24.text };
+                }
                 return [
                     format(parseISO(e.date), "dd/MM/yyyy", { locale: fr }),
                     e.operator || '-',
-                    ledDisplay,
+                    { content: ledDisplay, styles: cellStyle },
                     e.fryerIdentifier,
                     e.tpmPercentage || '-'
                 ];
