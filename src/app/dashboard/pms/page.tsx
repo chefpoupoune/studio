@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { ArrowLeft, ShieldCheck, SprayCan, Sparkles, Thermometer, Truck, ThermometerSnowflake, ArrowDownUp, Snowflake, Flame, Droplet } from 'lucide-react'; // Added Flame/Droplet
+import { ArrowLeft, ShieldCheck, SprayCan, Sparkles, Thermometer, Truck, ThermometerSnowflake, ArrowDownUp, Snowflake } from 'lucide-react'; // Removed Flame/Droplet
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
@@ -15,7 +15,6 @@ import ReceptionMonitoring from './components/reception-monitoring';
 import ColdChainMonitoring from './components/cold-chain-monitoring';
 import TempChangeMonitoring from './components/temp-change-monitoring';
 import DefrostingMonitoring from './components/defrosting-monitoring'; 
-import FryerOilMonitoring from './components/fryer-oil-monitoring'; // New import
 
 
 export default function PmsPage() {
@@ -54,7 +53,7 @@ export default function PmsPage() {
       </div>
       
       <Tabs defaultValue="kitchen-cleaning" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-8 gap-1 mb-6 bg-card p-1 rounded-lg">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-7 gap-1 mb-6 bg-card p-1 rounded-lg"> {/* Adjusted xl:grid-cols-7 */}
           <TabsTrigger value="kitchen-cleaning" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             <SprayCan className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Net. Cuisine
           </TabsTrigger>
@@ -75,9 +74,6 @@ export default function PmsPage() {
           </TabsTrigger>
            <TabsTrigger value="defrosting-monitoring" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             <Snowflake className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Décongélation
-          </TabsTrigger>
-          <TabsTrigger value="fryer-oil-monitoring" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-            <Droplet className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Huiles Friteuse
           </TabsTrigger>
         </TabsList>
 
@@ -101,9 +97,6 @@ export default function PmsPage() {
         </TabsContent>
         <TabsContent value="defrosting-monitoring">
             <DefrostingMonitoring />
-        </TabsContent>
-        <TabsContent value="fryer-oil-monitoring">
-            <FryerOilMonitoring />
         </TabsContent>
       </Tabs>
     </div>

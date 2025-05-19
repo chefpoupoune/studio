@@ -40,7 +40,6 @@ export interface PmsConfigurations {
 export const PMS_KITCHEN_CLEANING_KEY = 'kitchenCleaning_v1';
 export const PMS_RESTAURANT_CLEANING_KEY = 'restaurantCleaning_v1';
 export const PMS_TEMPERATURE_MONITORING_KEY = 'temperatureMonitoring_v1'; 
-export const PMS_FRYER_OIL_MONITORING_KEY = 'fryerOilMonitoring_v1'; // New key
 
-export const PMS_CONFIG_STORAGE_KEY = 'pms_module_configurations_v5';
+export const PMS_CONFIG_STORAGE_KEY = 'pms_module_configurations_v6'; // Version incremented previously
     
