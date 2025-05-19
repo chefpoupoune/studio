@@ -17,12 +17,11 @@ export interface PmsTaskDefinition {
   name: string;
 }
 
-export interface PmsZone { // Can also represent an "Equipment" or "Fryer"
+export interface PmsZone { // Can also represent an "Equipment"
   id: string;
   name: string;
   tasks?: PmsTaskDefinition[]; 
   
-  // Fields specific to Temperature Monitoring Equipment
   equipmentType?: 'refrigerator' | 'freezer';
   targetTempMin?: number;
   targetTempMax?: number;
@@ -32,7 +31,6 @@ export interface PmsZone { // Can also represent an "Equipment" or "Fryer"
   tolerance2TempMax?: number; 
 }
 
-// Defines the structure for PMS configurations, keyed by category (e.g., 'kitchenCleaning')
 export interface PmsConfigurations {
   [categoryKey: string]: PmsZone[];
 }
@@ -40,6 +38,7 @@ export interface PmsConfigurations {
 export const PMS_KITCHEN_CLEANING_KEY = 'kitchenCleaning_v1';
 export const PMS_RESTAURANT_CLEANING_KEY = 'restaurantCleaning_v1';
 export const PMS_TEMPERATURE_MONITORING_KEY = 'temperatureMonitoring_v1'; 
+// PMS_FRYER_OIL_MONITORING_KEY is removed as its new log format doesn't require pre-configuration of tasks via settings.
 
-export const PMS_CONFIG_STORAGE_KEY = 'pms_module_configurations_v6'; // Version incremented previously
+export const PMS_CONFIG_STORAGE_KEY = 'pms_module_configurations_v6'; // Incremented version
     

@@ -1,17 +1,16 @@
 
-
 export interface PmsTaskDefinition {
   id: string;
   name: string;
 }
 
-export interface PmsZoneWithTasksDefinition { // Renamed for clarity, used by Cleaning and Fryer Oil Monitoring
+export interface PmsZoneWithTasksDefinition { 
   id: string;
   name: string;
   tasks: PmsTaskDefinition[];
 }
 
-export interface PmsEquipmentDefinition { // Specifically for Temperature Monitoring
+export interface PmsEquipmentDefinition { 
   id: string;
   name: string;
   equipmentType: 'refrigerator' | 'freezer';
@@ -24,40 +23,33 @@ export interface PmsEquipmentDefinition { // Specifically for Temperature Monito
 }
 
 export interface PmsConfigurations {
-  [categoryKey: string]: (PmsZoneWithTasksDefinition | PmsEquipmentDefinition)[]; // Can hold different types of configurations
+  [categoryKey: string]: (PmsZoneWithTasksDefinition | PmsEquipmentDefinition)[]; 
 }
 
-// For Cleaning Records (Kitchen & Restaurant) and Fryer Oil Points Control
 export interface SimplifiedTaskRecord {
   status: 'fait' | 'non_fait' | 'na' | '';
   operator: string;
 }
 
-// The key will be something like "YYYY-MM-DD_zoneId_taskId" or "YYYY-MM-DD_fryerId_taskId"
-export interface SimplifiedMonthlyKitchenCleaningRecord { // Also used for Fryer Log
+export interface SimplifiedMonthlyKitchenCleaningRecord { 
   [date_itemId_taskId: string]: SimplifiedTaskRecord;
 }
 
 export type SimplifiedMonthlyRestaurantCleaningRecord = SimplifiedMonthlyKitchenCleaningRecord;
-export type SimplifiedMonthlyFryerLog = SimplifiedMonthlyKitchenCleaningRecord;
 
-
-// For Temperature Records (Grid Style)
 export interface DailyTemperatureRecord {
   markedTemperatureValue?: number; 
-  time?: string;       // HH:mm format
+  time?: string;       
   operator?: string;
 }
 
-// The key will be something like "YYYY-MM-DD_equipmentId"
 export interface MonthlyTemperatureLog {
   [date_equipmentId: string]: DailyTemperatureRecord;
 }
 
-// For Reception Monitoring
 export interface ReceptionEntry {
   id: string;
-  dateTime: string; // ISO string for date and time
+  dateTime: string; 
   supplierName: string;
   productNameControlled: string;
   vehicleObservations: string; 
@@ -72,68 +64,85 @@ export interface ReceptionEntry {
   visa?: string; 
 }
 
-// For Temperature Change Monitoring (Cooling/Reheating)
 export interface TempChangeEntry {
   id: string;
-  coolingDate: string; // ISO string
+  coolingDate: string; 
   productName: string;
   quantity: string;
-  // Cooling
-  coolingHotProductTime?: string; // HH:mm
-  coolingHotProductTemp?: string; // °C
-  coolingColdProductTime?: string; // HH:mm
-  coolingColdProductTemp?: string; // °C
-  coolingVisa?: string; // Initials
-  // Reheating
-  reheatingDate?: string; // ISO string (can be different)
-  reheatingColdProductTime?: string; // HH:mm
-  reheatingColdProductTemp?: string; // °C
-  reheatingHotProductTime?: string; // HH:mm
-  reheatingHotProductTemp?: string; // °C
-  reheatingVisa?: string; // Initials
+  coolingHotProductTime?: string; 
+  coolingHotProductTemp?: string; 
+  coolingColdProductTime?: string; 
+  coolingColdProductTemp?: string; 
+  coolingVisa?: string; 
+  reheatingDate?: string; 
+  reheatingColdProductTime?: string; 
+  reheatingColdProductTemp?: string; 
+  reheatingHotProductTime?: string; 
+  reheatingHotProductTemp?: string; 
+  reheatingVisa?: string; 
 }
 
-// For Defrosting Monitoring
 export interface DefrostingEntry {
   id: string;
-  defrostStartDate: string; // ISO string (date only)
-  defrostStartTime: string; // HH:mm
+  defrostStartDate: string; 
+  defrostStartTime: string; 
   productName: string;
   quantity: string;
-  tempOnRemoval?: string; // e.g., "-18°C"
-  initialsStart?: string; // Operator initials for starting defrost
+  tempOnRemoval?: string; 
+  initialsStart?: string; 
   
-  useDate?: string | null; // ISO string (date only, optional)
-  useTime?: string | null; // HH:mm (optional)
-  tempOnUse?: string | null; // e.g., "4°C" (optional)
-  initialsEnd?: string | null; // Operator initials for end/use (optional)
+  useDate?: string | null; 
+  useTime?: string | null; 
+  tempOnUse?: string | null; 
+  initialsEnd?: string | null; 
 }
 
-// For Daily Cool Down Monitoring (Baisse en Température du Jour) - Part of Cold Chain
 export interface DailyCoolDownEntry {
   id: string;
   productName: string;
   quantity: string;
   piecesOrPlats?: string;
-  startTime?: string; // HH:mm
-  startTemp?: string; // °C
-  endTime?: string;   // HH:mm
-  endTemp?: string;   // °C
-  visa?: string;      // Initials / Signature
+  startTime?: string; 
+  startTemp?: string; 
+  endTime?: string;   
+  endTemp?: string;   
+  visa?: string;      
 }
 
-// For Daily Delivery Monitoring (Livraison du Jour) - Part of Cold Chain
 export interface DailyDeliveryEntry {
   id: string;
   productName: string;
   quantity?: string;
   piecesOrPlats?: string;
-  departureTime?: string; // HH:mm
-  departureTemp?: string; // °C
-  arrivalTime?: string;   // HH:mm
-  arrivalTemp?: string;   // °C
-  visaLivreur?: string;  // Initials
-  visaClient?: string;   // Initials
+  departureTime?: string; 
+  departureTemp?: string; 
+  arrivalTime?: string;   
+  arrivalTemp?: string;   
+  visaLivreur?: string;  
+  visaClient?: string;   
 }
 
 export const NO_STATUS_SELECT_VALUE = "_aucun_statut_";
+
+// New types for Fryer / Oil Tracking
+export interface FryerMaintenanceLogEntry {
+  id: string;
+  useDate: string; // Date d'utilisation de la friture (ISO string)
+  filterDate?: string | null;
+  filterSignature?: string;
+  cleaningDate?: string | null;
+  cleaningSignature?: string;
+  changeDate?: string | null;
+  changeSignature?: string;
+}
+
+export type LedTpmStatus = 'lt_20' | '20_24' | 'gt_24' | '';
+
+export interface FryerOilTpmLogEntry {
+  id: string;
+  date: string; // ISO string
+  operator?: string;
+  ledTpmStatus: LedTpmStatus;
+  fryerIdentifier: string; // e.g., "1", "2", "Côté Bar"
+  tpmPercentage?: string; // e.g., "22%"
+}

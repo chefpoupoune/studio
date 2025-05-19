@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { PlusCircle, Edit2, Trash2, ShieldAlert, ClipboardEdit, SprayCan, Sparkles, Thermometer } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, ShieldAlert, ClipboardEdit, SprayCan, Sparkles, Thermometer, Flame } from 'lucide-react'; // Added Flame
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -86,11 +86,11 @@ export default function PmsConfigManager() {
       const storedData = localStorage.getItem(PMS_CONFIG_STORAGE_KEY);
       if (storedData) {
         const parsedData = JSON.parse(storedData);
-        // Ensure all expected keys are present
         const initialConfigs: PmsConfigurations = {
           [PMS_KITCHEN_CLEANING_KEY]: parsedData[PMS_KITCHEN_CLEANING_KEY] || [],
           [PMS_RESTAURANT_CLEANING_KEY]: parsedData[PMS_RESTAURANT_CLEANING_KEY] || [],
           [PMS_TEMPERATURE_MONITORING_KEY]: parsedData[PMS_TEMPERATURE_MONITORING_KEY] || [],
+          // Configuration for fryer oil monitoring is removed as it's now a log, not pre-configured tasks
         };
         setPmsConfigs(initialConfigs);
       } else {
@@ -203,7 +203,7 @@ export default function PmsConfigManager() {
     
     const currentItems = pmsConfigs[categoryKey] || [];
     const updatedItems = currentItems.filter(item => item.id !== itemId);
-    saveConfigs({ ...pmsConfigs, [categoryKey]: updatedItems });
+    saveConfigs({ ...pmsConfigs, [currentCategoryKey]: updatedItems });
     toast({ title: `${categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone"} Supprimé(e)`, description: `L'élément "${itemName}" a été supprimé.`, variant: "destructive" });
   };
 
@@ -246,7 +246,7 @@ export default function PmsConfigManager() {
       }
       return item;
     });
-    saveConfigs({ ...pmsConfigs, [categoryKey]: updatedItems });
+    saveConfigs({ ...pmsConfigs, [currentCategoryKey]: updatedItems });
     toast({ title: "Tâche Supprimée", description: `L'élément "${taskName}" a été supprimé.`, variant: "destructive" });
   };
 
@@ -388,6 +388,8 @@ export default function PmsConfigManager() {
       {renderCategoryConfig(PMS_RESTAURANT_CLEANING_KEY, "Suivi Nettoyage Restaurant", Sparkles, "Zone", "Tâche")}
       {renderCategoryConfig(PMS_TEMPERATURE_MONITORING_KEY, "Suivi des Températures", Thermometer, "Équipement")}
       
+      {/* Removed Fryer Oil Config section as it's now log-based */}
+      
       <Dialog open={isZoneDialogOpen} onOpenChange={setIsZoneDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -417,7 +419,7 @@ export default function PmsConfigManager() {
                   <FormField control={form.control} name="equipmentType" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Type d'Équipement</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value as string || 'refrigerator'} defaultValue={field.value as string || 'refrigerator'}>
+                      <Select onValueChange={field.onChange} value={(field.value as string) || 'refrigerator'} defaultValue={(field.value as string) || 'refrigerator'}>
                         <FormControl><SelectTrigger><SelectValue placeholder="Sélectionner un type" /></SelectTrigger></FormControl>
                         <SelectContent>
                           <SelectItem value="refrigerator">Réfrigérateur</SelectItem>
@@ -503,4 +505,3 @@ export default function PmsConfigManager() {
     </div>
   );
 }
-
