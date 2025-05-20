@@ -3,7 +3,7 @@
 
 import { useState, useEffect, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-// Removed Image import
+import Image from 'next/image'; // Import Image from next/image
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,7 +16,7 @@ import type { AppUser, RubricId, ViewableHourSummaryConfig } from '@/app/dashboa
 const APP_USERS_STORAGE_KEY = 'app_defined_users_v1';
 const LOGGED_IN_USER_PERMISSIONS_KEY = 'loggedInUserPermissions';
 const LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY = 'loggedInUserHourViewConfig';
-
+const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1"; // Key for app logo from settings
 
 const simulatedHash = (password: string): string => `sim_hashed_${password}_!`;
 
@@ -32,6 +32,7 @@ export default function LoginPage() {
   const [passwordInput, setPasswordInput] = useState('');
   const [error, setError] = useState('');
   const [isClient, setIsClient] = useState(false);
+  const [appLogoUrl, setAppLogoUrl] = useState<string | null>(null); // State for app logo
   const router = useRouter();
   const { toast } = useToast();
 
@@ -44,6 +45,12 @@ export default function LoginPage() {
       if (localStorage.getItem('isLoggedIn') === 'true') {
         router.push('/dashboard');
         return;
+      }
+
+      // Load app logo
+      const storedAppLogo = localStorage.getItem(APP_LOGO_STORAGE_KEY);
+      if (storedAppLogo) {
+          setAppLogoUrl(storedAppLogo);
       }
 
       let users: AppUser[] = [];
@@ -153,15 +160,27 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4 md:p-8 bg-background">
-      {/* Image removed from here */}
-      <Card className="w-full max-w-md shadow-2xl mt-8 sm:mt-0"> {/* Added margin-top for spacing if needed */}
+      {appLogoUrl && (
+        <div className="mb-6">
+          <Image
+            src={appLogoUrl}
+            alt="Logo de l'application"
+            width={100} 
+            height={100}
+            className="rounded-lg object-contain"
+            data-ai-hint="application logo"
+            unoptimized 
+          />
+        </div>
+      )}
+      {!appLogoUrl && ( 
+         <Utensils className="w-16 h-16 text-primary mx-auto mb-4" />
+      )}
+      <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="text-center">
-          <div className="flex items-center justify-center mb-2">
-            <Utensils className="w-8 h-8 text-primary mr-2" />
-            <h1 className="text-4xl font-serif font-bold text-foreground title-glow">
-              Gestion par l'excellence
-            </h1>
-          </div>
+          <h1 className="text-4xl font-serif font-bold text-foreground title-glow">
+            Gestion par l'excellence
+          </h1>
           <CurrentDate />
         </CardHeader>
         <CardContent className="mt-2">
@@ -236,8 +255,10 @@ export default function LoginPage() {
         </CardContent>
          <CardFooter className="text-center text-xs text-muted-foreground pt-6">
           <p>
-            {selectedUserForPassword && selectedUserForPassword.username.toLowerCase() === 'chef' && !selectedUserForPassword.simulatedStoredPassword
+            {selectedUserForPassword && selectedUserForPassword.username.toLowerCase() === 'chef' && !definedUsers.find(u => u.username.toLowerCase() === 'chef')?.simulatedStoredPassword
               ? "Mot de passe par défaut pour Chef : 000" 
+              : selectedUserForPassword && selectedUserForPassword.passwordRequired && !selectedUserForPassword.simulatedStoredPassword
+              ? "Aucun mot de passe défini pour cet utilisateur."
               : "Entrez le mot de passe configuré."
             }
           </p>
