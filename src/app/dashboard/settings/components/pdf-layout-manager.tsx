@@ -33,6 +33,7 @@ import {
 import { DEFAULT_APP_PRIMARY_COLOR } from '@/config/colors';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
 const pdfTypes = [
   { value: 'benefits', label: 'Avantages en Nature' },
@@ -94,7 +95,6 @@ export default function PdfLayoutManager() {
   const [marginLeftInput, setMarginLeftInput] = useState<string>(String(DEFAULT_MARGIN));
   const [defaultFontSizeInput, setDefaultFontSizeInput] = useState<string>(String(DEFAULT_FONT_SIZE));
 
-  // New state for new settings
   const [fontFamilyInput, setFontFamilyInput] = useState<NonNullable<PdfLayoutSettings['fontFamily']>>(DEFAULT_FONT_FAMILY);
   const [headerFontSizeInput, setHeaderFontSizeInput] = useState<string>(String(DEFAULT_HEADER_FONT_SIZE));
   const [footerFontSizeInput, setFooterFontSizeInput] = useState<string>(String(DEFAULT_FOOTER_FONT_SIZE));
@@ -140,7 +140,6 @@ export default function PdfLayoutManager() {
        setPdfConfigs({ [GENERAL_CONFIG_KEY]: { 
             primaryColor: DEFAULT_APP_PRIMARY_COLOR, 
             footerText: DEFAULT_FOOTER_TEXT,
-            // ... other defaults
         } });
     }
   }, [toast]);
@@ -160,7 +159,6 @@ export default function PdfLayoutManager() {
     setMarginLeftInput(String(specificSettings.marginLeft ?? effectiveSettings.marginLeft));
     setDefaultFontSizeInput(String(specificSettings.defaultFontSize ?? effectiveSettings.defaultFontSize));
     
-    // Set new states
     setFontFamilyInput(specificSettings.fontFamily ?? effectiveSettings.fontFamily);
     setHeaderFontSizeInput(String(specificSettings.headerFontSize ?? effectiveSettings.headerFontSize));
     setFooterFontSizeInput(String(specificSettings.footerFontSize ?? effectiveSettings.footerFontSize));
@@ -250,6 +248,50 @@ export default function PdfLayoutManager() {
   };
 
   const currentEffectiveSettings = useMemo(() => fetchPdfSettings(selectedPdfType), [selectedPdfType, pdfConfigs]);
+
+  const renderPreviewHeaderText = () => {
+    if (!currentEffectiveSettings.headerText) return <div className="h-4">&nbsp;</div>; // Placeholder for height
+  
+    const lines = currentEffectiveSettings.headerText.split('\n');
+    return (
+      <div style={{ fontSize: `${Math.max(5, (currentEffectiveSettings.headerFontSize || DEFAULT_HEADER_FONT_SIZE) / 2)}pt` }}>
+        {lines.map((line, lineIndex) => {
+          const cells = line.split('|');
+          return (
+            <div key={lineIndex} className="flex">
+              {cells.map((cell, cellIndex) => {
+                const cellContent = cell.trim();
+                if (cellContent === '{logo}' && currentEffectiveSettings.logoUrl) {
+                  return (
+                    <div key={cellIndex} className="p-0.5 border border-neutral-400 dark:border-neutral-500 flex-1 flex items-center justify-center">
+                      <div className="w-8 h-5 bg-neutral-300 dark:bg-neutral-600 rounded-sm text-[0.4rem] flex items-center justify-center text-neutral-500 dark:text-neutral-400">LOGO</div>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={cellIndex} className="p-0.5 border border-neutral-400 dark:border-neutral-500 flex-1 whitespace-pre-wrap text-xs">
+                    {cellContent || <>&nbsp;</>}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+  
+  const getFontFamilyCss = (fontFamilyValue?: string) => {
+    switch(fontFamilyValue) {
+      case 'times': return 'Times New Roman, Times, serif';
+      case 'courier': return 'Courier New, Courier, monospace';
+      case 'arial': return 'Arial, sans-serif';
+      case 'verdana': return 'Verdana, sans-serif';
+      case 'helvetica':
+      default:
+        return 'Helvetica, Arial, sans-serif';
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -475,73 +517,62 @@ export default function PdfLayoutManager() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Eye className="w-5 h-5 text-accent"/>
-            Aperçu de la Mise en Page PDF (Simulation)
+            Aperçu de la Mise en Page PDF
           </CardTitle>
           <CardDescription>
-            Visualisation approximative basée sur les paramètres actuels pour "{selectedPdfLabel}". L'orientation et le format sont indiqués.
+            Visualisation basée sur les paramètres pour "{selectedPdfLabel}".
           </CardDescription>
         </CardHeader>
         <CardContent>
-            <div className="text-sm mb-2">Orientation: <span className="font-semibold">{currentEffectiveSettings.orientation === 'landscape' ? 'Paysage' : 'Portrait'}</span>, Format: <span className="font-semibold">{currentEffectiveSettings.pageSize.toUpperCase()}</span></div>
-          <div className={`bg-white dark:bg-neutral-800 p-4 rounded-md shadow-inner w-full ${currentEffectiveSettings.orientation === 'landscape' ? 'aspect-[297/210] max-w-md' : 'aspect-[210/297] max-w-sm'} mx-auto overflow-hidden border border-muted`}>
+            <div className="text-sm mb-2">
+              Orientation: <span className="font-semibold">{currentEffectiveSettings.orientation === 'landscape' ? 'Paysage' : 'Portrait'}</span>, 
+              Format: <span className="font-semibold">{currentEffectiveSettings.pageSize.toUpperCase()}</span>,
+              Police: <span className="font-semibold" style={{fontFamily: getFontFamilyCss(currentEffectiveSettings.fontFamily)}}>{fontFamilies.find(f => f.value === currentEffectiveSettings.fontFamily)?.label || currentEffectiveSettings.fontFamily}</span>
+            </div>
+          <div 
+            className={cn(
+                "bg-white dark:bg-neutral-800 p-1 rounded-sm shadow-inner w-full mx-auto overflow-hidden border border-muted",
+                currentEffectiveSettings.orientation === 'landscape' ? 'aspect-[297/210] max-w-md' : 'aspect-[210/297] max-w-sm'
+            )}
+            style={{ fontFamily: getFontFamilyCss(currentEffectiveSettings.fontFamily) }}
+          >
             <div
-              className="h-full w-full bg-neutral-50 dark:bg-neutral-700 relative flex flex-col"
+              className="h-full w-full bg-neutral-50 dark:bg-neutral-700 relative flex flex-col text-neutral-700 dark:text-neutral-200"
               style={{
-                paddingTop: `${Math.max(2, currentEffectiveSettings.marginTop / 4)}px`, 
-                paddingBottom: `${Math.max(2, currentEffectiveSettings.marginBottom / 4)}px`,
-                paddingLeft: `${Math.max(2, currentEffectiveSettings.marginLeft / 4)}px`,
-                paddingRight: `${Math.max(2, currentEffectiveSettings.marginRight / 4)}px`,
-                fontSize: `${Math.max(6, (currentEffectiveSettings.defaultFontSize || DEFAULT_FONT_SIZE) / 1.8)}px`, 
-                fontFamily: currentEffectiveSettings.fontFamily || DEFAULT_FONT_FAMILY,
+                paddingTop: `${Math.max(1, currentEffectiveSettings.marginTop / 7)}px`, 
+                paddingBottom: `${Math.max(1, currentEffectiveSettings.marginBottom / 7)}px`,
+                paddingLeft: `${Math.max(1, currentEffectiveSettings.marginLeft / 7)}px`,
+                paddingRight: `${Math.max(1, currentEffectiveSettings.marginRight / 7)}px`,
+                fontSize: `${Math.max(3, (currentEffectiveSettings.defaultFontSize || DEFAULT_FONT_SIZE) / 2.5)}pt`,
               }}
             >
               {/* Header Area */}
-              <div className="mb-auto flex-shrink-0">
-                {(currentEffectiveSettings.headerText || currentEffectiveSettings.logoUrl) && (
-                  <div className="text-neutral-600 dark:text-neutral-300 leading-tight border-b border-neutral-300 dark:border-neutral-600 pb-0.5 mb-0.5" style={{fontSize: `${Math.max(5, (currentEffectiveSettings.headerFontSize || DEFAULT_HEADER_FONT_SIZE) / 1.8)}px`}}>
-                    {currentEffectiveSettings.headerText.includes("{logo}") && currentEffectiveSettings.logoUrl ? (
-                      <div className="flex gap-1">
-                        <div className="w-1/4 flex items-center justify-center">
-                           <div className="w-6 h-4 bg-neutral-300 dark:bg-neutral-600 rounded-sm text-[0.5em] flex items-center justify-center">LOGO</div>
-                        </div>
-                        <div className="w-3/4 whitespace-pre-wrap">
-                          {currentEffectiveSettings.headerText.replace("{logo}","").split("\n")[0]?.split("|")[1] || currentEffectiveSettings.headerText.replace("{logo}","").split("\n")[0] || "Titre..."}
-                        </div>
-                      </div>
-                    ) : currentEffectiveSettings.logoUrl ? (
-                       <div className="flex gap-1">
-                         <div className="w-1/4 flex items-center justify-center">
-                           <div className="w-6 h-4 bg-neutral-300 dark:bg-neutral-600 rounded-sm text-[0.5em] flex items-center justify-center">LOGO</div>
-                         </div>
-                         <div className="w-3/4 whitespace-pre-wrap">{currentEffectiveSettings.headerText.split("\n")[0] || "En-tête..."}</div>
-                       </div>
-                    ) : (
-                      <div className="whitespace-pre-wrap">{currentEffectiveSettings.headerText.split("\n")[0] || "En-tête..."}</div>
-                    )}
-                    {currentEffectiveSettings.headerText.split("\n").slice(1).map((line, idx) => (
-                        <div key={idx} className="whitespace-pre-wrap">{line.replace("{logo}","").startsWith("|") ? line.replace("{logo}","").substring(1) : line.replace("{logo}","")}</div>
-                    ))}
-                  </div>
-                )}
+              <div className="mb-auto flex-shrink-0 leading-tight border-b border-neutral-300 dark:border-neutral-600 pb-0.5 mb-0.5 text-[0.9em]" style={{fontSize: `${Math.max(3, (currentEffectiveSettings.headerFontSize || DEFAULT_HEADER_FONT_SIZE) / 2.5)}pt`}}>
+                {renderPreviewHeaderText()}
+                 {!currentEffectiveSettings.headerText && !currentEffectiveSettings.logoUrl && <div className="h-3">&nbsp;</div>}
               </div>
 
               {/* Dummy Content Area */}
-              <div className="flex-grow my-1 space-y-0.5 overflow-hidden py-1">
+              <div className="flex-grow my-0.5 space-y-px overflow-hidden py-0.5">
                 <div
-                  className="h-2 w-full rounded-sm"
+                  className="h-1.5 w-full rounded-sm"
                   style={{ backgroundColor: currentEffectiveSettings.primaryColor }}
                 />
-                <div className="h-1 w-11/12 bg-neutral-300 dark:bg-neutral-600 rounded-sm" style={{fontSize: `${Math.max(5, (currentEffectiveSettings.tableHeaderFontSize || DEFAULT_TABLE_HEADER_FONT_SIZE) / 1.8)}px`}} />
-                <div className="h-1 w-full bg-neutral-300 dark:bg-neutral-600 rounded-sm" style={{fontSize: `${Math.max(5, (currentEffectiveSettings.tableBodyFontSize || DEFAULT_TABLE_BODY_FONT_SIZE) / 1.8)}px`}} />
-                <div className="h-1 w-10/12 bg-neutral-300 dark:bg-neutral-600 rounded-sm" />
-                <div className="h-1 w-full bg-neutral-300 dark:bg-neutral-600 rounded-sm" />
-                <div className="h-1 w-9/12 bg-neutral-300 dark:bg-neutral-600 rounded-sm" />
+                <div className="text-neutral-600 dark:text-neutral-300" style={{fontSize: `${Math.max(3, (currentEffectiveSettings.tableHeaderFontSize || DEFAULT_TABLE_HEADER_FONT_SIZE) / 2.5)}pt`}}>
+                    En-tête Table 1 | En-tête Table 2 | En-tête Table 3
+                </div>
+                <div className="h-0.5 w-full bg-neutral-300 dark:bg-neutral-600 rounded-sm my-px" />
+                <div className="text-neutral-500 dark:text-neutral-400" style={{fontSize: `${Math.max(3, (currentEffectiveSettings.tableBodyFontSize || DEFAULT_TABLE_BODY_FONT_SIZE) / 2.5)}pt`}}>
+                    Ligne de contenu 1, col 1 | Col 2 | Col 3<br/>
+                    Ligne de contenu 2, col 1 | Col 2 | Col 3<br/>
+                    ... <br/>
+                </div>
               </div>
 
               {/* Footer Area */}
               <div className="mt-auto flex-shrink-0">
                 {currentEffectiveSettings.footerText && (
-                  <div className="text-neutral-500 dark:text-neutral-400 truncate leading-tight border-t border-neutral-300 dark:border-neutral-600 pt-0.5 mt-0.5" style={{fontSize: `${Math.max(4, (currentEffectiveSettings.footerFontSize || DEFAULT_FOOTER_FONT_SIZE) / 1.8)}px`}}>
+                  <div className="text-neutral-500 dark:text-neutral-400 truncate leading-tight border-t border-neutral-300 dark:border-neutral-600 pt-0.5 mt-0.5" style={{fontSize: `${Math.max(2, (currentEffectiveSettings.footerFontSize || DEFAULT_FOOTER_FONT_SIZE) / 2.5)}pt`}}>
                     {currentEffectiveSettings.footerText
                       .replace('{date}', format(new Date(), "dd/MM/yy HH:mm", { locale: fr }))
                       .replace('{pageNumber}', '1')
@@ -553,7 +584,7 @@ export default function PdfLayoutManager() {
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-2 text-center">
-            Cet aperçu est une simulation et peut ne pas refléter exactement le PDF final. Les tailles sont réduites.
+            Cet aperçu est une simulation et peut ne pas refléter exactement le PDF final.
           </p>
         </CardContent>
       </Card>
