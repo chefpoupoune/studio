@@ -2,7 +2,8 @@
 "use client";
 
 import React, { useState, useMemo } from 'react';
-import type { Product, PurchaseOrder, PurchaseOrderItem } from '../types';
+import type { Product, PurchaseOrder, PurchaseOrderItem, PurchaseOrderUnit } from '../types';
+import { PURCHASE_ORDER_UNITS } from '../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
@@ -19,6 +20,7 @@ import { useToast } from '@/hooks/use-toast';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -30,7 +32,9 @@ interface GeneratePurchaseOrderProps {
   onAddPurchaseOrder: (items: PurchaseOrderItem[]) => void;
 }
 
-interface SelectedProductForPO extends PurchaseOrderItem {
+interface SelectedProductForPO extends Omit<PurchaseOrderItem, 'productName' | 'reference'> {
+  productName: string;
+  reference: string;
   selected: boolean;
 }
 
@@ -48,6 +52,7 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
           productName: p.name,
           reference: p.reference,
           quantity: 1, 
+          unit: 'Piece' as PurchaseOrderUnit, // Default unit
           selected: false,
         }))
       );
@@ -62,6 +67,14 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
     );
   };
 
+  const handleUnitChange = (productId: string, unit: PurchaseOrderUnit) => {
+    setOrderItems(prevItems =>
+      prevItems.map(item =>
+        item.productId === productId ? { ...item, unit } : item
+      )
+    );
+  };
+
   const handleSelectionChange = (productId: string, selected: boolean) => {
     setOrderItems(prevItems =>
       prevItems.map(item =>
@@ -71,12 +84,15 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
   };
 
   const handleSubmitPurchaseOrder = () => {
-    const selectedItems = orderItems.filter(item => item.selected && item.quantity > 0);
-    if (selectedItems.length === 0) {
-      toast({ title: "Aucun produit sélectionné", description: "Veuillez sélectionner des produits et spécifier une quantité.", variant: "destructive" });
+    const selectedItemsToSubmit = orderItems
+      .filter(item => item.selected && item.quantity > 0)
+      .map(({ selected, ...item }) => item as PurchaseOrderItem); 
+      
+    if (selectedItemsToSubmit.length === 0) {
+      toast({ title: "Aucun produit sélectionné", description: "Veuillez sélectionner des produits et spécifier une quantité et une unité.", variant: "destructive" });
       return;
     }
-    onAddPurchaseOrder(selectedItems.map(({selected, ...item}) => item)); 
+    onAddPurchaseOrder(selectedItemsToSubmit); 
     setIsDialogOpen(false);
   };
 
@@ -84,37 +100,63 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
     setIsPrinting(true);
     try {
       const pdfSettings = getPdfLayoutSettings('purchase_order');
-      const doc = new jsPDF() as jsPDFWithAutoTable;
-      const generationDateFormatted = format(new Date(po.date), "dd MMMM yyyy", { locale: fr }); // Use PO date
+      const doc = new jsPDF({
+        orientation: pdfSettings.orientation,
+        unit: 'pt',
+        format: pdfSettings.pageSize,
+      }) as jsPDFWithAutoTable;
+      doc.setFont(pdfSettings.fontFamily);
+      
+      const generationDateFormatted = format(new Date(po.date), "dd MMMM yyyy", { locale: fr }); 
       const printDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
 
-      let currentY = 15;
+      let currentY = pdfSettings.marginTop;
+      
+      if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
+        try {
+            const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+            const format = imgProps.fileType.toUpperCase();
+            const desiredHeight = 30; 
+            const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
+            doc.addImage(pdfSettings.logoUrl, format, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
+            currentY += desiredHeight + 5;
+        } catch(e: any) {
+            console.error(`Error drawing logo in PDF: ${e.message || e}.`);
+            doc.setFontSize(pdfSettings.defaultFontSize); doc.text(`[Logo Error]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 5;
+        }
+      } else if (pdfSettings.logoUrl) {
+         doc.setFontSize(pdfSettings.defaultFontSize); doc.text(`[Logo URL: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 5;
+      }
+
       if (pdfSettings.headerText) {
-        doc.setFontSize(10);
-        doc.text(pdfSettings.headerText, 14, currentY);
-        currentY += 10;
+        const headerLines = pdfSettings.headerText.split('\n');
+        doc.setFontSize(pdfSettings.headerFontSize);
+        headerLines.forEach(line => {
+            doc.text(line, pdfSettings.marginLeft, currentY);
+            currentY += pdfSettings.headerFontSize * 0.7 + 2; 
+        });
+        currentY += 5;
       }
 
-      // Add Logo URL if available
-      if (pdfSettings.logoUrl) {
-        doc.setFontSize(8); 
-        doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY);
-        currentY += 5; 
-      }
 
-      doc.setFontSize(18);
-      doc.text("Bon de Commande Produit Cuisine Brebières", 14, currentY); // Static title from original code
-      currentY += 8;
-      doc.setFontSize(10);
-      doc.text(`Date de commande: ${generationDateFormatted}`, 14, currentY);
-      currentY += 5;
-      doc.text(`Numéro de commande: ${po.orderNumber}`, 14, currentY);
-      currentY += 5;
-      doc.text(`Imprimé le: ${printDateFormatted}`, 14, currentY);
-      currentY += 7;
+      doc.setFontSize(pdfSettings.headerFontSize + 4);
+      doc.text("Bon de Commande Produit Cuisine Brebières", pdfSettings.marginLeft, currentY); 
+      currentY += pdfSettings.headerFontSize + 4 + 5;
+      
+      doc.setFontSize(pdfSettings.defaultFontSize);
+      doc.text(`Date de commande: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
+      currentY += pdfSettings.defaultFontSize + 2;
+      doc.text(`Numéro de commande: ${po.orderNumber}`, pdfSettings.marginLeft, currentY);
+      currentY += pdfSettings.defaultFontSize + 2;
+      doc.text(`Imprimé le: ${printDateFormatted}`, pdfSettings.marginLeft, currentY);
+      currentY += pdfSettings.defaultFontSize + 5;
 
-      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
+
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, fontSize?: number } = { 
+        fontStyle: 'bold',
+        fontSize: pdfSettings.tableHeaderFontSize,
+      };
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
         if (primaryColorRgb) {
@@ -127,7 +169,7 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
       const body = po.items.map(item => [
         item.productName,
         item.reference,
-        item.quantity.toString(),
+        `${item.quantity} ${item.unit}`,
       ]);
 
       doc.autoTable({
@@ -136,24 +178,31 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
         body: body,
         theme: 'grid',
         headStyles: headStyles,
+        styles: { fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily },
         columnStyles: { 2: { halign: 'right' } },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
           if (pdfSettings.footerText) {
             let footerStr = pdfSettings.footerText
-              .replace('{date}', printDateFormatted) // Use print date for footer
+              .replace('{date}', printDateFormatted) 
               .replace('{pageNumber}', data.pageNumber.toString())
               .replace('{totalPages}', pageCount.toString());
-            doc.setFontSize(9);
-            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+            doc.setFontSize(pdfSettings.footerFontSize);
+            doc.text(footerStr, pdfSettings.marginLeft, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
           }
-        }
+        },
+        margin: { 
+            top: pdfSettings.marginTop, 
+            right: pdfSettings.marginRight, 
+            bottom: pdfSettings.marginBottom, 
+            left: pdfSettings.marginLeft 
+        },
       });
       doc.save(`Bon_Commande_${po.orderNumber}.pdf`);
       toast({ title: "PDF de Bon de Commande Généré", description: `Le bon de commande ${po.orderNumber} a été téléchargé.` });
-    } catch (error) {
-      console.error("Error generating purchase order PDF:", error);
-      toast({ title: "Erreur PDF", description: "La génération du PDF a échoué.", variant: "destructive" });
+    } catch (error: any) {
+      console.error("Error generating purchase order PDF:", error.message || error);
+      toast({ title: "Erreur PDF", description: `La génération du PDF a échoué: ${error.message || 'Erreur inconnue'}.`, variant: "destructive" });
     } finally {
       setIsPrinting(false);
     }
@@ -170,7 +219,7 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
                 <PlusCircle className="mr-2 h-4 w-4" /> Nouveau Bon de Commande
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-lg md:max-w-xl lg:max-w-2xl">
+            <DialogContent className="sm:max-w-lg md:max-w-xl lg:max-w-3xl">
               <DialogHeader>
                 <DialogTitle>Nouveau Bon de Commande</DialogTitle>
                 <div className="text-sm text-muted-foreground">
@@ -181,29 +230,45 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
               {products.length === 0 ? (
                  <p className="text-muted-foreground text-center py-8">Aucun produit disponible pour créer un bon de commande. Veuillez d'abord ajouter des produits.</p>
               ) : (
-                <ScrollArea className="h-[400px] pr-4 my-4">
-                  <div className="space-y-4">
+                <ScrollArea className="h-[450px] pr-4 my-4">
+                  <div className="space-y-3">
                     {orderItems.map((item) => (
                       <div key={item.productId} className="flex items-center justify-between p-3 border rounded-md bg-card hover:bg-muted/50">
-                        <div className="flex items-center space-x-3">
+                        <div className="flex items-center space-x-3 flex-grow">
                           <Checkbox
                             id={`select-${item.productId}`}
                             checked={item.selected}
                             onCheckedChange={(checked) => handleSelectionChange(item.productId, !!checked)}
                           />
-                          <Label htmlFor={`select-${item.productId}`} className="flex flex-col">
+                          <Label htmlFor={`select-${item.productId}`} className="flex flex-col cursor-pointer">
                             <span className="font-medium text-foreground">{item.productName}</span>
                             <span className="text-xs text-muted-foreground">Réf: {item.reference}</span>
                           </Label>
                         </div>
-                        <Input
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => handleQuantityChange(item.productId, parseInt(e.target.value, 10))}
-                          className="w-20 h-8 text-sm"
-                          min="0"
-                          disabled={!item.selected}
-                        />
+                        <div className="flex items-center gap-2 ml-4">
+                          <Input
+                            type="number"
+                            value={item.quantity}
+                            onChange={(e) => handleQuantityChange(item.productId, parseInt(e.target.value, 10))}
+                            className="w-20 h-8 text-sm"
+                            min="0"
+                            disabled={!item.selected}
+                          />
+                          <Select 
+                            value={item.unit} 
+                            onValueChange={(value) => handleUnitChange(item.productId, value as PurchaseOrderUnit)}
+                            disabled={!item.selected}
+                          >
+                            <SelectTrigger className="w-[100px] h-8 text-xs">
+                              <SelectValue placeholder="Unité" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {PURCHASE_ORDER_UNITS.map(unit => (
+                                <SelectItem key={unit} value={unit} className="text-xs">{unit}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -267,7 +332,7 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
                             <TableRow key={item.productId}>
                               <TableCell>{item.productName}</TableCell>
                               <TableCell>{item.reference}</TableCell>
-                              <TableCell className="text-right">{item.quantity}</TableCell>
+                              <TableCell className="text-right">{item.quantity} {item.unit}</TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
@@ -283,5 +348,3 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
     </div>
   );
 }
-
-    

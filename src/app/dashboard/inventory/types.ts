@@ -16,11 +16,16 @@ export interface StockMovement {
   notes?: string;
 }
 
+export type PurchaseOrderUnit = 'Litre' | 'Piece' | 'Lot' | 'Carton';
+export const PURCHASE_ORDER_UNITS: PurchaseOrderUnit[] = ['Piece', 'Litre', 'Lot', 'Carton'];
+
+
 export interface PurchaseOrderItem {
   productId: string;
   productName: string; 
   reference: string; 
   quantity: number;
+  unit: PurchaseOrderUnit;
 }
 
 export interface PurchaseOrder {
