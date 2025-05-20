@@ -1,7 +1,8 @@
+
 "use client";
 
 import Link from 'next/link';
-import { PackagePlusIcon, ListOrderedIcon, ShoppingCartIcon, HistoryIcon } from 'lucide-react'; // Removed ArrowLeft
+import { PackagePlusIcon, ListOrderedIcon, ShoppingCartIcon, HistoryIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ManageProducts from './components/manage-products';
@@ -77,12 +78,12 @@ export default function InventoryPage() {
 
 
   const addProduct = useCallback((product: Omit<Product, 'id'>) => {
-    setProducts(prev => [...prev, { ...product, id: `prod_${Date.now()}` }]);
+    setProducts(prev => [...prev, { ...product, id: `prod_${Date.now()}` }].sort((a, b) => a.name.localeCompare(b.name)));
     toast({ title: "Produit ajouté", description: `${product.name} a été ajouté avec succès.` });
   }, [toast]);
 
   const updateProduct = useCallback((updatedProduct: Product) => {
-    setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
+    setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p).sort((a, b) => a.name.localeCompare(b.name)));
     toast({ title: "Produit modifié", description: `${updatedProduct.name} a été mis à jour.` });
   }, [toast]);
   
@@ -110,11 +111,11 @@ export default function InventoryPage() {
       newQuantity -= movement.quantity;
     }
     
-    setProducts(prev => prev.map(p => p.id === movement.productId ? { ...p, quantity: newQuantity } : p));
+    setProducts(prev => prev.map(p => p.id === movement.productId ? { ...p, quantity: newQuantity } : p).sort((a, b) => a.name.localeCompare(b.name)));
     setStockMovements(prev => [
         { ...movement, id: `sm_${Date.now()}`, date: new Date(), productName: product.name },
          ...prev
-    ].sort((a, b) => b.date.getTime() - a.date.getTime()));
+    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     toast({ title: "Mouvement de stock enregistré", description: `${movement.quantity} ${product.name} (${movement.type === 'entry' ? 'entrée' : 'sortie'}).` });
   }, [products, toast]);
 
@@ -132,9 +133,16 @@ export default function InventoryPage() {
         };
       }),
     };
-    setPurchaseOrders(prev => [newOrder, ...prev].sort((a,b) => b.date.getTime() - a.date.getTime()));
+    setPurchaseOrders(prev => [newOrder, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     toast({ title: "Bon de commande créé", description: `Le bon de commande ${newOrder.orderNumber} a été généré.` });
   }, [products, toast]);
+
+  const deletePurchaseOrder = useCallback((orderId: string) => {
+    const orderNumber = purchaseOrders.find(po => po.id === orderId)?.orderNumber || "Le bon de commande";
+    setPurchaseOrders(prev => prev.filter(po => po.id !== orderId));
+    toast({ title: "Bon de Commande Supprimé", description: `Le bon de commande N° ${orderNumber} a été supprimé.`, variant: "destructive" });
+  }, [purchaseOrders, toast]);
+
 
   if (!isClient) {
     return (
@@ -153,7 +161,6 @@ export default function InventoryPage() {
              Gestion des Stocks Entretien
            </h1>
         </div>
-        {/* Back to Dashboard button removed */}
       </div>
       <div className="mb-6 text-center sm:text-left">
         <CurrentDate />
@@ -198,6 +205,7 @@ export default function InventoryPage() {
             products={products} 
             purchaseOrders={purchaseOrders}
             onAddPurchaseOrder={addPurchaseOrder}
+            onDeletePurchaseOrder={deletePurchaseOrder} 
           />
         </TabsContent>
       </Tabs>

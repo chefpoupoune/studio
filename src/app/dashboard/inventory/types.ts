@@ -35,3 +35,4 @@ export interface PurchaseOrder {
   items: PurchaseOrderItem[];
   // status: 'pending' | 'generated' | 'sent'; // Future enhancement
 }
+

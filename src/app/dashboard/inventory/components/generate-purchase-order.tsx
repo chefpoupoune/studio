@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, ShoppingBag, Printer, Loader2 } from 'lucide-react';
+import { PlusCircle, ShoppingBag, Printer, Loader2, Trash2 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -21,6 +21,17 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -30,6 +41,7 @@ interface GeneratePurchaseOrderProps {
   products: Product[];
   purchaseOrders: PurchaseOrder[];
   onAddPurchaseOrder: (items: PurchaseOrderItem[]) => void;
+  onDeletePurchaseOrder: (orderId: string) => void; 
 }
 
 interface SelectedProductForPO extends Omit<PurchaseOrderItem, 'productName' | 'reference'> {
@@ -38,7 +50,7 @@ interface SelectedProductForPO extends Omit<PurchaseOrderItem, 'productName' | '
   selected: boolean;
 }
 
-export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddPurchaseOrder }: GeneratePurchaseOrderProps) {
+export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddPurchaseOrder, onDeletePurchaseOrder }: GeneratePurchaseOrderProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [orderItems, setOrderItems] = useState<SelectedProductForPO[]>([]);
   const [isPrinting, setIsPrinting] = useState(false);
@@ -312,10 +324,34 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
                       <CardTitle className="text-lg">Commande N°: {po.orderNumber}</CardTitle>
                       <CardDescription>Date: {format(new Date(po.date), "dd MMMM yyyy", { locale: fr })}</CardDescription>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => handlePrintPO(po)} disabled={isPrinting}>
-                       {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Printer className="mr-2 h-4 w-4" />} 
-                      Imprimer
-                    </Button>
+                    <div className="flex items-center space-x-2">
+                      <Button variant="outline" size="sm" onClick={() => handlePrintPO(po)} disabled={isPrinting}>
+                        {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Printer className="mr-2 h-4 w-4" />} 
+                        Imprimer
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="destructive" size="sm" disabled={isPrinting}>
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Supprimer
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Êtes-vous sûr de vouloir supprimer ce bon de commande ?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Cette action est irréversible. Le bon de commande N° {po.orderNumber} sera définitivement supprimé.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Annuler</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => onDeletePurchaseOrder(po.id)}>
+                              Supprimer
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </CardHeader>
                   <CardContent>
                     <div className="overflow-x-auto">
