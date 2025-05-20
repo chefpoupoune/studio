@@ -160,26 +160,27 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
             if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image') && headerRows[data.row.index][data.column.index] === '{logo}') {
               try {
                 const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
-                const cellPadding = 2; // Padding inside the cell for the image
+                const format = imgProps.fileType.toUpperCase();
+                const cellPadding = 2; 
                 let imgWidth = data.cell.width - 2 * cellPadding;
                 let imgHeight = data.cell.height - 2 * cellPadding;
                 const cellAspectRatio = data.cell.width / data.cell.height;
                 const imgAspectRatio = imgProps.width / imgProps.height;
 
-                if (imgAspectRatio > cellAspectRatio) { // Image is wider than cell
+                if (imgAspectRatio > cellAspectRatio) { 
                     imgHeight = imgWidth / imgAspectRatio;
-                } else { // Image is taller than cell
+                } else { 
                     imgWidth = imgHeight * imgAspectRatio;
                 }
                 const imgX = data.cell.x + (data.cell.width - imgWidth) / 2;
                 const imgY = data.cell.y + (data.cell.height - imgHeight) / 2;
-                doc.addImage(pdfSettings.logoUrl, imgProps.fileType, imgX, imgY, imgWidth, imgHeight);
-              } catch (e) { 
-                console.error("Error drawing logo in PDF header table:", e);
+                doc.addImage(pdfSettings.logoUrl, format, imgX, imgY, imgWidth, imgHeight);
+              } catch (e: any) { 
+                console.error(`Error drawing logo in PDF header table: ${e.message || e}. Cell:`, data.cell, {logoUrl: pdfSettings.logoUrl ? pdfSettings.logoUrl.substring(0, 50) + "..." : "N/A"});
                 doc.setFillColor(230, 230, 230); doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
                 doc.setFontSize(8); doc.setTextColor(100); doc.text("LOGO_ERR", data.cell.x + data.cell.width/2, data.cell.y + data.cell.height/2, {align: 'center', baseline: 'middle'});
               }
-            } else if (pdfSettings.logoUrl && headerRows[data.row.index][data.column.index] === '{logo}') { // Fallback for non-data URL or other issues
+            } else if (pdfSettings.logoUrl && headerRows[data.row.index][data.column.index] === '{logo}') { 
                 doc.setFillColor(230, 230, 230); doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
                 doc.setFontSize(8); doc.setTextColor(100); doc.text("LOGO", data.cell.x + data.cell.width/2, data.cell.y + data.cell.height/2, {align: 'center', baseline: 'middle'});
             }
@@ -188,14 +189,14 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
         currentY = (doc as any).lastAutoTable.finalY + 5;
       } else if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { 
         try {
-            // Draw logo directly if no header text but logo exists
             const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
-            const desiredHeight = 30; // Example height
+            const format = imgProps.fileType.toUpperCase();
+            const desiredHeight = 30; 
             const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
-            doc.addImage(pdfSettings.logoUrl, imgProps.fileType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
+            doc.addImage(pdfSettings.logoUrl, format, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
             currentY += desiredHeight + 5;
-        } catch(e) {
-            console.error("Error drawing standalone logo in PDF:", e);
+        } catch(e: any) {
+            console.error(`Error drawing standalone logo in PDF: ${e.message || e}.`, {logoUrl: pdfSettings.logoUrl ? pdfSettings.logoUrl.substring(0, 50) + "..." : "N/A"});
             doc.setFontSize(pdfSettings.headerFontSize); doc.text(`[Logo Error]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize + 5;
         }
       } else if (pdfSettings.logoUrl) {
@@ -230,7 +231,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
       
       daysInSelectedMonth.forEach(day => {
         (head[0] as any[]).push({ content: day.dayNumber.toString(), styles: { ...headStyles, halign: 'center' } });
-        (head[1] as any[]).push({ content: day.dayLetter, styles: { ...headStyles, halign: 'center', fontSize: pdfSettings.tableHeaderFontSize -1, fillColor: day.isWeekend ? [200, 220, 255] : headStyles.fillColor } });
+        (head[1] as any[]).push({ content: day.dayLetter, styles: { ...headStyles, halign: 'center', fontSize: (pdfSettings.tableHeaderFontSize || 9) -1, fillColor: day.isWeekend ? [200, 220, 255] : headStyles.fillColor } });
       });
       (head[0] as any[]).push({ content: 'TOTAL', rowSpan: 2, styles: { ...headStyles, valign: 'middle'} });
 
@@ -282,9 +283,9 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
       doc.save(`Avantages_Nature_${monthLabel}_${selectedYear}.pdf`);
       toast({ title: "PDF Généré", description: "Le fichier PDF a été téléchargé." });
 
-    } catch (error) {
-        console.error("Error generating PDF:", error);
-        toast({ title: "Erreur PDF", description: "La génération du PDF a échoué.", variant: "destructive" });
+    } catch (error: any) {
+        console.error(`Error generating PDF: ${error.message || error}`, error);
+        toast({ title: "Erreur PDF", description: `La génération du PDF a échoué: ${error.message || 'Erreur inconnue'}.`, variant: "destructive" });
     } finally {
         setIsLoading(false);
     }
