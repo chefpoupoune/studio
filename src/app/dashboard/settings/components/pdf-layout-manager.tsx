@@ -146,26 +146,25 @@ export default function PdfLayoutManager() {
 
   useEffect(() => {
     const activeConfigKey = selectedPdfType || GENERAL_CONFIG_KEY;
-    const specificSettings = pdfConfigs[activeConfigKey] || {};
-    const effectiveSettings = fetchPdfSettings(activeConfigKey); 
+    const effectiveSettings = fetchPdfSettings(activeConfigKey, pdfConfigs); 
     
-    setLogoUrlInput(specificSettings.logoUrl ?? effectiveSettings.logoUrl);
-    setPrimaryColorInput(specificSettings.primaryColor ?? effectiveSettings.primaryColor);
-    setHeaderTextInput(specificSettings.headerText ?? effectiveSettings.headerText);
-    setFooterTextInput(specificSettings.footerText ?? effectiveSettings.footerText);
-    setMarginTopInput(String(specificSettings.marginTop ?? effectiveSettings.marginTop));
-    setMarginRightInput(String(specificSettings.marginRight ?? effectiveSettings.marginRight));
-    setMarginBottomInput(String(specificSettings.marginBottom ?? effectiveSettings.marginBottom));
-    setMarginLeftInput(String(specificSettings.marginLeft ?? effectiveSettings.marginLeft));
-    setDefaultFontSizeInput(String(specificSettings.defaultFontSize ?? effectiveSettings.defaultFontSize));
+    setLogoUrlInput(effectiveSettings.logoUrl);
+    setPrimaryColorInput(effectiveSettings.primaryColor);
+    setHeaderTextInput(effectiveSettings.headerText);
+    setFooterTextInput(effectiveSettings.footerText);
+    setMarginTopInput(String(effectiveSettings.marginTop));
+    setMarginRightInput(String(effectiveSettings.marginRight));
+    setMarginBottomInput(String(effectiveSettings.marginBottom));
+    setMarginLeftInput(String(effectiveSettings.marginLeft));
+    setDefaultFontSizeInput(String(effectiveSettings.defaultFontSize));
     
-    setFontFamilyInput(specificSettings.fontFamily ?? effectiveSettings.fontFamily);
-    setHeaderFontSizeInput(String(specificSettings.headerFontSize ?? effectiveSettings.headerFontSize));
-    setFooterFontSizeInput(String(specificSettings.footerFontSize ?? effectiveSettings.footerFontSize));
-    setTableHeaderFontSizeInput(String(specificSettings.tableHeaderFontSize ?? effectiveSettings.tableHeaderFontSize));
-    setTableBodyFontSizeInput(String(specificSettings.tableBodyFontSize ?? effectiveSettings.tableBodyFontSize));
-    setOrientationInput(specificSettings.orientation ?? effectiveSettings.orientation);
-    setPageSizeInput(specificSettings.pageSize ?? effectiveSettings.pageSize);
+    setFontFamilyInput(effectiveSettings.fontFamily);
+    setHeaderFontSizeInput(String(effectiveSettings.headerFontSize));
+    setFooterFontSizeInput(String(effectiveSettings.footerFontSize));
+    setTableHeaderFontSizeInput(String(effectiveSettings.tableHeaderFontSize));
+    setTableBodyFontSizeInput(String(effectiveSettings.tableBodyFontSize));
+    setOrientationInput(effectiveSettings.orientation);
+    setPageSizeInput(effectiveSettings.pageSize);
 
   }, [selectedPdfType, pdfConfigs]);
 
@@ -180,10 +179,11 @@ export default function PdfLayoutManager() {
   const saveConfig = useCallback((updates: Partial<PdfLayoutSettings>, successMessagePrefix: string) => {
     const activeConfigKey = selectedPdfType || GENERAL_CONFIG_KEY;
     
-    const newSpecificConfig: Partial<PdfLayoutSettings> = { ...(pdfConfigs[activeConfigKey] || {}) };
+    const currentSpecificConfigForActiveKey = pdfConfigs[activeConfigKey] ? { ...pdfConfigs[activeConfigKey] } : {};
+    let newSpecificConfigWithUpdates = { ...currentSpecificConfigForActiveKey, ...updates };
 
-    (Object.keys(updates) as Array<keyof PdfLayoutSettings>).forEach(key => {
-        const valueToSave = updates[key];
+    (Object.keys(newSpecificConfigWithUpdates) as Array<keyof PdfLayoutSettings>).forEach(key => {
+        const valueToSave = newSpecificConfigWithUpdates[key];
         let defaultValue: string | number | undefined;
 
         switch(key) {
@@ -202,22 +202,21 @@ export default function PdfLayoutManager() {
             case 'pageSize': defaultValue = DEFAULT_PAGE_SIZE; break;
         }
         
-        if (valueToSave === undefined || (valueToSave === defaultValue && activeConfigKey !== GENERAL_CONFIG_KEY) ) {
-          delete newSpecificConfig[key];
-        } else {
-          (newSpecificConfig as any)[key] = valueToSave;
+        if (valueToSave === undefined || String(valueToSave).trim() === '' || (valueToSave === defaultValue && activeConfigKey !== GENERAL_CONFIG_KEY) ) {
+          delete newSpecificConfigWithUpdates[key];
         }
     });
     
-    const updatedConfigs = { ...pdfConfigs };
-    if (Object.keys(newSpecificConfig).length === 0 && activeConfigKey !== GENERAL_CONFIG_KEY) {
-        delete updatedConfigs[activeConfigKey]; 
+    const newPdfConfigs = { ...pdfConfigs };
+
+    if (Object.keys(newSpecificConfigWithUpdates).length === 0 && activeConfigKey !== GENERAL_CONFIG_KEY) {
+        delete newPdfConfigs[activeConfigKey]; 
     } else {
-        updatedConfigs[activeConfigKey] = newSpecificConfig;
+        newPdfConfigs[activeConfigKey] = newSpecificConfigWithUpdates;
     }
     
-    setPdfConfigs(updatedConfigs);
-    localStorage.setItem(PDF_LAYOUT_CONFIGS_KEY, JSON.stringify(updatedConfigs));
+    setPdfConfigs(newPdfConfigs);
+    localStorage.setItem(PDF_LAYOUT_CONFIGS_KEY, JSON.stringify(newPdfConfigs));
     toast({
       title: "Configuration Enregistrée",
       description: `${successMessagePrefix} pour "${selectedPdfLabel}" a été enregistrée.`,
@@ -247,10 +246,12 @@ export default function PdfLayoutManager() {
     saveConfig(updates, "Les styles de mise en page et de police");
   };
 
-  const currentEffectiveSettings = useMemo(() => fetchPdfSettings(selectedPdfType), [selectedPdfType, pdfConfigs]);
+  const currentEffectiveSettings = useMemo(() => {
+    return fetchPdfSettings(selectedPdfType || GENERAL_CONFIG_KEY, pdfConfigs);
+  }, [selectedPdfType, pdfConfigs]);
 
   const renderPreviewHeaderText = () => {
-    if (!currentEffectiveSettings.headerText) return <div className="h-4">&nbsp;</div>; // Placeholder for height
+    if (!currentEffectiveSettings.headerText) return <div className="h-4">&nbsp;</div>; 
   
     const lines = currentEffectiveSettings.headerText.split('\n');
     return (
@@ -530,6 +531,7 @@ export default function PdfLayoutManager() {
               Police: <span className="font-semibold" style={{fontFamily: getFontFamilyCss(currentEffectiveSettings.fontFamily)}}>{fontFamilies.find(f => f.value === currentEffectiveSettings.fontFamily)?.label || currentEffectiveSettings.fontFamily}</span>
             </div>
           <div 
+            key={JSON.stringify(currentEffectiveSettings)} // Force re-render if settings change
             className={cn(
                 "bg-white dark:bg-neutral-800 p-1 rounded-sm shadow-inner w-full mx-auto overflow-hidden border border-muted",
                 currentEffectiveSettings.orientation === 'landscape' ? 'aspect-[297/210] max-w-md' : 'aspect-[210/297] max-w-sm'
@@ -539,10 +541,10 @@ export default function PdfLayoutManager() {
             <div
               className="h-full w-full bg-neutral-50 dark:bg-neutral-700 relative flex flex-col text-neutral-700 dark:text-neutral-200"
               style={{
-                paddingTop: `${Math.max(1, currentEffectiveSettings.marginTop / 7)}px`, 
-                paddingBottom: `${Math.max(1, currentEffectiveSettings.marginBottom / 7)}px`,
-                paddingLeft: `${Math.max(1, currentEffectiveSettings.marginLeft / 7)}px`,
-                paddingRight: `${Math.max(1, currentEffectiveSettings.marginRight / 7)}px`,
+                paddingTop: `${Math.max(1, (currentEffectiveSettings.marginTop || DEFAULT_MARGIN) / 7)}px`, 
+                paddingBottom: `${Math.max(1, (currentEffectiveSettings.marginBottom || DEFAULT_MARGIN) / 7)}px`,
+                paddingLeft: `${Math.max(1, (currentEffectiveSettings.marginLeft || DEFAULT_MARGIN) / 7)}px`,
+                paddingRight: `${Math.max(1, (currentEffectiveSettings.marginRight || DEFAULT_MARGIN) / 7)}px`,
                 fontSize: `${Math.max(3, (currentEffectiveSettings.defaultFontSize || DEFAULT_FONT_SIZE) / 2.5)}pt`,
               }}
             >
@@ -600,4 +602,7 @@ export default function PdfLayoutManager() {
     </div>
   );
 }
+    
+
+
     
