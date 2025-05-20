@@ -61,9 +61,12 @@ export default function ManageProducts({ products, onAddProduct, onUpdateProduct
           reference: editingProduct.reference,
           quantity: editingProduct.quantity,
         });
-      } else {
+      } else { // For add mode
         form.reset({ name: '', reference: '', quantity: 0 });
       }
+    } else { // When dialog is closed
+      setEditingProduct(null); // Clear editing state for next time
+      form.reset({ name: '', reference: '', quantity: 0 }); // Reset form to defaults
     }
   }, [editingProduct, form, isFormDialogOpen]);
 
@@ -74,26 +77,19 @@ export default function ManageProducts({ products, onAddProduct, onUpdateProduct
     } else {
       onAddProduct(data);
     }
-    setIsFormDialogOpen(false);
-    setEditingProduct(null);
+    setIsFormDialogOpen(false); // Close dialog, which will trigger useEffect cleanup
   };
 
   const handleOpenFormDialog = (product?: Product) => {
-    setEditingProduct(product || null);
-    setIsFormDialogOpen(true);
+    setEditingProduct(product || null); // Set mode (null for add, product for edit)
+    setIsFormDialogOpen(true);         // Open the dialog
   };
   
-  const handleCloseFormDialog = () => {
-    setIsFormDialogOpen(false);
-    setEditingProduct(null);
-    form.reset();
-  }
-
   return (
     <Card className="shadow-lg">
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Liste des Produits</CardTitle>
-        <Dialog open={isFormDialogOpen} onOpenChange={handleCloseFormDialog}>
+        <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
           <DialogTrigger asChild>
             <Button onClick={() => handleOpenFormDialog()}>
               <PlusCircle className="mr-2 h-4 w-4" /> Ajouter Produit
@@ -136,7 +132,7 @@ export default function ManageProducts({ products, onAddProduct, onUpdateProduct
                   name="quantity"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Quantité Initiale</FormLabel>
+                      <FormLabel>Quantité {editingProduct ? 'Actuelle' : 'Initiale'}</FormLabel>
                       <FormControl>
                         <Input type="number" placeholder="0" {...field} />
                       </FormControl>
@@ -159,7 +155,7 @@ export default function ManageProducts({ products, onAddProduct, onUpdateProduct
         {products.length === 0 ? (
           <p className="text-muted-foreground text-center py-8">Aucun produit dans l'inventaire. Commencez par en ajouter un.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto border rounded-md">
             <Table>
               <TableHeader>
                 <TableRow>
