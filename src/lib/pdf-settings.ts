@@ -2,16 +2,15 @@
 import type { PdfLayoutSettings } from '@/app/dashboard/settings/types';
 import { DEFAULT_APP_PRIMARY_COLOR } from '@/config/colors';
 
-export const PDF_LAYOUT_CONFIGS_KEY = "pdf_layout_configurations_v2"; // Incremented version
+export const PDF_LAYOUT_CONFIGS_KEY = "pdf_layout_configurations_v2";
 export const GENERAL_CONFIG_KEY = "_general_pdf_config_";
 
 export const DEFAULT_LOGO_URL = '';
 export const DEFAULT_HEADER_TEXT = '';
 export const DEFAULT_FOOTER_TEXT = 'Généré le {date} - Page {pageNumber}/{totalPages}';
-export const DEFAULT_MARGIN = 30; // Approx 10.6mm in points (1pt = 1/72 inch, 1 inch = 25.4mm)
-export const DEFAULT_FONT_SIZE = 10; // Default font size in points
+export const DEFAULT_MARGIN = 30; 
+export const DEFAULT_FONT_SIZE = 10;
 
-// New defaults
 export const DEFAULT_FONT_FAMILY: NonNullable<PdfLayoutSettings['fontFamily']> = 'helvetica';
 export const DEFAULT_HEADER_FONT_SIZE = 14;
 export const DEFAULT_FOOTER_FONT_SIZE = 8;
@@ -40,7 +39,6 @@ const DEFAULT_SETTINGS: Required<PdfLayoutSettings> = {
   pageSize: DEFAULT_PAGE_SIZE,
 };
 
-// Helper to convert hex to RGB array for jsPDF fillColor
 export function hexToRgb(hex: string): [number, number, number] | null {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result ? [
@@ -50,22 +48,25 @@ export function hexToRgb(hex: string): [number, number, number] | null {
   ] : null;
 }
 
-export function getPdfLayoutSettings(pdfTypeKey: string): Required<PdfLayoutSettings> {
-  let allConfigs: Record<string, Partial<PdfLayoutSettings>> = {};
-  
-  if (typeof window !== 'undefined' && window.localStorage) {
+export function getPdfLayoutSettings(pdfTypeKey: string, allConfigsParam?: Record<string, Partial<PdfLayoutSettings>>): Required<PdfLayoutSettings> {
+  let configsToUse: Record<string, Partial<PdfLayoutSettings>>;
+
+  if (allConfigsParam !== undefined) { // Strictly use the passed parameter if it's defined (even if empty object)
+    configsToUse = allConfigsParam;
+  } else if (typeof window !== 'undefined' && window.localStorage) { // Fallback to localStorage ONLY if allConfigsParam is not provided at all
     try {
       const storedConfigs = localStorage.getItem(PDF_LAYOUT_CONFIGS_KEY);
-      if (storedConfigs) {
-        allConfigs = JSON.parse(storedConfigs);
-      }
+      configsToUse = storedConfigs ? JSON.parse(storedConfigs) : {};
     } catch (error) {
-      console.error("Error reading PDF layout configs from localStorage:", error);
+      console.error("Error reading PDF layout configs from localStorage in getPdfLayoutSettings:", error);
+      configsToUse = {};
     }
+  } else { 
+    configsToUse = {};
   }
 
-  const generalConfig = allConfigs[GENERAL_CONFIG_KEY] || {};
-  const specificConfig = allConfigs[pdfTypeKey] || {};
+  const generalConfig = configsToUse[GENERAL_CONFIG_KEY] || {};
+  const specificConfig = configsToUse[pdfTypeKey] || {};
 
   return {
     logoUrl: specificConfig.logoUrl ?? generalConfig.logoUrl ?? DEFAULT_SETTINGS.logoUrl,
