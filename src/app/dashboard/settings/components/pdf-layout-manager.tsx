@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare, ArrowRightLeft, TextCursorInput, Eye, FileTextIcon, AlignHorizontalSpaceAround, Maximize, Minus } from 'lucide-react';
+import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare, ArrowRightLeft, TextCursorInput, Eye, FileTextIcon, AlignHorizontalSpaceAround, Maximize, Minus, RefreshCw } from 'lucide-react';
 import type { PdfLayoutSettings } from '../types';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -105,6 +105,15 @@ export default function PdfLayoutManager() {
 
   const { toast } = useToast();
 
+  // This represents the *saved* configuration.
+  const currentEffectiveSettings = useMemo(() => {
+    return fetchPdfSettings(selectedPdfType || GENERAL_CONFIG_KEY, pdfConfigs);
+  }, [selectedPdfType, pdfConfigs]);
+
+  // This state will hold the settings *currently displayed* in the preview.
+  // It can be updated from saved settings or from live input fields.
+  const [previewSettingsForDisplay, setPreviewSettingsForDisplay] = useState<Required<PdfLayoutSettings>>(currentEffectiveSettings);
+
   useEffect(() => {
     try {
       const storedConfigs = localStorage.getItem(PDF_LAYOUT_CONFIGS_KEY);
@@ -144,9 +153,9 @@ export default function PdfLayoutManager() {
     }
   }, [toast]);
 
+  // Update input fields and preview when selectedPdfType or saved configs change
   useEffect(() => {
-    const activeConfigKey = selectedPdfType || GENERAL_CONFIG_KEY;
-    const effectiveSettings = fetchPdfSettings(activeConfigKey, pdfConfigs); 
+    const effectiveSettings = fetchPdfSettings(selectedPdfType || GENERAL_CONFIG_KEY, pdfConfigs);
     
     setLogoUrlInput(effectiveSettings.logoUrl);
     setPrimaryColorInput(effectiveSettings.primaryColor);
@@ -165,8 +174,11 @@ export default function PdfLayoutManager() {
     setTableBodyFontSizeInput(String(effectiveSettings.tableBodyFontSize));
     setOrientationInput(effectiveSettings.orientation);
     setPageSizeInput(effectiveSettings.pageSize);
+    
+    // Update the displayed preview to match the newly loaded/saved settings
+    setPreviewSettingsForDisplay(effectiveSettings);
 
-  }, [selectedPdfType, pdfConfigs]);
+  }, [selectedPdfType, pdfConfigs]); // Listen to pdfConfigs directly
 
   const selectedPdfLabel = useMemo(() => {
     if (selectedPdfType === GENERAL_CONFIG_KEY) {
@@ -215,7 +227,7 @@ export default function PdfLayoutManager() {
         newPdfConfigs[activeConfigKey] = newSpecificConfigWithUpdates;
     }
     
-    setPdfConfigs(newPdfConfigs);
+    setPdfConfigs(newPdfConfigs); // This will trigger the useEffect to update input fields and previewSettingsForDisplay
     localStorage.setItem(PDF_LAYOUT_CONFIGS_KEY, JSON.stringify(newPdfConfigs));
     toast({
       title: "Configuration Enregistrée",
@@ -246,23 +258,46 @@ export default function PdfLayoutManager() {
     saveConfig(updates, "Les styles de mise en page et de police");
   };
 
-  const currentEffectiveSettings = useMemo(() => {
-    return fetchPdfSettings(selectedPdfType || GENERAL_CONFIG_KEY, pdfConfigs);
-  }, [selectedPdfType, pdfConfigs]);
+  const handleRefreshPreview = () => {
+    const liveSettings: Required<PdfLayoutSettings> = {
+        logoUrl: logoUrlInput || DEFAULT_LOGO_URL,
+        primaryColor: primaryColorInput || DEFAULT_APP_PRIMARY_COLOR,
+        headerText: headerTextInput || DEFAULT_HEADER_TEXT,
+        footerText: footerTextInput || DEFAULT_FOOTER_TEXT,
+        marginTop: parseFloat(marginTopInput) || DEFAULT_MARGIN,
+        marginRight: parseFloat(marginRightInput) || DEFAULT_MARGIN,
+        marginBottom: parseFloat(marginBottomInput) || DEFAULT_MARGIN,
+        marginLeft: parseFloat(marginLeftInput) || DEFAULT_MARGIN,
+        defaultFontSize: parseFloat(defaultFontSizeInput) || DEFAULT_FONT_SIZE,
+        fontFamily: fontFamilyInput || DEFAULT_FONT_FAMILY,
+        headerFontSize: parseFloat(headerFontSizeInput) || DEFAULT_HEADER_FONT_SIZE,
+        footerFontSize: parseFloat(footerFontSizeInput) || DEFAULT_FOOTER_FONT_SIZE,
+        tableHeaderFontSize: parseFloat(tableHeaderFontSizeInput) || DEFAULT_TABLE_HEADER_FONT_SIZE,
+        tableBodyFontSize: parseFloat(tableBodyFontSizeInput) || DEFAULT_TABLE_BODY_FONT_SIZE,
+        orientation: orientationInput || DEFAULT_ORIENTATION,
+        pageSize: pageSizeInput || DEFAULT_PAGE_SIZE,
+    };
+    setPreviewSettingsForDisplay(liveSettings);
+    toast({
+      title: "Aperçu Actualisé",
+      description: "L'aperçu a été mis à jour avec les valeurs actuelles des champs.",
+    });
+  };
+
 
   const renderPreviewHeaderText = () => {
-    if (!currentEffectiveSettings.headerText) return <div className="h-4">&nbsp;</div>; 
+    if (!previewSettingsForDisplay.headerText) return <div className="h-4">&nbsp;</div>; 
   
-    const lines = currentEffectiveSettings.headerText.split('\n');
+    const lines = previewSettingsForDisplay.headerText.split('\n');
     return (
-      <div style={{ fontSize: `${Math.max(5, (currentEffectiveSettings.headerFontSize || DEFAULT_HEADER_FONT_SIZE) / 2)}pt` }}>
+      <div style={{ fontSize: `${Math.max(5, (previewSettingsForDisplay.headerFontSize || DEFAULT_HEADER_FONT_SIZE) / 2)}pt` }}>
         {lines.map((line, lineIndex) => {
           const cells = line.split('|');
           return (
             <div key={lineIndex} className="flex">
               {cells.map((cell, cellIndex) => {
                 const cellContent = cell.trim();
-                if (cellContent === '{logo}' && currentEffectiveSettings.logoUrl) {
+                if (cellContent === '{logo}' && previewSettingsForDisplay.logoUrl) {
                   return (
                     <div key={cellIndex} className="p-0.5 border border-neutral-400 dark:border-neutral-500 flex-1 flex items-center justify-center">
                       <div className="w-8 h-5 bg-neutral-300 dark:bg-neutral-600 rounded-sm text-[0.4rem] flex items-center justify-center text-neutral-500 dark:text-neutral-400">LOGO</div>
@@ -353,11 +388,11 @@ export default function PdfLayoutManager() {
                 <Button onClick={handleSaveLogoUrl}>
                     <Save className="mr-2 h-4 w-4"/> Enregistrer Logo
                 </Button>
-                {currentEffectiveSettings.logoUrl && (
+                {previewSettingsForDisplay.logoUrl && (
                   <div className="mt-4 p-2 border rounded-md inline-block bg-muted">
                     <p className="text-xs text-muted-foreground mb-1">Aperçu du logo actuel (si URL valide):</p>
                     <Image 
-                        src={currentEffectiveSettings.logoUrl} 
+                        src={previewSettingsForDisplay.logoUrl} 
                         alt="Aperçu du logo" 
                         width={150} 
                         height={75} 
@@ -378,7 +413,7 @@ export default function PdfLayoutManager() {
                     />
                   </div>
                 )}
-                 {!currentEffectiveSettings.logoUrl && <p className="text-xs text-muted-foreground mt-2">Aucun logo configuré. Saisissez une URL pour en ajouter un.</p>}
+                 {!previewSettingsForDisplay.logoUrl && <p className="text-xs text-muted-foreground mt-2">Aucun logo configuré. Saisissez une URL pour en ajouter un.</p>}
               </div>
             </div>
 
@@ -394,7 +429,7 @@ export default function PdfLayoutManager() {
                     <SelectTrigger id="orientation-select"><SelectValue /></SelectTrigger>
                     <SelectContent>{pageOrientations.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
                   </Select>
-                   <p className="text-xs text-muted-foreground mt-1">Effective: {currentEffectiveSettings.orientation === 'landscape' ? 'Paysage' : 'Portrait'}</p>
+                   <p className="text-xs text-muted-foreground mt-1">Effective: {previewSettingsForDisplay.orientation === 'landscape' ? 'Paysage' : 'Portrait'}</p>
                 </div>
                 <div>
                   <Label htmlFor="page-size-select">Format de Page</Label>
@@ -402,7 +437,7 @@ export default function PdfLayoutManager() {
                     <SelectTrigger id="page-size-select"><SelectValue /></SelectTrigger>
                     <SelectContent>{pageSizes.map(ps => <SelectItem key={ps.value} value={ps.value}>{ps.label}</SelectItem>)}</SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground mt-1">Effectif: {currentEffectiveSettings.pageSize.toUpperCase()}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Effectif: {previewSettingsForDisplay.pageSize.toUpperCase()}</p>
                 </div>
                 <div>
                   <Label htmlFor="font-family-select">Police de Caractères</Label>
@@ -410,7 +445,7 @@ export default function PdfLayoutManager() {
                     <SelectTrigger id="font-family-select"><SelectValue /></SelectTrigger>
                     <SelectContent>{fontFamilies.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
                   </Select>
-                   <p className="text-xs text-muted-foreground mt-1">Effective: {fontFamilies.find(f => f.value === currentEffectiveSettings.fontFamily)?.label || currentEffectiveSettings.fontFamily}</p>
+                   <p className="text-xs text-muted-foreground mt-1">Effective: {fontFamilies.find(f => f.value === previewSettingsForDisplay.fontFamily)?.label || previewSettingsForDisplay.fontFamily}</p>
                 </div>
                 <Label className="flex items-center gap-1"><TextCursorInput className="w-4 h-4"/> Tailles de Police (pt)</Label>
                 <div className="grid grid-cols-2 gap-3">
@@ -421,7 +456,7 @@ export default function PdfLayoutManager() {
                     <div><Label htmlFor="table-body-font-size-input" className="text-xs">Corps Tableau</Label><Input id="table-body-font-size-input" type="number" value={tableBodyFontSizeInput} onChange={e => setTableBodyFontSizeInput(e.target.value)} className="h-8"/></div>
                 </div>
                  <p className="text-xs text-muted-foreground mt-1">
-                    Effectives: Défaut {currentEffectiveSettings.defaultFontSize}pt, En-tête Doc {currentEffectiveSettings.headerFontSize}pt, Pied {currentEffectiveSettings.footerFontSize}pt, En-tête Tab. {currentEffectiveSettings.tableHeaderFontSize}pt, Corps Tab. {currentEffectiveSettings.tableBodyFontSize}pt
+                    Effectives: Défaut {previewSettingsForDisplay.defaultFontSize}pt, En-tête Doc {previewSettingsForDisplay.headerFontSize}pt, Pied {previewSettingsForDisplay.footerFontSize}pt, En-tête Tab. {previewSettingsForDisplay.tableHeaderFontSize}pt, Corps Tab. {previewSettingsForDisplay.tableBodyFontSize}pt
                 </p>
               </div>
             </div>
@@ -451,7 +486,7 @@ export default function PdfLayoutManager() {
                             className="w-32 h-8"
                         />
                     </div>
-                     <p className="text-xs text-muted-foreground mt-1">Effective: <span style={{backgroundColor: currentEffectiveSettings.primaryColor, padding: '2px 6px', borderRadius: '3px', color: '#fff', textShadow: '0 0 2px #000' }}>{currentEffectiveSettings.primaryColor}</span></p>
+                     <p className="text-xs text-muted-foreground mt-1">Effective: <span style={{backgroundColor: previewSettingsForDisplay.primaryColor, padding: '2px 6px', borderRadius: '3px', color: '#fff', textShadow: '0 0 2px #000' }}>{previewSettingsForDisplay.primaryColor}</span></p>
                 </div>
                 <div>
                   <Label className="flex items-center gap-1"><ArrowRightLeft className="w-4 h-4"/> Marges (en points PDF, 1pt ≈ 0.35mm)</Label>
@@ -461,7 +496,7 @@ export default function PdfLayoutManager() {
                     <div><Label htmlFor="margin-left-input" className="text-xs">Gauche</Label><Input id="margin-left-input" type="number" value={marginLeftInput} onChange={e => setMarginLeftInput(e.target.value)} placeholder={String(DEFAULT_MARGIN)} className="h-8"/></div>
                     <div><Label htmlFor="margin-right-input" className="text-xs">Droite</Label><Input id="margin-right-input" type="number" value={marginRightInput} onChange={e => setMarginRightInput(e.target.value)} placeholder={String(DEFAULT_MARGIN)} className="h-8"/></div>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">Effectives: H:{currentEffectiveSettings.marginTop}pt, B:{currentEffectiveSettings.marginBottom}pt, G:{currentEffectiveSettings.marginLeft}pt, D:{currentEffectiveSettings.marginRight}pt</p>
+                  <p className="text-xs text-muted-foreground mt-1">Effectives: H:{previewSettingsForDisplay.marginTop}pt, B:{previewSettingsForDisplay.marginBottom}pt, G:{previewSettingsForDisplay.marginLeft}pt, D:{previewSettingsForDisplay.marginRight}pt</p>
                 </div>
               </div>
             </div>
@@ -482,8 +517,8 @@ export default function PdfLayoutManager() {
                         className="mt-1"
                         rows={3}
                     />
-                    {currentEffectiveSettings.headerText && <div className="text-xs text-muted-foreground mt-1">Effectif : <pre className="whitespace-pre-wrap text-xs bg-muted/50 p-1 rounded">{currentEffectiveSettings.headerText}</pre></div>}
-                    {!currentEffectiveSettings.headerText && <p className="text-xs text-muted-foreground mt-1">Aucun texte d'en-tête défini.</p>}
+                    {previewSettingsForDisplay.headerText && <div className="text-xs text-muted-foreground mt-1">Effectif : <pre className="whitespace-pre-wrap text-xs bg-muted/50 p-1 rounded">{previewSettingsForDisplay.headerText}</pre></div>}
+                    {!previewSettingsForDisplay.headerText && <p className="text-xs text-muted-foreground mt-1">Aucun texte d'en-tête défini.</p>}
                 </div>
                 <Button onClick={handleSaveHeaderText}>
                     <Save className="mr-2 h-4 w-4"/> Enregistrer En-tête
@@ -499,14 +534,17 @@ export default function PdfLayoutManager() {
                         rows={2}
                     />
                     <p className="text-xs text-muted-foreground mt-1">Utilisez &#123;date&#125;, &#123;pageNumber&#125;, &#123;totalPages&#125; comme placeholders.</p>
-                    {currentEffectiveSettings.footerText && <p className="text-xs text-muted-foreground mt-1">Effectif : {currentEffectiveSettings.footerText}</p>}
+                    {previewSettingsForDisplay.footerText && <p className="text-xs text-muted-foreground mt-1">Effectif : {previewSettingsForDisplay.footerText}</p>}
                 </div>
                  <Button onClick={handleSaveFooterText}>
                     <Save className="mr-2 h-4 w-4"/> Enregistrer Pied de Page
                 </Button>
               </div>
             </div>
-            <div className="flex justify-end mt-6">
+            <div className="flex justify-end mt-6 space-x-2">
+                <Button onClick={handleRefreshPreview} variant="outline">
+                    <RefreshCw className="mr-2 h-4 w-4" /> Actualiser l'Aperçu
+                </Button>
                 <Button onClick={handleSaveLayoutAndFontStyles} size="lg">
                     <Save className="mr-2 h-5 w-5"/> Enregistrer Toutes les Configurations de Mise en Page & Police
                 </Button>
@@ -526,45 +564,45 @@ export default function PdfLayoutManager() {
         </CardHeader>
         <CardContent>
             <div className="text-sm mb-2">
-              Orientation: <span className="font-semibold">{currentEffectiveSettings.orientation === 'landscape' ? 'Paysage' : 'Portrait'}</span>, 
-              Format: <span className="font-semibold">{currentEffectiveSettings.pageSize.toUpperCase()}</span>,
-              Police: <span className="font-semibold" style={{fontFamily: getFontFamilyCss(currentEffectiveSettings.fontFamily)}}>{fontFamilies.find(f => f.value === currentEffectiveSettings.fontFamily)?.label || currentEffectiveSettings.fontFamily}</span>
+              Orientation: <span className="font-semibold">{previewSettingsForDisplay.orientation === 'landscape' ? 'Paysage' : 'Portrait'}</span>, 
+              Format: <span className="font-semibold">{previewSettingsForDisplay.pageSize.toUpperCase()}</span>,
+              Police: <span className="font-semibold" style={{fontFamily: getFontFamilyCss(previewSettingsForDisplay.fontFamily)}}>{fontFamilies.find(f => f.value === previewSettingsForDisplay.fontFamily)?.label || previewSettingsForDisplay.fontFamily}</span>
             </div>
           <div 
-            key={JSON.stringify(currentEffectiveSettings)} // Force re-render if settings change
+            key={JSON.stringify(previewSettingsForDisplay)} // Force re-render if settings change
             className={cn(
                 "bg-white dark:bg-neutral-800 p-1 rounded-sm shadow-inner w-full mx-auto overflow-hidden border border-muted",
-                currentEffectiveSettings.orientation === 'landscape' ? 'aspect-[297/210] max-w-md' : 'aspect-[210/297] max-w-sm'
+                previewSettingsForDisplay.orientation === 'landscape' ? 'aspect-[297/210] max-w-md' : 'aspect-[210/297] max-w-sm'
             )}
-            style={{ fontFamily: getFontFamilyCss(currentEffectiveSettings.fontFamily) }}
+            style={{ fontFamily: getFontFamilyCss(previewSettingsForDisplay.fontFamily) }}
           >
             <div
               className="h-full w-full bg-neutral-50 dark:bg-neutral-700 relative flex flex-col text-neutral-700 dark:text-neutral-200"
               style={{
-                paddingTop: `${Math.max(1, (currentEffectiveSettings.marginTop || DEFAULT_MARGIN) / 7)}px`, 
-                paddingBottom: `${Math.max(1, (currentEffectiveSettings.marginBottom || DEFAULT_MARGIN) / 7)}px`,
-                paddingLeft: `${Math.max(1, (currentEffectiveSettings.marginLeft || DEFAULT_MARGIN) / 7)}px`,
-                paddingRight: `${Math.max(1, (currentEffectiveSettings.marginRight || DEFAULT_MARGIN) / 7)}px`,
-                fontSize: `${Math.max(3, (currentEffectiveSettings.defaultFontSize || DEFAULT_FONT_SIZE) / 2.5)}pt`,
+                paddingTop: `${Math.max(1, (previewSettingsForDisplay.marginTop || DEFAULT_MARGIN) / 7)}px`, 
+                paddingBottom: `${Math.max(1, (previewSettingsForDisplay.marginBottom || DEFAULT_MARGIN) / 7)}px`,
+                paddingLeft: `${Math.max(1, (previewSettingsForDisplay.marginLeft || DEFAULT_MARGIN) / 7)}px`,
+                paddingRight: `${Math.max(1, (previewSettingsForDisplay.marginRight || DEFAULT_MARGIN) / 7)}px`,
+                fontSize: `${Math.max(3, (previewSettingsForDisplay.defaultFontSize || DEFAULT_FONT_SIZE) / 2.5)}pt`,
               }}
             >
               {/* Header Area */}
-              <div className="mb-auto flex-shrink-0 leading-tight border-b border-neutral-300 dark:border-neutral-600 pb-0.5 mb-0.5 text-[0.9em]" style={{fontSize: `${Math.max(3, (currentEffectiveSettings.headerFontSize || DEFAULT_HEADER_FONT_SIZE) / 2.5)}pt`}}>
+              <div className="mb-auto flex-shrink-0 leading-tight border-b border-neutral-300 dark:border-neutral-600 pb-0.5 mb-0.5 text-[0.9em]" style={{fontSize: `${Math.max(3, (previewSettingsForDisplay.headerFontSize || DEFAULT_HEADER_FONT_SIZE) / 2.5)}pt`}}>
                 {renderPreviewHeaderText()}
-                 {!currentEffectiveSettings.headerText && !currentEffectiveSettings.logoUrl && <div className="h-3">&nbsp;</div>}
+                 {!previewSettingsForDisplay.headerText && !previewSettingsForDisplay.logoUrl && <div className="h-3">&nbsp;</div>}
               </div>
 
               {/* Dummy Content Area */}
               <div className="flex-grow my-0.5 space-y-px overflow-hidden py-0.5">
                 <div
                   className="h-1.5 w-full rounded-sm"
-                  style={{ backgroundColor: currentEffectiveSettings.primaryColor }}
+                  style={{ backgroundColor: previewSettingsForDisplay.primaryColor }}
                 />
-                <div className="text-neutral-600 dark:text-neutral-300" style={{fontSize: `${Math.max(3, (currentEffectiveSettings.tableHeaderFontSize || DEFAULT_TABLE_HEADER_FONT_SIZE) / 2.5)}pt`}}>
+                <div className="text-neutral-600 dark:text-neutral-300" style={{fontSize: `${Math.max(3, (previewSettingsForDisplay.tableHeaderFontSize || DEFAULT_TABLE_HEADER_FONT_SIZE) / 2.5)}pt`}}>
                     En-tête Table 1 | En-tête Table 2 | En-tête Table 3
                 </div>
                 <div className="h-0.5 w-full bg-neutral-300 dark:bg-neutral-600 rounded-sm my-px" />
-                <div className="text-neutral-500 dark:text-neutral-400" style={{fontSize: `${Math.max(3, (currentEffectiveSettings.tableBodyFontSize || DEFAULT_TABLE_BODY_FONT_SIZE) / 2.5)}pt`}}>
+                <div className="text-neutral-500 dark:text-neutral-400" style={{fontSize: `${Math.max(3, (previewSettingsForDisplay.tableBodyFontSize || DEFAULT_TABLE_BODY_FONT_SIZE) / 2.5)}pt`}}>
                     Ligne de contenu 1, col 1 | Col 2 | Col 3<br/>
                     Ligne de contenu 2, col 1 | Col 2 | Col 3<br/>
                     ... <br/>
@@ -573,9 +611,9 @@ export default function PdfLayoutManager() {
 
               {/* Footer Area */}
               <div className="mt-auto flex-shrink-0">
-                {currentEffectiveSettings.footerText && (
-                  <div className="text-neutral-500 dark:text-neutral-400 truncate leading-tight border-t border-neutral-300 dark:border-neutral-600 pt-0.5 mt-0.5" style={{fontSize: `${Math.max(2, (currentEffectiveSettings.footerFontSize || DEFAULT_FOOTER_FONT_SIZE) / 2.5)}pt`}}>
-                    {currentEffectiveSettings.footerText
+                {previewSettingsForDisplay.footerText && (
+                  <div className="text-neutral-500 dark:text-neutral-400 truncate leading-tight border-t border-neutral-300 dark:border-neutral-600 pt-0.5 mt-0.5" style={{fontSize: `${Math.max(2, (previewSettingsForDisplay.footerFontSize || DEFAULT_FOOTER_FONT_SIZE) / 2.5)}pt`}}>
+                    {previewSettingsForDisplay.footerText
                       .replace('{date}', format(new Date(), "dd/MM/yy HH:mm", { locale: fr }))
                       .replace('{pageNumber}', '1')
                       .replace('{totalPages}', 'N')
@@ -602,7 +640,4 @@ export default function PdfLayoutManager() {
     </div>
   );
 }
-    
-
-
     
