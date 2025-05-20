@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from 'next/link';
@@ -130,33 +131,93 @@ export default function MenuPlanningPage() {
 
     try {
       const pdfSettings = getPdfLayoutSettings('menu_planning_monthly');
-      const doc = new jsPDF() as jsPDFWithAutoTable;
+      const doc = new jsPDF({
+        orientation: pdfSettings.orientation,
+        unit: 'pt',
+        format: pdfSettings.pageSize,
+      }) as jsPDFWithAutoTable;
+      doc.setFont(pdfSettings.fontFamily);
+
       const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
       const yearLabel = selectedYear;
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
-      let currentY = 15;
+      let currentY = pdfSettings.marginTop;
+
+      // Header Table from settings
       if (pdfSettings.headerText) {
-        doc.setFontSize(10);
-        doc.text(pdfSettings.headerText, 14, currentY);
-        currentY += 10;
-      }
+        const headerRows = pdfSettings.headerText.split('\n').map(rowText => 
+          rowText.split('|').map(cellText => cellText.trim())
+        );
+        const headerTableBody = headerRows.map(row => row.map(cell => cell === '{logo}' ? '' : cell));
 
-      if (pdfSettings.logoUrl) {
-        doc.setFontSize(8); 
-        doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY);
-        currentY += 5; 
-      }
+        doc.autoTable({
+          body: headerTableBody,
+          startY: currentY,
+          theme: 'plain',
+          styles: { fontSize: pdfSettings.headerFontSize, cellPadding: 1, font: pdfSettings.fontFamily },
+          columnStyles: { 0: { cellWidth: 'auto'} },
+          margin: { top: pdfSettings.marginTop, left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
+          didDrawCell: (data) => {
+            if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image') && headerRows[data.row.index][data.column.index] === '{logo}') {
+              try {
+                const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+                const format = imgProps.fileType.toUpperCase();
+                const cellPadding = 2; 
+                let imgWidth = data.cell.width - 2 * cellPadding;
+                let imgHeight = data.cell.height - 2 * cellPadding;
+                const cellAspectRatio = data.cell.width / data.cell.height;
+                const imgAspectRatio = imgProps.width / imgProps.height;
 
+                if (imgAspectRatio > cellAspectRatio) { 
+                    imgHeight = imgWidth / imgAspectRatio;
+                } else { 
+                    imgWidth = imgHeight * imgAspectRatio;
+                }
+                const imgX = data.cell.x + (data.cell.width - imgWidth) / 2;
+                const imgY = data.cell.y + (data.cell.height - imgHeight) / 2;
+                doc.addImage(pdfSettings.logoUrl, format, imgX, imgY, imgWidth, imgHeight);
+              } catch (e: any) { 
+                console.error(`Error drawing logo in PDF header table: ${e.message || e}. Cell:`, data.cell, {logoUrl: pdfSettings.logoUrl ? pdfSettings.logoUrl.substring(0, 50) + "..." : "N/A"});
+                doc.setFillColor(230, 230, 230); doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
+                doc.setFontSize(8); doc.setTextColor(100); doc.text("LOGO_ERR", data.cell.x + data.cell.width/2, data.cell.y + data.cell.height/2, {align: 'center', baseline: 'middle'});
+              }
+            } else if (pdfSettings.logoUrl && headerRows[data.row.index][data.column.index] === '{logo}') { 
+                doc.setFillColor(230, 230, 230); doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
+                doc.setFontSize(8); doc.setTextColor(100); doc.text("LOGO", data.cell.x + data.cell.width/2, data.cell.y + data.cell.height/2, {align: 'center', baseline: 'middle'});
+            }
+          },
+        });
+        currentY = (doc as any).lastAutoTable.finalY + 5;
+      } else if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { 
+        try {
+            const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+            const format = imgProps.fileType.toUpperCase();
+            const desiredHeight = 30; 
+            const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
+            doc.addImage(pdfSettings.logoUrl, format, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
+            currentY += desiredHeight + 5;
+        } catch(e: any) {
+            console.error(`Error drawing standalone logo in PDF: ${e.message || e}.`, {logoUrl: pdfSettings.logoUrl ? pdfSettings.logoUrl.substring(0, 50) + "..." : "N/A"});
+            doc.setFontSize(pdfSettings.headerFontSize); doc.text(`[Logo Error]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize + 5;
+        }
+      } else if (pdfSettings.logoUrl) {
+         doc.setFontSize(pdfSettings.headerFontSize); doc.text(`[Logo URL: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize + 5;
+      }
+      
       const title = `Planification des Menus - ${monthLabel} ${yearLabel}`;
-      doc.setFontSize(18);
+      doc.setFontSize(pdfSettings.headerFontSize);
       doc.text(title, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
-      currentY += 8;
-      doc.setFontSize(10);
-      doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY);
-      currentY += 7;
+      currentY += pdfSettings.headerFontSize * 0.7 + 5; 
+      doc.setFontSize(pdfSettings.defaultFontSize);
+      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
+      currentY += pdfSettings.defaultFontSize + 5;
 
-      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
+
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, fontSize?: number } = { 
+        fontStyle: 'bold',
+        fontSize: pdfSettings.tableHeaderFontSize,
+      };
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
         if (primaryColorRgb) {
@@ -185,15 +246,15 @@ export default function MenuPlanningPage() {
       });
 
       const themeRgbColors: Record<MenuThemeIdentifier, [number, number, number]> = {
-        froid: [219, 234, 254],   
-        vege: [209, 250, 229],    
-        sam: [254, 249, 195],     
-        poisson: [252, 231, 243], 
-        fete: [255, 237, 213],    
+        froid: [191, 219, 254],   // More distinct Light Blue (bg-blue-200 equivalent)
+        vege: [209, 250, 229],    // Light Green
+        sam: [254, 249, 195],     // Light Yellow
+        poisson: [252, 231, 243], // Light Pink
+        fete: [255, 237, 213],    // Light Orange
       };
-      const holidayWeekendColor: [number, number, number] = [253, 224, 71]; 
-      const holidayWeekdayColor: [number, number, number] = [254, 240, 138]; 
-      const weekendColor: [number, number, number] = [229, 231, 235]; 
+      const holidayWeekendColor: [number, number, number] = [253, 224, 71]; // Saturated Yellow
+      const holidayWeekdayColor: [number, number, number] = [254, 240, 138]; // Lighter Yellow
+      const weekendColor: [number, number, number] = [229, 231, 235]; // Light Grey
 
       doc.autoTable({
         head: head,
@@ -201,28 +262,30 @@ export default function MenuPlanningPage() {
         startY: currentY,
         theme: 'grid',
         headStyles: headStyles,
-        styles: { fontSize: 7, cellPadding: 1.5, valign: 'middle' }, 
+        styles: { fontSize: pdfSettings.tableBodyFontSize, cellPadding: 1.5, valign: 'middle', font: pdfSettings.fontFamily }, 
         columnStyles: {
-          0: { cellWidth: 13 }, 
-          1: { cellWidth: 22 }, 
-          2: { cellWidth: 20 }, 
+          0: { cellWidth: 18 }, 
+          1: { cellWidth: 25 }, 
+          2: { cellWidth: 22 }, 
+          // Les autres colonnes prendront la largeur restante automatiquement
         },
         willDrawCell: (data) => {
           if (data.section === 'body' && data.row && typeof data.row.index === 'number' && data.row.index < menuData.length) {
             const dayMenu = menuData[data.row.index];
             if (dayMenu) {
-              let fillColor: [number, number, number] | undefined = undefined;
+              let fillColorToApply: [number, number, number] | undefined = undefined;
 
               if (dayMenu.theme && dayMenu.theme !== '' && themeRgbColors[dayMenu.theme as MenuThemeIdentifier]) {
-                fillColor = themeRgbColors[dayMenu.theme as MenuThemeIdentifier];
+                fillColorToApply = themeRgbColors[dayMenu.theme as MenuThemeIdentifier];
               } else if (dayMenu.isHoliday) {
-                fillColor = dayMenu.isWeekend ? holidayWeekendColor : holidayWeekdayColor;
+                fillColorToApply = dayMenu.isWeekend ? holidayWeekendColor : holidayWeekdayColor;
               } else if (dayMenu.isWeekend) {
-                fillColor = weekendColor;
+                fillColorToApply = weekendColor;
               }
 
-              if (fillColor) {
-                data.cell.styles.fillColor = fillColor;
+              if (fillColorToApply) {
+                // Appliquer à toutes les cellules de la ligne
+                data.row.cells[data.column.index].styles.fillColor = fillColorToApply; 
               }
             }
           }
@@ -234,9 +297,15 @@ export default function MenuPlanningPage() {
               .replace('{date}', generationDateFormatted)
               .replace('{pageNumber}', data.pageNumber.toString())
               .replace('{totalPages}', pageCount.toString());
-            doc.setFontSize(8);
-            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+            doc.setFontSize(pdfSettings.footerFontSize);
+            doc.text(footerStr, pdfSettings.marginLeft, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
           }
+        },
+        margin: { 
+            top: pdfSettings.marginTop, 
+            right: pdfSettings.marginRight, 
+            bottom: pdfSettings.marginBottom, 
+            left: pdfSettings.marginLeft 
         },
       });
 
@@ -259,7 +328,7 @@ export default function MenuPlanningPage() {
             Planification des Menus
           </h1>
         </div>
-        {/* Back to Dashboard button removed */}
+        
       </div>
       <div className="mb-6 text-center sm:text-left">
         <CurrentDate />
@@ -392,3 +461,4 @@ export default function MenuPlanningPage() {
     </div>
   );
 }
+
