@@ -8,6 +8,7 @@ import Image from 'next/image'; // For previewing the app logo
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input'; // Added this import
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
@@ -27,7 +28,7 @@ import {
 
 const THEME_STORAGE_KEY = "app_settings_theme_mode";
 const ACCENT_COLOR_STORAGE_KEY = "app_settings_accent_color";
-const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1"; // New key for app logo
+const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1";
 
 // Notification settings keys
 const NOTIFICATIONS_EMAIL_KEY = "app_settings_notifications_email";
@@ -107,7 +108,7 @@ const APP_SPECIFIC_KEYS = [
   NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY,
   NOTIFICATIONS_SOUND_ENABLED_KEY,
   NOTIFICATIONS_SOUND_CHOICE_KEY,
-  APP_LOGO_STORAGE_KEY, // Added app logo key
+  APP_LOGO_STORAGE_KEY,
 ];
 
 const APP_SPECIFIC_PREFIXES = [
