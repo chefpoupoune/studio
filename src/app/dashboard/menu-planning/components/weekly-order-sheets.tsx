@@ -39,49 +39,74 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
 
     try {
       const pdfSettings = getPdfLayoutSettings('weekly_order_sheet');
+      // This PDF is specifically designed for A3 Landscape due to its column structure.
+      // We will use other settings like font, color, margins, header/footer.
       const doc = new jsPDF({ orientation: 'landscape', format: 'a3' }) as jsPDFWithAutoTable;
+      doc.setFont(pdfSettings.fontFamily);
+
       const pageHeight = doc.internal.pageSize.getHeight();
       const pageWidth = doc.internal.pageSize.getWidth();
-      const margin = 14;
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
-      let currentY = margin;
+      let currentY = pdfSettings.marginTop;
 
       // Custom Header Text from settings
       if (pdfSettings.headerText) {
-        doc.setFontSize(10);
-        const headerLines = pdfSettings.headerText.split('\n');
-        headerLines.forEach(line => {
-          doc.text(line, margin, currentY);
-          currentY += 4; 
+        const headerRows = pdfSettings.headerText.split('\n').map(rowText => 
+          rowText.split('|').map(cellText => cellText.trim())
+        );
+        const headerTableBody = headerRows.map(row => row.map(cell => cell === '{logo}' ? '' : cell));
+        
+        doc.autoTable({
+          body: headerTableBody,
+          startY: currentY,
+          theme: 'plain',
+          styles: { fontSize: pdfSettings.headerFontSize, cellPadding: 1, font: pdfSettings.fontFamily },
+          columnStyles: { 0: { cellWidth: 'auto'} }, // Adjust as needed
+          margin: { top: pdfSettings.marginTop, left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
+          didDrawCell: (data) => {
+            if (pdfSettings.logoUrl && headerRows[data.row.index][data.column.index] === '{logo}') {
+              try {
+                // Placeholder for logo rendering
+                doc.setFillColor(230, 230, 230);
+                doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
+                const tempFontSize = doc.getFontSize();
+                doc.setFontSize(8); doc.setTextColor(100);
+                doc.text("LOGO", data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2, { align: 'center', baseline: 'middle' });
+                doc.setFontSize(tempFontSize); doc.setTextColor(0,0,0); // Reset color
+              } catch (e) { console.error("Error drawing logo placeholder:", e); }
+            }
+          },
         });
-        currentY += 2; 
-      }
-
-      // Add Logo URL if available
-      if (pdfSettings.logoUrl) {
-        doc.setFontSize(8); 
-        doc.text(`Logo: ${pdfSettings.logoUrl}`, margin, currentY);
-        currentY += 5; 
+        currentY = (doc as any).lastAutoTable.finalY + 5;
+      } else if (pdfSettings.logoUrl) {
+        doc.setFontSize(pdfSettings.headerFontSize);
+        doc.text(`[Logo: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); 
+        currentY += pdfSettings.headerFontSize + 5;
       }
       
-      doc.setFontSize(16);
+      doc.setFontSize(pdfSettings.headerFontSize + 4); // Larger for main title
       doc.text("Fiche de Commande Cuisine", pageWidth / 2, currentY + 5, { align: 'center' });
-      currentY += 5;
+      currentY += pdfSettings.headerFontSize + 5;
       
-      doc.setFontSize(10);
+      doc.setFontSize(pdfSettings.defaultFontSize);
       const semaineText = `Semaine du: ${format(week.startDate, "dd/MM/yyyy", { locale: fr })}  Au: ${format(week.endDate, "dd/MM/yyyy", { locale: fr })}`;
-      doc.text(semaineText, margin, currentY + 10);
-      doc.text(`Généré le: ${generationDateFormatted}`, pageWidth - margin, currentY + 10, { align: 'right'});
-      currentY += 20;
+      doc.text(semaineText, pdfSettings.marginLeft, currentY + 10);
+      doc.text(`Généré le: ${generationDateFormatted}`, pageWidth - pdfSettings.marginRight, currentY + 10, { align: 'right'});
+      currentY += (pdfSettings.defaultFontSize * 1.2) + 10;
 
-      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, halign?: string } = { fontStyle: 'bold', halign: 'center' };
+
+      const tableHeadStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, halign?: string, fontSize?: number } = { 
+        fontStyle: 'bold', 
+        halign: 'center',
+        fontSize: pdfSettings.tableHeaderFontSize,
+      };
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
         if (primaryColorRgb) {
-          headStyles.fillColor = primaryColorRgb;
+          tableHeadStyles.fillColor = primaryColorRgb;
           const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
-          headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
+          tableHeadStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
         }
       }
 
@@ -94,53 +119,52 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
         head: daysHeader,
         body: daysBody,
         theme: 'grid',
-        headStyles: headStyles, // Use primaryColor for this header
-        styles: { cellPadding: 3, minCellHeight: 10 },
+        headStyles: tableHeadStyles,
+        styles: { cellPadding: 3, minCellHeight: 10, fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily },
         tableWidth: 'auto',
-        margin: { left: margin, right: margin },
+        margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
       });
       currentY = (doc as any).lastAutoTable.finalY + 5;
 
       doc.setFillColor(0, 0, 0);
-      doc.rect(margin, currentY, pageWidth - (2 * margin), 2, 'F');
+      doc.rect(pdfSettings.marginLeft, currentY, pageWidth - (pdfSettings.marginLeft + pdfSettings.marginRight), 2, 'F');
       currentY += 7;
       
-      doc.setFontSize(9);
+      doc.setFontSize(pdfSettings.defaultFontSize - 1); // Slightly smaller for this info line
       const imeInfo = "IME Brebières / 46 chemin du bois des Caures / 62117 Brebières  03.21.50.00.36";
       const apiInfo = "API 771";
       const imeInfoWidth = doc.getTextWidth(imeInfo);
       const apiInfoWidth = doc.getTextWidth(apiInfo);
-      doc.text(imeInfo, (pageWidth - imeInfoWidth - apiInfoWidth - 10) / 2 + margin, currentY); 
-      doc.text(apiInfo, pageWidth - margin - apiInfoWidth, currentY); 
-      currentY += 5;
+      doc.text(imeInfo, (pageWidth - imeInfoWidth - apiInfoWidth - 10) / 2 + pdfSettings.marginLeft, currentY); 
+      doc.text(apiInfo, pageWidth - pdfSettings.marginRight - apiInfoWidth, currentY); 
+      currentY += pdfSettings.defaultFontSize * 0.7 + 2;
 
       doc.setFillColor(0, 0, 0);
-      doc.rect(margin, currentY, pageWidth - (2 * margin), 2, 'F');
+      doc.rect(pdfSettings.marginLeft, currentY, pageWidth - (pdfSettings.marginLeft + pdfSettings.marginRight), 2, 'F');
       currentY += 10;
       
       const categoriesHeader = [['Fruits et Légumes', 'Frais', 'Surgeler', 'Viande', 'Sec', 'Autres']];
       const categoriesBody = Array(26).fill(Array(6).fill(' ')); 
 
-      // Apply primary color to categoriesHeader too, but columnStyles will override cell fill
-      const categoryHeadStyles = { ...headStyles }; 
-
+      const categoryCellWidth = (pageWidth - (pdfSettings.marginLeft + pdfSettings.marginRight)) / 6;
+      
       doc.autoTable({
         startY: currentY,
         head: categoriesHeader,
         body: categoriesBody,
         theme: 'grid',
-        headStyles: categoryHeadStyles, 
+        headStyles: tableHeadStyles, 
         columnStyles: {
-          0: { fillColor: [200, 230, 201] }, 
-          1: { fillColor: [173, 216, 230] }, 
-          2: { fillColor: [173, 216, 230] }, 
-          3: { fillColor: [255, 192, 203] }, 
-          4: { fillColor: [220, 220, 220] }, 
-          5: { fillColor: [220, 220, 220] }, 
+          0: { fillColor: [200, 230, 201], cellWidth: categoryCellWidth }, 
+          1: { fillColor: [173, 216, 230], cellWidth: categoryCellWidth }, 
+          2: { fillColor: [173, 216, 230], cellWidth: categoryCellWidth }, 
+          3: { fillColor: [255, 192, 203], cellWidth: categoryCellWidth }, 
+          4: { fillColor: [220, 220, 220], cellWidth: categoryCellWidth }, 
+          5: { fillColor: [220, 220, 220], cellWidth: categoryCellWidth }, 
         },
-        styles: { cellPadding: 2, minCellHeight: 8, fontSize: 9, cellWidth: (pageWidth - (2*margin)) / 6 },
+        styles: { cellPadding: 2, minCellHeight: 8, fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily },
         tableWidth: 'auto',
-        margin: { left: margin, right: margin },
+        margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
           if (pdfSettings.footerText) {
@@ -148,8 +172,8 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
               .replace('{date}', generationDateFormatted)
               .replace('{pageNumber}', data.pageNumber.toString())
               .replace('{totalPages}', pageCount.toString());
-            doc.setFontSize(9);
-            doc.text(footerStr, margin, pageHeight - 10);
+            doc.setFontSize(pdfSettings.footerFontSize);
+            doc.text(footerStr, pdfSettings.marginLeft, pageHeight - (pdfSettings.marginBottom / 2));
           }
         }
       });
@@ -254,5 +278,3 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
   );
 }
 
-
-    
