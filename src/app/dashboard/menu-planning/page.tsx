@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { BookOpenText, CalendarDays, ClipboardCheck, Thermometer, FileText as FileTextIcon, Loader2 } from 'lucide-react'; // Removed ArrowLeft
+import { BookOpenText, CalendarDays, ClipboardCheck, Thermometer, FileText as FileTextIcon, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
@@ -144,7 +144,6 @@ export default function MenuPlanningPage() {
 
       let currentY = pdfSettings.marginTop;
 
-      // Header Table from settings
       if (pdfSettings.headerText) {
         const headerRows = pdfSettings.headerText.split('\n').map(rowText => 
           rowText.split('|').map(cellText => cellText.trim())
@@ -245,16 +244,17 @@ export default function MenuPlanningPage() {
         ];
       });
 
+      // Slightly darker theme colors for better PDF visibility
       const themeRgbColors: Record<MenuThemeIdentifier, [number, number, number]> = {
-        froid: [191, 219, 254],   // More distinct Light Blue (bg-blue-200 equivalent)
-        vege: [209, 250, 229],    // Light Green
-        sam: [254, 249, 195],     // Light Yellow
-        poisson: [252, 231, 243], // Light Pink
-        fete: [255, 237, 213],    // Light Orange
+        froid: [147, 197, 253],   // Tailwind Blue-300
+        vege: [167, 243, 208],    // Tailwind Green-200
+        sam: [253, 230, 138],     // Tailwind Yellow-200
+        poisson: [251, 207, 232], // Tailwind Pink-200
+        fete: [254, 215, 170],    // Tailwind Orange-200
       };
-      const holidayWeekendColor: [number, number, number] = [253, 224, 71]; // Saturated Yellow
-      const holidayWeekdayColor: [number, number, number] = [254, 240, 138]; // Lighter Yellow
-      const weekendColor: [number, number, number] = [229, 231, 235]; // Light Grey
+      const holidayWeekendColor: [number, number, number] = [253, 224, 71]; 
+      const holidayWeekdayColor: [number, number, number] = [254, 240, 138]; 
+      const weekendColor: [number, number, number] = [229, 231, 235]; 
 
       doc.autoTable({
         head: head,
@@ -264,10 +264,9 @@ export default function MenuPlanningPage() {
         headStyles: headStyles,
         styles: { fontSize: pdfSettings.tableBodyFontSize, cellPadding: 1.5, valign: 'middle', font: pdfSettings.fontFamily }, 
         columnStyles: {
-          0: { cellWidth: 18 }, 
-          1: { cellWidth: 25 }, 
-          2: { cellWidth: 22 }, 
-          // Les autres colonnes prendront la largeur restante automatiquement
+          0: { cellWidth: 20 }, 
+          1: { cellWidth: 30 }, 
+          2: { cellWidth: 25 }, 
         },
         willDrawCell: (data) => {
           if (data.section === 'body' && data.row && typeof data.row.index === 'number' && data.row.index < menuData.length) {
@@ -284,8 +283,7 @@ export default function MenuPlanningPage() {
               }
 
               if (fillColorToApply) {
-                // Appliquer à toutes les cellules de la ligne
-                data.row.cells[data.column.index].styles.fillColor = fillColorToApply; 
+                data.cell.styles.fillColor = fillColorToApply; 
               }
             }
           }
