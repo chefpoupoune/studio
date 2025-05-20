@@ -117,34 +117,44 @@ export default function CostAnalysisTable() {
     setIsLoading(true);
     try {
       const pdfSettings = getPdfLayoutSettings('monthly_cost');
-      const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
+      const doc = new jsPDF('landscape') as jsPDFWithAutoTable; // Default A4 landscape
       const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
-      let currentY = 15;
+      let currentY = pdfSettings.marginTop; // Use margin from settings
       if (pdfSettings.headerText) {
-        doc.setFontSize(10);
-        doc.text(pdfSettings.headerText, 14, currentY);
-        currentY += 10;
+        // Simplified header rendering for brevity, assuming single line for now
+        doc.setFontSize(pdfSettings.headerFontSize);
+        doc.text(pdfSettings.headerText.split('\n')[0], pdfSettings.marginLeft, currentY); // Use margin
+        currentY += (pdfSettings.headerFontSize * 0.7) + 5;
       }
 
-      // Add Logo URL if available
-      if (pdfSettings.logoUrl) {
-        doc.setFontSize(8); 
-        doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY);
-        currentY += 5; 
+      if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
+        try {
+            const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+            const format = imgProps.fileType.toUpperCase();
+            const desiredHeight = 20; 
+            const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
+            doc.addImage(pdfSettings.logoUrl, format, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
+            currentY += desiredHeight + 5;
+        } catch(e: any) {
+            console.error(`Error drawing logo in PDF: ${e.message || e}.`);
+            doc.setFontSize(pdfSettings.defaultFontSize); doc.text(`[Logo Error]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 5;
+        }
       }
+
 
       const title = `Coût de Revient - ${monthLabel} ${selectedYear}`;
-      doc.setFontSize(18);
-      doc.text(title, 14, currentY);
-      currentY += 8;
-      doc.setFontSize(10);
-      doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY);
-      currentY += 7;
+      doc.setFontSize(pdfSettings.headerFontSize + 2); // Slightly larger title
+      doc.text(title, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.headerFontSize * 0.7) + 5;
+      doc.setFontSize(pdfSettings.defaultFontSize);
+      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 5;
 
 
-      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, fontSize?: number } = {
+        fontStyle: 'bold',
+        fontSize: pdfSettings.tableHeaderFontSize,
+      };
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
         if (primaryColorRgb) {
@@ -168,24 +178,24 @@ export default function CostAnalysisTable() {
           const dayRowEntry: any[] = [];
           if (dayIndex === 0) {
             dayRowEntry.push({ content: row.fournisseur, rowSpan: dayKeys.length });
-            dayRowEntry.push({ content: row.ht.toFixed(2), rowSpan: dayKeys.length });
-            dayRowEntry.push({ content: row.tva.toFixed(2), rowSpan: dayKeys.length });
-            dayRowEntry.push({ content: row.avoir.toFixed(2), rowSpan: dayKeys.length });
+            dayRowEntry.push({ content: row.ht.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
+            dayRowEntry.push({ content: row.tva.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
+            dayRowEntry.push({ content: row.avoir.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
           }
           
           dayRowEntry.push({ content: (dayIndex + 1).toString(), styles: { halign: 'center' } }); 
 
           if (dayIndex === 0) {
-            dayRowEntry.push({ content: row.imp.toFixed(2), rowSpan: dayKeys.length });
-            dayRowEntry.push({ content: row.saj.toFixed(2), rowSpan: dayKeys.length });
-            dayRowEntry.push({ content: row.ime.toFixed(2), rowSpan: dayKeys.length });
-            dayRowEntry.push({ content: row.esat.toFixed(2), rowSpan: dayKeys.length });
-            dayRowEntry.push({ content: row.repasPlus.toFixed(2), rowSpan: dayKeys.length });
-            dayRowEntry.push({ content: row.nous.toFixed(2), rowSpan: dayKeys.length });
-            dayRowEntry.push({ content: rowTotal.toFixed(2), rowSpan: dayKeys.length });
-            dayRowEntry.push({ content: row.pn.toFixed(2), rowSpan: dayKeys.length });
-            dayRowEntry.push({ content: row.pnEsat.toFixed(2), rowSpan: dayKeys.length });
-            dayRowEntry.push({ content: rowEffectif.toFixed(2), rowSpan: dayKeys.length });
+            dayRowEntry.push({ content: row.imp.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
+            dayRowEntry.push({ content: row.saj.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
+            dayRowEntry.push({ content: row.ime.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
+            dayRowEntry.push({ content: row.esat.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
+            dayRowEntry.push({ content: row.repasPlus.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
+            dayRowEntry.push({ content: row.nous.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
+            dayRowEntry.push({ content: rowTotal.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right', fontStyle: 'bold' } });
+            dayRowEntry.push({ content: row.pn.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
+            dayRowEntry.push({ content: row.pnEsat.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
+            dayRowEntry.push({ content: rowEffectif.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right', fontStyle: 'bold' } });
           }
           pdfBody.push(dayRowEntry);
         });
@@ -194,20 +204,39 @@ export default function CostAnalysisTable() {
       const pdfFooter = [
         [
           { content: 'TOTALS', styles: { fontStyle: 'bold' } },
-          { content: totals.totalHt.toFixed(2), styles: { fontStyle: 'bold' } },
-          { content: totals.totalTva.toFixed(2), styles: { fontStyle: 'bold' } },
-          { content: totals.totalAvoir.toFixed(2), styles: { fontStyle: 'bold' } },
-          { content: '' }, 
-          { content: '', colSpan: 6 }, 
-          { content: '' }, 
-          { content: '', colSpan: 2 }, 
-          { content: totals.totalEffectifSum.toFixed(2), styles: { fontStyle: 'bold' } }
+          { content: totals.totalHt.toFixed(2), styles: { fontStyle: 'bold', halign: 'right' } },
+          { content: totals.totalTva.toFixed(2), styles: { fontStyle: 'bold', halign: 'right' } },
+          { content: totals.totalAvoir.toFixed(2), styles: { fontStyle: 'bold', halign: 'right' } },
+          { content: '', styles: { halign: 'center'} }, 
+          { content: '', colSpan: 6, styles: {halign: 'right'} }, 
+          { content: '', styles: {halign: 'right'} }, 
+          { content: '', colSpan: 2, styles: {halign: 'right'} }, 
+          { content: totals.totalEffectifSum.toFixed(2), styles: { fontStyle: 'bold', halign: 'right' } }
         ],
         [
           { content: 'Prix de Revient', colSpan: 14, styles: { fontStyle: 'bold', halign: 'right' } },
-          { content: totals.prixDeRevient.toFixed(2), styles: { fontStyle: 'bold' } }
+          { content: totals.prixDeRevient.toFixed(2), styles: { fontStyle: 'bold', halign: 'right' } }
         ]
       ];
+      
+      const newColumnStyles = {
+        0: { cellWidth: 150, halign: 'left' },    // Fournisseur
+        1: { cellWidth: 40, halign: 'right' },  // HT
+        2: { cellWidth: 40, halign: 'right' },  // TVA
+        3: { cellWidth: 40, halign: 'right' },  // Avoir
+        4: { cellWidth: 20, halign: 'center' }, // Jour
+        5: { cellWidth: 35, halign: 'right' },  // IMP
+        6: { cellWidth: 35, halign: 'right' },  // SAJ
+        7: { cellWidth: 35, halign: 'right' },  // IME
+        8: { cellWidth: 35, halign: 'right' },  // ESAT
+        9: { cellWidth: 35, halign: 'right' },  // Repas +++
+        10: { cellWidth: 35, halign: 'right' }, // Nous
+        11: { cellWidth: 45, halign: 'right' }, // Total Ligne
+        12: { cellWidth: 35, halign: 'right' }, // PN
+        13: { cellWidth: 35, halign: 'right' }, // PN ESAT
+        14: { cellWidth: 45, halign: 'right' }  // Effectif Ligne
+      };
+
 
       doc.autoTable({
         head: head,
@@ -216,15 +245,13 @@ export default function CostAnalysisTable() {
         startY: currentY,
         theme: 'grid',
         headStyles: headStyles, 
-        styles: { fontSize: 7, cellPadding: 1.5 }, 
-        columnStyles: {
-            0: { cellWidth: 30 }, 1: { cellWidth: 15 }, 2: { cellWidth: 15 }, 3: { cellWidth: 15 }, 
-            4: { cellWidth: 10, halign: 'center' }, 
-            5: { cellWidth: 15, halign: 'right' }, 6: { cellWidth: 15, halign: 'right' }, 7: { cellWidth: 15, halign: 'right' },
-            8: { cellWidth: 15, halign: 'right' }, 9: { cellWidth: 15, halign: 'right' }, 10: { cellWidth: 15, halign: 'right' },
-            11: { cellWidth: 18, halign: 'right' }, 
-            12: { cellWidth: 15, halign: 'right' }, 13: { cellWidth: 15, halign: 'right' },
-            14: { cellWidth: 18, halign: 'right' }, 
+        styles: { fontSize: pdfSettings.tableBodyFontSize, cellPadding: 1.5, font: pdfSettings.fontFamily }, 
+        columnStyles: newColumnStyles,
+        margin: { 
+            top: pdfSettings.marginTop, 
+            right: pdfSettings.marginRight, 
+            bottom: pdfSettings.marginBottom, 
+            left: pdfSettings.marginLeft 
         },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
@@ -233,24 +260,24 @@ export default function CostAnalysisTable() {
               .replace('{date}', generationDateFormatted)
               .replace('{pageNumber}', data.pageNumber.toString())
               .replace('{totalPages}', pageCount.toString());
-            doc.setFontSize(8);
-            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+            doc.setFontSize(pdfSettings.footerFontSize);
+            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
           }
         }
       });
 
       doc.save(`cout_de_revient_${monthLabel}_${selectedYear}.pdf`);
       toast({ title: "PDF Généré", description: "Le fichier PDF du coût de revient a été téléchargé." });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error generating PDF:", error);
-      toast({ title: "Erreur PDF", description: "La génération du PDF a échoué.", variant: "destructive" });
+      toast({ title: "Erreur PDF", description: `La génération du PDF a échoué: ${error.message || 'Erreur inconnue'}.`, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
   };
   
   const getColumnClass = (header: string, isHeader: boolean = true) => {
-    const grayCols = ['Fournisseur', 'HT', 'TVA', 'Avoir', 'Total', 'Effectif'];
+    const grayCols = ['Fournisseur', 'HT', 'TVA', 'Avoir', 'Total Ligne', 'Effectif Ligne']; // Adjusted 'Total' to 'Total Ligne', 'Effectif' to 'Effectif Ligne'
     const orangeCols = ['IMP', 'SAJ', 'IME', 'ESAT', 'Repas +++', 'Nous', 'PN', 'PN ESAT'];
     
     if (isHeader) { 
@@ -260,9 +287,9 @@ export default function CostAnalysisTable() {
       return 'bg-card text-card-foreground';
     } else { 
       if (['Jour'].includes(header)) return 'bg-primary/10 p-0.5 text-center'; 
-      if (grayCols.includes(header)) return 'bg-muted text-muted-foreground';
-      if (orangeCols.includes(header)) return 'bg-accent/30 text-accent-foreground';
-      return 'bg-card text-card-foreground';
+      if (grayCols.includes(header)) return 'bg-muted/50'; // Slightly lighter for body cells
+      if (orangeCols.includes(header)) return 'bg-accent/20'; // Slightly lighter for body cells
+      return 'bg-card';
     }
   };
 
@@ -299,10 +326,10 @@ export default function CostAnalysisTable() {
               {['HT', 'TVA', 'Avoir'].map(h => <TableHead key={h} className={getColumnClass(h)}>{h}</TableHead>)}
               <TableHead className={getColumnClass('Jour')}>Jour</TableHead> 
               {['IMP', 'SAJ', 'IME', 'ESAT', 'Repas +++', 'Nous'].map(h => <TableHead key={h} className={getColumnClass(h.replace('+++', ' +++'))}>{h.replace('+++', ' +++')}</TableHead>)}
-              <TableHead className={getColumnClass('Total')}>Total</TableHead>
+              <TableHead className={getColumnClass('Total Ligne')}>Total Ligne</TableHead>
               {['PN', 'PN ESAT'].map(h => <TableHead key={h} className={getColumnClass(h)}>{h}</TableHead>)}
-              <TableHead className={getColumnClass('Effectif')}>Effectif</TableHead>
-              <TableHead className="bg-card">Action</TableHead>
+              <TableHead className={getColumnClass('Effectif Ligne')}>Effectif Ligne</TableHead>
+              <TableHead className="bg-card text-center">Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -315,34 +342,34 @@ export default function CostAnalysisTable() {
                   <TableRow key={`${row.id}-${dayKey}`}>
                     {dayIndex === 0 && (
                       <>
-                        <TableCell rowSpan={dayKeys.length} className={cn("sticky left-0 z-10 align-top", getColumnClass('Fournisseur', false))}>
+                        <TableCell rowSpan={dayKeys.length} className={cn("sticky left-0 z-10 align-top py-2", getColumnClass('Fournisseur', false))}>
                           <Input type="text" value={row.fournisseur} onChange={e => handleInputChange(rowIndex, 'fournisseur', e.target.value)} className="w-32 text-xs p-1 bg-background" />
                         </TableCell>
                         {(['ht', 'tva', 'avoir'] as const).map(field => (
-                          <TableCell rowSpan={dayKeys.length} key={field} className={cn("align-top", getColumnClass(field.toUpperCase(), false))}>
+                          <TableCell rowSpan={dayKeys.length} key={field} className={cn("align-top py-2", getColumnClass(field.toUpperCase(), false))}>
                             <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="w-20 text-xs p-1 bg-background" />
                           </TableCell>
                         ))}
                       </>
                     )}
-                    <TableCell className={cn(getColumnClass('Jour', false), "align-middle")}> 
+                    <TableCell className={cn(getColumnClass('Jour', false), "align-middle py-2")}> 
                         <span className="text-xs text-muted-foreground">{dayIndex + 1}</span> 
                     </TableCell>
                     {dayIndex === 0 && (
                       <>
                         {(['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'] as const).map(field => (
-                          <TableCell rowSpan={dayKeys.length} key={field} className={cn("align-top", getColumnClass(field.toUpperCase().replace('REPASPLUS', 'Repas +++'), false))}>
+                          <TableCell rowSpan={dayKeys.length} key={field} className={cn("align-top py-2", getColumnClass(field.toUpperCase().replace('REPASPLUS', 'Repas +++'), false))}>
                             <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="w-20 text-xs p-1 bg-background" />
                           </TableCell>
                         ))}
-                        <TableCell rowSpan={dayKeys.length} className={cn("align-top", getColumnClass('Total', false))}>{rowTotal.toFixed(2)}</TableCell>
+                        <TableCell rowSpan={dayKeys.length} className={cn("align-top py-2 font-semibold", getColumnClass('Total Ligne', false))}>{rowTotal.toFixed(2)}</TableCell>
                         {(['pn', 'pnEsat'] as const).map(field => (
-                          <TableCell rowSpan={dayKeys.length} key={field} className={cn("align-top", getColumnClass(field.toUpperCase(), false))}>
+                          <TableCell rowSpan={dayKeys.length} key={field} className={cn("align-top py-2", getColumnClass(field.toUpperCase(), false))}>
                             <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="w-20 text-xs p-1 bg-background" />
                           </TableCell>
                         ))}
-                        <TableCell rowSpan={dayKeys.length} className={cn("align-top", getColumnClass('Effectif', false))}>{rowEffectif.toFixed(2)}</TableCell>
-                        <TableCell rowSpan={dayKeys.length} className={cn("align-top bg-card text-card-foreground", getColumnClass('Action', false))}>
+                        <TableCell rowSpan={dayKeys.length} className={cn("align-top py-2 font-semibold", getColumnClass('Effectif Ligne', false))}>{rowEffectif.toFixed(2)}</TableCell>
+                        <TableCell rowSpan={dayKeys.length} className={cn("align-middle text-center py-2", getColumnClass('Action', true))}>
                           <Button variant="destructive" size="icon" onClick={() => handleDeleteRow(row.id)}><Trash2 className="h-4 w-4" /></Button>
                         </TableCell>
                       </>
@@ -358,17 +385,17 @@ export default function CostAnalysisTable() {
               <TableCell className={getColumnClass('HT')}>{totals.totalHt.toFixed(2)}</TableCell>
               <TableCell className={getColumnClass('TVA')}>{totals.totalTva.toFixed(2)}</TableCell>
               <TableCell className={getColumnClass('Avoir')}>{totals.totalAvoir.toFixed(2)}</TableCell>
-              <TableCell className={getColumnClass('Jour', false)}></TableCell> 
-              <TableCell colSpan={6} className={getColumnClass('IMP', false)}></TableCell> 
-              <TableCell className={getColumnClass('Total')}></TableCell> 
-              <TableCell colSpan={2} className={getColumnClass('PN', false)}></TableCell> 
-              <TableCell className={getColumnClass('Effectif')}>{totals.totalEffectifSum.toFixed(2)}</TableCell>
-              <TableCell className={getColumnClass('Action', false)}></TableCell> 
+              <TableCell className={cn(getColumnClass('Jour', false), "py-2")}></TableCell> 
+              <TableCell colSpan={6} className={cn(getColumnClass('IMP', false), "py-2")}></TableCell> 
+              <TableCell className={cn(getColumnClass('Total Ligne'), "py-2")}></TableCell> 
+              <TableCell colSpan={2} className={cn(getColumnClass('PN', false), "py-2")}></TableCell> 
+              <TableCell className={getColumnClass('Effectif Ligne')}>{totals.totalEffectifSum.toFixed(2)}</TableCell>
+              <TableCell className={cn(getColumnClass('Action', true), "py-2")}></TableCell> 
             </TableRow>
             <TableRow className="font-bold bg-muted/90">
-              <TableCell colSpan={14} className={cn("text-right", getColumnClass('Effectif'))}>Prix de Revient</TableCell> 
-              <TableCell className={getColumnClass('Effectif')}>{totals.prixDeRevient.toFixed(2)}</TableCell>
-              <TableCell className={getColumnClass('Action', false)}></TableCell> 
+              <TableCell colSpan={14} className={cn("text-right", getColumnClass('Effectif Ligne'))}>Prix de Revient</TableCell> 
+              <TableCell className={getColumnClass('Effectif Ligne')}>{totals.prixDeRevient.toFixed(2)}</TableCell>
+              <TableCell className={cn(getColumnClass('Action', true), "py-2")}></TableCell> 
             </TableRow>
           </TableFooter>
         </Table>
