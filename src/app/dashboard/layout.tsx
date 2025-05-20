@@ -3,6 +3,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import Image from 'next/image'; // Added for App Logo
 import {
   SidebarProvider,
   Sidebar,
@@ -36,6 +37,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import type { RubricId } from '@/app/dashboard/settings/components/user-management'; 
 
+const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1"; // Key for app logo
+
 interface NavItem {
   href: string;
   icon: React.ElementType;
@@ -60,11 +63,17 @@ function AppSidebar() {
   const { openMobile, setOpenMobile } = useSidebar();
   const router = useRouter();
   const [visibleNavItems, setVisibleNavItems] = React.useState<NavItem[]>(allNavItems);
+  const [appLogoUrl, setAppLogoUrl] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
       const storedPermissionsRaw = localStorage.getItem('loggedInUserPermissions');
       const loggedInUsername = localStorage.getItem('loggedInUsername');
+      const storedAppLogo = localStorage.getItem(APP_LOGO_STORAGE_KEY);
+      if (storedAppLogo) {
+        setAppLogoUrl(storedAppLogo);
+      }
+
 
       if (loggedInUsername?.toLowerCase() === 'chef') {
         setVisibleNavItems(allNavItems);
@@ -106,7 +115,11 @@ function AppSidebar() {
       <SidebarHeader className="flex items-center justify-between">
         <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
           <Link href="/dashboard" className="flex items-center gap-2">
-            {/* <Image src="https://placehold.co/32x32.png" alt="App Logo" width={32} height={32} className="rounded-sm" data-ai-hint="chef hat" /> */}
+            {appLogoUrl ? (
+              <Image src={appLogoUrl} alt="App Logo" width={32} height={32} className="rounded-sm object-contain" data-ai-hint="application logo" unoptimized/>
+            ) : (
+              <div className="w-8 h-8 bg-muted rounded-sm flex items-center justify-center text-muted-foreground text-xs" data-ai-hint="generic logo placeholder">Logo</div>
+            )}
             <span className="font-semibold text-lg text-sidebar-primary">Gestion par L'excellence</span>
           </Link>
         </div>
@@ -177,9 +190,16 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const [isClient, setIsClient] = React.useState(false);
   const [authChecked, setAuthChecked] = React.useState(false);
+  const [appLogoUrl, setAppLogoUrl] = React.useState<string | null>(null); // For mobile header logo
 
   React.useEffect(() => {
     setIsClient(true);
+    if (typeof window !== 'undefined') {
+        const storedAppLogo = localStorage.getItem(APP_LOGO_STORAGE_KEY);
+        if (storedAppLogo) {
+            setAppLogoUrl(storedAppLogo);
+        }
+    }
   }, []);
 
   React.useEffect(() => {
@@ -255,7 +275,11 @@ export default function DashboardLayout({
           <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 md:hidden">
             <SidebarTrigger />
             <Link href="/dashboard" className="flex items-center gap-2">
-                {/* <Image src="https://placehold.co/32x32.png" alt="App Logo" width={32} height={32} className="rounded-sm" data-ai-hint="chef hat" /> */}
+                {appLogoUrl ? (
+                  <Image src={appLogoUrl} alt="App Logo" width={32} height={32} className="rounded-sm object-contain" data-ai-hint="application logo" unoptimized/>
+                ) : (
+                  <div className="w-8 h-8 bg-muted rounded-sm flex items-center justify-center text-muted-foreground text-xs" data-ai-hint="generic logo placeholder">Logo</div>
+                )}
                 <span className="font-semibold text-md">Gestion par L'excellence</span>
             </Link>
           </header>
@@ -265,3 +289,4 @@ export default function DashboardLayout({
     </SidebarProvider>
   );
 }
+

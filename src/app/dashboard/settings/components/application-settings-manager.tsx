@@ -3,7 +3,8 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Cog, Palette, Bell, Database, Download, Upload, BellRing, ListChecks, Package, Info, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Cog, Palette, Bell, Database, Download, Upload, BellRing, ListChecks, Package, Info, RotateCcw, AlertTriangle, Image as ImageIcon, Trash2 as ImageIconTrash } from 'lucide-react';
+import Image from 'next/image'; // For previewing the app logo
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -26,6 +27,7 @@ import {
 
 const THEME_STORAGE_KEY = "app_settings_theme_mode";
 const ACCENT_COLOR_STORAGE_KEY = "app_settings_accent_color";
+const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1"; // New key for app logo
 
 // Notification settings keys
 const NOTIFICATIONS_EMAIL_KEY = "app_settings_notifications_email";
@@ -105,6 +107,7 @@ const APP_SPECIFIC_KEYS = [
   NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY,
   NOTIFICATIONS_SOUND_ENABLED_KEY,
   NOTIFICATIONS_SOUND_CHOICE_KEY,
+  APP_LOGO_STORAGE_KEY, // Added app logo key
 ];
 
 const APP_SPECIFIC_PREFIXES = [
@@ -112,6 +115,16 @@ const APP_SPECIFIC_PREFIXES = [
   'menu_planning_',
   'temperature_sheet_meal_item_temps_',
   'temperature_sheet_daily_log_data_',
+  'pms_kitchen_cleaning_records_v3_',
+  'pms_restaurant_cleaning_records_v2_',
+  'pms_temperature_records_grid_v3_',
+  'pms_reception_log_v1',
+  'pms_temp_change_log_v1',
+  'pms_defrosting_log_v1',
+  'pms_fryer_maintenance_log_v1',
+  'pms_fryer_oil_tpm_log_v1',
+  'benefits_employees_list_v1',
+  'benefits_tracking_',
 ];
 
 
@@ -127,6 +140,10 @@ export default function ApplicationSettingsManager() {
   const [inAppInventoryLowNotifications, setInAppInventoryLowNotifications] = useState<boolean>(DEFAULT_NOTIFICATIONS_IN_APP_INVENTORY_LOW);
   const [soundNotificationsEnabled, setSoundNotificationsEnabled] = useState<boolean>(DEFAULT_NOTIFICATIONS_SOUND_ENABLED);
   const [notificationSoundChoice, setNotificationSoundChoice] = useState<string>(DEFAULT_NOTIFICATIONS_SOUND_CHOICE);
+
+  // App Logo State
+  const [appLogoDataUrl, setAppLogoDataUrl] = useState<string | null>(null);
+  const appLogoFileInputRef = useRef<HTMLInputElement>(null);
 
   const [isClient, setIsClient] = useState(false);
   const { toast } = useToast();
@@ -203,6 +220,12 @@ export default function ApplicationSettingsManager() {
       setSelectedAccentColor(initialAccentColor);
       applyAccentColor(initialAccentColor);
       
+      // App Logo
+      const storedAppLogo = localStorage.getItem(APP_LOGO_STORAGE_KEY);
+      if (storedAppLogo) {
+        setAppLogoDataUrl(storedAppLogo);
+      }
+
       // Notifications
       setEmailNotifications(localStorage.getItem(NOTIFICATIONS_EMAIL_KEY) === 'true' || DEFAULT_NOTIFICATIONS_EMAIL);
       setInAppGeneralNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_GENERAL_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_GENERAL);
@@ -256,6 +279,47 @@ export default function ApplicationSettingsManager() {
       description: `La couleur d'accentuation a été réinitialisée à la valeur par défaut (${DEFAULT_APP_PRIMARY_COLOR}).`,
     });
   };
+
+  // App Logo Handlers
+  const handleAppLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (file.size > 1 * 1024 * 1024) { // 1MB limit
+        toast({
+          title: "Fichier trop volumineux",
+          description: "La taille du logo de l'application ne doit pas dépasser 1Mo.",
+          variant: "destructive",
+        });
+        if (appLogoFileInputRef.current) appLogoFileInputRef.current.value = "";
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAppLogoDataUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveAppLogo = () => {
+    if (appLogoDataUrl && isClient) {
+      localStorage.setItem(APP_LOGO_STORAGE_KEY, appLogoDataUrl);
+      toast({ title: "Logo de l'Application Enregistré" });
+    } else if (!appLogoDataUrl && isClient) {
+      localStorage.removeItem(APP_LOGO_STORAGE_KEY);
+      toast({ title: "Logo de l'Application Supprimé" });
+    }
+  };
+
+  const handleDeleteAppLogo = () => {
+    setAppLogoDataUrl(null);
+    if (isClient) {
+      localStorage.removeItem(APP_LOGO_STORAGE_KEY);
+      toast({ title: "Logo de l'Application Supprimé", variant: "destructive" });
+    }
+    if (appLogoFileInputRef.current) appLogoFileInputRef.current.value = "";
+  };
+
 
   // Handlers for notification preferences
   const createSwitchHandler = (
@@ -390,6 +454,11 @@ export default function ApplicationSettingsManager() {
             localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, DEFAULT_APP_PRIMARY_COLOR);
           }
           
+          // App Logo
+          const newAppLogo = localStorage.getItem(APP_LOGO_STORAGE_KEY);
+          setAppLogoDataUrl(newAppLogo || null);
+
+
           setTimeout(() => window.location.reload(), 1000);
 
         } else {
@@ -429,6 +498,49 @@ export default function ApplicationSettingsManager() {
                 Les paramètres modifiés ici sont sauvegardés localement dans votre navigateur.
             </AlertDescription>
         </Alert>
+
+        <div className="p-6 border rounded-lg shadow-sm bg-card/50">
+            <div className="flex items-center gap-3 mb-4">
+                <ImageIcon className="w-5 h-5 text-accent" />
+                <h3 className="text-lg font-semibold text-foreground">Logo de l'Application</h3>
+            </div>
+            <div className="space-y-3">
+                <div>
+                    <Label htmlFor="app-logo-file-input">Télécharger un logo (max 1Mo)</Label>
+                    <Input
+                        id="app-logo-file-input"
+                        type="file"
+                        accept="image/png, image/jpeg, image/svg+xml"
+                        ref={appLogoFileInputRef}
+                        onChange={handleAppLogoUpload}
+                        className="mt-1 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                    />
+                </div>
+                {appLogoDataUrl && (
+                  <div className="mt-2 p-2 border rounded-md inline-block bg-muted">
+                    <p className="text-xs text-muted-foreground mb-1">Aperçu du logo actuel :</p>
+                    <Image 
+                      src={appLogoDataUrl} 
+                      alt="Aperçu du logo de l'application" 
+                      width={100} 
+                      height={50} 
+                      className="object-contain rounded max-h-[50px]"
+                      unoptimized
+                    />
+                  </div>
+                )}
+                <div className="flex gap-2">
+                    <Button onClick={handleSaveAppLogo} disabled={!isClient}>
+                        <Download className="mr-2 h-4 w-4"/> Enregistrer Logo
+                    </Button>
+                    {appLogoDataUrl && (
+                        <Button variant="destructive" onClick={handleDeleteAppLogo} disabled={!isClient}>
+                            <ImageIconTrash className="mr-2 h-4 w-4"/> Supprimer Logo
+                        </Button>
+                    )}
+                </div>
+            </div>
+        </div>
 
         <div className="p-6 border rounded-lg shadow-sm bg-card/50">
             <div className="flex items-center gap-3 mb-4">
@@ -615,3 +727,4 @@ export default function ApplicationSettingsManager() {
   );
 }
     
+
