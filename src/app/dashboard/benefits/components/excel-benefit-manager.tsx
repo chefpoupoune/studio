@@ -24,6 +24,17 @@ import { cn } from '@/lib/utils';
 import type { BenefitEmployee, BenefitDailyStatusCode, FullMonthlyBenefitData, DailyBenefitEntry } from '../types';
 import { BENEFIT_STATUS_CODES, BENEFIT_STATUS_LEGEND, frenchShortDays } from '../types';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings'; 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -118,11 +129,9 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
     return Object.values(employeeEntries).reduce((sum, entry) => sum + (entry[type] === "X" ? 1 : 0), 0);
   };
 
-  const handleClearMonthData = () => {
-    if (confirm(`Êtes-vous sûr de vouloir effacer toutes les données pour ${months[parseInt(selectedMonth)].label} ${selectedYear} ? Cette action est irréversible.`)) {
-      setBenefitData({});
-      toast({ title: "Données Effacées", description: `Les données pour ${months[parseInt(selectedMonth)].label} ${selectedYear} ont été effacées.` });
-    }
+  const handleConfirmClearMonthData = () => {
+    setBenefitData({});
+    toast({ title: "Données Effacées", description: `Les données pour ${months[parseInt(selectedMonth)].label} ${selectedYear} ont été effacées.` });
   };
 
   const generatePdf = () => {
@@ -314,10 +323,28 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
                 Générer PDF
             </Button>
-             <Button variant="destructive" onClick={handleClearMonthData} disabled={isLoading || Object.keys(benefitData).length === 0} className="w-full sm:w-auto">
-                <Trash2 className="mr-2 h-4 w-4" />
-                Effacer Données Mois
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={isLoading || Object.keys(benefitData).length === 0} className="w-full sm:w-auto">
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Effacer Données Mois
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Êtes-vous sûr de vouloir effacer toutes les données pour {months[parseInt(selectedMonth)].label} {selectedYear} ? Cette action est irréversible.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Annuler</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleConfirmClearMonthData}>
+                    Effacer
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
         </div>
       </div>
 
@@ -438,4 +465,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
   );
 }
     
+    
+
+
     
