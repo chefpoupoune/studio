@@ -10,18 +10,29 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, CalendarIcon, History, Clock } from 'lucide-react';
+import { PlusCircle, CalendarIcon, History, Clock, Trash2 } from 'lucide-react'; // Added Trash2
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'; // Added CardFooter
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"; // Added AlertDialog
 
 const timeEntrySchema = z.object({
   memberId: z.string().min(1, "Veuillez sélectionner un membre."),
@@ -37,9 +48,10 @@ interface RecordTimeLogProps {
   members: BrigadeMember[];
   timeEntries: TimeEntry[];
   onAddTimeEntry: (entry: Omit<TimeEntry, 'id' | 'memberName'>) => void;
+  onDeleteAllTimeEntries: () => void; // New prop
 }
 
-export default function RecordTimeLog({ members, timeEntries, onAddTimeEntry }: RecordTimeLogProps) {
+export default function RecordTimeLog({ members, timeEntries, onAddTimeEntry, onDeleteAllTimeEntries }: RecordTimeLogProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   
   const form = useForm<TimeEntryFormData>({
@@ -258,6 +270,32 @@ export default function RecordTimeLog({ members, timeEntries, onAddTimeEntry }: 
             </div>
           )}
         </CardContent>
+        {timeEntries.length > 0 && (
+          <CardFooter className="flex justify-end pt-4">
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm">
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Supprimer Tout l'Historique
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Êtes-vous sûr de vouloir supprimer tout l'historique ?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Cette action est irréversible et supprimera toutes les entrées d'heures enregistrées.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Annuler</AlertDialogCancel>
+                  <AlertDialogAction onClick={onDeleteAllTimeEntries}>
+                    Supprimer Tout
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </CardFooter>
+        )}
       </Card>
     </div>
   );

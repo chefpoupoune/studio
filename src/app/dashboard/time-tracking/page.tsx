@@ -1,7 +1,8 @@
+
 "use client";
 
 import Link from 'next/link';
-import { Users, Clock, UserCheck, FileText } from 'lucide-react'; // Removed ArrowLeft
+import { Users, Clock, UserCheck, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ManageBrigadeMembers from './components/manage-brigade-members';
@@ -103,6 +104,11 @@ export default function TimeTrackingPage() {
     toast({ title: "Entrée d'heures enregistrée", description: `Entrée pour ${member.name} le ${format(newEntry.date, "dd/MM/yyyy", {locale: fr})} enregistrée.` });
   }, [brigadeMembers, toast]);
 
+  const handleDeleteAllTimeEntries = useCallback(() => {
+    setTimeEntries([]);
+    toast({ title: "Historique Effacé", description: "Toutes les saisies d'heures ont été supprimées.", variant: "destructive" });
+  }, [toast]);
+
 
   if (!isClient) {
     return (
@@ -121,7 +127,6 @@ export default function TimeTrackingPage() {
              Suivi des Heures Brigade
            </h1>
         </div>
-        {/* Back to Dashboard button removed */}
       </div>
       <div className="mb-6 text-center sm:text-left">
         <CurrentDate />
@@ -153,6 +158,7 @@ export default function TimeTrackingPage() {
             members={brigadeMembers}
             timeEntries={timeEntries}
             onAddTimeEntry={addTimeEntry}
+            onDeleteAllTimeEntries={handleDeleteAllTimeEntries}
           />
         </TabsContent>
         <TabsContent value="summary">
