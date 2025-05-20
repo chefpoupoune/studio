@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare, ArrowRightLeft, TextCursorInput, Eye, FileTextIcon, AlignHorizontalSpaceAround, Maximize, Minus, RefreshCw } from 'lucide-react';
+import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare, ArrowRightLeft, TextCursorInput, Eye, FileTextIcon, AlignHorizontalSpaceAround, Maximize, Minus, RefreshCw, UploadCloud } from 'lucide-react';
 import type { PdfLayoutSettings } from '../types';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -80,12 +80,14 @@ const pageSizes: { value: NonNullable<PdfLayoutSettings['pageSize']>, label: str
     { value: 'legal', label: 'Légal US' },
 ];
 
-
 export default function PdfLayoutManager() {
   const [selectedPdfType, setSelectedPdfType] = useState<string>(GENERAL_CONFIG_KEY);
   const [pdfConfigs, setPdfConfigs] = useState<Record<string, Partial<PdfLayoutSettings>>>({});
   
-  const [logoUrlInput, setLogoUrlInput] = useState<string>('');
+  // logoUrlInput will now store the data URL of the uploaded logo, or an empty string, or an old HTTP URL if previously set
+  const [logoUrlInput, setLogoUrlInput] = useState<string>(''); 
+  const [uploadedLogoPreview, setUploadedLogoPreview] = useState<string | null>(null); // For immediate preview of a newly uploaded file
+
   const [primaryColorInput, setPrimaryColorInput] = useState<string>(DEFAULT_APP_PRIMARY_COLOR);
   const [headerTextInput, setHeaderTextInput] = useState<string>('');
   const [footerTextInput, setFooterTextInput] = useState<string>('');
@@ -104,14 +106,12 @@ export default function PdfLayoutManager() {
   const [pageSizeInput, setPageSizeInput] = useState<NonNullable<PdfLayoutSettings['pageSize']>>(DEFAULT_PAGE_SIZE);
 
   const { toast } = useToast();
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
 
-  // This represents the *saved* configuration.
   const currentEffectiveSettings = useMemo(() => {
     return fetchPdfSettings(selectedPdfType || GENERAL_CONFIG_KEY, pdfConfigs);
   }, [selectedPdfType, pdfConfigs]);
 
-  // This state will hold the settings *currently displayed* in the preview.
-  // It can be updated from saved settings or from live input fields.
   const [previewSettingsForDisplay, setPreviewSettingsForDisplay] = useState<Required<PdfLayoutSettings>>(currentEffectiveSettings);
 
   useEffect(() => {
@@ -153,11 +153,16 @@ export default function PdfLayoutManager() {
     }
   }, [toast]);
 
-  // Update input fields and preview when selectedPdfType or saved configs change
   useEffect(() => {
     const effectiveSettings = fetchPdfSettings(selectedPdfType || GENERAL_CONFIG_KEY, pdfConfigs);
     
-    setLogoUrlInput(effectiveSettings.logoUrl);
+    setLogoUrlInput(effectiveSettings.logoUrl || ''); // Ensure it's a string
+    if (effectiveSettings.logoUrl && effectiveSettings.logoUrl.startsWith('data:image')) {
+        setUploadedLogoPreview(effectiveSettings.logoUrl);
+    } else {
+        setUploadedLogoPreview(null); // Clear preview if it's not a data URL (or not present)
+    }
+
     setPrimaryColorInput(effectiveSettings.primaryColor);
     setHeaderTextInput(effectiveSettings.headerText);
     setFooterTextInput(effectiveSettings.footerText);
@@ -175,10 +180,9 @@ export default function PdfLayoutManager() {
     setOrientationInput(effectiveSettings.orientation);
     setPageSizeInput(effectiveSettings.pageSize);
     
-    // Update the displayed preview to match the newly loaded/saved settings
     setPreviewSettingsForDisplay(effectiveSettings);
 
-  }, [selectedPdfType, pdfConfigs]); // Listen to pdfConfigs directly
+  }, [selectedPdfType, pdfConfigs]);
 
   const selectedPdfLabel = useMemo(() => {
     if (selectedPdfType === GENERAL_CONFIG_KEY) {
@@ -227,7 +231,7 @@ export default function PdfLayoutManager() {
         newPdfConfigs[activeConfigKey] = newSpecificConfigWithUpdates;
     }
     
-    setPdfConfigs(newPdfConfigs); // This will trigger the useEffect to update input fields and previewSettingsForDisplay
+    setPdfConfigs(newPdfConfigs);
     localStorage.setItem(PDF_LAYOUT_CONFIGS_KEY, JSON.stringify(newPdfConfigs));
     toast({
       title: "Configuration Enregistrée",
@@ -235,7 +239,34 @@ export default function PdfLayoutManager() {
     });
   }, [selectedPdfType, pdfConfigs, toast, selectedPdfLabel]);
 
-  const handleSaveLogoUrl = () => saveConfig({ logoUrl: logoUrlInput || undefined }, "L'URL du logo");
+  const handleLogoFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+        if (file.size > 2 * 1024 * 1024) { // 2MB limit
+            toast({
+                title: "Fichier trop volumineux",
+                description: "La taille du logo ne doit pas dépasser 2Mo.",
+                variant: "destructive",
+            });
+            if (logoFileInputRef.current) logoFileInputRef.current.value = "";
+            return;
+        }
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const dataUrl = reader.result as string;
+            setLogoUrlInput(dataUrl); 
+            setUploadedLogoPreview(dataUrl); 
+            setPreviewSettingsForDisplay(prev => ({...prev, logoUrl: dataUrl}));
+        };
+        reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveLogo = () => {
+    // logoUrlInput now contains the dataURL or an empty string or an old http URL
+    saveConfig({ logoUrl: logoUrlInput || undefined }, "Le logo");
+  };
+
   const handleSaveHeaderText = () => saveConfig({ headerText: headerTextInput || undefined }, "Le texte d'en-tête");
   const handleSaveFooterText = () => saveConfig({ footerText: footerTextInput || undefined }, "Le texte de pied de page");
 
@@ -284,11 +315,13 @@ export default function PdfLayoutManager() {
     });
   };
 
-
   const renderPreviewHeaderText = () => {
-    if (!previewSettingsForDisplay.headerText) return <div className="h-4">&nbsp;</div>; 
+    const headerToDisplay = previewSettingsForDisplay.headerText || '';
+    const logoToDisplay = uploadedLogoPreview || (previewSettingsForDisplay.logoUrl?.startsWith('data:image') ? previewSettingsForDisplay.logoUrl : null);
+
+    if (!headerToDisplay && !logoToDisplay) return <div className="h-4">&nbsp;</div>; 
   
-    const lines = previewSettingsForDisplay.headerText.split('\n');
+    const lines = headerToDisplay.split('\n');
     return (
       <div style={{ fontSize: `${Math.max(5, (previewSettingsForDisplay.headerFontSize || DEFAULT_HEADER_FONT_SIZE) / 2)}pt` }}>
         {lines.map((line, lineIndex) => {
@@ -297,10 +330,17 @@ export default function PdfLayoutManager() {
             <div key={lineIndex} className="flex">
               {cells.map((cell, cellIndex) => {
                 const cellContent = cell.trim();
-                if (cellContent === '{logo}' && previewSettingsForDisplay.logoUrl) {
+                if (cellContent === '{logo}' && logoToDisplay) {
                   return (
                     <div key={cellIndex} className="p-0.5 border border-neutral-400 dark:border-neutral-500 flex-1 flex items-center justify-center">
-                      <div className="w-8 h-5 bg-neutral-300 dark:bg-neutral-600 rounded-sm text-[0.4rem] flex items-center justify-center text-neutral-500 dark:text-neutral-400">LOGO</div>
+                      <Image 
+                        src={logoToDisplay} 
+                        alt="Aperçu logo" 
+                        width={32} // Adjust as needed for preview
+                        height={16} // Adjust as needed for preview
+                        className="object-contain"
+                        unoptimized
+                      />
                     </div>
                   );
                 }
@@ -375,45 +415,33 @@ export default function PdfLayoutManager() {
               </div>
               <div className="space-y-4">
                 <div>
-                    <Label htmlFor="logo-url-input">URL du Logo</Label>
+                    <Label htmlFor="logo-file-input">Télécharger un Logo (max 2Mo)</Label>
                     <Input 
-                        id="logo-url-input"
-                        type="url"
-                        placeholder="https://example.com/logo.png"
-                        value={logoUrlInput}
-                        onChange={(e) => setLogoUrlInput(e.target.value)}
-                        className="mt-1"
+                        id="logo-file-input"
+                        type="file"
+                        accept="image/png, image/jpeg, image/svg+xml"
+                        ref={logoFileInputRef}
+                        onChange={handleLogoFileUpload}
+                        className="mt-1 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
                     />
                 </div>
-                <Button onClick={handleSaveLogoUrl}>
+                <Button onClick={handleSaveLogo}>
                     <Save className="mr-2 h-4 w-4"/> Enregistrer Logo
                 </Button>
-                {previewSettingsForDisplay.logoUrl && (
+                {(uploadedLogoPreview || (previewSettingsForDisplay.logoUrl && previewSettingsForDisplay.logoUrl.startsWith('data:image'))) && (
                   <div className="mt-4 p-2 border rounded-md inline-block bg-muted">
-                    <p className="text-xs text-muted-foreground mb-1">Aperçu du logo actuel (si URL valide):</p>
+                    <p className="text-xs text-muted-foreground mb-1">Aperçu du logo actuel :</p>
                     <Image 
-                        src={previewSettingsForDisplay.logoUrl} 
+                        src={uploadedLogoPreview || previewSettingsForDisplay.logoUrl!} 
                         alt="Aperçu du logo" 
                         width={150} 
                         height={75} 
                         className="object-contain rounded"
-                        data-ai-hint="logo company"
-                        onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = 'none';
-                             toast({
-                                title: "Erreur de chargement du logo",
-                                description: "Impossible d'afficher l'aperçu. Vérifiez l'URL.",
-                                variant: "destructive"
-                            });
-                        }}
-                        onLoad={(e) => {
-                             (e.target as HTMLImageElement).style.display = 'block';
-                        }}
                         unoptimized
                     />
                   </div>
                 )}
-                 {!previewSettingsForDisplay.logoUrl && <p className="text-xs text-muted-foreground mt-2">Aucun logo configuré. Saisissez une URL pour en ajouter un.</p>}
+                 {!(uploadedLogoPreview || (previewSettingsForDisplay.logoUrl && previewSettingsForDisplay.logoUrl.startsWith('data:image'))) && <p className="text-xs text-muted-foreground mt-2">Aucun logo configuré. Téléchargez une image pour en ajouter un.</p>}
               </div>
             </div>
 
@@ -569,7 +597,7 @@ export default function PdfLayoutManager() {
               Police: <span className="font-semibold" style={{fontFamily: getFontFamilyCss(previewSettingsForDisplay.fontFamily)}}>{fontFamilies.find(f => f.value === previewSettingsForDisplay.fontFamily)?.label || previewSettingsForDisplay.fontFamily}</span>
             </div>
           <div 
-            key={JSON.stringify(previewSettingsForDisplay)} // Force re-render if settings change
+            key={JSON.stringify(previewSettingsForDisplay)}
             className={cn(
                 "bg-white dark:bg-neutral-800 p-1 rounded-sm shadow-inner w-full mx-auto overflow-hidden border border-muted",
                 previewSettingsForDisplay.orientation === 'landscape' ? 'aspect-[297/210] max-w-md' : 'aspect-[210/297] max-w-sm'
@@ -589,7 +617,7 @@ export default function PdfLayoutManager() {
               {/* Header Area */}
               <div className="mb-auto flex-shrink-0 leading-tight border-b border-neutral-300 dark:border-neutral-600 pb-0.5 mb-0.5 text-[0.9em]" style={{fontSize: `${Math.max(3, (previewSettingsForDisplay.headerFontSize || DEFAULT_HEADER_FONT_SIZE) / 2.5)}pt`}}>
                 {renderPreviewHeaderText()}
-                 {!previewSettingsForDisplay.headerText && !previewSettingsForDisplay.logoUrl && <div className="h-3">&nbsp;</div>}
+                 {!(previewSettingsForDisplay.headerText) && !(uploadedLogoPreview || (previewSettingsForDisplay.logoUrl && previewSettingsForDisplay.logoUrl.startsWith('data:image'))) && <div className="h-3">&nbsp;</div>}
               </div>
 
               {/* Dummy Content Area */}

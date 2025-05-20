@@ -39,8 +39,6 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
 
     try {
       const pdfSettings = getPdfLayoutSettings('weekly_order_sheet');
-      // This PDF is specifically designed for A3 Landscape due to its column structure.
-      // We will use other settings like font, color, margins, header/footer.
       const doc = new jsPDF({ orientation: 'landscape', format: 'a3' }) as jsPDFWithAutoTable;
       doc.setFont(pdfSettings.fontFamily);
 
@@ -50,7 +48,6 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
 
       let currentY = pdfSettings.marginTop;
 
-      // Custom Header Text from settings
       if (pdfSettings.headerText) {
         const headerRows = pdfSettings.headerText.split('\n').map(rowText => 
           rowText.split('|').map(cellText => cellText.trim())
@@ -62,30 +59,54 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
           startY: currentY,
           theme: 'plain',
           styles: { fontSize: pdfSettings.headerFontSize, cellPadding: 1, font: pdfSettings.fontFamily },
-          columnStyles: { 0: { cellWidth: 'auto'} }, // Adjust as needed
+          columnStyles: { 0: { cellWidth: 'auto'} }, 
           margin: { top: pdfSettings.marginTop, left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
           didDrawCell: (data) => {
-            if (pdfSettings.logoUrl && headerRows[data.row.index][data.column.index] === '{logo}') {
-              try {
-                // Placeholder for logo rendering
-                doc.setFillColor(230, 230, 230);
-                doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
-                const tempFontSize = doc.getFontSize();
-                doc.setFontSize(8); doc.setTextColor(100);
-                doc.text("LOGO", data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2, { align: 'center', baseline: 'middle' });
-                doc.setFontSize(tempFontSize); doc.setTextColor(0,0,0); // Reset color
-              } catch (e) { console.error("Error drawing logo placeholder:", e); }
+            if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image') && headerRows[data.row.index][data.column.index] === '{logo}') {
+                try {
+                    const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+                    const cellPadding = 2;
+                    let imgWidth = data.cell.width - 2 * cellPadding;
+                    let imgHeight = data.cell.height - 2 * cellPadding;
+                    const cellAspectRatio = data.cell.width / data.cell.height;
+                    const imgAspectRatio = imgProps.width / imgProps.height;
+
+                    if (imgAspectRatio > cellAspectRatio) {
+                        imgHeight = imgWidth / imgAspectRatio;
+                    } else {
+                        imgWidth = imgHeight * imgAspectRatio;
+                    }
+                    const imgX = data.cell.x + (data.cell.width - imgWidth) / 2;
+                    const imgY = data.cell.y + (data.cell.height - imgHeight) / 2;
+                    doc.addImage(pdfSettings.logoUrl, imgProps.fileType, imgX, imgY, imgWidth, imgHeight);
+                } catch (e) { 
+                    console.error("Error drawing logo in PDF header table:", e);
+                    doc.setFillColor(230, 230, 230); doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
+                    doc.setFontSize(8); doc.setTextColor(100); doc.text("LOGO_ERR", data.cell.x + data.cell.width/2, data.cell.y + data.cell.height/2, {align: 'center', baseline: 'middle'});
+                }
+            } else if (pdfSettings.logoUrl && headerRows[data.row.index][data.column.index] === '{logo}') {
+                doc.setFillColor(230, 230, 230); doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
+                doc.setFontSize(8); doc.setTextColor(100); doc.text("LOGO", data.cell.x + data.cell.width/2, data.cell.y + data.cell.height/2, {align: 'center', baseline: 'middle'});
             }
           },
         });
         currentY = (doc as any).lastAutoTable.finalY + 5;
+      } else if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { 
+        try {
+            const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+            const desiredHeight = 30; 
+            const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
+            doc.addImage(pdfSettings.logoUrl, imgProps.fileType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
+            currentY += desiredHeight + 5;
+        } catch(e) {
+            console.error("Error drawing standalone logo in PDF:", e);
+            doc.setFontSize(pdfSettings.headerFontSize); doc.text(`[Logo Error]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize + 5;
+        }
       } else if (pdfSettings.logoUrl) {
-        doc.setFontSize(pdfSettings.headerFontSize);
-        doc.text(`[Logo: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); 
-        currentY += pdfSettings.headerFontSize + 5;
+         doc.setFontSize(pdfSettings.headerFontSize); doc.text(`[Logo URL: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize + 5;
       }
       
-      doc.setFontSize(pdfSettings.headerFontSize + 4); // Larger for main title
+      doc.setFontSize(pdfSettings.headerFontSize + 4); 
       doc.text("Fiche de Commande Cuisine", pageWidth / 2, currentY + 5, { align: 'center' });
       currentY += pdfSettings.headerFontSize + 5;
       
@@ -130,7 +151,7 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
       doc.rect(pdfSettings.marginLeft, currentY, pageWidth - (pdfSettings.marginLeft + pdfSettings.marginRight), 2, 'F');
       currentY += 7;
       
-      doc.setFontSize(pdfSettings.defaultFontSize - 1); // Slightly smaller for this info line
+      doc.setFontSize(pdfSettings.defaultFontSize - 1); 
       const imeInfo = "IME Brebières / 46 chemin du bois des Caures / 62117 Brebières  03.21.50.00.36";
       const apiInfo = "API 771";
       const imeInfoWidth = doc.getTextWidth(imeInfo);

@@ -157,29 +157,53 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
           columnStyles: { 0: { cellWidth: 'auto'} },
           margin: { top: pdfSettings.marginTop, left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
           didDrawCell: (data) => {
-            if (pdfSettings.logoUrl && headerRows[data.row.index][data.column.index] === '{logo}') {
+            if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image') && headerRows[data.row.index][data.column.index] === '{logo}') {
               try {
-                // This is a placeholder; actual image embedding is more complex
-                // and might require pre-loading or CORS-enabled image URLs.
-                // For simplicity, we draw a box.
-                doc.setFillColor(230, 230, 230);
-                doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
-                doc.setFontSize(8); doc.setTextColor(100);
-                doc.text("LOGO", data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2, { align: 'center', baseline: 'middle' });
-              } catch (e) { console.error("Error drawing logo placeholder:", e); }
+                const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+                const cellPadding = 2; // Padding inside the cell for the image
+                let imgWidth = data.cell.width - 2 * cellPadding;
+                let imgHeight = data.cell.height - 2 * cellPadding;
+                const cellAspectRatio = data.cell.width / data.cell.height;
+                const imgAspectRatio = imgProps.width / imgProps.height;
+
+                if (imgAspectRatio > cellAspectRatio) { // Image is wider than cell
+                    imgHeight = imgWidth / imgAspectRatio;
+                } else { // Image is taller than cell
+                    imgWidth = imgHeight * imgAspectRatio;
+                }
+                const imgX = data.cell.x + (data.cell.width - imgWidth) / 2;
+                const imgY = data.cell.y + (data.cell.height - imgHeight) / 2;
+                doc.addImage(pdfSettings.logoUrl, imgProps.fileType, imgX, imgY, imgWidth, imgHeight);
+              } catch (e) { 
+                console.error("Error drawing logo in PDF header table:", e);
+                doc.setFillColor(230, 230, 230); doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
+                doc.setFontSize(8); doc.setTextColor(100); doc.text("LOGO_ERR", data.cell.x + data.cell.width/2, data.cell.y + data.cell.height/2, {align: 'center', baseline: 'middle'});
+              }
+            } else if (pdfSettings.logoUrl && headerRows[data.row.index][data.column.index] === '{logo}') { // Fallback for non-data URL or other issues
+                doc.setFillColor(230, 230, 230); doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
+                doc.setFontSize(8); doc.setTextColor(100); doc.text("LOGO", data.cell.x + data.cell.width/2, data.cell.y + data.cell.height/2, {align: 'center', baseline: 'middle'});
             }
           },
         });
         currentY = (doc as any).lastAutoTable.finalY + 5;
-      } else if (pdfSettings.logoUrl) { 
-         // Placeholder for logo if no header text but logo URL exists
-        doc.setFontSize(pdfSettings.headerFontSize);
-        doc.text(`[Logo: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); 
-        currentY += pdfSettings.headerFontSize + 5;
+      } else if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { 
+        try {
+            // Draw logo directly if no header text but logo exists
+            const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+            const desiredHeight = 30; // Example height
+            const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
+            doc.addImage(pdfSettings.logoUrl, imgProps.fileType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
+            currentY += desiredHeight + 5;
+        } catch(e) {
+            console.error("Error drawing standalone logo in PDF:", e);
+            doc.setFontSize(pdfSettings.headerFontSize); doc.text(`[Logo Error]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize + 5;
+        }
+      } else if (pdfSettings.logoUrl) {
+         doc.setFontSize(pdfSettings.headerFontSize); doc.text(`[Logo URL: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize + 5;
       }
       
       const title = `Suivi Avantages en Nature - ${monthLabel} ${selectedYear}`;
-      doc.setFontSize(pdfSettings.headerFontSize + 4); // Larger for main title
+      doc.setFontSize(pdfSettings.headerFontSize + 4); 
       doc.text(title, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.headerFontSize + 4) * 0.7;
       doc.setFontSize(pdfSettings.defaultFontSize);
       doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 5;
