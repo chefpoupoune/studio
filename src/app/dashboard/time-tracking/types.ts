@@ -3,7 +3,7 @@ export interface BrigadeMember {
   id: string;
   name: string;
   role: string; // e.g., "Chef de Cuisine", "Second", "Cuisinier", "Plongeur"
-  assignedScheduleTemplateId?: string; // ID of the assigned WeeklyWorkSchedule
+  assignedScheduleTemplateIds?: string[]; // Changed from string to string[]
 }
 
 export interface TimeEntry {

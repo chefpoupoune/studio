@@ -1,19 +1,20 @@
 
 "use client";
 
-import React, { useState } from 'react';
-import type { BrigadeMember, WeeklyWorkSchedule } from '../types'; // Added WeeklyWorkSchedule
+import React, { useState, useEffect } from 'react';
+import type { BrigadeMember, WeeklyWorkSchedule } from '../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PlusCircle, Edit2, Trash2, Users } from 'lucide-react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form'; // Added Controller
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // Added Select
+import { Checkbox } from '@/components/ui/checkbox'; // Added Checkbox
+import { ScrollArea } from '@/components/ui/scroll-area'; // Added ScrollArea
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,24 +26,23 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Badge } from '@/components/ui/badge';
 
 const memberSchema = z.object({
   name: z.string().min(1, "Le nom est requis."),
   role: z.string().min(1, "Le rôle est requis."),
-  assignedScheduleTemplateId: z.string().optional(), // New field for schema
+  assignedScheduleTemplateIds: z.array(z.string()).optional().default([]), // Changed to array
 });
 
 type MemberFormData = z.infer<typeof memberSchema>;
 
 interface ManageBrigadeMembersProps {
   members: BrigadeMember[];
-  scheduleTemplates: WeeklyWorkSchedule[]; // New prop
+  scheduleTemplates: WeeklyWorkSchedule[];
   onAddMember: (member: Omit<BrigadeMember, 'id'>) => void;
   onUpdateMember: (member: BrigadeMember) => void;
   onDeleteMember: (memberId: string) => void;
 }
-
-const NO_SCHEDULE_SELECTED_VALUE = "_NO_SCHEDULE_";
 
 export default function ManageBrigadeMembers({ members, scheduleTemplates, onAddMember, onUpdateMember, onDeleteMember }: ManageBrigadeMembersProps) {
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
@@ -53,24 +53,24 @@ export default function ManageBrigadeMembers({ members, scheduleTemplates, onAdd
     defaultValues: {
       name: '',
       role: '',
-      assignedScheduleTemplateId: undefined,
+      assignedScheduleTemplateIds: [],
     },
   });
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (isFormDialogOpen) {
       if (editingMember) {
         form.reset({
           name: editingMember.name,
           role: editingMember.role,
-          assignedScheduleTemplateId: editingMember.assignedScheduleTemplateId || undefined,
+          assignedScheduleTemplateIds: editingMember.assignedScheduleTemplateIds || [],
         });
       } else {
-        form.reset({ name: '', role: '', assignedScheduleTemplateId: undefined });
+        form.reset({ name: '', role: '', assignedScheduleTemplateIds: [] });
       }
     } else {
       setEditingMember(null);
-      form.reset({ name: '', role: '', assignedScheduleTemplateId: undefined });
+      form.reset({ name: '', role: '', assignedScheduleTemplateIds: [] });
     }
   }, [editingMember, form, isFormDialogOpen]);
 
@@ -78,7 +78,7 @@ export default function ManageBrigadeMembers({ members, scheduleTemplates, onAdd
     const memberDataToSave: Partial<BrigadeMember> = {
       name: data.name,
       role: data.role,
-      assignedScheduleTemplateId: data.assignedScheduleTemplateId || undefined,
+      assignedScheduleTemplateIds: data.assignedScheduleTemplateIds || [],
     };
 
     if (editingMember) {
@@ -102,7 +102,7 @@ export default function ManageBrigadeMembers({ members, scheduleTemplates, onAdd
             <Users className="w-6 h-6 text-primary" />
             Gestion du Personnel de Brigade
           </CardTitle>
-          <CardDescription>Ajoutez, modifiez ou supprimez des membres de votre brigade et assignez-leur un modèle d'horaire.</CardDescription>
+          <CardDescription>Ajoutez, modifiez ou supprimez des membres de votre brigade et assignez-leur des modèles d'horaires.</CardDescription>
         </div>
         <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
           <DialogTrigger asChild>
@@ -110,7 +110,7 @@ export default function ManageBrigadeMembers({ members, scheduleTemplates, onAdd
               <PlusCircle className="mr-2 h-4 w-4" /> Ajouter Membre
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>{editingMember ? 'Modifier Membre' : 'Ajouter un Nouveau Membre'}</DialogTitle>
             </DialogHeader>
@@ -142,37 +142,45 @@ export default function ManageBrigadeMembers({ members, scheduleTemplates, onAdd
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
-                  name="assignedScheduleTemplateId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Modèle d'Horaire Attribué</FormLabel>
-                      <Select 
-                        onValueChange={(value) => {
-                          field.onChange(value === NO_SCHEDULE_SELECTED_VALUE ? undefined : value);
-                        }} 
-                        value={field.value === undefined || field.value === "" ? NO_SCHEDULE_SELECTED_VALUE : field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Aucun modèle sélectionné" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value={NO_SCHEDULE_SELECTED_VALUE}>Aucun modèle</SelectItem>
-                          {scheduleTemplates.map(template => (
-                            <SelectItem key={template.id} value={template.id}>
-                              {template.name} ({template.weeklyTotal}h)
-                            </SelectItem>
-                          ))}
-                          {scheduleTemplates.length === 0 && <SelectItem value={NO_SCHEDULE_SELECTED_VALUE + "_disabled"} disabled>Aucun modèle disponible</SelectItem>}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
+                <FormItem>
+                  <FormLabel>Modèles d'Horaires Attribués</FormLabel>
+                  {scheduleTemplates.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Aucun modèle d'horaire disponible. Veuillez en créer dans l'onglet "Modèles d'Horaires".</p>
+                  ) : (
+                    <ScrollArea className="h-[200px] border rounded-md p-2">
+                      <div className="space-y-2">
+                        {scheduleTemplates.map((template) => (
+                          <FormField
+                            key={template.id}
+                            control={form.control}
+                            name="assignedScheduleTemplateIds"
+                            render={({ field }) => (
+                              <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md p-2 hover:bg-muted/50">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value?.includes(template.id)}
+                                    onCheckedChange={(checked) => {
+                                      return checked
+                                        ? field.onChange([...(field.value || []), template.id])
+                                        : field.onChange(
+                                            (field.value || []).filter(
+                                              (value) => value !== template.id
+                                            )
+                                          );
+                                    }}
+                                  />
+                                </FormControl>
+                                <FormLabel className="font-normal text-sm cursor-pointer">
+                                  {template.name} ({template.weeklyTotal}h)
+                                </FormLabel>
+                              </FormItem>
+                            )}
+                          />
+                        ))}
+                      </div>
+                    </ScrollArea>
                   )}
-                />
+                </FormItem>
                 <DialogFooter>
                   <DialogClose asChild>
                     <Button type="button" variant="outline">Annuler</Button>
@@ -194,28 +202,38 @@ export default function ManageBrigadeMembers({ members, scheduleTemplates, onAdd
                 <TableRow>
                   <TableHead>Nom</TableHead>
                   <TableHead>Rôle</TableHead>
-                  <TableHead>Modèle d'Horaire Attribué</TableHead>
+                  <TableHead>Modèles d'Horaires Attribués</TableHead>
                   <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {members.map((member) => {
-                  const assignedTemplate = scheduleTemplates.find(st => st.id === member.assignedScheduleTemplateId);
+                  const assignedTemplates = scheduleTemplates.filter(st => member.assignedScheduleTemplateIds?.includes(st.id));
                   return (
                     <TableRow key={member.id}>
                       <TableCell className="font-medium">{member.name}</TableCell>
                       <TableCell>{member.role}</TableCell>
                       <TableCell className="text-xs">
-                        {assignedTemplate ? `${assignedTemplate.name} (${assignedTemplate.weeklyTotal}h)` : <span className="italic text-muted-foreground">Aucun</span>}
+                        {assignedTemplates.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {assignedTemplates.map(template => (
+                              <Badge key={template.id} variant="secondary" className="font-normal">
+                                {template.name} ({template.weeklyTotal}h)
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="italic text-muted-foreground">Aucun</span>
+                        )}
                       </TableCell>
-                      <TableCell className="text-center space-x-2">
-                        <Button variant="outline" size="icon" onClick={() => handleOpenFormDialog(member)}>
+                      <TableCell className="text-center space-x-1">
+                        <Button variant="outline" size="icon" onClick={() => handleOpenFormDialog(member)} className="h-8 w-8">
                           <Edit2 className="h-4 w-4" />
                           <span className="sr-only">Modifier</span>
                         </Button>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                             <Button variant="destructive" size="icon">
+                             <Button variant="destructive" size="icon" className="h-8 w-8">
                               <Trash2 className="h-4 w-4" />
                               <span className="sr-only">Supprimer</span>
                             </Button>
