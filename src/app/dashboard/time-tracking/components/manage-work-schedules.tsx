@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFoo
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Save, PlusCircle, Edit2, Trash2, Filter } from "lucide-react";
+import { Save, PlusCircle, Edit2, Trash2, Filter, Lock } from "lucide-react"; // Added Lock
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -29,7 +29,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge'; // Added Badge import
+import { Badge } from '@/components/ui/badge';
+import type { RubricId } from '@/app/dashboard/settings/components/user-management';
 
 const DAYS_OF_WEEK: string[] = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI", "DIMANCHE"];
 
@@ -52,6 +53,8 @@ interface ManageWorkSchedulesProps {
   initialScheduleTemplates: WeeklyWorkSchedule[];
   brigadeMembers: BrigadeMember[];
   onScheduleTemplatesChange: (updatedTemplates: WeeklyWorkSchedule[]) => void;
+  loggedInUsername: string | null;
+  userPermissions: Partial<Record<RubricId, boolean>>;
 }
 
 const ALL_MODELS_FILTER_VALUE = "_ALL_MODELS_";
@@ -59,7 +62,9 @@ const ALL_MODELS_FILTER_VALUE = "_ALL_MODELS_";
 export default function ManageWorkSchedules({ 
   initialScheduleTemplates, 
   brigadeMembers, 
-  onScheduleTemplatesChange 
+  onScheduleTemplatesChange,
+  loggedInUsername,
+  userPermissions
 }: ManageWorkSchedulesProps) {
   const [scheduleTemplates, setScheduleTemplates] = useState<WeeklyWorkSchedule[]>(initialScheduleTemplates);
   const [isTemplateFormOpen, setIsTemplateFormOpen] = useState(false);
@@ -76,6 +81,9 @@ export default function ManageWorkSchedules({
     setScheduleTemplates(initialScheduleTemplates);
   }, [initialScheduleTemplates]);
 
+  const isChef = useMemo(() => loggedInUsername?.toLowerCase() === 'chef', [loggedInUsername]);
+  const canUserViewOwnSchedules = useMemo(() => userPermissions?.canViewOwnSchedule === true, [userPermissions]);
+  const canManageTemplates = useMemo(() => isChef, [isChef]); // Only Chef can manage templates globally
 
   const updateScheduleEntry = (
     templateId: string,
@@ -83,6 +91,7 @@ export default function ManageWorkSchedules({
     field: keyof Omit<DailyScheduleEntry, 'dayName' | 'plannedTotal'>,
     value: string
   ) => {
+    if (!canManageTemplates) return; // Prevent updates if not allowed
     setScheduleTemplates(prevTemplates =>
       prevTemplates.map(template => {
         if (template.id === templateId) {
@@ -108,6 +117,7 @@ export default function ManageWorkSchedules({
   };
 
   const handleApplicationNotesChange = (templateId: string, notes: string) => {
+    if (!canManageTemplates) return; // Prevent updates if not allowed
     setScheduleTemplates(prevTemplates =>
       prevTemplates.map(template =>
         template.id === templateId ? { ...template, applicationNotes: notes } : template
@@ -116,7 +126,7 @@ export default function ManageWorkSchedules({
   };
 
   const handleSaveAllTemplates = () => {
-    if (!isClient) return;
+    if (!isClient || !canManageTemplates) return;
     onScheduleTemplatesChange(scheduleTemplates); 
     toast({ title: "Modèles d'Horaires Sauvegardés", description: "Vos modifications ont été enregistrées." });
   };
@@ -127,6 +137,7 @@ export default function ManageWorkSchedules({
   });
 
   const handleOpenTemplateForm = (template?: WeeklyWorkSchedule) => {
+    if (!canManageTemplates) return;
     setEditingTemplate(template || null);
     if (template) {
       templateForm.reset({ name: template.name, includesSaturday: template.includesSaturday });
@@ -137,6 +148,7 @@ export default function ManageWorkSchedules({
   };
 
   const handleTemplateFormSubmit = (data: TemplateFormData) => {
+    if (!canManageTemplates) return;
     let updatedTemplates;
     if (editingTemplate) {
       updatedTemplates = scheduleTemplates.map(t => {
@@ -186,6 +198,7 @@ export default function ManageWorkSchedules({
   };
 
   const handleDeleteTemplate = (templateId: string, templateName: string) => {
+    if (!canManageTemplates) return;
     const updatedTemplates = scheduleTemplates.filter(t => t.id !== templateId);
     setScheduleTemplates(updatedTemplates);
     onScheduleTemplatesChange(updatedTemplates); 
@@ -193,96 +206,116 @@ export default function ManageWorkSchedules({
   };
 
   const displayedScheduleTemplates = useMemo(() => {
-    if (selectedMemberIdForFilter === ALL_MODELS_FILTER_VALUE || !selectedMemberIdForFilter) {
-      return scheduleTemplates;
+    if (isChef) {
+      if (selectedMemberIdForFilter === ALL_MODELS_FILTER_VALUE || !selectedMemberIdForFilter) {
+        return scheduleTemplates;
+      }
+      const selectedMember = brigadeMembers.find(m => m.id === selectedMemberIdForFilter);
+      if (!selectedMember || !selectedMember.assignedScheduleTemplateIds || selectedMember.assignedScheduleTemplateIds.length === 0) {
+        return [];
+      }
+      return scheduleTemplates.filter(st => selectedMember.assignedScheduleTemplateIds?.includes(st.id));
+    } else if (canUserViewOwnSchedules) {
+      const currentUserBrigadeMember = brigadeMembers.find(bm => bm.name.toLowerCase() === loggedInUsername?.toLowerCase());
+      if (!currentUserBrigadeMember || !currentUserBrigadeMember.assignedScheduleTemplateIds || currentUserBrigadeMember.assignedScheduleTemplateIds.length === 0) {
+        return [];
+      }
+      return scheduleTemplates.filter(st => currentUserBrigadeMember.assignedScheduleTemplateIds?.includes(st.id));
     }
-    const selectedMember = brigadeMembers.find(m => m.id === selectedMemberIdForFilter);
-    
-    // Debugging logs
-    // console.log("Selected Member for Filter:", selectedMember);
-    // console.log("Assigned IDs by member:", selectedMember?.assignedScheduleTemplateIds);
-    // console.log("All available templates:", scheduleTemplates.map(st => ({id: st.id, name: st.name})));
-
-    if (!selectedMember || !selectedMember.assignedScheduleTemplateIds || selectedMember.assignedScheduleTemplateIds.length === 0) {
-      // console.log("No templates assigned or member not found.");
-      return []; 
-    }
-    const filteredTemplates = scheduleTemplates.filter(st => selectedMember.assignedScheduleTemplateIds?.includes(st.id));
-    // console.log("Filtered Templates for member:", filteredTemplates.map(st => ({id: st.id, name: st.name})));
-    return filteredTemplates;
-  }, [scheduleTemplates, selectedMemberIdForFilter, brigadeMembers]);
+    return []; // Default to no templates if no permissions
+  }, [scheduleTemplates, selectedMemberIdForFilter, brigadeMembers, isChef, canUserViewOwnSchedules, loggedInUsername]);
 
 
   if (!isClient) {
     return <div className="flex justify-center items-center p-8">Chargement des modèles d'horaires...</div>;
   }
+  
+  if (!isChef && !canUserViewOwnSchedules && userPermissions?.timeTracking_schedules) {
+     return (
+        <div className="text-muted-foreground text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
+            <Lock className="mx-auto h-12 w-12 text-muted-foreground" />
+            <p className="mt-2 text-sm">
+                Vous n'avez pas la permission de consulter les détails des modèles d'horaires.
+            </p>
+            <p className="text-xs text-muted-foreground/70">Contactez un administrateur pour obtenir les droits.</p>
+        </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="w-full sm:w-auto sm:flex-grow">
-          <Label htmlFor="member-filter-select" className="text-sm">Filtrer les modèles par employé assigné :</Label>
-          <Select value={selectedMemberIdForFilter} onValueChange={setSelectedMemberIdForFilter}>
-            <SelectTrigger id="member-filter-select" className="mt-1">
-              <SelectValue placeholder="Filtrer par employé..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_MODELS_FILTER_VALUE}>Afficher tous les modèles</SelectItem>
-              {brigadeMembers.map(member => (
-                <SelectItem key={member.id} value={member.id}>{member.name} ({member.role})</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto justify-end pt-2 sm:pt-0">
-            <Dialog open={isTemplateFormOpen} onOpenChange={setIsTemplateFormOpen}>
-              <DialogTrigger asChild>
-                <Button onClick={() => handleOpenTemplateForm()} className="w-full sm:w-auto">
-                  <PlusCircle className="mr-2 h-4 w-4" /> Ajouter un Modèle
+        {isChef && (
+          <div className="w-full sm:w-auto sm:flex-grow">
+            <Label htmlFor="member-filter-select" className="text-sm">Filtrer les modèles par employé assigné :</Label>
+            <Select value={selectedMemberIdForFilter} onValueChange={setSelectedMemberIdForFilter}>
+              <SelectTrigger id="member-filter-select" className="mt-1">
+                <SelectValue placeholder="Filtrer par employé..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_MODELS_FILTER_VALUE}>Afficher tous les modèles</SelectItem>
+                {brigadeMembers.map(member => (
+                  <SelectItem key={member.id} value={member.id}>{member.name} ({member.role})</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {canManageTemplates && (
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto justify-end pt-2 sm:pt-0 self-end">
+                <Dialog open={isTemplateFormOpen} onOpenChange={setIsTemplateFormOpen}>
+                <DialogTrigger asChild>
+                    <Button onClick={() => handleOpenTemplateForm()} className="w-full sm:w-auto">
+                    <PlusCircle className="mr-2 h-4 w-4" /> Ajouter un Modèle
+                    </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                    <DialogTitle>{editingTemplate ? "Modifier le Modèle" : "Nouveau Modèle d'Horaire"}</DialogTitle>
+                    </DialogHeader>
+                    <Form {...templateForm}>
+                    <form onSubmit={templateForm.handleSubmit(handleTemplateFormSubmit)} className="space-y-4 py-4">
+                        <FormField control={templateForm.control} name="name" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Nom du Modèle</FormLabel>
+                            <FormControl><Input placeholder="Ex: Haute Saison (L-S)" {...field} /></FormControl>
+                            <FormMessage />
+                        </FormItem>
+                        )} />
+                        <FormField control={templateForm.control} name="includesSaturday" render={({ field }) => (
+                        <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 shadow-sm">
+                            <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                            <div className="space-y-0.5">
+                            <FormLabel className="text-sm">Inclure le Samedi ?</FormLabel>
+                            </div>
+                        </FormItem>
+                        )} />
+                        <DialogFooter>
+                        <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
+                        <Button type="submit">{editingTemplate ? "Enregistrer" : "Créer Modèle"}</Button>
+                        </DialogFooter>
+                    </form>
+                    </Form>
+                </DialogContent>
+                </Dialog>
+                <Button onClick={handleSaveAllTemplates} className="w-full sm:w-auto">
+                    <Save className="mr-2 h-4 w-4" /> Sauvegarder Modèles
                 </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>{editingTemplate ? "Modifier le Modèle" : "Nouveau Modèle d'Horaire"}</DialogTitle>
-                </DialogHeader>
-                <Form {...templateForm}>
-                  <form onSubmit={templateForm.handleSubmit(handleTemplateFormSubmit)} className="space-y-4 py-4">
-                    <FormField control={templateForm.control} name="name" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Nom du Modèle</FormLabel>
-                        <FormControl><Input placeholder="Ex: Haute Saison (L-S)" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                    <FormField control={templateForm.control} name="includesSaturday" render={({ field }) => (
-                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 shadow-sm">
-                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                        <div className="space-y-0.5">
-                          <FormLabel className="text-sm">Inclure le Samedi ?</FormLabel>
-                        </div>
-                      </FormItem>
-                    )} />
-                    <DialogFooter>
-                      <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                      <Button type="submit">{editingTemplate ? "Enregistrer" : "Créer Modèle"}</Button>
-                    </DialogFooter>
-                  </form>
-                </Form>
-              </DialogContent>
-            </Dialog>
-             <Button onClick={handleSaveAllTemplates} className="w-full sm:w-auto">
-                <Save className="mr-2 h-4 w-4" /> Sauvegarder Modèles
-            </Button>
-        </div>
+            </div>
+        )}
       </div>
 
-      {scheduleTemplates.length === 0 ? (
+      {scheduleTemplates.length === 0 && canManageTemplates ? (
         <p className="text-muted-foreground text-center py-6">Aucun modèle d'horaire créé. Cliquez sur "Ajouter un Modèle" pour commencer.</p>
-      ) : displayedScheduleTemplates.length === 0 && selectedMemberIdForFilter !== ALL_MODELS_FILTER_VALUE ? (
+      ) : displayedScheduleTemplates.length === 0 && isChef && selectedMemberIdForFilter !== ALL_MODELS_FILTER_VALUE ? (
          <p className="text-muted-foreground text-center py-6">
             Aucun modèle d'horaire assigné à {brigadeMembers.find(m => m.id === selectedMemberIdForFilter)?.name || 'cet employé'}.
             <br/>
             <Button variant="link" onClick={() => setSelectedMemberIdForFilter(ALL_MODELS_FILTER_VALUE)}>Voir tous les modèles</Button>
+         </p>
+      ): displayedScheduleTemplates.length === 0 && !isChef && canUserViewOwnSchedules ? (
+         <p className="text-muted-foreground text-center py-6">
+            Aucun modèle d'horaire ne vous est assigné.
          </p>
       ) : (
         displayedScheduleTemplates.map((schedule) => (
@@ -292,9 +325,14 @@ export default function ManageWorkSchedules({
                   <div>
                       <CardTitle className="flex items-center gap-2">
                         {schedule.name}
-                        {selectedMemberIdForFilter !== ALL_MODELS_FILTER_VALUE && brigadeMembers.find(m => m.id === selectedMemberIdForFilter) && (
+                        {isChef && selectedMemberIdForFilter !== ALL_MODELS_FILTER_VALUE && brigadeMembers.find(m => m.id === selectedMemberIdForFilter) && (
                             <Badge variant="outline" className="text-xs font-normal">
                                 Assigné à {brigadeMembers.find(m => m.id === selectedMemberIdForFilter)?.name}
+                            </Badge>
+                        )}
+                        {!isChef && loggedInUsername && (
+                             <Badge variant="outline" className="text-xs font-normal">
+                                Assigné à vous ({loggedInUsername})
                             </Badge>
                         )}
                       </CardTitle>
@@ -302,32 +340,34 @@ export default function ManageWorkSchedules({
                           Modèle d'horaires hebdomadaires {schedule.includesSaturday ? "(Lundi-Samedi)" : "(Lundi-Vendredi)"}.
                       </CardDescription>
                   </div>
-                  <div className="space-x-1 flex-shrink-0">
-                      <Button variant="ghost" size="icon" onClick={() => handleOpenTemplateForm(schedule)} className="h-8 w-8">
-                          <Edit2 className="h-4 w-4"/>
-                      </Button>
-                      <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive">
-                                  <Trash2 className="h-4 w-4"/>
-                              </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                              <AlertDialogHeader>
-                                  <AlertDialogTitle>Supprimer le modèle "{schedule.name}"?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                  Cette action est irréversible.
-                                  </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                  <AlertDialogCancel>Annuler</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handleDeleteTemplate(schedule.id, schedule.name)}>
-                                  Supprimer
-                                  </AlertDialogAction>
-                              </AlertDialogFooter>
-                          </AlertDialogContent>
-                      </AlertDialog>
-                  </div>
+                  {canManageTemplates && (
+                    <div className="space-x-1 flex-shrink-0">
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenTemplateForm(schedule)} className="h-8 w-8">
+                            <Edit2 className="h-4 w-4"/>
+                        </Button>
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive">
+                                    <Trash2 className="h-4 w-4"/>
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Supprimer le modèle "{schedule.name}"?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                    Cette action est irréversible.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Annuler</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleDeleteTemplate(schedule.id, schedule.name)}>
+                                    Supprimer
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    </div>
+                  )}
               </div>
             </CardHeader>
             <CardContent>
@@ -342,6 +382,7 @@ export default function ManageWorkSchedules({
                   onChange={(e) => handleApplicationNotesChange(schedule.id, e.target.value)}
                   placeholder="Ex: Septembre à Mai, sauf jours fériés"
                   className="mt-1"
+                  disabled={!canManageTemplates}
                 />
               </div>
               <div className="overflow-x-auto border rounded-md">
@@ -368,6 +409,7 @@ export default function ManageWorkSchedules({
                               value={day[field]}
                               onChange={(e) => updateScheduleEntry(schedule.id, dayIndex, field, e.target.value)}
                               className="h-8 text-sm w-28"
+                              disabled={!canManageTemplates}
                             />
                           </TableCell>
                         ))}
@@ -397,5 +439,3 @@ export default function ManageWorkSchedules({
   );
 }
 
-
-    

@@ -16,12 +16,13 @@ import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import type { RubricId } from '@/app/dashboard/settings/components/user-management';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'; // Added import
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
 const TIME_ENTRIES_STORAGE_KEY = 'time_tracking_entries';
 const WORK_SCHEDULE_CUSTOM_TEMPLATES_KEY = "time_tracking_custom_schedule_templates_v2";
 const LOGGED_IN_USER_PERMISSIONS_KEY = 'loggedInUserPermissions';
+const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
 
 const initialBrigadeMembers: BrigadeMember[] = [
@@ -35,6 +36,7 @@ export default function TimeTrackingPage() {
   const [scheduleTemplates, setScheduleTemplates] = useState<WeeklyWorkSchedule[]>([]);
   const [isClient, setIsClient] = useState(false);
   const [userPermissions, setUserPermissions] = useState<Partial<Record<RubricId, boolean>>>({});
+  const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -48,6 +50,8 @@ export default function TimeTrackingPage() {
         if (storedPermissionsRaw) {
           setUserPermissions(JSON.parse(storedPermissionsRaw));
         }
+        const username = localStorage.getItem(LOGGED_IN_USERNAME_KEY);
+        setLoggedInUsername(username);
 
         const storedMembersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
         if (storedMembersRaw) {
@@ -242,6 +246,8 @@ export default function TimeTrackingPage() {
               initialScheduleTemplates={scheduleTemplates}
               brigadeMembers={brigadeMembers}
               onScheduleTemplatesChange={handleScheduleTemplatesChange}
+              loggedInUsername={loggedInUsername}
+              userPermissions={userPermissions}
             />
           </TabsContent>
         )}
@@ -257,3 +263,4 @@ export default function TimeTrackingPage() {
     </div>
   );
 }
+
