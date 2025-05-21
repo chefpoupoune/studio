@@ -13,7 +13,7 @@ import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
 import type { AppUser, RubricId, ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management';
 
-const APP_USERS_STORAGE_KEY = 'app_defined_users_v1';
+const APP_USERS_STORAGE_KEY = 'app_defined_users_v2'; // Ensure this matches UserManagement
 const LOGGED_IN_USER_PERMISSIONS_KEY = 'loggedInUserPermissions';
 const LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY = 'loggedInUserHourViewConfig';
 const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1";
@@ -61,11 +61,12 @@ export default function LoginPage() {
             users = parsedUsers.map((u: any) => ({ 
               id: u.id || `imported_user_${Math.random().toString(36).substring(7)}`,
               username: u.username || "Utilisateur Inconnu",
+              brigadeMemberId: u.brigadeMemberId,
               passwordRequired: typeof u.passwordRequired === 'boolean' ? u.passwordRequired : false,
               simulatedStoredPassword: u.simulatedStoredPassword,
               permissions: u.permissions || {},
               viewableHourSummaryConfig: u.viewableHourSummaryConfig || { type: 'none' },
-              canViewOwnSchedule: u.canViewOwnSchedule || false,
+              canViewOwnSchedule: typeof u.canViewOwnSchedule === 'boolean' ? u.canViewOwnSchedule : false,
             }));
           }
         }
@@ -81,13 +82,14 @@ export default function LoginPage() {
       }, {} as Partial<Record<RubricId, boolean>>);
       
       // Add specific 'canViewOwnSchedule' for chef here
-      defaultChefPermissions['canViewOwnSchedule' as any] = true;
+      (defaultChefPermissions as any).canViewOwnSchedule = true;
 
 
       if (!chefUserExists) {
         users.unshift({ 
           id: 'default_chef', 
           username: 'Chef', 
+          // brigadeMemberId: undefined, // Chef is not tied to a brigade member by default
           passwordRequired: true, 
           simulatedStoredPassword: simulatedHash('000'),
           permissions: defaultChefPermissions,
@@ -100,7 +102,7 @@ export default function LoginPage() {
                 return {
                     ...u,
                     passwordRequired: true, 
-                    simulatedStoredPassword: u.simulatedStoredPassword || simulatedHash('000'),
+                    simulatedStoredPassword: u.simulatedStoredPassword || simulatedHash('000'), // Ensure Chef has a default password if not set
                     permissions: defaultChefPermissions, 
                     viewableHourSummaryConfig: { type: 'all' }, 
                     canViewOwnSchedule: true,
@@ -117,22 +119,23 @@ export default function LoginPage() {
     localStorage.setItem('isLoggedIn', 'true');
     localStorage.setItem('loggedInUsername', user.username);
     
-    let permissionsToStore = user.permissions;
+    let permissionsToStore = { ...user.permissions }; // Create a copy to modify
     let hourViewConfigToStore = user.viewableHourSummaryConfig || { type: 'none' as const };
+    let canViewOwnScheduleToStore = typeof user.canViewOwnSchedule === 'boolean' ? user.canViewOwnSchedule : false;
 
     if (user.username.toLowerCase() === 'chef') {
         permissionsToStore = RUBRICS_FOR_PERMISSIONS.reduce((acc, rubric) => {
             acc[rubric] = true;
             return acc;
         }, {} as Partial<Record<RubricId, boolean>>);
-        // Explicitly add canViewOwnSchedule for chef
-        (permissionsToStore as any).canViewOwnSchedule = true;
         hourViewConfigToStore = { type: 'all' as const };
-    } else {
-      // For non-chef users, ensure canViewOwnSchedule is explicitly set from user data
-      (permissionsToStore as any).canViewOwnSchedule = user.canViewOwnSchedule || false;
+        canViewOwnScheduleToStore = true; 
     }
-    localStorage.setItem(LOGGED_IN_USER_PERMISSIONS_KEY, JSON.stringify(permissionsToStore));
+    
+    // Ensure canViewOwnSchedule is explicitly part of the permissions object stored
+    const finalPermissions = { ...permissionsToStore, canViewOwnSchedule: canViewOwnScheduleToStore };
+
+    localStorage.setItem(LOGGED_IN_USER_PERMISSIONS_KEY, JSON.stringify(finalPermissions));
     localStorage.setItem(LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY, JSON.stringify(hourViewConfigToStore));
     router.push('/dashboard');
   };
@@ -188,7 +191,7 @@ export default function LoginPage() {
       )}
       <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="text-center">
-          <h1 className="text-4xl font-serif font-bold text-foreground title-glow">
+           <h1 className="text-4xl font-serif font-bold text-foreground title-glow">
             Gestion par l'excellence
           </h1>
           <CardDescription className="text-md pt-2">
@@ -207,19 +210,23 @@ export default function LoginPage() {
                       variant="outline"
                       className="w-full justify-start text-left py-3 h-auto"
                       onClick={() => handleUserButtonClick(user)}
+                      // Disable button if password required but not set (except for Chef which has a default)
+                      disabled={user.passwordRequired && !user.simulatedStoredPassword && user.username.toLowerCase() !== 'chef'}
                     >
                       <User className="mr-3 h-5 w-5 text-muted-foreground" />
                       <span className="flex flex-col">
                         <span className="font-medium">{user.username}</span>
                         <span className="text-xs text-muted-foreground">
                           {user.passwordRequired ? "Mot de passe requis" : "Accès direct"}
-                          {user.passwordRequired && !user.simulatedStoredPassword && <span className="text-destructive text-xs">(Aucun mdp défini)</span>}
+                          {user.passwordRequired && !user.simulatedStoredPassword && user.username.toLowerCase() !== 'chef' && 
+                           <span className="text-destructive text-xs">(Aucun mdp défini)</span>
+                          }
                         </span>
                       </span>
                     </Button>
                   ))
                 ) : (
-                  <p className="text-center text-muted-foreground col-span-full">Aucun utilisateur configuré. Seul "Chef" est disponible.</p>
+                  <p className="text-center text-muted-foreground col-span-full">Aucun utilisateur défini. Contactez un administrateur.</p>
                 )}
               </div>
             </>
@@ -268,8 +275,8 @@ export default function LoginPage() {
             {selectedUserForPassword && selectedUserForPassword.username.toLowerCase() === 'chef' && !definedUsers.find(u => u.username.toLowerCase() === 'chef')?.simulatedStoredPassword
               ? "Mot de passe par défaut pour Chef : 000" 
               : selectedUserForPassword && selectedUserForPassword.passwordRequired && !selectedUserForPassword.simulatedStoredPassword
-              ? "Aucun mot de passe défini pour cet utilisateur."
-              : "Entrez le mot de passe configuré."
+              ? "Aucun mot de passe défini pour cet utilisateur. Veuillez configurer dans les paramètres."
+              : selectedUserForPassword ? "Entrez le mot de passe configuré." : "Sélectionnez un utilisateur."
             }
           </p>
         </CardFooter>
@@ -277,4 +284,3 @@ export default function LoginPage() {
     </main>
   );
 }
-

@@ -18,7 +18,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { BrigadeMember } from '@/app/dashboard/time-tracking/types';
+import type { BrigadeMember } from '@/app/dashboard/time-tracking/types'; // Import BrigadeMember
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,8 +31,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-const APP_USERS_STORAGE_KEY = 'app_defined_users_v1';
-const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members';
+const APP_USERS_STORAGE_KEY = 'app_defined_users_v2'; // Versioned key
+const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2'; // Ensure this matches
 
 const RUBRICS = [
   { id: 'dashboard', label: 'Tableau de Bord Principal' },
@@ -55,16 +55,17 @@ export interface ViewableHourSummaryConfig {
 
 export interface AppUser {
   id: string;
-  username: string;
+  username: string; // Will store the brigade member's name
+  brigadeMemberId?: string; // ID of the linked BrigadeMember
   passwordRequired: boolean;
   simulatedStoredPassword?: string;
   permissions: Partial<Record<RubricId, boolean>>;
   viewableHourSummaryConfig?: ViewableHourSummaryConfig;
-  canViewOwnSchedule?: boolean; // New permission
+  canViewOwnSchedule?: boolean;
 }
 
 const userFormSchema = z.object({
-  username: z.string().min(3, "Le nom d'utilisateur doit contenir au moins 3 caractères.").max(50, "Le nom d'utilisateur ne peut excéder 50 caractères."),
+  selectedBrigadeMemberId: z.string().min(1, "Veuillez sélectionner un membre de la brigade.").optional(), // For new users
   passwordRequired: z.boolean().default(false),
   newPassword: z.string().optional(),
   confirmNewPassword: z.string().optional(),
@@ -76,7 +77,7 @@ const userFormSchema = z.object({
   ).default({}),
   viewableHourSummary_type: z.enum(['none', 'own', 'all', 'specific']).default('none'),
   viewableHourSummary_specificMemberId: z.string().optional(),
-  canViewOwnSchedule: z.boolean().default(false), // New schema field
+  canViewOwnSchedule: z.boolean().default(false),
 }).refine(data => {
     if (data.passwordRequired && data.newPassword && data.newPassword.length < 3) {
         return false;
@@ -94,7 +95,7 @@ const userFormSchema = z.object({
     }
     return true;
 }, {
-    message: "Veuillez sélectionner un employé spécifique.",
+    message: "Veuillez sélectionner un employé spécifique pour la vue des heures.",
     path: ['viewableHourSummary_specificMemberId']
 });
 
@@ -105,6 +106,7 @@ const simulatedHash = (password: string): string => `sim_hashed_${password}_!`;
 export default function UserManagement() {
   const [appUsers, setAppUsers] = useState<AppUser[]>([]);
   const [brigadeMembers, setBrigadeMembers] = useState<BrigadeMember[]>([]);
+  const [availableBrigadeMembers, setAvailableBrigadeMembers] = useState<BrigadeMember[]>([]);
   const [isUserFormOpen, setIsUserFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
   const { toast } = useToast();
@@ -112,7 +114,7 @@ export default function UserManagement() {
   const form = useForm<UserFormData>({
     resolver: zodResolver(userFormSchema),
     defaultValues: {
-      username: '',
+      selectedBrigadeMemberId: undefined,
       passwordRequired: false,
       newPassword: '',
       confirmNewPassword: '',
@@ -138,15 +140,20 @@ export default function UserManagement() {
 
   useEffect(() => {
     localStorage.setItem(APP_USERS_STORAGE_KEY, JSON.stringify(appUsers));
-  }, [appUsers]);
+    // Compute available brigade members for new user selection
+    const linkedMemberIds = appUsers.map(user => user.brigadeMemberId).filter(id => !!id);
+    setAvailableBrigadeMembers(
+      brigadeMembers.filter(member => !linkedMemberIds.includes(member.id))
+    );
+  }, [appUsers, brigadeMembers]);
 
   const handleOpenUserForm = (user?: AppUser) => {
     setEditingUser(user || null);
     if (user) {
       form.reset({
-        username: user.username,
+        selectedBrigadeMemberId: user.brigadeMemberId, // Will be used for display, not selection
         passwordRequired: user.passwordRequired,
-        newPassword: '',
+        newPassword: '', // Always clear password fields on open
         confirmNewPassword: '',
         permissions: RUBRICS.reduce((acc, rubric) => ({ ...acc, [rubric.id]: !!user.permissions[rubric.id] }), {}),
         viewableHourSummary_type: user.viewableHourSummaryConfig?.type || 'none',
@@ -154,7 +161,17 @@ export default function UserManagement() {
         canViewOwnSchedule: user.canViewOwnSchedule || false,
       });
     } else {
-      form.reset(); // Reset to defaultValues defined in useForm
+      // For new user
+      form.reset({
+        selectedBrigadeMemberId: undefined,
+        passwordRequired: false,
+        newPassword: '',
+        confirmNewPassword: '',
+        permissions: RUBRICS.reduce((acc, rubric) => ({ ...acc, [rubric.id]: false }), {}),
+        viewableHourSummary_type: 'none',
+        viewableHourSummary_specificMemberId: undefined,
+        canViewOwnSchedule: false,
+      });
     }
     setIsUserFormOpen(true);
   };
@@ -170,40 +187,47 @@ export default function UserManagement() {
         specificMemberId: data.viewableHourSummary_type === 'specific' ? data.viewableHourSummary_specificMemberId : undefined,
     };
 
-    const userData: Partial<AppUser> = {
-      username: data.username,
+    const baseUserData: Omit<AppUser, 'id' | 'username' | 'brigadeMemberId'> = {
       passwordRequired: data.passwordRequired,
       permissions: data.permissions,
       viewableHourSummaryConfig: summaryConfig,
       canViewOwnSchedule: data.canViewOwnSchedule,
+      simulatedStoredPassword: passwordToStore, // Will be undefined if not set
     };
-    if (data.passwordRequired) {
-      if (passwordToStore) {
-        userData.simulatedStoredPassword = passwordToStore;
-      } else if (editingUser) {
-        userData.simulatedStoredPassword = editingUser.simulatedStoredPassword;
-      }
-    } else {
-      userData.simulatedStoredPassword = undefined;
-    }
-
 
     if (editingUser) {
+      // Only update password if a new one is provided for an existing user who requires one
+      const updatedSimulatedPassword = (data.passwordRequired && passwordToStore) 
+        ? passwordToStore 
+        : (data.passwordRequired ? editingUser.simulatedStoredPassword : undefined);
+
       setAppUsers(prev => prev.map(u => u.id === editingUser.id ? { 
-          ...editingUser, 
-          ...userData
+          ...editingUser, // Keeps existing username and brigadeMemberId
+          ...baseUserData,
+          simulatedStoredPassword: updatedSimulatedPassword,
         } : u));
-      toast({ title: "Utilisateur Modifié", description: `L'utilisateur "${data.username}" a été mis à jour.` });
-    } else {
+      toast({ title: "Utilisateur Modifié", description: `L'utilisateur "${editingUser.username}" a été mis à jour.` });
+    } else { // New User
+      if (!data.selectedBrigadeMemberId) {
+        toast({ title: "Erreur", description: "Veuillez sélectionner un membre de la brigade pour le nouvel utilisateur.", variant: "destructive" });
+        form.setError("selectedBrigadeMemberId", {message: "Sélection requise."});
+        return;
+      }
+      const selectedMember = brigadeMembers.find(bm => bm.id === data.selectedBrigadeMemberId);
+      if (!selectedMember) {
+        toast({ title: "Erreur", description: "Membre de la brigade non trouvé.", variant: "destructive" });
+        return;
+      }
+
       const newUser: AppUser = { 
         id: `user_${Date.now()}`, 
-        ...userData,
-        username: data.username, // Ensure username is always set
-        passwordRequired: data.passwordRequired,
-        permissions: data.permissions,
-      } as AppUser;
+        username: selectedMember.name, // Set username from brigade member's name
+        brigadeMemberId: selectedMember.id,
+        ...baseUserData,
+        simulatedStoredPassword: (data.passwordRequired && passwordToStore) ? passwordToStore : undefined,
+      };
       setAppUsers(prev => [...prev, newUser]);
-      toast({ title: "Utilisateur Créé", description: `L'utilisateur "${data.username}" a été créé.` });
+      toast({ title: "Utilisateur Créé", description: `L'utilisateur "${newUser.username}" a été créé.` });
     }
     setIsUserFormOpen(false);
   };
@@ -211,7 +235,7 @@ export default function UserManagement() {
   const handleDeleteUser = (userId: string) => {
     const userToDelete = appUsers.find(u => u.id === userId);
     if (userToDelete?.username.toLowerCase() === 'chef') {
-      toast({ title: "Suppression Interdite", description: "L'utilisateur 'chef' ne peut pas être supprimé.", variant: "destructive" });
+      toast({ title: "Suppression Interdite", description: "L'utilisateur 'Chef' ne peut pas être supprimé.", variant: "destructive" });
       return;
     }
     setAppUsers(prev => prev.filter(u => u.id !== userId));
@@ -220,7 +244,7 @@ export default function UserManagement() {
 
   const currentSelectedSummaryType = form.watch('viewableHourSummary_type');
   const hasTimeTrackingPermission = form.watch('permissions.timeTracking');
-  const isChefEditing = editingUser?.username.toLowerCase() === 'chef';
+  const isEditingChef = editingUser?.username.toLowerCase() === 'chef';
 
 
   return (
@@ -231,7 +255,7 @@ export default function UserManagement() {
           Gestion des Utilisateurs
         </CardTitle>
         <CardDescription>
-          Définissez des utilisateurs, leurs mots de passe (simulés) et leurs permissions d'accès.
+          Définissez des utilisateurs en les liant aux membres de la brigade, leurs mots de passe (simulés) et leurs permissions.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -240,7 +264,7 @@ export default function UserManagement() {
           <AlertTitle className="text-destructive font-semibold">Avertissement de Sécurité</AlertTitle>
           <AlertDescription className="text-destructive/90">
             Ce système est pour la démonstration. Les mots de passe ne sont pas stockés de manière sécurisée.
-            L'utilisateur 'chef' (mdp: '000') est le compte administrateur par défaut avec tous les accès.
+            L'utilisateur 'Chef' (mdp: '000' par défaut s'il n'est pas dans cette liste) est le compte administrateur avec tous les accès.
           </AlertDescription>
         </Alert>
 
@@ -251,19 +275,41 @@ export default function UserManagement() {
         <Dialog open={isUserFormOpen} onOpenChange={setIsUserFormOpen}>
           <DialogContent className="sm:max-w-lg md:max-w-2xl">
             <DialogHeader>
-              <DialogTitle>{editingUser ? "Modifier" : "Créer"} Utilisateur</DialogTitle>
+              <DialogTitle>{editingUser ? `Modifier l'Utilisateur : ${editingUser.username}` : "Créer un Nouvel Utilisateur"}</DialogTitle>
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(handleUserFormSubmit)} className="space-y-4 py-4">
                 <ScrollArea className="h-[70vh] pr-4">
                   <div className="space-y-4">
-                    <FormField control={form.control} name="username" render={({ field }) => (
+                    {editingUser ? (
                       <FormItem>
-                        <FormLabel>Nom d'utilisateur</FormLabel>
-                        <FormControl><Input placeholder="Ex: jdupont" {...field} disabled={isChefEditing} /></FormControl>
-                        <FormMessage />
+                        <FormLabel>Nom d'utilisateur (Membre de la Brigade)</FormLabel>
+                        <Input value={editingUser.username} disabled className="bg-muted/50"/>
+                        <FormDescription className="text-xs">Le nom d'utilisateur est lié au membre de la brigade et ne peut être modifié ici.</FormDescription>
                       </FormItem>
-                    )} />
+                    ) : (
+                      <FormField control={form.control} name="selectedBrigadeMemberId" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Membre de la Brigade à lier</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value || undefined} defaultValue={field.value || undefined}>
+                            <FormControl><SelectTrigger>
+                                <SelectValue placeholder="Sélectionner un membre de la brigade..." />
+                            </SelectTrigger></FormControl>
+                            <SelectContent>
+                              {availableBrigadeMembers.length > 0 ? (
+                                availableBrigadeMembers.map(member => (
+                                  <SelectItem key={member.id} value={member.id}>{member.name} ({member.role})</SelectItem>
+                                ))
+                              ) : (
+                                <SelectItem value="disabled" disabled>Aucun membre de brigade disponible pour un nouveau compte.</SelectItem>
+                              )}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    )}
+
                     <FormField control={form.control} name="passwordRequired" render={({ field }) => (
                       <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
                         <div className="space-y-0.5">
@@ -272,11 +318,11 @@ export default function UserManagement() {
                             Si coché, un mot de passe sera nécessaire.
                           </FormDescription>
                         </div>
-                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={isChefEditing} /></FormControl>
+                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={isEditingChef} /></FormControl>
                       </FormItem>
                     )} />
                     
-                    {form.watch('passwordRequired') && !isChefEditing && (
+                    {form.watch('passwordRequired') && !isEditingChef && (
                       <div className="p-3 border rounded-md space-y-3 bg-muted/30">
                          <FormField control={form.control} name="newPassword" render={({ field }) => (
                           <FormItem>
@@ -309,7 +355,7 @@ export default function UserManagement() {
                                   <Checkbox
                                     checked={field.value}
                                     onCheckedChange={field.onChange}
-                                    disabled={isChefEditing || (rubric.id === 'settings' && form.getValues('username').toLowerCase() !== 'chef')}
+                                    disabled={isEditingChef || (rubric.id === 'settings' && editingUser?.username.toLowerCase() !== 'chef')}
                                   />
                                 </FormControl>
                                 <FormLabel className="font-normal text-sm cursor-pointer flex-grow">{rubric.label}</FormLabel>
@@ -320,7 +366,7 @@ export default function UserManagement() {
                       </div>
                     </div>
 
-                    {!isChefEditing && (
+                    {!isEditingChef && (
                         <>
                         <div className="pt-4 border-t">
                           <h3 className="text-md font-semibold mb-2 mt-2 flex items-center gap-1"><Eye className="w-4 h-4"/> Vue des Relevés d'Heures</h3>
@@ -345,7 +391,7 @@ export default function UserManagement() {
                             <FormField control={form.control} name="viewableHourSummary_specificMemberId" render={({ field }) => (
                                 <FormItem className="mt-2">
                                 <FormLabel>Employé spécifique</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value}>
+                                <Select onValueChange={field.onChange} value={field.value || undefined}>
                                     <FormControl><SelectTrigger><SelectValue placeholder="Choisir un employé..." /></SelectTrigger></FormControl>
                                     <SelectContent>
                                     {brigadeMembers.length > 0 ? brigadeMembers.map(member => (
@@ -376,13 +422,11 @@ export default function UserManagement() {
                         </div>
                         </>
                     )}
-
-
                   </div>
                 </ScrollArea>
                 <DialogFooter className="pt-4">
                   <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                  <Button type="submit" disabled={isChefEditing && form.getValues('username').toLowerCase() !== 'chef'}>{editingUser ? "Enregistrer Modifications" : "Créer Utilisateur"}</Button>
+                  <Button type="submit" disabled={isEditingChef && editingUser?.username.toLowerCase() !== 'chef'}>{editingUser ? "Enregistrer Modifications" : "Créer Utilisateur"}</Button>
                 </DialogFooter>
               </form>
             </Form>
@@ -396,7 +440,9 @@ export default function UserManagement() {
               <Card key={user.id} className="bg-card/70">
                 <CardHeader className="pb-2 pt-3 px-4">
                   <div className="flex justify-between items-start">
-                    <CardTitle className="text-lg">{user.username}</CardTitle>
+                    <CardTitle className="text-lg">{user.username}
+                      {user.username.toLowerCase() === 'chef' && <span className="text-xs text-primary ml-1">(Admin)</span>}
+                    </CardTitle>
                     <div className="space-x-1">
                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleOpenUserForm(user)}>
                         <Edit2 className="h-4 w-4" />
@@ -423,7 +469,7 @@ export default function UserManagement() {
                   <CardDescription className="text-xs">
                     Mot de passe requis : {user.passwordRequired ? "Oui" : "Non"}
                     {user.passwordRequired && user.simulatedStoredPassword && <span className="ml-2 text-green-600">(Mot de passe défini)</span>}
-                    {user.passwordRequired && !user.simulatedStoredPassword && <span className="ml-2 text-destructive">(Aucun mdp défini !)</span>}
+                    {user.passwordRequired && !user.simulatedStoredPassword && user.username.toLowerCase() !== 'chef' && <span className="ml-2 text-destructive">(Aucun mdp défini !)</span>}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="px-4 pb-3">
@@ -431,10 +477,10 @@ export default function UserManagement() {
                     <div>
                         <p className="text-xs font-medium mb-1">Permissions rubriques :</p>
                         <ul className="list-disc list-inside pl-2 text-xs space-y-0.5">
-                            {RUBRICS.filter(rubric => user.permissions[rubric.id]).map(rubric => (
+                            {RUBRICS.filter(rubric => user.permissions[rubric.id] || user.username.toLowerCase() === 'chef').map(rubric => (
                             <li key={rubric.id}>{rubric.label}</li>
                             ))}
-                            {RUBRICS.filter(rubric => user.permissions[rubric.id]).length === 0 && (
+                            {RUBRICS.filter(rubric => user.permissions[rubric.id]).length === 0 && user.username.toLowerCase() !== 'chef' && (
                                 <li className="italic text-muted-foreground">Aucune permission rubrique.</li>
                             )}
                         </ul>
@@ -466,7 +512,7 @@ export default function UserManagement() {
             ))}
           </div>
         ) : (
-          <p className="text-muted-foreground text-center py-6">Aucun utilisateur défini (autre que 'chef' implicite).</p>
+          <p className="text-muted-foreground text-center py-6">Aucun utilisateur défini (autre que 'Chef' implicite). Cliquez sur "Créer un Nouvel Utilisateur" pour commencer.</p>
         )}
       </CardContent>
     </Card>
