@@ -25,11 +25,12 @@ export interface DailyScheduleEntry {
   plannedTotal: string; // Calculated, e.g., "07:30"
 }
 
-export type ScheduleTemplateType = 'without_saturday' | 'with_saturday';
+export type ScheduleTemplateType = 'without_saturday' | 'with_saturday'; // This type might become less relevant if we allow dynamic creation
 
 export interface WeeklyWorkSchedule {
-  id: ScheduleTemplateType;
-  name: string;
+  id: string; // Unique ID for each template
+  name: string; // User-defined name for the template
+  includesSaturday: boolean; // Defines if the schedule is L-V or L-S
   days: DailyScheduleEntry[];
   weeklyTotal: string; // Calculated, e.g., "37:30"
   applicationNotes?: string; // Notes for when this template typically applies
