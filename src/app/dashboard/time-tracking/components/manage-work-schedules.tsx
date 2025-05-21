@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label"; // Added Label import
 import { Save, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -29,6 +30,7 @@ const createInitialSchedule = (id: ScheduleTemplateType, name: string, days: str
   name,
   days: days.map(createInitialDailyEntry),
   weeklyTotal: "00:00",
+  applicationNotes: "", // Initialize applicationNotes
 });
 
 export default function ManageWorkSchedules() {
@@ -51,8 +53,20 @@ export default function ManageWorkSchedules() {
         const storedTemplates = localStorage.getItem(WORK_SCHEDULE_TEMPLATES_KEY);
         if (storedTemplates) {
           const parsed = JSON.parse(storedTemplates) as { without_saturday?: WeeklyWorkSchedule, with_saturday?: WeeklyWorkSchedule };
-          if (parsed.without_saturday) setScheduleWithoutSaturday(parsed.without_saturday);
-          if (parsed.with_saturday) setScheduleWithSaturday(parsed.with_saturday);
+          if (parsed.without_saturday) {
+            setScheduleWithoutSaturday({ 
+              ...createInitialSchedule('without_saturday', parsed.without_saturday.name || "Semaine type (Lundi-Vendredi)", DAYS_WITHOUT_SATURDAY), 
+              ...parsed.without_saturday,
+              applicationNotes: parsed.without_saturday.applicationNotes || ""
+            });
+          }
+          if (parsed.with_saturday) {
+            setScheduleWithSaturday({
+              ...createInitialSchedule('with_saturday', parsed.with_saturday.name || "Semaine type (Lundi-Samedi)", DAYS_WITH_SATURDAY),
+              ...parsed.with_saturday,
+              applicationNotes: parsed.with_saturday.applicationNotes || ""
+            });
+          }
         }
       } catch (e) {
         console.error("Error loading work schedule templates:", e);
@@ -87,6 +101,14 @@ export default function ManageWorkSchedules() {
       return { ...prevSchedule, days: newDays, weeklyTotal: minutesToTime(totalWeeklyMinutes) };
     });
   };
+
+  const handleApplicationNotesChange = (templateType: ScheduleTemplateType, notes: string) => {
+    const setter = templateType === 'without_saturday' ? setScheduleWithoutSaturday : setScheduleWithSaturday;
+    setter(prevSchedule => ({
+      ...prevSchedule,
+      applicationNotes: notes,
+    }));
+  };
   
   const handleSaveTemplates = () => {
     if (!isClient) return;
@@ -105,6 +127,19 @@ export default function ManageWorkSchedules() {
           <CardDescription>Définissez les horaires pour une semaine type {templateType === 'with_saturday' ? "incluant le samedi" : "sans le samedi"}.</CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-4">
+            <Label htmlFor={`application-notes-${templateType}`} className="text-sm font-medium">
+              Période d'application type (notes) :
+            </Label>
+            <Input
+              id={`application-notes-${templateType}`}
+              type="text"
+              value={schedule.applicationNotes || ""}
+              onChange={(e) => handleApplicationNotesChange(templateType, e.target.value)}
+              placeholder="Ex: Septembre à Mai, sauf jours fériés"
+              className="mt-1"
+            />
+          </div>
           <div className="overflow-x-auto border rounded-md">
             <Table>
               <TableHeader>

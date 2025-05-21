@@ -32,4 +32,5 @@ export interface WeeklyWorkSchedule {
   name: string;
   days: DailyScheduleEntry[];
   weeklyTotal: string; // Calculated, e.g., "37:30"
+  applicationNotes?: string; // Notes for when this template typically applies
 }
