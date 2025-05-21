@@ -32,13 +32,12 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const APP_USERS_STORAGE_KEY = 'app_defined_users_v2';
-const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2'; // Corrected key if it was v1 before
+const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
 
 export const RUBRICS = [
   { id: 'dashboard', label: 'Tableau de Bord Principal' },
   { id: 'inventory', label: 'Gestion Stocks' },
   { id: 'benefits', label: 'Avantages Nature' },
-  // timeTracking is now granular below
   { id: 'taskManagement', label: 'Gestion Tâches' },
   { id: 'costManagement', label: 'Gestion Coûts' },
   { id: 'menuPlanning', label: 'Planification Menus' },
@@ -143,30 +142,63 @@ export default function UserManagement() {
     },
   });
 
+  // Load users and brigade members on initial mount
   useEffect(() => {
+    let loadedUsers: AppUser[] = [];
+    let loadedBrigadeMembers: BrigadeMember[] = [];
     try {
       const storedUsers = localStorage.getItem(APP_USERS_STORAGE_KEY);
-      if (storedUsers) setAppUsers(JSON.parse(storedUsers));
+      if (storedUsers) {
+        loadedUsers = JSON.parse(storedUsers);
+        console.log("Loaded users from localStorage:", loadedUsers);
+      } else {
+        console.log("No users found in localStorage, initializing empty.");
+      }
       
       const storedBrigadeMembers = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
-      // Ensure brigadeMembers is always an array, even if localStorage is empty or invalid
       const parsedBrigadeMembers = storedBrigadeMembers ? JSON.parse(storedBrigadeMembers) : [];
-      setBrigadeMembers(Array.isArray(parsedBrigadeMembers) ? parsedBrigadeMembers : []);
+      loadedBrigadeMembers = Array.isArray(parsedBrigadeMembers) ? parsedBrigadeMembers : [];
+      console.log("Loaded brigade members from localStorage:", loadedBrigadeMembers);
 
     } catch (error) {
-      console.error("Error loading data:", error);
+      console.error("Error loading data in UserManagement:", error);
       toast({ title: "Erreur de chargement des données de configuration utilisateurs", variant: "destructive" });
-      setBrigadeMembers([]); // Initialize to empty array on error
+      // Ensure state is arrays even on error
     }
-  }, [toast]);
+    setAppUsers(loadedUsers);
+    setBrigadeMembers(loadedBrigadeMembers);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Runs once on mount
 
+  // Save appUsers to localStorage whenever it changes
   useEffect(() => {
-    localStorage.setItem(APP_USERS_STORAGE_KEY, JSON.stringify(appUsers));
+    // Avoid saving an empty array on initial load if localStorage was empty or data was cleared due to error.
+    // Only save if appUsers has actual data OR if there was something in localStorage before (meaning we are intentionally clearing it).
+    const wasPreviouslyPopulated = localStorage.getItem(APP_USERS_STORAGE_KEY) !== null;
+    if (appUsers.length > 0 || wasPreviouslyPopulated) {
+      try {
+        console.log("Attempting to save users to localStorage. Count:", appUsers.length, "Data:", JSON.stringify(appUsers));
+        localStorage.setItem(APP_USERS_STORAGE_KEY, JSON.stringify(appUsers));
+        console.log("Users saved to localStorage successfully.");
+      } catch (error) {
+        console.error("Error saving users to localStorage:", error);
+        toast({
+          title: "Erreur de Sauvegarde",
+          description: "Impossible de sauvegarder les utilisateurs dans le stockage local.",
+          variant: "destructive",
+        });
+      }
+    }
+  }, [appUsers, toast]);
+
+  // Update available brigade members based on current appUsers and brigadeMembers
+  useEffect(() => {
     const linkedMemberIds = appUsers.map(user => user.brigadeMemberId).filter(id => !!id);
     setAvailableBrigadeMembers(
       brigadeMembers.filter(member => !linkedMemberIds.includes(member.id))
     );
   }, [appUsers, brigadeMembers]);
+
 
   const handleOpenUserForm = (user?: AppUser) => {
     setEditingUser(user || null);
@@ -213,24 +245,25 @@ export default function UserManagement() {
         type: data.viewableHourSummary_type,
         specificMemberId: data.viewableHourSummary_type === 'specific' ? data.viewableHourSummary_specificMemberId : undefined,
     };
-
+    
     const baseUserData: Omit<AppUser, 'id' | 'username' | 'brigadeMemberId'> = {
       passwordRequired: data.passwordRequired,
       permissions: data.permissions,
       viewableHourSummaryConfig: summaryConfig,
       canViewOwnSchedule: data.canViewOwnSchedule,
-      simulatedStoredPassword: passwordToStore, // This will be undefined if no new password
+      simulatedStoredPassword: passwordToStore,
     };
 
     if (editingUser) {
       const updatedSimulatedPassword = (data.passwordRequired && passwordToStore) 
-        ? passwordToStore // New password was set
-        : (data.passwordRequired ? editingUser.simulatedStoredPassword : undefined); // Keep old if still required, or clear if no longer required
+        ? passwordToStore 
+        : (data.passwordRequired ? editingUser.simulatedStoredPassword : undefined); 
 
       setAppUsers(prev => prev.map(u => u.id === editingUser.id ? { 
-          ...editingUser,
-          ...baseUserData, // Spreads name, role from baseUserData
-          simulatedStoredPassword: updatedSimulatedPassword, // Apply new or existing password logic
+          ...editingUser, 
+          ...baseUserData,
+          simulatedStoredPassword: updatedSimulatedPassword,
+          brigadeMemberId: editingUser.brigadeMemberId, // Ensure this is preserved
         } : u));
       toast({ title: "Utilisateur Modifié", description: `L'utilisateur "${editingUser.username}" a été mis à jour.` });
     } else {
@@ -461,7 +494,7 @@ export default function UserManagement() {
                         </div>
 
                         <div className="pt-4 border-t">
-                          <h3 className="text-md font-semibold mb-2 mt-2 flex items-center gap-1"><CalendarClock className="w-4 h-4"/> Accès Modèles d'Horaires</h3>
+                          <h3 className="text-md font-semibold mb-2 mt-2 flex items-center gap-1"><CalendarClock className="w-4 h-4"/> Accès Modèles Horaires</h3>
                            <FormField control={form.control} name="canViewOwnSchedule" render={({ field }) => (
                                 <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 shadow-sm">
                                     <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={!hasTimeTrackingSchedulesPermission} /></FormControl>
@@ -578,4 +611,3 @@ export default function UserManagement() {
     </Card>
   );
 }
-
