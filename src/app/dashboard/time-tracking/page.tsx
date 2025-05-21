@@ -2,14 +2,14 @@
 "use client";
 
 import Link from 'next/link';
-import { Users, Clock, UserCheck, FileText, CalendarClock } from 'lucide-react'; // Added CalendarClock
+import { Users, Clock, UserCheck, FileText, CalendarClock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ManageBrigadeMembers from './components/manage-brigade-members';
 import RecordTimeLog from './components/record-time-log';
 import MemberSummaryPdf from './components/member-summary-pdf';
-import ManageWorkSchedules from './components/manage-work-schedules'; // New import
-import type { BrigadeMember, TimeEntry } from './types';
+import ManageWorkSchedules from './components/manage-work-schedules';
+import type { BrigadeMember, TimeEntry, WeeklyWorkSchedule } from './types'; // Added WeeklyWorkSchedule
 import React, { useState, useEffect, useCallback } from 'react';
 import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
@@ -21,9 +21,12 @@ const initialBrigadeMembers: BrigadeMember[] = [
   { id: 'member_second_01', name: 'Alexandre Dubois', role: 'Second de Cuisine' },
 ];
 
+const WORK_SCHEDULE_CUSTOM_TEMPLATES_KEY = "time_tracking_custom_schedule_templates_v2"; // Key for schedule templates
+
 export default function TimeTrackingPage() {
   const [brigadeMembers, setBrigadeMembers] = useState<BrigadeMember[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
+  const [scheduleTemplates, setScheduleTemplates] = useState<WeeklyWorkSchedule[]>([]); // State for schedule templates
   const [isClient, setIsClient] = useState(false);
   const { toast } = useToast();
 
@@ -46,15 +49,26 @@ export default function TimeTrackingPage() {
             const parsedEntries = JSON.parse(storedEntries).map((e: TimeEntry) => ({...e, date: new Date(e.date)}));
             setTimeEntries(parsedEntries.sort((a: TimeEntry,b: TimeEntry) => new Date(b.date).getTime() - new Date(a.date).getTime()));
         }
+
+        const storedTemplates = localStorage.getItem(WORK_SCHEDULE_CUSTOM_TEMPLATES_KEY); // Load schedule templates
+        if (storedTemplates) {
+          setScheduleTemplates(JSON.parse(storedTemplates));
+        } else {
+          setScheduleTemplates([]);
+        }
+
       } catch (e) {
         console.error("Error loading data from localStorage (Time Tracking)", e);
         localStorage.removeItem('time_tracking_members');
         localStorage.removeItem('time_tracking_entries');
+        localStorage.removeItem(WORK_SCHEDULE_CUSTOM_TEMPLATES_KEY); // Clear templates on error too
         setBrigadeMembers(initialBrigadeMembers);
         setTimeEntries([]);
+        setScheduleTemplates([]); // Reset templates on error
+        toast({ title: "Erreur de chargement", description: "Données de suivi des heures corrompues, réinitialisation.", variant: "destructive" });
       }
     }
-  }, [isClient]);
+  }, [isClient, toast]);
 
   useEffect(() => {
     if (isClient) {
@@ -68,13 +82,20 @@ export default function TimeTrackingPage() {
     }
   }, [timeEntries, isClient]);
 
+  useEffect(() => { // Effect to save schedule templates
+    if (isClient) {
+      localStorage.setItem(WORK_SCHEDULE_CUSTOM_TEMPLATES_KEY, JSON.stringify(scheduleTemplates));
+    }
+  }, [scheduleTemplates, isClient]);
+
+
   const addMember = useCallback((member: Omit<BrigadeMember, 'id'>) => {
-    setBrigadeMembers(prev => [...prev, { ...member, id: `member_${Date.now()}` }]);
+    setBrigadeMembers(prev => [...prev, { ...member, id: `member_${Date.now()}` }].sort((a,b) => a.name.localeCompare(b.name)));
     toast({ title: "Membre Ajouté", description: `${member.name} a été ajouté à la brigade.` });
   }, [toast]);
 
   const updateMember = useCallback((updatedMember: BrigadeMember) => {
-    setBrigadeMembers(prev => prev.map(m => m.id === updatedMember.id ? updatedMember : m));
+    setBrigadeMembers(prev => prev.map(m => m.id === updatedMember.id ? updatedMember : m).sort((a,b) => a.name.localeCompare(b.name)));
     setTimeEntries(prevEntries => prevEntries.map(entry => 
         entry.memberId === updatedMember.id ? {...entry, memberName: updatedMember.name} : entry
     ));
@@ -155,6 +176,7 @@ export default function TimeTrackingPage() {
             onAddMember={addMember}
             onUpdateMember={updateMember}
             onDeleteMember={deleteMember}
+            scheduleTemplates={scheduleTemplates} // Pass templates here
           />
         </TabsContent>
         <TabsContent value="recording">

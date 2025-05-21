@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import type { BrigadeMember } from '../types';
+import type { BrigadeMember, WeeklyWorkSchedule } from '../types'; // Added WeeklyWorkSchedule
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
@@ -13,6 +13,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // Added Select
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,18 +29,20 @@ import {
 const memberSchema = z.object({
   name: z.string().min(1, "Le nom est requis."),
   role: z.string().min(1, "Le rôle est requis."),
+  assignedScheduleTemplateId: z.string().optional(), // New field for schema
 });
 
 type MemberFormData = z.infer<typeof memberSchema>;
 
 interface ManageBrigadeMembersProps {
   members: BrigadeMember[];
+  scheduleTemplates: WeeklyWorkSchedule[]; // New prop
   onAddMember: (member: Omit<BrigadeMember, 'id'>) => void;
   onUpdateMember: (member: BrigadeMember) => void;
   onDeleteMember: (memberId: string) => void;
 }
 
-export default function ManageBrigadeMembers({ members, onAddMember, onUpdateMember, onDeleteMember }: ManageBrigadeMembersProps) {
+export default function ManageBrigadeMembers({ members, scheduleTemplates, onAddMember, onUpdateMember, onDeleteMember }: ManageBrigadeMembersProps) {
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<BrigadeMember | null>(null);
 
@@ -48,6 +51,7 @@ export default function ManageBrigadeMembers({ members, onAddMember, onUpdateMem
     defaultValues: {
       name: '',
       role: '',
+      assignedScheduleTemplateId: undefined,
     },
   });
 
@@ -57,29 +61,35 @@ export default function ManageBrigadeMembers({ members, onAddMember, onUpdateMem
         form.reset({
           name: editingMember.name,
           role: editingMember.role,
+          assignedScheduleTemplateId: editingMember.assignedScheduleTemplateId || undefined,
         });
       } else {
-        form.reset({ name: '', role: '' });
+        form.reset({ name: '', role: '', assignedScheduleTemplateId: undefined });
       }
     } else {
-      // Dialog has been closed, perform cleanup
       setEditingMember(null);
-      form.reset({ name: '', role: '' });
+      form.reset({ name: '', role: '', assignedScheduleTemplateId: undefined });
     }
   }, [editingMember, form, isFormDialogOpen]);
 
   const onSubmit = (data: MemberFormData) => {
+    const memberDataToSave: Partial<BrigadeMember> = {
+      name: data.name,
+      role: data.role,
+      assignedScheduleTemplateId: data.assignedScheduleTemplateId || undefined,
+    };
+
     if (editingMember) {
-      onUpdateMember({ ...editingMember, ...data });
+      onUpdateMember({ ...editingMember, ...memberDataToSave });
     } else {
-      onAddMember(data);
+      onAddMember(memberDataToSave as Omit<BrigadeMember, 'id'>);
     }
-    setIsFormDialogOpen(false); // This will trigger the useEffect cleanup
+    setIsFormDialogOpen(false);
   };
 
   const handleOpenFormDialog = (member?: BrigadeMember) => {
     setEditingMember(member || null);
-    setIsFormDialogOpen(true); // This will trigger the useEffect to reset the form
+    setIsFormDialogOpen(true);
   };
   
   return (
@@ -90,7 +100,7 @@ export default function ManageBrigadeMembers({ members, onAddMember, onUpdateMem
             <Users className="w-6 h-6 text-primary" />
             Gestion du Personnel de Brigade
           </CardTitle>
-          <CardDescription>Ajoutez, modifiez ou supprimez des membres de votre brigade.</CardDescription>
+          <CardDescription>Ajoutez, modifiez ou supprimez des membres de votre brigade et assignez-leur un modèle d'horaire.</CardDescription>
         </div>
         <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
           <DialogTrigger asChild>
@@ -98,7 +108,7 @@ export default function ManageBrigadeMembers({ members, onAddMember, onUpdateMem
               <PlusCircle className="mr-2 h-4 w-4" /> Ajouter Membre
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
+          <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>{editingMember ? 'Modifier Membre' : 'Ajouter un Nouveau Membre'}</DialogTitle>
             </DialogHeader>
@@ -130,6 +140,36 @@ export default function ManageBrigadeMembers({ members, onAddMember, onUpdateMem
                     </FormItem>
                   )}
                 />
+                <FormField
+                  control={form.control}
+                  name="assignedScheduleTemplateId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Modèle d'Horaire Attribué</FormLabel>
+                      <Select 
+                        onValueChange={field.onChange} 
+                        value={field.value || ""} // Ensure value is not undefined for Select
+                        defaultValue={field.value || ""}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Aucun modèle sélectionné" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="">Aucun modèle</SelectItem>
+                          {scheduleTemplates.map(template => (
+                            <SelectItem key={template.id} value={template.id}>
+                              {template.name} ({template.includesSaturday ? "L-S" : "L-V"}, {template.weeklyTotal}h)
+                            </SelectItem>
+                          ))}
+                          {scheduleTemplates.length === 0 && <SelectItem value="" disabled>Aucun modèle disponible</SelectItem>}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 <DialogFooter>
                   <DialogClose asChild>
                     <Button type="button" variant="outline">Annuler</Button>
@@ -151,44 +191,51 @@ export default function ManageBrigadeMembers({ members, onAddMember, onUpdateMem
                 <TableRow>
                   <TableHead>Nom</TableHead>
                   <TableHead>Rôle</TableHead>
+                  <TableHead>Modèle d'Horaire Attribué</TableHead>
                   <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {members.map((member) => (
-                  <TableRow key={member.id}>
-                    <TableCell className="font-medium">{member.name}</TableCell>
-                    <TableCell>{member.role}</TableCell>
-                    <TableCell className="text-center space-x-2">
-                      <Button variant="outline" size="icon" onClick={() => handleOpenFormDialog(member)}>
-                        <Edit2 className="h-4 w-4" />
-                        <span className="sr-only">Modifier</span>
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                           <Button variant="destructive" size="icon">
-                            <Trash2 className="h-4 w-4" />
-                            <span className="sr-only">Supprimer</span>
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Êtes-vous sûr de vouloir supprimer ce membre ?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Cette action est irréversible. Le membre "{member.name}" sera supprimé.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Annuler</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => onDeleteMember(member.id)}>
-                              Supprimer
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {members.map((member) => {
+                  const assignedTemplate = scheduleTemplates.find(st => st.id === member.assignedScheduleTemplateId);
+                  return (
+                    <TableRow key={member.id}>
+                      <TableCell className="font-medium">{member.name}</TableCell>
+                      <TableCell>{member.role}</TableCell>
+                      <TableCell className="text-xs">
+                        {assignedTemplate ? `${assignedTemplate.name} (${assignedTemplate.weeklyTotal}h)` : <span className="italic text-muted-foreground">Aucun</span>}
+                      </TableCell>
+                      <TableCell className="text-center space-x-2">
+                        <Button variant="outline" size="icon" onClick={() => handleOpenFormDialog(member)}>
+                          <Edit2 className="h-4 w-4" />
+                          <span className="sr-only">Modifier</span>
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                             <Button variant="destructive" size="icon">
+                              <Trash2 className="h-4 w-4" />
+                              <span className="sr-only">Supprimer</span>
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Êtes-vous sûr de vouloir supprimer ce membre ?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Cette action est irréversible. Le membre "{member.name}" sera supprimé.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Annuler</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => onDeleteMember(member.id)}>
+                                Supprimer
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>

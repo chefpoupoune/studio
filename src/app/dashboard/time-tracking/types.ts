@@ -3,6 +3,7 @@ export interface BrigadeMember {
   id: string;
   name: string;
   role: string; // e.g., "Chef de Cuisine", "Second", "Cuisinier", "Plongeur"
+  assignedScheduleTemplateId?: string; // ID of the assigned WeeklyWorkSchedule
 }
 
 export interface TimeEntry {
@@ -24,8 +25,6 @@ export interface DailyScheduleEntry {
   afternoonEndTime: string;
   plannedTotal: string; // Calculated, e.g., "07:30"
 }
-
-export type ScheduleTemplateType = 'without_saturday' | 'with_saturday'; // This type might become less relevant if we allow dynamic creation
 
 export interface WeeklyWorkSchedule {
   id: string; // Unique ID for each template
