@@ -85,8 +85,6 @@ export default function TimeTrackingPage() {
     }
   }, [timeEntries, isClient]);
 
-  // Removed useEffect for saving scheduleTemplates here
-  // as ManageWorkSchedules.tsx is responsible for saving them.
 
   const addMember = useCallback((member: Omit<BrigadeMember, 'id'>) => {
     const newMember = { 
@@ -138,6 +136,14 @@ export default function TimeTrackingPage() {
     setTimeEntries([]);
     toast({ title: "Historique Effacé", description: "Toutes les saisies d'heures ont été supprimées.", variant: "destructive" });
   }, [toast]);
+
+  // Callback to update the global list of schedule templates if ManageWorkSchedules modifies it
+  const handleScheduleTemplatesChange = useCallback((updatedTemplates: WeeklyWorkSchedule[]) => {
+    setScheduleTemplates(updatedTemplates);
+    if (isClient) {
+      localStorage.setItem(WORK_SCHEDULE_CUSTOM_TEMPLATES_KEY, JSON.stringify(updatedTemplates));
+    }
+  }, [isClient]);
 
 
   if (!isClient) {
@@ -202,9 +208,14 @@ export default function TimeTrackingPage() {
           />
         </TabsContent>
         <TabsContent value="schedules">
-          <ManageWorkSchedules />
+          <ManageWorkSchedules 
+            initialScheduleTemplates={scheduleTemplates}
+            brigadeMembers={brigadeMembers}
+            onScheduleTemplatesChange={handleScheduleTemplatesChange}
+          />
         </TabsContent>
       </Tabs>
     </div>
   );
 }
+
