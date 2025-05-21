@@ -16,7 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2'; 
+const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
 const TIME_ENTRIES_STORAGE_KEY = 'time_tracking_entries';
 const WORK_SCHEDULE_CUSTOM_TEMPLATES_KEY = "time_tracking_custom_schedule_templates_v2";
 
@@ -137,7 +137,6 @@ export default function TimeTrackingPage() {
     toast({ title: "Historique Effacé", description: "Toutes les saisies d'heures ont été supprimées.", variant: "destructive" });
   }, [toast]);
 
-  // Callback to update the global list of schedule templates if ManageWorkSchedules modifies it
   const handleScheduleTemplatesChange = useCallback((updatedTemplates: WeeklyWorkSchedule[]) => {
     setScheduleTemplates(updatedTemplates);
     if (isClient) {
