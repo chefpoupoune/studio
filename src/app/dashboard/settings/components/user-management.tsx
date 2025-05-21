@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -18,7 +17,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { BrigadeMember } from '@/app/dashboard/time-tracking/types'; // Import BrigadeMember
+import type { BrigadeMember } from '@/app/dashboard/time-tracking/types';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,14 +30,14 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-const APP_USERS_STORAGE_KEY = 'app_defined_users_v2'; // Versioned key
-const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2'; // Ensure this matches
+const APP_USERS_STORAGE_KEY = 'app_defined_users_v2';
+const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
 
-const RUBRICS = [
+export const RUBRICS = [
   { id: 'dashboard', label: 'Tableau de Bord Principal' },
   { id: 'inventory', label: 'Gestion Stocks' },
   { id: 'benefits', label: 'Avantages Nature' },
-  { id: 'timeTracking', label: 'Suivi Heures' },
+  // { id: 'timeTracking', label: 'Suivi Heures' }, // Replaced by granular permissions
   { id: 'taskManagement', label: 'Gestion Tâches' },
   { id: 'costManagement', label: 'Gestion Coûts' },
   { id: 'menuPlanning', label: 'Planification Menus' },
@@ -46,7 +45,14 @@ const RUBRICS = [
   { id: 'settings', label: 'Paramètres' },
 ] as const;
 
-export type RubricId = typeof RUBRICS[number]['id'];
+export const TIME_TRACKING_SUB_RUBRICS = [
+  { id: 'timeTracking_personnel', label: 'Gestion Personnel (Brigade)' },
+  { id: 'timeTracking_recording', label: 'Saisie & Historique des Heures' },
+  { id: 'timeTracking_summary', label: 'Relevés & PDF Individuels' },
+  { id: 'timeTracking_schedules', label: 'Modèles d\'Horaires Hebdomadaires' },
+] as const;
+
+export type RubricId = typeof RUBRICS[number]['id'] | typeof TIME_TRACKING_SUB_RUBRICS[number]['id'];
 
 export interface ViewableHourSummaryConfig {
   type: 'none' | 'own' | 'all' | 'specific';
@@ -55,8 +61,8 @@ export interface ViewableHourSummaryConfig {
 
 export interface AppUser {
   id: string;
-  username: string; // Will store the brigade member's name
-  brigadeMemberId?: string; // ID of the linked BrigadeMember
+  username: string;
+  brigadeMemberId?: string;
   passwordRequired: boolean;
   simulatedStoredPassword?: string;
   permissions: Partial<Record<RubricId, boolean>>;
@@ -64,17 +70,25 @@ export interface AppUser {
   canViewOwnSchedule?: boolean;
 }
 
+const basePermissionsSchema = RUBRICS.reduce((acc, rubric) => {
+  acc[rubric.id] = z.boolean().default(false);
+  return acc;
+}, {} as Record<typeof RUBRICS[number]['id'], z.ZodBoolean>);
+
+const timeTrackingPermissionsSchema = TIME_TRACKING_SUB_RUBRICS.reduce((acc, subRubric) => {
+  acc[subRubric.id] = z.boolean().default(false);
+  return acc;
+}, {} as Record<typeof TIME_TRACKING_SUB_RUBRICS[number]['id'], z.ZodBoolean>);
+
 const userFormSchema = z.object({
-  selectedBrigadeMemberId: z.string().min(1, "Veuillez sélectionner un membre de la brigade.").optional(), // For new users
+  selectedBrigadeMemberId: z.string().min(1, "Veuillez sélectionner un membre de la brigade.").optional(),
   passwordRequired: z.boolean().default(false),
   newPassword: z.string().optional(),
   confirmNewPassword: z.string().optional(),
-  permissions: z.object(
-    RUBRICS.reduce((acc, rubric) => {
-      acc[rubric.id] = z.boolean().default(false);
-      return acc;
-    }, {} as Record<RubricId, z.ZodBoolean>)
-  ).default({}),
+  permissions: z.object({
+    ...basePermissionsSchema,
+    ...timeTrackingPermissionsSchema,
+  }).default({}),
   viewableHourSummary_type: z.enum(['none', 'own', 'all', 'specific']).default('none'),
   viewableHourSummary_specificMemberId: z.string().optional(),
   canViewOwnSchedule: z.boolean().default(false),
@@ -118,7 +132,10 @@ export default function UserManagement() {
       passwordRequired: false,
       newPassword: '',
       confirmNewPassword: '',
-      permissions: RUBRICS.reduce((acc, rubric) => ({ ...acc, [rubric.id]: false }), {}),
+      permissions: {
+        ...RUBRICS.reduce((acc, rubric) => ({ ...acc, [rubric.id]: false }), {}),
+        ...TIME_TRACKING_SUB_RUBRICS.reduce((acc, subRubric) => ({ ...acc, [subRubric.id]: false }), {}),
+      },
       viewableHourSummary_type: 'none',
       viewableHourSummary_specificMemberId: undefined,
       canViewOwnSchedule: false,
@@ -140,7 +157,6 @@ export default function UserManagement() {
 
   useEffect(() => {
     localStorage.setItem(APP_USERS_STORAGE_KEY, JSON.stringify(appUsers));
-    // Compute available brigade members for new user selection
     const linkedMemberIds = appUsers.map(user => user.brigadeMemberId).filter(id => !!id);
     setAvailableBrigadeMembers(
       brigadeMembers.filter(member => !linkedMemberIds.includes(member.id))
@@ -150,24 +166,30 @@ export default function UserManagement() {
   const handleOpenUserForm = (user?: AppUser) => {
     setEditingUser(user || null);
     if (user) {
+      const currentPermissions = {
+        ...RUBRICS.reduce((acc, rubric) => ({ ...acc, [rubric.id]: !!user.permissions[rubric.id] }), {}),
+        ...TIME_TRACKING_SUB_RUBRICS.reduce((acc, subRubric) => ({ ...acc, [subRubric.id]: !!user.permissions[subRubric.id] }), {}),
+      };
       form.reset({
-        selectedBrigadeMemberId: user.brigadeMemberId, // Will be used for display, not selection
+        selectedBrigadeMemberId: user.brigadeMemberId,
         passwordRequired: user.passwordRequired,
-        newPassword: '', // Always clear password fields on open
+        newPassword: '',
         confirmNewPassword: '',
-        permissions: RUBRICS.reduce((acc, rubric) => ({ ...acc, [rubric.id]: !!user.permissions[rubric.id] }), {}),
+        permissions: currentPermissions,
         viewableHourSummary_type: user.viewableHourSummaryConfig?.type || 'none',
         viewableHourSummary_specificMemberId: user.viewableHourSummaryConfig?.specificMemberId || undefined,
         canViewOwnSchedule: user.canViewOwnSchedule || false,
       });
     } else {
-      // For new user
       form.reset({
         selectedBrigadeMemberId: undefined,
         passwordRequired: false,
         newPassword: '',
         confirmNewPassword: '',
-        permissions: RUBRICS.reduce((acc, rubric) => ({ ...acc, [rubric.id]: false }), {}),
+        permissions: {
+            ...RUBRICS.reduce((acc, rubric) => ({ ...acc, [rubric.id]: false }), {}),
+            ...TIME_TRACKING_SUB_RUBRICS.reduce((acc, subRubric) => ({ ...acc, [subRubric.id]: false }), {}),
+        },
         viewableHourSummary_type: 'none',
         viewableHourSummary_specificMemberId: undefined,
         canViewOwnSchedule: false,
@@ -192,22 +214,21 @@ export default function UserManagement() {
       permissions: data.permissions,
       viewableHourSummaryConfig: summaryConfig,
       canViewOwnSchedule: data.canViewOwnSchedule,
-      simulatedStoredPassword: passwordToStore, // Will be undefined if not set
+      simulatedStoredPassword: passwordToStore,
     };
 
     if (editingUser) {
-      // Only update password if a new one is provided for an existing user who requires one
       const updatedSimulatedPassword = (data.passwordRequired && passwordToStore) 
         ? passwordToStore 
         : (data.passwordRequired ? editingUser.simulatedStoredPassword : undefined);
 
       setAppUsers(prev => prev.map(u => u.id === editingUser.id ? { 
-          ...editingUser, // Keeps existing username and brigadeMemberId
+          ...editingUser,
           ...baseUserData,
           simulatedStoredPassword: updatedSimulatedPassword,
         } : u));
       toast({ title: "Utilisateur Modifié", description: `L'utilisateur "${editingUser.username}" a été mis à jour.` });
-    } else { // New User
+    } else {
       if (!data.selectedBrigadeMemberId) {
         toast({ title: "Erreur", description: "Veuillez sélectionner un membre de la brigade pour le nouvel utilisateur.", variant: "destructive" });
         form.setError("selectedBrigadeMemberId", {message: "Sélection requise."});
@@ -221,7 +242,7 @@ export default function UserManagement() {
 
       const newUser: AppUser = { 
         id: `user_${Date.now()}`, 
-        username: selectedMember.name, // Set username from brigade member's name
+        username: selectedMember.name,
         brigadeMemberId: selectedMember.id,
         ...baseUserData,
         simulatedStoredPassword: (data.passwordRequired && passwordToStore) ? passwordToStore : undefined,
@@ -243,9 +264,10 @@ export default function UserManagement() {
   };
 
   const currentSelectedSummaryType = form.watch('viewableHourSummary_type');
-  const hasTimeTrackingPermission = form.watch('permissions.timeTracking');
-  const isEditingChef = editingUser?.username.toLowerCase() === 'chef';
+  const hasTimeTrackingSubPermission = TIME_TRACKING_SUB_RUBRICS.some(subRubric => form.watch(`permissions.${subRubric.id}`));
+  const hasTimeTrackingSchedulesPermission = form.watch('permissions.timeTracking_schedules');
 
+  const isEditingChef = editingUser?.username.toLowerCase() === 'chef';
 
   return (
     <Card className="shadow-lg">
@@ -363,6 +385,28 @@ export default function UserManagement() {
                             )}
                           />
                         ))}
+                        <div className="pl-4 border-l-2 border-muted-foreground/30 ml-2 mt-2 space-y-2">
+                            <Label className="text-sm font-semibold text-muted-foreground">Permissions détaillées pour "Suivi des Heures":</Label>
+                            {TIME_TRACKING_SUB_RUBRICS.map(subRubric => (
+                                <FormField
+                                key={subRubric.id}
+                                control={form.control}
+                                name={`permissions.${subRubric.id}`}
+                                render={({ field }) => (
+                                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 hover:bg-muted/20">
+                                    <FormControl>
+                                        <Checkbox
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                        disabled={isEditingChef}
+                                        />
+                                    </FormControl>
+                                    <FormLabel className="font-normal text-sm cursor-pointer flex-grow">{subRubric.label}</FormLabel>
+                                    </FormItem>
+                                )}
+                                />
+                            ))}
+                        </div>
                       </div>
                     </div>
 
@@ -373,7 +417,7 @@ export default function UserManagement() {
                           <FormField control={form.control} name="viewableHourSummary_type" render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Type de vue</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value} disabled={!hasTimeTrackingPermission}>
+                                <Select onValueChange={field.onChange} value={field.value} disabled={!hasTimeTrackingSubPermission}>
                                 <FormControl><SelectTrigger><SelectValue placeholder="Choisir type de vue..." /></SelectTrigger></FormControl>
                                 <SelectContent>
                                     <SelectItem value="none">Aucun relevé</SelectItem>
@@ -382,12 +426,12 @@ export default function UserManagement() {
                                     <SelectItem value="specific">Relevé d'un employé spécifique</SelectItem>
                                 </SelectContent>
                                 </Select>
-                                {!hasTimeTrackingPermission && <FormDescription className="text-xs text-orange-600">Nécessite la permission "Suivi Heures".</FormDescription>}
+                                {!hasTimeTrackingSubPermission && <FormDescription className="text-xs text-orange-600">Nécessite au moins une permission "Suivi des Heures".</FormDescription>}
                                 <FormMessage />
                             </FormItem>
                             )}
                           />
-                          {currentSelectedSummaryType === 'specific' && hasTimeTrackingPermission && (
+                          {currentSelectedSummaryType === 'specific' && hasTimeTrackingSubPermission && (
                             <FormField control={form.control} name="viewableHourSummary_specificMemberId" render={({ field }) => (
                                 <FormItem className="mt-2">
                                 <FormLabel>Employé spécifique</FormLabel>
@@ -410,12 +454,12 @@ export default function UserManagement() {
                           <h3 className="text-md font-semibold mb-2 mt-2 flex items-center gap-1"><CalendarClock className="w-4 h-4"/> Accès Modèles d'Horaires</h3>
                            <FormField control={form.control} name="canViewOwnSchedule" render={({ field }) => (
                                 <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 shadow-sm">
-                                    <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={!hasTimeTrackingPermission} /></FormControl>
+                                    <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={!hasTimeTrackingSchedulesPermission} /></FormControl>
                                     <div className="space-y-0.5">
                                         <FormLabel className="font-normal text-sm cursor-pointer">
                                           Autoriser la consultation de ses propres modèles d'horaires attribués
                                         </FormLabel>
-                                        {!hasTimeTrackingPermission && <FormDescription className="text-xs text-orange-600">Nécessite la permission "Suivi Heures".</FormDescription>}
+                                        {!hasTimeTrackingSchedulesPermission && <FormDescription className="text-xs text-orange-600">Nécessite la permission "Modèles d'Horaires Hebdomadaires".</FormDescription>}
                                     </div>
                                 </FormItem>
                             )} />
@@ -480,7 +524,12 @@ export default function UserManagement() {
                             {RUBRICS.filter(rubric => user.permissions[rubric.id] || user.username.toLowerCase() === 'chef').map(rubric => (
                             <li key={rubric.id}>{rubric.label}</li>
                             ))}
-                            {RUBRICS.filter(rubric => user.permissions[rubric.id]).length === 0 && user.username.toLowerCase() !== 'chef' && (
+                            {TIME_TRACKING_SUB_RUBRICS.filter(subRubric => user.permissions[subRubric.id] || user.username.toLowerCase() === 'chef').map(subRubric => (
+                            <li key={subRubric.id} className="ml-4">{subRubric.label} (Sous-rubrique Suivi Heures)</li>
+                            ))}
+                            {RUBRICS.filter(rubric => user.permissions[rubric.id]).length === 0 && 
+                             TIME_TRACKING_SUB_RUBRICS.filter(subRubric => user.permissions[subRubric.id]).length === 0 &&
+                             user.username.toLowerCase() !== 'chef' && (
                                 <li className="italic text-muted-foreground">Aucune permission rubrique.</li>
                             )}
                         </ul>

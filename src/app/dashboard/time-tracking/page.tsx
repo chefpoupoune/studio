@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from 'next/link';
@@ -15,10 +14,13 @@ import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import type { RubricId } from '@/app/dashboard/settings/components/user-management';
 
 const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
 const TIME_ENTRIES_STORAGE_KEY = 'time_tracking_entries';
 const WORK_SCHEDULE_CUSTOM_TEMPLATES_KEY = "time_tracking_custom_schedule_templates_v2";
+const LOGGED_IN_USER_PERMISSIONS_KEY = 'loggedInUserPermissions';
+
 
 const initialBrigadeMembers: BrigadeMember[] = [
   { id: 'member_chef_01', name: 'Moi (Chef)', role: 'Chef de Cuisine', assignedScheduleTemplateIds: [] },
@@ -30,6 +32,7 @@ export default function TimeTrackingPage() {
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [scheduleTemplates, setScheduleTemplates] = useState<WeeklyWorkSchedule[]>([]);
   const [isClient, setIsClient] = useState(false);
+  const [userPermissions, setUserPermissions] = useState<Partial<Record<RubricId, boolean>>>({});
   const { toast } = useToast();
 
   useEffect(() => {
@@ -39,6 +42,11 @@ export default function TimeTrackingPage() {
   useEffect(() => {
     if (isClient) {
       try {
+        const storedPermissionsRaw = localStorage.getItem(LOGGED_IN_USER_PERMISSIONS_KEY);
+        if (storedPermissionsRaw) {
+          setUserPermissions(JSON.parse(storedPermissionsRaw));
+        }
+
         const storedMembersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
         if (storedMembersRaw) {
           const parsedMembers = JSON.parse(storedMembersRaw);
@@ -144,6 +152,12 @@ export default function TimeTrackingPage() {
     }
   }, [isClient]);
 
+  const canViewPersonnel = userPermissions['timeTracking_personnel'];
+  const canViewRecording = userPermissions['timeTracking_recording'];
+  const canViewSummary = userPermissions['timeTracking_summary'];
+  const canViewSchedules = userPermissions['timeTracking_schedules'];
+  const defaultTab = canViewPersonnel ? "personnel" : canViewRecording ? "recording" : canViewSummary ? "summary" : canViewSchedules ? "schedules" : "";
+
 
   if (!isClient) {
     return (
@@ -157,7 +171,7 @@ export default function TimeTrackingPage() {
     <div className="container mx-auto p-4 md:p-6 lg:p-8 min-h-screen">
       <div className="flex flex-col sm:flex-row items-center justify-between mb-6 gap-4">
         <div className="flex items-center space-x-3">
-           <Users className="w-10 h-10 text-accent" />
+           <Clock className="w-10 h-10 text-accent" />
            <h1 className="text-2xl sm:text-3xl md:text-4xl font-serif font-bold text-foreground title-glow text-center sm:text-left">
              Suivi des Heures Brigade
            </h1>
@@ -167,54 +181,77 @@ export default function TimeTrackingPage() {
         <CurrentDate />
       </div>
 
-      <Tabs defaultValue="recording" className="w-full">
+      <Tabs defaultValue={defaultTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-6 bg-card p-1 rounded-lg">
-          <TabsTrigger value="personnel" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-            <Users className="mr-1 sm:mr-2 h-4 w-4" /> Gestion Personnel
-          </TabsTrigger>
-          <TabsTrigger value="recording" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-            <Clock className="mr-1 sm:mr-2 h-4 w-4" /> Saisie & Historique
-          </TabsTrigger>
-          <TabsTrigger value="summary" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-            <FileText className="mr-1 sm:mr-2 h-4 w-4" /> Relevés & PDF
-          </TabsTrigger>
-          <TabsTrigger value="schedules" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-            <CalendarClock className="mr-1 sm:mr-2 h-4 w-4" /> Modèles d'Horaires
-          </TabsTrigger>
+          {canViewPersonnel && (
+            <TabsTrigger value="personnel" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Users className="mr-1 sm:mr-2 h-4 w-4" /> Gestion Personnel
+            </TabsTrigger>
+          )}
+          {canViewRecording && (
+            <TabsTrigger value="recording" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Clock className="mr-1 sm:mr-2 h-4 w-4" /> Saisie & Historique
+            </TabsTrigger>
+          )}
+          {canViewSummary && (
+            <TabsTrigger value="summary" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <FileText className="mr-1 sm:mr-2 h-4 w-4" /> Relevés & PDF
+            </TabsTrigger>
+          )}
+          {canViewSchedules && (
+            <TabsTrigger value="schedules" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <CalendarClock className="mr-1 sm:mr-2 h-4 w-4" /> Modèles d'Horaires
+            </TabsTrigger>
+          )}
         </TabsList>
 
-        <TabsContent value="personnel">
-          <ManageBrigadeMembers
-            members={brigadeMembers}
-            onAddMember={addMember}
-            onUpdateMember={updateMember}
-            onDeleteMember={deleteMember}
-            scheduleTemplates={scheduleTemplates}
-          />
-        </TabsContent>
-        <TabsContent value="recording">
-          <RecordTimeLog
-            members={brigadeMembers}
-            timeEntries={timeEntries}
-            onAddTimeEntry={addTimeEntry}
-            onDeleteAllTimeEntries={handleDeleteAllTimeEntries}
-          />
-        </TabsContent>
-        <TabsContent value="summary">
-          <MemberSummaryPdf 
-            members={brigadeMembers}
-            timeEntries={timeEntries}
-          />
-        </TabsContent>
-        <TabsContent value="schedules">
-          <ManageWorkSchedules 
-            initialScheduleTemplates={scheduleTemplates}
-            brigadeMembers={brigadeMembers}
-            onScheduleTemplatesChange={handleScheduleTemplatesChange}
-          />
-        </TabsContent>
+        {canViewPersonnel && (
+          <TabsContent value="personnel">
+            <ManageBrigadeMembers
+              members={brigadeMembers}
+              onAddMember={addMember}
+              onUpdateMember={updateMember}
+              onDeleteMember={deleteMember}
+              scheduleTemplates={scheduleTemplates}
+            />
+          </TabsContent>
+        )}
+        {canViewRecording && (
+          <TabsContent value="recording">
+            <RecordTimeLog
+              members={brigadeMembers}
+              timeEntries={timeEntries}
+              onAddTimeEntry={addTimeEntry}
+              onDeleteAllTimeEntries={handleDeleteAllTimeEntries}
+            />
+          </TabsContent>
+        )}
+        {canViewSummary && (
+          <TabsContent value="summary">
+            <MemberSummaryPdf 
+              members={brigadeMembers}
+              timeEntries={timeEntries}
+            />
+          </TabsContent>
+        )}
+        {canViewSchedules && (
+          <TabsContent value="schedules">
+            <ManageWorkSchedules 
+              initialScheduleTemplates={scheduleTemplates}
+              brigadeMembers={brigadeMembers}
+              onScheduleTemplatesChange={handleScheduleTemplatesChange}
+            />
+          </TabsContent>
+        )}
+         {!(canViewPersonnel || canViewRecording || canViewSummary || canViewSchedules) && (
+           <TabsContent value="">
+            <Card>
+              <CardHeader><CardTitle>Accès Restreint</CardTitle></CardHeader>
+              <CardContent><p className="text-muted-foreground">Vous n'avez pas la permission d'accéder aux sous-rubriques du Suivi des Heures.</p></CardContent>
+            </Card>
+           </TabsContent>
+         )}
       </Tabs>
     </div>
   );
 }
-

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, FormEvent } from 'react';
@@ -12,17 +11,19 @@ import { User, LockKeyhole, ArrowLeft, Utensils } from 'lucide-react';
 import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
 import type { AppUser, RubricId, ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management';
+import { RUBRICS as BASE_RUBRICS, TIME_TRACKING_SUB_RUBRICS } from '@/app/dashboard/settings/components/user-management';
 
-const APP_USERS_STORAGE_KEY = 'app_defined_users_v2'; // Ensure this matches UserManagement
+
+const APP_USERS_STORAGE_KEY = 'app_defined_users_v2';
 const LOGGED_IN_USER_PERMISSIONS_KEY = 'loggedInUserPermissions';
 const LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY = 'loggedInUserHourViewConfig';
 const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1";
 
 const simulatedHash = (password: string): string => `sim_hashed_${password}_!`;
 
-const RUBRICS_FOR_PERMISSIONS: RubricId[] = [
-  'dashboard', 'inventory', 'benefits', 'timeTracking', 
-  'taskManagement', 'costManagement', 'menuPlanning', 'pms', 'settings'
+const ALL_RUBRIC_IDS: RubricId[] = [
+  ...BASE_RUBRICS.map(r => r.id),
+  ...TIME_TRACKING_SUB_RUBRICS.map(sr => sr.id),
 ];
 
 
@@ -76,20 +77,16 @@ export default function LoginPage() {
       }
 
       const chefUserExists = users.some(u => u.username.toLowerCase() === 'chef');
-      const defaultChefPermissions = RUBRICS_FOR_PERMISSIONS.reduce((acc, rubric) => {
-          acc[rubric] = true;
+      const defaultChefPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => {
+          acc[rubricId] = true;
           return acc;
       }, {} as Partial<Record<RubricId, boolean>>);
       
-      // Add specific 'canViewOwnSchedule' for chef here
-      (defaultChefPermissions as any).canViewOwnSchedule = true;
-
 
       if (!chefUserExists) {
         users.unshift({ 
           id: 'default_chef', 
           username: 'Chef', 
-          // brigadeMemberId: undefined, // Chef is not tied to a brigade member by default
           passwordRequired: true, 
           simulatedStoredPassword: simulatedHash('000'),
           permissions: defaultChefPermissions,
@@ -102,7 +99,7 @@ export default function LoginPage() {
                 return {
                     ...u,
                     passwordRequired: true, 
-                    simulatedStoredPassword: u.simulatedStoredPassword || simulatedHash('000'), // Ensure Chef has a default password if not set
+                    simulatedStoredPassword: u.simulatedStoredPassword || simulatedHash('000'),
                     permissions: defaultChefPermissions, 
                     viewableHourSummaryConfig: { type: 'all' }, 
                     canViewOwnSchedule: true,
@@ -119,24 +116,22 @@ export default function LoginPage() {
     localStorage.setItem('isLoggedIn', 'true');
     localStorage.setItem('loggedInUsername', user.username);
     
-    let permissionsToStore = { ...user.permissions }; // Create a copy to modify
+    let permissionsToStore = { ...user.permissions };
     let hourViewConfigToStore = user.viewableHourSummaryConfig || { type: 'none' as const };
     let canViewOwnScheduleToStore = typeof user.canViewOwnSchedule === 'boolean' ? user.canViewOwnSchedule : false;
 
     if (user.username.toLowerCase() === 'chef') {
-        permissionsToStore = RUBRICS_FOR_PERMISSIONS.reduce((acc, rubric) => {
-            acc[rubric] = true;
+        permissionsToStore = ALL_RUBRIC_IDS.reduce((acc, rubricId) => {
+            acc[rubricId] = true;
             return acc;
         }, {} as Partial<Record<RubricId, boolean>>);
         hourViewConfigToStore = { type: 'all' as const };
         canViewOwnScheduleToStore = true; 
     }
     
-    // Ensure canViewOwnSchedule is explicitly part of the permissions object stored
-    const finalPermissions = { ...permissionsToStore, canViewOwnSchedule: canViewOwnScheduleToStore };
-
-    localStorage.setItem(LOGGED_IN_USER_PERMISSIONS_KEY, JSON.stringify(finalPermissions));
+    localStorage.setItem(LOGGED_IN_USER_PERMISSIONS_KEY, JSON.stringify(permissionsToStore));
     localStorage.setItem(LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY, JSON.stringify(hourViewConfigToStore));
+    // canViewOwnSchedule is part of permissionsToStore, no need to store separately if already included.
     router.push('/dashboard');
   };
 
@@ -210,7 +205,6 @@ export default function LoginPage() {
                       variant="outline"
                       className="w-full justify-start text-left py-3 h-auto"
                       onClick={() => handleUserButtonClick(user)}
-                      // Disable button if password required but not set (except for Chef which has a default)
                       disabled={user.passwordRequired && !user.simulatedStoredPassword && user.username.toLowerCase() !== 'chef'}
                     >
                       <User className="mr-3 h-5 w-5 text-muted-foreground" />
@@ -284,3 +278,4 @@ export default function LoginPage() {
     </main>
   );
 }
+

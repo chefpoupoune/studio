@@ -1,9 +1,8 @@
-
 "use client";
 
 import * as React from "react";
 import Link from "next/link";
-import Image from 'next/image'; // Added for App Logo
+import Image from 'next/image';
 import {
   SidebarProvider,
   Sidebar,
@@ -30,27 +29,29 @@ import {
   BookOpenText,
   ShieldCheck,
   PanelLeft,
-  Home,
   LogOut,
+  Clock // Icon for Time Tracking main link
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import type { RubricId } from '@/app/dashboard/settings/components/user-management'; 
+import { RUBRICS as BASE_RUBRICS, TIME_TRACKING_SUB_RUBRICS } from '@/app/dashboard/settings/components/user-management';
 
-const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1"; // Key for app logo
+
+const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1";
 
 interface NavItem {
   href: string;
   icon: React.ElementType;
   label: string;
-  rubricId: RubricId; 
+  rubricId: RubricId | 'timeTracking_parent'; // Special ID for the parent Time Tracking link
 }
 
 const allNavItems: NavItem[] = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Tableau de Bord", rubricId: "dashboard" },
   { href: "/dashboard/inventory", icon: Archive, label: "Gestion Stocks", rubricId: "inventory" },
   { href: "/dashboard/benefits", icon: FileSpreadsheet, label: "Avantages Nature", rubricId: "benefits" },
-  { href: "/dashboard/time-tracking", icon: Users, label: "Suivi Heures", rubricId: "timeTracking" },
+  { href: "/dashboard/time-tracking", icon: Clock, label: "Suivi Heures", rubricId: "timeTracking_parent" }, // Parent link
   { href: "/dashboard/task-management", icon: ClipboardList, label: "Gestion Tâches", rubricId: "taskManagement" },
   { href: "/dashboard/cost-management", icon: DollarSign, label: "Gestion Coûts", rubricId: "costManagement" },
   { href: "/dashboard/menu-planning", icon: BookOpenText, label: "Planification Menus", rubricId: "menuPlanning" },
@@ -74,13 +75,18 @@ function AppSidebar() {
         setAppLogoUrl(storedAppLogo);
       }
 
-
       if (loggedInUsername?.toLowerCase() === 'chef') {
         setVisibleNavItems(allNavItems);
       } else if (storedPermissionsRaw) {
         try {
           const storedPermissions = JSON.parse(storedPermissionsRaw) as Partial<Record<RubricId, boolean>>;
-          const filteredItems = allNavItems.filter(item => storedPermissions[item.rubricId] === true);
+          const filteredItems = allNavItems.filter(item => {
+            if (item.rubricId === 'timeTracking_parent') {
+              // Show "Suivi Heures" parent if any sub-rubric is permitted
+              return TIME_TRACKING_SUB_RUBRICS.some(sub => storedPermissions[sub.id]);
+            }
+            return storedPermissions[item.rubricId] === true;
+          });
           setVisibleNavItems(filteredItems);
         } catch (e) {
           console.error("Error parsing stored permissions for sidebar", e);
@@ -118,7 +124,7 @@ function AppSidebar() {
             {appLogoUrl ? (
               <Image src={appLogoUrl} alt="App Logo" width={32} height={32} className="rounded-sm object-contain" data-ai-hint="application logo" unoptimized/>
             ) : (
-              <div className="w-8 h-8 bg-muted rounded-sm flex items-center justify-center text-muted-foreground text-xs" data-ai-hint="generic logo placeholder">Logo</div>
+              <div className="w-8 h-8 bg-muted rounded-sm flex items-center justify-center text-muted-foreground text-xs" data-ai-hint="chef hat">Logo</div>
             )}
             <span className="font-semibold text-lg text-sidebar-primary">Gestion par L'excellence</span>
           </Link>
@@ -190,7 +196,7 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const [isClient, setIsClient] = React.useState(false);
   const [authChecked, setAuthChecked] = React.useState(false);
-  const [appLogoUrl, setAppLogoUrl] = React.useState<string | null>(null); // For mobile header logo
+  const [appLogoUrl, setAppLogoUrl] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     setIsClient(true);
@@ -216,7 +222,7 @@ export default function DashboardLayout({
     if (isClient && authChecked) {
       const username = localStorage.getItem('loggedInUsername');
       if (username?.toLowerCase() === 'chef') {
-        return; // Chef has access to everything
+        return; 
       }
 
       const storedPermissionsRaw = localStorage.getItem('loggedInUserPermissions');
@@ -226,15 +232,14 @@ export default function DashboardLayout({
           userPermissions = JSON.parse(storedPermissionsRaw);
         } catch (e) {
           console.error("Error parsing permissions for route access control:", e);
-          router.replace('/dashboard'); // Fallback to dashboard on permission error
+          router.replace('/dashboard'); 
           return;
         }
       }
 
       if (pathname === '/dashboard' || pathname === '/dashboard/') {
         if (!userPermissions.dashboard && username?.toLowerCase() !== 'chef') {
-          // This scenario implies a user is logged in but explicitly has no dashboard permission.
-          // This should ideally be handled by redirecting to login or a "no access" page
+            // This case should ideally not happen if login logic is correct and chef has all perms
         }
         return;
       }
@@ -245,13 +250,19 @@ export default function DashboardLayout({
         const navItem = allNavItems.find(item => item.href === `/dashboard/${currentTopLevelPath}`);
         
         if (navItem) {
-          const requiredPermission = navItem.rubricId;
-          if (!userPermissions[requiredPermission]) {
+          let hasAccessToSection = false;
+          if (navItem.rubricId === 'timeTracking_parent') {
+            hasAccessToSection = TIME_TRACKING_SUB_RUBRICS.some(sub => userPermissions[sub.id]);
+          } else {
+            hasAccessToSection = !!userPermissions[navItem.rubricId];
+          }
+          
+          if (!hasAccessToSection) {
             router.replace('/dashboard'); 
           }
         } else {
            if (currentTopLevelPath) { 
-            // router.replace('/dashboard'); // Optionally redirect unknown dashboard paths
+            // router.replace('/dashboard'); 
            }
         }
       }
@@ -278,7 +289,7 @@ export default function DashboardLayout({
                 {appLogoUrl ? (
                   <Image src={appLogoUrl} alt="App Logo" width={32} height={32} className="rounded-sm object-contain" data-ai-hint="application logo" unoptimized/>
                 ) : (
-                  <div className="w-8 h-8 bg-muted rounded-sm flex items-center justify-center text-muted-foreground text-xs" data-ai-hint="generic logo placeholder">Logo</div>
+                  <div className="w-8 h-8 bg-muted rounded-sm flex items-center justify-center text-muted-foreground text-xs" data-ai-hint="chef hat">Logo</div>
                 )}
                 <span className="font-semibold text-md">Gestion par L'excellence</span>
             </Link>
@@ -289,4 +300,3 @@ export default function DashboardLayout({
     </SidebarProvider>
   );
 }
-
