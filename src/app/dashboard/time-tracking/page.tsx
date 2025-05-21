@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from 'next/link';
@@ -15,6 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import type { RubricId } from '@/app/dashboard/settings/components/user-management';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'; // Added import
 
 const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
 const TIME_ENTRIES_STORAGE_KEY = 'time_tracking_entries';
