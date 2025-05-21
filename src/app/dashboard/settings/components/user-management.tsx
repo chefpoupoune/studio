@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -31,13 +32,13 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const APP_USERS_STORAGE_KEY = 'app_defined_users_v2';
-const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
+const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2'; // Corrected key if it was v1 before
 
 export const RUBRICS = [
   { id: 'dashboard', label: 'Tableau de Bord Principal' },
   { id: 'inventory', label: 'Gestion Stocks' },
   { id: 'benefits', label: 'Avantages Nature' },
-  // { id: 'timeTracking', label: 'Suivi Heures' }, // Replaced by granular permissions
+  // timeTracking is now granular below
   { id: 'taskManagement', label: 'Gestion Tâches' },
   { id: 'costManagement', label: 'Gestion Coûts' },
   { id: 'menuPlanning', label: 'Planification Menus' },
@@ -148,10 +149,14 @@ export default function UserManagement() {
       if (storedUsers) setAppUsers(JSON.parse(storedUsers));
       
       const storedBrigadeMembers = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
-      if (storedBrigadeMembers) setBrigadeMembers(JSON.parse(storedBrigadeMembers));
+      // Ensure brigadeMembers is always an array, even if localStorage is empty or invalid
+      const parsedBrigadeMembers = storedBrigadeMembers ? JSON.parse(storedBrigadeMembers) : [];
+      setBrigadeMembers(Array.isArray(parsedBrigadeMembers) ? parsedBrigadeMembers : []);
+
     } catch (error) {
       console.error("Error loading data:", error);
       toast({ title: "Erreur de chargement des données de configuration utilisateurs", variant: "destructive" });
+      setBrigadeMembers([]); // Initialize to empty array on error
     }
   }, [toast]);
 
@@ -214,18 +219,18 @@ export default function UserManagement() {
       permissions: data.permissions,
       viewableHourSummaryConfig: summaryConfig,
       canViewOwnSchedule: data.canViewOwnSchedule,
-      simulatedStoredPassword: passwordToStore,
+      simulatedStoredPassword: passwordToStore, // This will be undefined if no new password
     };
 
     if (editingUser) {
       const updatedSimulatedPassword = (data.passwordRequired && passwordToStore) 
-        ? passwordToStore 
-        : (data.passwordRequired ? editingUser.simulatedStoredPassword : undefined);
+        ? passwordToStore // New password was set
+        : (data.passwordRequired ? editingUser.simulatedStoredPassword : undefined); // Keep old if still required, or clear if no longer required
 
       setAppUsers(prev => prev.map(u => u.id === editingUser.id ? { 
           ...editingUser,
-          ...baseUserData,
-          simulatedStoredPassword: updatedSimulatedPassword,
+          ...baseUserData, // Spreads name, role from baseUserData
+          simulatedStoredPassword: updatedSimulatedPassword, // Apply new or existing password logic
         } : u));
       toast({ title: "Utilisateur Modifié", description: `L'utilisateur "${editingUser.username}" a été mis à jour.` });
     } else {
@@ -264,10 +269,11 @@ export default function UserManagement() {
   };
 
   const currentSelectedSummaryType = form.watch('viewableHourSummary_type');
+  const hasTimeTrackingOverallPermission = RUBRICS.some(rubric => rubric.id === 'timeTracking' && form.watch(`permissions.${rubric.id}`));
   const hasTimeTrackingSubPermission = TIME_TRACKING_SUB_RUBRICS.some(subRubric => form.watch(`permissions.${subRubric.id}`));
   const hasTimeTrackingSchedulesPermission = form.watch('permissions.timeTracking_schedules');
-
   const isEditingChef = editingUser?.username.toLowerCase() === 'chef';
+
 
   return (
     <Card className="shadow-lg">
@@ -285,8 +291,8 @@ export default function UserManagement() {
           <AlertTriangle className="h-5 w-5 text-destructive" />
           <AlertTitle className="text-destructive font-semibold">Avertissement de Sécurité</AlertTitle>
           <AlertDescription className="text-destructive/90">
-            Ce système est pour la démonstration. Les mots de passe ne sont pas stockés de manière sécurisée.
-            L'utilisateur 'Chef' (mdp: '000' par défaut s'il n'est pas dans cette liste) est le compte administrateur avec tous les accès.
+            Ce système est pour la démonstration. Les mots de passe ne sont pas stockés de manière sécurisée (simulation).
+            L'utilisateur 'Chef' (mdp: '000' par défaut s'il n'est pas défini ici) est le compte administrateur avec tous les accès.
           </AlertDescription>
         </Alert>
 
@@ -313,9 +319,13 @@ export default function UserManagement() {
                       <FormField control={form.control} name="selectedBrigadeMemberId" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Membre de la Brigade à lier</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value || undefined} defaultValue={field.value || undefined}>
+                          <Select 
+                            onValueChange={field.onChange} 
+                            value={field.value || undefined} 
+                            defaultValue={field.value || undefined}
+                          >
                             <FormControl><SelectTrigger>
-                                <SelectValue placeholder="Sélectionner un membre de la brigade..." />
+                                <SelectValue placeholder="Sélectionner un membre..." />
                             </SelectTrigger></FormControl>
                             <SelectContent>
                               {availableBrigadeMembers.length > 0 ? (
@@ -417,7 +427,7 @@ export default function UserManagement() {
                           <FormField control={form.control} name="viewableHourSummary_type" render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Type de vue</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value} disabled={!hasTimeTrackingSubPermission}>
+                                <Select onValueChange={field.onChange} value={field.value} disabled={!hasTimeTrackingSubPermission && !hasTimeTrackingOverallPermission}>
                                 <FormControl><SelectTrigger><SelectValue placeholder="Choisir type de vue..." /></SelectTrigger></FormControl>
                                 <SelectContent>
                                     <SelectItem value="none">Aucun relevé</SelectItem>
@@ -426,12 +436,12 @@ export default function UserManagement() {
                                     <SelectItem value="specific">Relevé d'un employé spécifique</SelectItem>
                                 </SelectContent>
                                 </Select>
-                                {!hasTimeTrackingSubPermission && <FormDescription className="text-xs text-orange-600">Nécessite au moins une permission "Suivi des Heures".</FormDescription>}
+                                {!(hasTimeTrackingSubPermission || hasTimeTrackingOverallPermission) && <FormDescription className="text-xs text-orange-600">Nécessite au moins une permission "Suivi des Heures".</FormDescription>}
                                 <FormMessage />
                             </FormItem>
                             )}
                           />
-                          {currentSelectedSummaryType === 'specific' && hasTimeTrackingSubPermission && (
+                          {currentSelectedSummaryType === 'specific' && (hasTimeTrackingSubPermission || hasTimeTrackingOverallPermission) && (
                             <FormField control={form.control} name="viewableHourSummary_specificMemberId" render={({ field }) => (
                                 <FormItem className="mt-2">
                                 <FormLabel>Employé spécifique</FormLabel>
@@ -511,6 +521,8 @@ export default function UserManagement() {
                     </div>
                   </div>
                   <CardDescription className="text-xs">
+                    Lié à Brigade: {user.brigadeMemberId ? brigadeMembers.find(bm => bm.id === user.brigadeMemberId)?.name || 'Inconnu' : 'Non'}
+                    <br/>
                     Mot de passe requis : {user.passwordRequired ? "Oui" : "Non"}
                     {user.passwordRequired && user.simulatedStoredPassword && <span className="ml-2 text-green-600">(Mot de passe défini)</span>}
                     {user.passwordRequired && !user.simulatedStoredPassword && user.username.toLowerCase() !== 'chef' && <span className="ml-2 text-destructive">(Aucun mdp défini !)</span>}
@@ -525,12 +537,11 @@ export default function UserManagement() {
                             <li key={rubric.id}>{rubric.label}</li>
                             ))}
                             {TIME_TRACKING_SUB_RUBRICS.filter(subRubric => user.permissions[subRubric.id] || user.username.toLowerCase() === 'chef').map(subRubric => (
-                            <li key={subRubric.id} className="ml-4">{subRubric.label} (Sous-rubrique Suivi Heures)</li>
+                            <li key={subRubric.id} className="ml-4">{subRubric.label} (Suivi Heures)</li>
                             ))}
-                            {RUBRICS.filter(rubric => user.permissions[rubric.id]).length === 0 && 
-                             TIME_TRACKING_SUB_RUBRICS.filter(subRubric => user.permissions[subRubric.id]).length === 0 &&
+                            {[...RUBRICS, ...TIME_TRACKING_SUB_RUBRICS].filter(r => user.permissions[r.id]).length === 0 &&
                              user.username.toLowerCase() !== 'chef' && (
-                                <li className="italic text-muted-foreground">Aucune permission rubrique.</li>
+                                <li className="italic text-muted-foreground">Aucune permission.</li>
                             )}
                         </ul>
                     </div>
