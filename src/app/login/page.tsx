@@ -3,7 +3,7 @@
 
 import { useState, useEffect, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image'; // Import Image from next/image
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,7 +16,7 @@ import type { AppUser, RubricId, ViewableHourSummaryConfig } from '@/app/dashboa
 const APP_USERS_STORAGE_KEY = 'app_defined_users_v1';
 const LOGGED_IN_USER_PERMISSIONS_KEY = 'loggedInUserPermissions';
 const LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY = 'loggedInUserHourViewConfig';
-const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1"; // Key for app logo from settings
+const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1";
 
 const simulatedHash = (password: string): string => `sim_hashed_${password}_!`;
 
@@ -32,7 +32,7 @@ export default function LoginPage() {
   const [passwordInput, setPasswordInput] = useState('');
   const [error, setError] = useState('');
   const [isClient, setIsClient] = useState(false);
-  const [appLogoUrl, setAppLogoUrl] = useState<string | null>(null); // State for app logo
+  const [appLogoUrl, setAppLogoUrl] = useState<string | null>(null);
   const router = useRouter();
   const { toast } = useToast();
 
@@ -47,7 +47,6 @@ export default function LoginPage() {
         return;
       }
 
-      // Load app logo
       const storedAppLogo = localStorage.getItem(APP_LOGO_STORAGE_KEY);
       if (storedAppLogo) {
           setAppLogoUrl(storedAppLogo);
@@ -66,6 +65,7 @@ export default function LoginPage() {
               simulatedStoredPassword: u.simulatedStoredPassword,
               permissions: u.permissions || {},
               viewableHourSummaryConfig: u.viewableHourSummaryConfig || { type: 'none' },
+              canViewOwnSchedule: u.canViewOwnSchedule || false,
             }));
           }
         }
@@ -79,6 +79,10 @@ export default function LoginPage() {
           acc[rubric] = true;
           return acc;
       }, {} as Partial<Record<RubricId, boolean>>);
+      
+      // Add specific 'canViewOwnSchedule' for chef here
+      defaultChefPermissions['canViewOwnSchedule' as any] = true;
+
 
       if (!chefUserExists) {
         users.unshift({ 
@@ -88,6 +92,7 @@ export default function LoginPage() {
           simulatedStoredPassword: simulatedHash('000'),
           permissions: defaultChefPermissions,
           viewableHourSummaryConfig: { type: 'all' },
+          canViewOwnSchedule: true,
         });
       } else {
          users = users.map(u => {
@@ -98,6 +103,7 @@ export default function LoginPage() {
                     simulatedStoredPassword: u.simulatedStoredPassword || simulatedHash('000'),
                     permissions: defaultChefPermissions, 
                     viewableHourSummaryConfig: { type: 'all' }, 
+                    canViewOwnSchedule: true,
                 };
             }
             return u;
@@ -119,7 +125,12 @@ export default function LoginPage() {
             acc[rubric] = true;
             return acc;
         }, {} as Partial<Record<RubricId, boolean>>);
+        // Explicitly add canViewOwnSchedule for chef
+        (permissionsToStore as any).canViewOwnSchedule = true;
         hourViewConfigToStore = { type: 'all' as const };
+    } else {
+      // For non-chef users, ensure canViewOwnSchedule is explicitly set from user data
+      (permissionsToStore as any).canViewOwnSchedule = user.canViewOwnSchedule || false;
     }
     localStorage.setItem(LOGGED_IN_USER_PERMISSIONS_KEY, JSON.stringify(permissionsToStore));
     localStorage.setItem(LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY, JSON.stringify(hourViewConfigToStore));
@@ -160,7 +171,7 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4 md:p-8 bg-background">
-      {appLogoUrl && (
+      {appLogoUrl ? (
         <div className="mb-6">
           <Image
             src={appLogoUrl}
@@ -172,23 +183,22 @@ export default function LoginPage() {
             unoptimized 
           />
         </div>
-      )}
-      {!appLogoUrl && ( 
-         <Utensils className="w-16 h-16 text-primary mx-auto mb-4" />
+      ) : (
+         <Utensils className="w-16 h-16 text-primary mx-auto mb-4" data-ai-hint="restaurant utensil" />
       )}
       <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="text-center">
           <h1 className="text-4xl font-serif font-bold text-foreground title-glow">
             Gestion par l'excellence
           </h1>
+          <CardDescription className="text-md pt-2">
+            Bienvenue ! Veuillez sélectionner un utilisateur pour vous connecter.
+          </CardDescription>
           <CurrentDate />
         </CardHeader>
         <CardContent className="mt-2">
           {!selectedUserForPassword ? (
             <>
-              <CardDescription className="text-center mb-4 text-md">
-                Bienvenue ! Veuillez sélectionner un utilisateur pour vous connecter.
-              </CardDescription>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {definedUsers.length > 0 ? (
                   definedUsers.map(user => (
@@ -267,3 +277,4 @@ export default function LoginPage() {
     </main>
   );
 }
+

@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Users, AlertTriangle, PlusCircle, Edit2, Trash2, KeyRound, Eye } from 'lucide-react';
+import { Users, AlertTriangle, PlusCircle, Edit2, Trash2, KeyRound, Eye, CalendarClock } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -60,6 +60,7 @@ export interface AppUser {
   simulatedStoredPassword?: string;
   permissions: Partial<Record<RubricId, boolean>>;
   viewableHourSummaryConfig?: ViewableHourSummaryConfig;
+  canViewOwnSchedule?: boolean; // New permission
 }
 
 const userFormSchema = z.object({
@@ -75,6 +76,7 @@ const userFormSchema = z.object({
   ).default({}),
   viewableHourSummary_type: z.enum(['none', 'own', 'all', 'specific']).default('none'),
   viewableHourSummary_specificMemberId: z.string().optional(),
+  canViewOwnSchedule: z.boolean().default(false), // New schema field
 }).refine(data => {
     if (data.passwordRequired && data.newPassword && data.newPassword.length < 3) {
         return false;
@@ -117,6 +119,7 @@ export default function UserManagement() {
       permissions: RUBRICS.reduce((acc, rubric) => ({ ...acc, [rubric.id]: false }), {}),
       viewableHourSummary_type: 'none',
       viewableHourSummary_specificMemberId: undefined,
+      canViewOwnSchedule: false,
     },
   });
 
@@ -148,9 +151,10 @@ export default function UserManagement() {
         permissions: RUBRICS.reduce((acc, rubric) => ({ ...acc, [rubric.id]: !!user.permissions[rubric.id] }), {}),
         viewableHourSummary_type: user.viewableHourSummaryConfig?.type || 'none',
         viewableHourSummary_specificMemberId: user.viewableHourSummaryConfig?.specificMemberId || undefined,
+        canViewOwnSchedule: user.canViewOwnSchedule || false,
       });
     } else {
-      form.reset({ /* defaultValues already set */ });
+      form.reset(); // Reset to defaultValues defined in useForm
     }
     setIsUserFormOpen(true);
   };
@@ -166,25 +170,38 @@ export default function UserManagement() {
         specificMemberId: data.viewableHourSummary_type === 'specific' ? data.viewableHourSummary_specificMemberId : undefined,
     };
 
+    const userData: Partial<AppUser> = {
+      username: data.username,
+      passwordRequired: data.passwordRequired,
+      permissions: data.permissions,
+      viewableHourSummaryConfig: summaryConfig,
+      canViewOwnSchedule: data.canViewOwnSchedule,
+    };
+    if (data.passwordRequired) {
+      if (passwordToStore) {
+        userData.simulatedStoredPassword = passwordToStore;
+      } else if (editingUser) {
+        userData.simulatedStoredPassword = editingUser.simulatedStoredPassword;
+      }
+    } else {
+      userData.simulatedStoredPassword = undefined;
+    }
+
+
     if (editingUser) {
       setAppUsers(prev => prev.map(u => u.id === editingUser.id ? { 
           ...editingUser, 
-          username: data.username,
-          passwordRequired: data.passwordRequired,
-          simulatedStoredPassword: data.passwordRequired ? (passwordToStore || editingUser.simulatedStoredPassword) : undefined,
-          permissions: data.permissions,
-          viewableHourSummaryConfig: summaryConfig,
+          ...userData
         } : u));
       toast({ title: "Utilisateur Modifié", description: `L'utilisateur "${data.username}" a été mis à jour.` });
     } else {
       const newUser: AppUser = { 
         id: `user_${Date.now()}`, 
-        username: data.username,
+        ...userData,
+        username: data.username, // Ensure username is always set
         passwordRequired: data.passwordRequired,
-        simulatedStoredPassword: passwordToStore,
         permissions: data.permissions,
-        viewableHourSummaryConfig: summaryConfig,
-      };
+      } as AppUser;
       setAppUsers(prev => [...prev, newUser]);
       toast({ title: "Utilisateur Créé", description: `L'utilisateur "${data.username}" a été créé.` });
     }
@@ -202,6 +219,7 @@ export default function UserManagement() {
   };
 
   const currentSelectedSummaryType = form.watch('viewableHourSummary_type');
+  const hasTimeTrackingPermission = form.watch('permissions.timeTracking');
   const isChefEditing = editingUser?.username.toLowerCase() === 'chef';
 
 
@@ -222,7 +240,7 @@ export default function UserManagement() {
           <AlertTitle className="text-destructive font-semibold">Avertissement de Sécurité</AlertTitle>
           <AlertDescription className="text-destructive/90">
             Ce système est pour la démonstration. Les mots de passe ne sont pas stockés de manière sécurisée.
-            L'utilisateur 'chef' (mdp: '000') est le compte administrateur par défaut.
+            L'utilisateur 'chef' (mdp: '000') est le compte administrateur par défaut avec tous les accès.
           </AlertDescription>
         </Alert>
 
@@ -303,12 +321,13 @@ export default function UserManagement() {
                     </div>
 
                     {!isChefEditing && (
+                        <>
                         <div className="pt-4 border-t">
                           <h3 className="text-md font-semibold mb-2 mt-2 flex items-center gap-1"><Eye className="w-4 h-4"/> Vue des Relevés d'Heures</h3>
                           <FormField control={form.control} name="viewableHourSummary_type" render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Type de vue</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value}>
+                                <Select onValueChange={field.onChange} value={field.value} disabled={!hasTimeTrackingPermission}>
                                 <FormControl><SelectTrigger><SelectValue placeholder="Choisir type de vue..." /></SelectTrigger></FormControl>
                                 <SelectContent>
                                     <SelectItem value="none">Aucun relevé</SelectItem>
@@ -317,11 +336,12 @@ export default function UserManagement() {
                                     <SelectItem value="specific">Relevé d'un employé spécifique</SelectItem>
                                 </SelectContent>
                                 </Select>
+                                {!hasTimeTrackingPermission && <FormDescription className="text-xs text-orange-600">Nécessite la permission "Suivi Heures".</FormDescription>}
                                 <FormMessage />
                             </FormItem>
                             )}
                           />
-                          {currentSelectedSummaryType === 'specific' && (
+                          {currentSelectedSummaryType === 'specific' && hasTimeTrackingPermission && (
                             <FormField control={form.control} name="viewableHourSummary_specificMemberId" render={({ field }) => (
                                 <FormItem className="mt-2">
                                 <FormLabel>Employé spécifique</FormLabel>
@@ -339,6 +359,22 @@ export default function UserManagement() {
                             />
                           )}
                         </div>
+
+                        <div className="pt-4 border-t">
+                          <h3 className="text-md font-semibold mb-2 mt-2 flex items-center gap-1"><CalendarClock className="w-4 h-4"/> Accès Modèles d'Horaires</h3>
+                           <FormField control={form.control} name="canViewOwnSchedule" render={({ field }) => (
+                                <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 shadow-sm">
+                                    <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={!hasTimeTrackingPermission} /></FormControl>
+                                    <div className="space-y-0.5">
+                                        <FormLabel className="font-normal text-sm cursor-pointer">
+                                          Autoriser la consultation de ses propres modèles d'horaires attribués
+                                        </FormLabel>
+                                        {!hasTimeTrackingPermission && <FormDescription className="text-xs text-orange-600">Nécessite la permission "Suivi Heures".</FormDescription>}
+                                    </div>
+                                </FormItem>
+                            )} />
+                        </div>
+                        </>
                     )}
 
 
@@ -387,11 +423,11 @@ export default function UserManagement() {
                   <CardDescription className="text-xs">
                     Mot de passe requis : {user.passwordRequired ? "Oui" : "Non"}
                     {user.passwordRequired && user.simulatedStoredPassword && <span className="ml-2 text-green-600">(Mot de passe défini)</span>}
-                    {user.passwordRequired && !user.simulatedStoredPassword && <span className="ml-2 text-destructive">(Aucun mot de passe défini !)</span>}
+                    {user.passwordRequired && !user.simulatedStoredPassword && <span className="ml-2 text-destructive">(Aucun mdp défini !)</span>}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="px-4 pb-3">
-                  <div className="grid grid-cols-2 gap-x-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
                     <div>
                         <p className="text-xs font-medium mb-1">Permissions rubriques :</p>
                         <ul className="list-disc list-inside pl-2 text-xs space-y-0.5">
@@ -416,6 +452,14 @@ export default function UserManagement() {
                             }
                         </p>
                     </div>
+                    <div>
+                        <p className="text-xs font-medium mb-1">Accès Modèles Horaires :</p>
+                         <p className="text-xs">
+                            {user.username.toLowerCase() === 'chef' ? "Consultation & Gestion (Admin)" :
+                             user.canViewOwnSchedule ? "Consultation de ses modèles attribués" : "Aucun accès direct aux modèles"
+                            }
+                        </p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -429,4 +473,3 @@ export default function UserManagement() {
   );
 }
 
-    
