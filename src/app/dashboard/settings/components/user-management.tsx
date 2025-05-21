@@ -38,6 +38,7 @@ export const RUBRICS = [
   { id: 'dashboard', label: 'Tableau de Bord Principal' },
   { id: 'inventory', label: 'Gestion Stocks' },
   { id: 'benefits', label: 'Avantages Nature' },
+  // timeTracking global permission is removed
   { id: 'taskManagement', label: 'Gestion Tâches' },
   { id: 'costManagement', label: 'Gestion Coûts' },
   { id: 'menuPlanning', label: 'Planification Menus' },
@@ -123,6 +124,8 @@ export default function UserManagement() {
   const [availableBrigadeMembers, setAvailableBrigadeMembers] = useState<BrigadeMember[]>([]);
   const [isUserFormOpen, setIsUserFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
+  const [isClient, setIsClient] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false); // New state to track initial data load
   const { toast } = useToast();
 
   const form = useForm<UserFormData>({
@@ -142,62 +145,72 @@ export default function UserManagement() {
     },
   });
 
-  // Load users and brigade members on initial mount
   useEffect(() => {
-    let loadedUsers: AppUser[] = [];
-    let loadedBrigadeMembers: BrigadeMember[] = [];
-    try {
-      const storedUsers = localStorage.getItem(APP_USERS_STORAGE_KEY);
-      if (storedUsers) {
-        loadedUsers = JSON.parse(storedUsers);
-        console.log("Loaded users from localStorage:", loadedUsers);
-      } else {
-        console.log("No users found in localStorage, initializing empty.");
-      }
-      
-      const storedBrigadeMembers = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
-      const parsedBrigadeMembers = storedBrigadeMembers ? JSON.parse(storedBrigadeMembers) : [];
-      loadedBrigadeMembers = Array.isArray(parsedBrigadeMembers) ? parsedBrigadeMembers : [];
-      console.log("Loaded brigade members from localStorage:", loadedBrigadeMembers);
+    setIsClient(true);
+  }, []);
 
-    } catch (error) {
-      console.error("Error loading data in UserManagement:", error);
-      toast({ title: "Erreur de chargement des données de configuration utilisateurs", variant: "destructive" });
-      // Ensure state is arrays even on error
-    }
-    setAppUsers(loadedUsers);
-    setBrigadeMembers(loadedBrigadeMembers);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Runs once on mount
-
-  // Save appUsers to localStorage whenever it changes
+  // Load data from localStorage ONCE on component mount if isClient is true
   useEffect(() => {
-    // Avoid saving an empty array on initial load if localStorage was empty or data was cleared due to error.
-    // Only save if appUsers has actual data OR if there was something in localStorage before (meaning we are intentionally clearing it).
-    const wasPreviouslyPopulated = localStorage.getItem(APP_USERS_STORAGE_KEY) !== null;
-    if (appUsers.length > 0 || wasPreviouslyPopulated) {
+    if (isClient) {
+      console.log("UserManagement: Effect to load initial data triggered.");
+      let loadedUsersFromStorage: AppUser[] = [];
+      let loadedBrigadeMembersFromStorage: BrigadeMember[] = [];
       try {
-        console.log("Attempting to save users to localStorage. Count:", appUsers.length, "Data:", JSON.stringify(appUsers));
-        localStorage.setItem(APP_USERS_STORAGE_KEY, JSON.stringify(appUsers));
-        console.log("Users saved to localStorage successfully.");
+        const storedUsersRaw = localStorage.getItem(APP_USERS_STORAGE_KEY);
+        if (storedUsersRaw) {
+          loadedUsersFromStorage = JSON.parse(storedUsersRaw);
+          console.log(`UserManagement: Successfully parsed ${loadedUsersFromStorage.length} users from localStorage:`, loadedUsersFromStorage);
+        } else {
+          console.log("UserManagement: No users found in localStorage. Initializing appUsers to [].");
+        }
+        setAppUsers(loadedUsersFromStorage);
+
+        const storedBrigadeMembersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
+        if (storedBrigadeMembersRaw) {
+          loadedBrigadeMembersFromStorage = JSON.parse(storedBrigadeMembersRaw);
+          console.log(`UserManagement: Successfully parsed ${loadedBrigadeMembersFromStorage.length} brigade members.`);
+        } else {
+          console.log("UserManagement: No brigade members found in localStorage.");
+        }
+        setBrigadeMembers(loadedBrigadeMembersFromStorage);
+
       } catch (error) {
-        console.error("Error saving users to localStorage:", error);
-        toast({
-          title: "Erreur de Sauvegarde",
-          description: "Impossible de sauvegarder les utilisateurs dans le stockage local.",
-          variant: "destructive",
-        });
+        console.error("UserManagement: Error loading data from localStorage:", error);
+        toast({ title: "Erreur de chargement des données utilisateurs/brigade", variant: "destructive" });
+        setAppUsers([]); // Reset on error to ensure clean state
+        setBrigadeMembers([]);
+      } finally {
+        setDataLoaded(true); // Mark initial data load attempt as complete
+        console.log("UserManagement: Initial data load attempt finished. dataLoaded set to true.");
       }
     }
-  }, [appUsers, toast]);
+  }, [isClient, toast]); // Runs when isClient becomes true
 
-  // Update available brigade members based on current appUsers and brigadeMembers
+  // Save appUsers to localStorage whenever it changes, ONLY if data has been loaded
   useEffect(() => {
-    const linkedMemberIds = appUsers.map(user => user.brigadeMemberId).filter(id => !!id);
-    setAvailableBrigadeMembers(
-      brigadeMembers.filter(member => !linkedMemberIds.includes(member.id))
-    );
-  }, [appUsers, brigadeMembers]);
+    if (isClient && dataLoaded) {
+      console.log(`UserManagement: Effect to save appUsers triggered. appUsers count: ${appUsers.length}. dataLoaded: ${dataLoaded}`);
+      try {
+        localStorage.setItem(APP_USERS_STORAGE_KEY, JSON.stringify(appUsers));
+        console.log("UserManagement: Successfully saved appUsers to localStorage:", appUsers);
+      } catch (error) {
+        console.error("UserManagement: Error saving appUsers to localStorage:", error);
+        toast({ title: "Erreur de sauvegarde des utilisateurs", variant: "destructive" });
+      }
+    } else if (isClient && !dataLoaded) {
+        console.log("UserManagement: Save effect for appUsers skipped because dataLoaded is false.");
+    }
+  }, [appUsers, isClient, dataLoaded, toast]); // Depend on appUsers, isClient, and dataLoaded
+
+  // Update availableBrigadeMembers when appUsers or brigadeMembers change, only if client and data loaded
+  useEffect(() => {
+    if (isClient && dataLoaded) {
+      const linkedMemberIds = appUsers.map(user => user.brigadeMemberId).filter(id => !!id);
+      const updatedAvailableMembers = brigadeMembers.filter(member => !linkedMemberIds.includes(member.id));
+      setAvailableBrigadeMembers(updatedAvailableMembers);
+      console.log("UserManagement: Updated availableBrigadeMembers:", updatedAvailableMembers);
+    }
+  }, [appUsers, brigadeMembers, isClient, dataLoaded]);
 
 
   const handleOpenUserForm = (user?: AppUser) => {
@@ -251,7 +264,7 @@ export default function UserManagement() {
       permissions: data.permissions,
       viewableHourSummaryConfig: summaryConfig,
       canViewOwnSchedule: data.canViewOwnSchedule,
-      simulatedStoredPassword: passwordToStore,
+      simulatedStoredPassword: passwordToStore, // Store the potentially new password
     };
 
     if (editingUser) {
@@ -259,11 +272,12 @@ export default function UserManagement() {
         ? passwordToStore 
         : (data.passwordRequired ? editingUser.simulatedStoredPassword : undefined); 
 
+      console.log("UserManagement: Updating user:", editingUser.username);
       setAppUsers(prev => prev.map(u => u.id === editingUser.id ? { 
           ...editingUser, 
           ...baseUserData,
           simulatedStoredPassword: updatedSimulatedPassword,
-          brigadeMemberId: editingUser.brigadeMemberId, // Ensure this is preserved
+          // brigadeMemberId is part of editingUser, so it's preserved
         } : u));
       toast({ title: "Utilisateur Modifié", description: `L'utilisateur "${editingUser.username}" a été mis à jour.` });
     } else {
@@ -283,8 +297,9 @@ export default function UserManagement() {
         username: selectedMember.name,
         brigadeMemberId: selectedMember.id,
         ...baseUserData,
-        simulatedStoredPassword: (data.passwordRequired && passwordToStore) ? passwordToStore : undefined,
+        // Password is set via baseUserData
       };
+      console.log("UserManagement: Creating new user:", newUser.username);
       setAppUsers(prev => [...prev, newUser]);
       toast({ title: "Utilisateur Créé", description: `L'utilisateur "${newUser.username}" a été créé.` });
     }
@@ -297,13 +312,17 @@ export default function UserManagement() {
       toast({ title: "Suppression Interdite", description: "L'utilisateur 'Chef' ne peut pas être supprimé.", variant: "destructive" });
       return;
     }
+    console.log("UserManagement: Deleting user with ID:", userId);
     setAppUsers(prev => prev.filter(u => u.id !== userId));
-    toast({ title: "Utilisateur Supprimé", description: "L'utilisateur a été supprimé.", variant: "destructive" });
+    toast({ title: "Utilisateur Supprimé", description: `L'utilisateur "${userToDelete?.username || 'ID: '+userId}" a été supprimé.`, variant: "destructive" });
   };
 
   const currentSelectedSummaryType = form.watch('viewableHourSummary_type');
-  const hasTimeTrackingOverallPermission = RUBRICS.some(rubric => rubric.id === 'timeTracking' && form.watch(`permissions.${rubric.id}`));
-  const hasTimeTrackingSubPermission = TIME_TRACKING_SUB_RUBRICS.some(subRubric => form.watch(`permissions.${subRubric.id}`));
+  
+  const hasSomeTimeTrackingPermission = Object.keys(form.watch('permissions') || {})
+  .filter(key => key.startsWith('timeTracking_'))
+  .some(key => (form.watch('permissions') as any)[key] === true);
+
   const hasTimeTrackingSchedulesPermission = form.watch('permissions.timeTracking_schedules');
   const isEditingChef = editingUser?.username.toLowerCase() === 'chef';
 
@@ -325,11 +344,11 @@ export default function UserManagement() {
           <AlertTitle className="text-destructive font-semibold">Avertissement de Sécurité</AlertTitle>
           <AlertDescription className="text-destructive/90">
             Ce système est pour la démonstration. Les mots de passe ne sont pas stockés de manière sécurisée (simulation).
-            L'utilisateur 'Chef' (mdp: '000' par défaut s'il n'est pas défini ici) est le compte administrateur avec tous les accès.
+            L'utilisateur 'Chef' est le compte administrateur avec tous les accès et un mot de passe initial de '000' s'il n'est pas redéfini.
           </AlertDescription>
         </Alert>
 
-        <Button onClick={() => handleOpenUserForm()}>
+        <Button onClick={() => handleOpenUserForm()} disabled={!dataLoaded}>
           <PlusCircle className="mr-2 h-4 w-4" /> Créer un Nouvel Utilisateur
         </Button>
 
@@ -460,7 +479,7 @@ export default function UserManagement() {
                           <FormField control={form.control} name="viewableHourSummary_type" render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Type de vue</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value} disabled={!hasTimeTrackingSubPermission && !hasTimeTrackingOverallPermission}>
+                                <Select onValueChange={field.onChange} value={field.value} disabled={!hasSomeTimeTrackingPermission}>
                                 <FormControl><SelectTrigger><SelectValue placeholder="Choisir type de vue..." /></SelectTrigger></FormControl>
                                 <SelectContent>
                                     <SelectItem value="none">Aucun relevé</SelectItem>
@@ -469,12 +488,12 @@ export default function UserManagement() {
                                     <SelectItem value="specific">Relevé d'un employé spécifique</SelectItem>
                                 </SelectContent>
                                 </Select>
-                                {!(hasTimeTrackingSubPermission || hasTimeTrackingOverallPermission) && <FormDescription className="text-xs text-orange-600">Nécessite au moins une permission "Suivi des Heures".</FormDescription>}
+                                {!hasSomeTimeTrackingPermission && <FormDescription className="text-xs text-orange-600">Nécessite au moins une permission "Suivi des Heures".</FormDescription>}
                                 <FormMessage />
                             </FormItem>
                             )}
                           />
-                          {currentSelectedSummaryType === 'specific' && (hasTimeTrackingSubPermission || hasTimeTrackingOverallPermission) && (
+                          {currentSelectedSummaryType === 'specific' && hasSomeTimeTrackingPermission && (
                             <FormField control={form.control} name="viewableHourSummary_specificMemberId" render={({ field }) => (
                                 <FormItem className="mt-2">
                                 <FormLabel>Employé spécifique</FormLabel>
@@ -520,7 +539,9 @@ export default function UserManagement() {
           </DialogContent>
         </Dialog>
 
-        {appUsers.length > 0 ? (
+        {!dataLoaded ? (
+          <p className="text-muted-foreground text-center py-6">Chargement des utilisateurs...</p>
+        ) : appUsers.length > 0 ? (
           <div className="space-y-3">
             <h3 className="text-md font-semibold">Utilisateurs Définis :</h3>
             {appUsers.map(user => (
@@ -554,7 +575,7 @@ export default function UserManagement() {
                     </div>
                   </div>
                   <CardDescription className="text-xs">
-                    Lié à Brigade: {user.brigadeMemberId ? brigadeMembers.find(bm => bm.id === user.brigadeMemberId)?.name || 'Inconnu' : 'Non'}
+                    Lié à Brigade: {user.brigadeMemberId ? (brigadeMembers.find(bm => bm.id === user.brigadeMemberId)?.name || <span className="text-destructive">Membre introuvable</span>) : 'Non'}
                     <br/>
                     Mot de passe requis : {user.passwordRequired ? "Oui" : "Non"}
                     {user.passwordRequired && user.simulatedStoredPassword && <span className="ml-2 text-green-600">(Mot de passe défini)</span>}
@@ -611,3 +632,5 @@ export default function UserManagement() {
     </Card>
   );
 }
+
+    
