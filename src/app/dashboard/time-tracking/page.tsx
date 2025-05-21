@@ -2,12 +2,13 @@
 "use client";
 
 import Link from 'next/link';
-import { Users, Clock, UserCheck, FileText } from 'lucide-react';
+import { Users, Clock, UserCheck, FileText, CalendarClock } from 'lucide-react'; // Added CalendarClock
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ManageBrigadeMembers from './components/manage-brigade-members';
 import RecordTimeLog from './components/record-time-log';
 import MemberSummaryPdf from './components/member-summary-pdf';
+import ManageWorkSchedules from './components/manage-work-schedules'; // New import
 import type { BrigadeMember, TimeEntry } from './types';
 import React, { useState, useEffect, useCallback } from 'react';
 import { CurrentDate } from '@/components/current-date';
@@ -133,7 +134,7 @@ export default function TimeTrackingPage() {
       </div>
 
       <Tabs defaultValue="recording" className="w-full">
-        <TabsList className="grid w-full grid-cols-1 md:grid-cols-3 mb-6 bg-card p-1 rounded-lg">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-6 bg-card p-1 rounded-lg">
           <TabsTrigger value="personnel" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             <Users className="mr-1 sm:mr-2 h-4 w-4" /> Gestion Personnel
           </TabsTrigger>
@@ -142,6 +143,9 @@ export default function TimeTrackingPage() {
           </TabsTrigger>
           <TabsTrigger value="summary" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             <FileText className="mr-1 sm:mr-2 h-4 w-4" /> Relevés & PDF
+          </TabsTrigger>
+          <TabsTrigger value="schedules" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <CalendarClock className="mr-1 sm:mr-2 h-4 w-4" /> Modèles d'Horaires
           </TabsTrigger>
         </TabsList>
 
@@ -166,6 +170,9 @@ export default function TimeTrackingPage() {
             members={brigadeMembers}
             timeEntries={timeEntries}
           />
+        </TabsContent>
+        <TabsContent value="schedules">
+          <ManageWorkSchedules />
         </TabsContent>
       </Tabs>
     </div>
