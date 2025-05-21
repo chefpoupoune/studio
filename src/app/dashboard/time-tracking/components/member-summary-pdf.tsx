@@ -1,8 +1,9 @@
 
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react'; // Added useEffect
 import type { BrigadeMember, TimeEntry } from '../types';
+import type { RubricId } from '@/app/dashboard/settings/components/user-management'; // New import
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -23,12 +24,43 @@ interface jsPDFWithAutoTable extends jsPDF {
 interface MemberSummaryPdfProps {
   members: BrigadeMember[];
   timeEntries: TimeEntry[];
+  loggedInUsername: string | null;
+  userPermissions: Partial<Record<RubricId, boolean>>;
 }
 
-export default function MemberSummaryPdf({ members, timeEntries }: MemberSummaryPdfProps) {
+export default function MemberSummaryPdf({
+  members,
+  timeEntries,
+  loggedInUsername,
+  userPermissions
+}: MemberSummaryPdfProps) {
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const { toast } = useToast();
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  const isChef = useMemo(() => loggedInUsername?.toLowerCase() === 'chef', [loggedInUsername]);
+  const currentUserBrigadeMember = useMemo(() => {
+    if (isClient && !isChef && loggedInUsername) {
+      return members.find(m => m.name.toLowerCase() === loggedInUsername.toLowerCase());
+    }
+    return null;
+  }, [isClient, isChef, loggedInUsername, members]);
+
+  useEffect(() => {
+    if (!isChef && currentUserBrigadeMember) {
+      setSelectedMemberId(currentUserBrigadeMember.id);
+    } else if (isChef && !selectedMemberId && members.length > 0) {
+      // Chef can see all, so no auto-selection unless desired.
+      // If you want to default to first member for chef: setSelectedMemberId(members[0].id);
+    } else if (!isChef && !currentUserBrigadeMember) {
+      setSelectedMemberId(null); // Non-chef user not linked to a brigade member
+    }
+  }, [isChef, currentUserBrigadeMember, members, selectedMemberId]); // selectedMemberId added to avoid loops if it changes externally
 
   const selectedMember = useMemo(() => {
     return members.find(m => m.id === selectedMemberId) || null;
@@ -78,7 +110,6 @@ export default function MemberSummaryPdf({ members, timeEntries }: MemberSummary
         currentY += 10;
       }
 
-      // Add Logo URL if available
       if (pdfSettings.logoUrl) {
         doc.setFontSize(8); 
         doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY);
@@ -151,6 +182,8 @@ export default function MemberSummaryPdf({ members, timeEntries }: MemberSummary
     }
   };
 
+  const membersForSelect = isChef ? members : (currentUserBrigadeMember ? [currentUserBrigadeMember] : []);
+
   return (
     <Card className="shadow-lg">
       <CardHeader>
@@ -164,16 +197,22 @@ export default function MemberSummaryPdf({ members, timeEntries }: MemberSummary
         <div className="flex flex-col sm:flex-row gap-4 items-end">
           <div className="w-full sm:w-1/2">
             <Label htmlFor="member-select-summary">Membre de la Brigade</Label>
-            <Select onValueChange={setSelectedMemberId} value={selectedMemberId || ""}>
+            <Select 
+                onValueChange={setSelectedMemberId} 
+                value={selectedMemberId || ""}
+                disabled={!isChef && !!currentUserBrigadeMember}
+            >
               <SelectTrigger id="member-select-summary">
-                <SelectValue placeholder="Sélectionner un membre" />
+                <SelectValue placeholder={!isChef && !currentUserBrigadeMember ? "Aucun membre assigné" : "Sélectionner un membre"} />
               </SelectTrigger>
               <SelectContent>
-                {members.length > 0 ? members.map(member => (
+                {membersForSelect.length > 0 ? membersForSelect.map(member => (
                   <SelectItem key={member.id} value={member.id}>
                     {member.name} ({member.role})
                   </SelectItem>
-                )) : <SelectItem value="disabled" disabled>Aucun membre à afficher</SelectItem>}
+                )) : <SelectItem value="disabled" disabled>
+                        {!isChef && !currentUserBrigadeMember ? "Votre compte n'est pas lié à un membre" : "Aucun membre à afficher"}
+                    </SelectItem>}
               </SelectContent>
             </Select>
           </div>
@@ -257,12 +296,13 @@ export default function MemberSummaryPdf({ members, timeEntries }: MemberSummary
             )}
           </div>
         ) : (
-          <p className="text-muted-foreground text-center py-8">Sélectionnez un membre pour afficher son récapitulatif d'heures.</p>
+          <p className="text-muted-foreground text-center py-8">
+            {isChef ? "Sélectionnez un membre pour afficher son récapitulatif d'heures." : 
+             !currentUserBrigadeMember ? "Votre compte utilisateur n'est pas lié à un membre de la brigade." :
+             "Chargement de vos données..."}
+          </p>
         )}
       </CardContent>
     </Card>
   );
 }
-
-
-    

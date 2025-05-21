@@ -1,8 +1,9 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react'; // Added useEffect, useMemo
 import type { BrigadeMember, TimeEntry } from '../types';
+import type { RubricId } from '@/app/dashboard/settings/components/user-management'; // New import
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,12 +11,12 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, CalendarIcon, History, Clock, Trash2 } from 'lucide-react'; // Added Trash2
+import { PlusCircle, CalendarIcon, History, Clock, Trash2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'; // Added CardFooter
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
@@ -32,7 +33,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"; // Added AlertDialog
+} from "@/components/ui/alert-dialog";
 
 const timeEntrySchema = z.object({
   memberId: z.string().min(1, "Veuillez sélectionner un membre."),
@@ -48,11 +49,33 @@ interface RecordTimeLogProps {
   members: BrigadeMember[];
   timeEntries: TimeEntry[];
   onAddTimeEntry: (entry: Omit<TimeEntry, 'id' | 'memberName'>) => void;
-  onDeleteAllTimeEntries: () => void; // New prop
+  onDeleteAllTimeEntries: () => void;
+  loggedInUsername: string | null;
+  userPermissions: Partial<Record<RubricId, boolean>>;
 }
 
-export default function RecordTimeLog({ members, timeEntries, onAddTimeEntry, onDeleteAllTimeEntries }: RecordTimeLogProps) {
+export default function RecordTimeLog({
+  members,
+  timeEntries,
+  onAddTimeEntry,
+  onDeleteAllTimeEntries,
+  loggedInUsername,
+  userPermissions
+}: RecordTimeLogProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  const isChef = useMemo(() => loggedInUsername?.toLowerCase() === 'chef', [loggedInUsername]);
+  const currentUserBrigadeMember = useMemo(() => {
+    if (isClient && !isChef && loggedInUsername) {
+      return members.find(m => m.name.toLowerCase() === loggedInUsername.toLowerCase());
+    }
+    return null;
+  }, [isClient, isChef, loggedInUsername, members]);
   
   const form = useForm<TimeEntryFormData>({
     resolver: zodResolver(timeEntrySchema),
@@ -65,11 +88,52 @@ export default function RecordTimeLog({ members, timeEntries, onAddTimeEntry, on
     },
   });
 
+  useEffect(() => {
+    if (isDialogOpen) { // Reset form when dialog opens
+        if (!isChef && currentUserBrigadeMember) {
+        form.reset({
+            memberId: currentUserBrigadeMember.id,
+            date: new Date(),
+            hours: 1,
+            type: 'addition',
+            reason: '',
+        });
+        } else { // Chef or no specific user context
+        form.reset({
+            memberId: '',
+            date: new Date(),
+            hours: 1,
+            type: 'addition',
+            reason: '',
+        });
+        }
+    }
+  }, [isDialogOpen, isChef, currentUserBrigadeMember, form]);
+
+
   const onSubmit = (data: TimeEntryFormData) => {
+    if (!isChef && currentUserBrigadeMember && data.memberId !== currentUserBrigadeMember.id) {
+        // This case should ideally be prevented by disabling the select, but as a safeguard:
+        alert("Vous ne pouvez enregistrer des heures que pour vous-même.");
+        return;
+    }
     onAddTimeEntry(data);
-    form.reset({ memberId: '', date: new Date(), hours: 1, type: 'addition', reason: '' });
+    // form.reset() will be handled by useEffect on isDialogOpen change
     setIsDialogOpen(false);
   };
+
+  const displayedTimeEntries = useMemo(() => {
+    if (isChef) {
+      return timeEntries.slice(0, 20);
+    }
+    if (currentUserBrigadeMember) {
+      return timeEntries.filter(entry => entry.memberId === currentUserBrigadeMember.id).slice(0, 20);
+    }
+    return [];
+  }, [timeEntries, isChef, currentUserBrigadeMember]);
+
+  const canCurrentUserRecord = !isChef ? !!currentUserBrigadeMember : true;
+
 
   return (
     <div className="space-y-6">
@@ -84,13 +148,16 @@ export default function RecordTimeLog({ members, timeEntries, onAddTimeEntry, on
           </div>
            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="w-full sm:w-auto">
+              <Button className="w-full sm:w-auto" disabled={!canCurrentUserRecord && !isChef}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Nouvelle Entrée d'Heures
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
                 <DialogTitle>Nouvelle Entrée d'Heures</DialogTitle>
+                {!isChef && currentUserBrigadeMember && (
+                    <CardDescription>Saisie pour : {currentUserBrigadeMember.name}</CardDescription>
+                )}
               </DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
@@ -100,18 +167,31 @@ export default function RecordTimeLog({ members, timeEntries, onAddTimeEntry, on
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Membre de la Brigade</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={members.length === 0}>
+                        <Select 
+                            onValueChange={field.onChange} 
+                            value={isChef ? field.value : (currentUserBrigadeMember?.id || '')} 
+                            defaultValue={isChef ? field.value : (currentUserBrigadeMember?.id || '')} 
+                            disabled={!isChef || members.length === 0}
+                        >
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Sélectionner un membre" />
+                              <SelectValue placeholder={!isChef && currentUserBrigadeMember ? currentUserBrigadeMember.name : "Sélectionner un membre"} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {members.length > 0 ? members.map(member => (
-                              <SelectItem key={member.id} value={member.id}>
-                                {member.name} ({member.role})
-                              </SelectItem>
-                            )) : <SelectItem value="disabled" disabled>Aucun membre disponible</SelectItem>}
+                            {isChef ? (
+                                members.length > 0 ? members.map(member => (
+                                <SelectItem key={member.id} value={member.id}>
+                                    {member.name} ({member.role})
+                                </SelectItem>
+                                )) : <SelectItem value="disabled" disabled>Aucun membre disponible</SelectItem>
+                            ) : currentUserBrigadeMember ? (
+                                <SelectItem value={currentUserBrigadeMember.id}>
+                                    {currentUserBrigadeMember.name} ({currentUserBrigadeMember.role})
+                                </SelectItem>
+                            ) : (
+                                <SelectItem value="disabled" disabled>Aucun membre assigné</SelectItem>
+                            )}
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -214,7 +294,7 @@ export default function RecordTimeLog({ members, timeEntries, onAddTimeEntry, on
                   />
                   <DialogFooter>
                      <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                    <Button type="submit" disabled={members.length === 0}>Enregistrer l'Entrée</Button>
+                    <Button type="submit" disabled={members.length === 0 && isChef || !canCurrentUserRecord && !isChef}>Enregistrer l'Entrée</Button>
                   </DialogFooter>
                 </form>
               </Form>
@@ -223,7 +303,9 @@ export default function RecordTimeLog({ members, timeEntries, onAddTimeEntry, on
         </CardHeader>
          <CardContent>
            <p className="text-sm text-muted-foreground">
-            {members.length === 0 ? "Veuillez d'abord ajouter des membres à la brigade dans l'onglet 'Gestion du Personnel'." : "Cliquez sur 'Nouvelle Entrée d'Heures' pour enregistrer les heures."}
+            {members.length === 0 && isChef ? "Veuillez d'abord ajouter des membres à la brigade dans l'onglet 'Gestion du Personnel'." : 
+             !canCurrentUserRecord && !isChef ? "Votre compte utilisateur n'est pas lié à un membre de la brigade. Saisie impossible." :
+             "Cliquez sur 'Nouvelle Entrée d'Heures' pour enregistrer les heures."}
            </p>
         </CardContent>
       </Card>
@@ -234,28 +316,36 @@ export default function RecordTimeLog({ members, timeEntries, onAddTimeEntry, on
             <History className="w-6 h-6 text-primary"/>
             Historique des Saisies d'Heures
           </CardTitle>
-          <CardDescription>Liste des 20 dernières entrées d'heures enregistrées, triées par date.</CardDescription>
+          <CardDescription>
+            {isChef ? "Liste des 20 dernières entrées d'heures enregistrées pour tous les membres, triées par date." : 
+            currentUserBrigadeMember ? `Liste de vos 20 dernières entrées d'heures, triées par date.` :
+            "Aucun historique à afficher."}
+            </CardDescription>
         </CardHeader>
         <CardContent>
-          {timeEntries.length === 0 ? (
-             <p className="text-muted-foreground text-center py-8">Aucune entrée d'heures enregistrée.</p>
+          {displayedTimeEntries.length === 0 ? (
+             <p className="text-muted-foreground text-center py-8">
+                {isChef ? "Aucune entrée d'heures enregistrée pour l'ensemble du personnel." : 
+                 currentUserBrigadeMember ? "Aucune entrée d'heures enregistrée pour vous." :
+                 "Impossible d'afficher l'historique (utilisateur non lié à la brigade)."}
+            </p>
           ) : (
             <div className="overflow-x-auto border rounded-md max-h-[500px]">
               <Table>
                 <TableHeader className="sticky top-0 bg-card">
                   <TableRow>
                     <TableHead>Date</TableHead>
-                    <TableHead>Membre</TableHead>
+                    {isChef && <TableHead>Membre</TableHead>}
                     <TableHead>Type</TableHead>
                     <TableHead className="text-right">Heures</TableHead>
                     <TableHead>Raison</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {timeEntries.slice(0, 20).map((entry) => (
+                  {displayedTimeEntries.map((entry) => (
                     <TableRow key={entry.id}>
                       <TableCell>{format(new Date(entry.date), "dd/MM/yyyy", { locale: fr })}</TableCell>
-                      <TableCell className="font-medium">{entry.memberName}</TableCell>
+                      {isChef && <TableCell className="font-medium">{entry.memberName}</TableCell>}
                       <TableCell>
                         <span className={`px-2 py-1 rounded-full text-xs font-semibold ${entry.type === 'addition' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                           {entry.type === 'addition' ? 'Ajout' : 'Déduction'}
@@ -270,7 +360,7 @@ export default function RecordTimeLog({ members, timeEntries, onAddTimeEntry, on
             </div>
           )}
         </CardContent>
-        {timeEntries.length > 0 && (
+        {isChef && timeEntries.length > 0 && (
           <CardFooter className="flex justify-end pt-4">
             <AlertDialog>
               <AlertDialogTrigger asChild>

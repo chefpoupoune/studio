@@ -229,6 +229,8 @@ export default function TimeTrackingPage() {
               timeEntries={timeEntries}
               onAddTimeEntry={addTimeEntry}
               onDeleteAllTimeEntries={handleDeleteAllTimeEntries}
+              loggedInUsername={loggedInUsername}
+              userPermissions={userPermissions}
             />
           </TabsContent>
         )}
@@ -237,6 +239,8 @@ export default function TimeTrackingPage() {
             <MemberSummaryPdf 
               members={brigadeMembers}
               timeEntries={timeEntries}
+              loggedInUsername={loggedInUsername}
+              userPermissions={userPermissions}
             />
           </TabsContent>
         )}
@@ -263,4 +267,3 @@ export default function TimeTrackingPage() {
     </div>
   );
 }
-
