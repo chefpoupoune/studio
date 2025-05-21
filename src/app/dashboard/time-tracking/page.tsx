@@ -15,7 +15,7 @@ import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import type { RubricId, ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management'; // Added ViewableHourSummaryConfig
+import type { RubricId, ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
@@ -98,12 +98,14 @@ export default function TimeTrackingPage() {
   useEffect(() => {
     if (isClient) {
       localStorage.setItem(BRIGADE_MEMBERS_STORAGE_KEY, JSON.stringify(brigadeMembers));
+      window.dispatchEvent(new CustomEvent('brigadeMembersUpdated'));
     }
   }, [brigadeMembers, isClient]);
 
   useEffect(() => {
     if (isClient) {
       localStorage.setItem(TIME_ENTRIES_STORAGE_KEY, JSON.stringify(timeEntries));
+      window.dispatchEvent(new CustomEvent('timeEntriesUpdated'));
     }
   }, [timeEntries, isClient]);
 
@@ -163,13 +165,16 @@ export default function TimeTrackingPage() {
     setScheduleTemplates(updatedTemplates);
     if (isClient) {
       localStorage.setItem(WORK_SCHEDULE_CUSTOM_TEMPLATES_KEY, JSON.stringify(updatedTemplates));
+      // Note: We don't dispatch a custom event here as schedule template changes
+      // are less likely to require immediate updates in other unrelated dashboard components.
+      // If needed, a 'scheduleTemplatesUpdated' event could be added.
     }
   }, [isClient]);
 
-  const canViewPersonnel = userPermissions['timeTracking_personnel'];
-  const canViewRecording = userPermissions['timeTracking_recording'];
-  const canViewSummary = userPermissions['timeTracking_summary'];
-  const canViewSchedules = userPermissions['timeTracking_schedules'];
+  const canViewPersonnel = userPermissions['timeTracking_personnel'] || loggedInUsername?.toLowerCase() === 'chef';
+  const canViewRecording = userPermissions['timeTracking_recording'] || loggedInUsername?.toLowerCase() === 'chef';
+  const canViewSummary = userPermissions['timeTracking_summary'] || loggedInUsername?.toLowerCase() === 'chef';
+  const canViewSchedules = userPermissions['timeTracking_schedules'] || loggedInUsername?.toLowerCase() === 'chef';
   const defaultTab = canViewPersonnel ? "personnel" : canViewRecording ? "recording" : canViewSummary ? "summary" : canViewSchedules ? "schedules" : "";
 
 
@@ -259,7 +264,7 @@ export default function TimeTrackingPage() {
               brigadeMembers={brigadeMembers}
               onScheduleTemplatesChange={handleScheduleTemplatesChange}
               loggedInUsername={loggedInUsername}
-              viewConfig={loggedInUserHourViewConfig} // Pass the view config
+              viewConfig={loggedInUserHourViewConfig} 
             />
           </TabsContent>
         )}

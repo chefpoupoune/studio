@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Users, User, Clock, AlertCircle, TrendingUp, TrendingDown, Scale } from "lucide-react";
@@ -10,7 +10,7 @@ import type { ViewableHourSummaryConfig } from '@/app/dashboard/settings/compone
 
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 const LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY = 'loggedInUserHourViewConfig';
-const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members';
+const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2'; // Ensure this matches saving key
 const TIME_ENTRIES_STORAGE_KEY = 'time_tracking_entries';
 
 interface MemberHours {
@@ -35,37 +35,73 @@ export default function EmployeeHoursSummary() {
     setIsClient(true);
   }, []);
 
+  const loadData = useCallback(() => {
+    if (!isClient) return;
+    console.log("EmployeeHoursSummary: loadData triggered");
+    setIsLoading(true);
+    try {
+      const username = localStorage.getItem(LOGGED_IN_USERNAME_KEY);
+      setLoggedInUsername(username);
+
+      const configRaw = localStorage.getItem(LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY);
+      setViewConfig(configRaw ? JSON.parse(configRaw) : { type: 'none' });
+
+      const membersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
+      setAllMembers(membersRaw ? JSON.parse(membersRaw) : []);
+
+      const entriesRaw = localStorage.getItem(TIME_ENTRIES_STORAGE_KEY);
+      const parsedEntries = entriesRaw ? JSON.parse(entriesRaw).map((e: any) => ({ ...e, date: new Date(e.date) })) : [];
+      setAllTimeEntries(parsedEntries);
+      console.log("EmployeeHoursSummary: Data re-loaded from localStorage.");
+    } catch (e) {
+      console.error("EmployeeHoursSummary: Error loading data for EmployeeHoursSummary:", e);
+      setViewConfig({ type: 'none' }); // Reset to safe state
+      setAllMembers([]);
+      setAllTimeEntries([]);
+    } finally {
+      setIsLoading(false);
+      console.log("EmployeeHoursSummary: loadData finished, isLoading set to false.");
+    }
+  }, [isClient, setIsLoading, setLoggedInUsername, setViewConfig, setAllMembers, setAllTimeEntries]); // Added missing state setters
+
   useEffect(() => {
     if (isClient) {
-      setIsLoading(true);
-      try {
-        const username = localStorage.getItem(LOGGED_IN_USERNAME_KEY);
-        setLoggedInUsername(username);
+      loadData(); // Initial load
 
-        const configRaw = localStorage.getItem(LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY);
-        setViewConfig(configRaw ? JSON.parse(configRaw) : { type: 'none' });
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          console.log("EmployeeHoursSummary: Tab became visible, re-fetching data.");
+          loadData();
+        }
+      };
+      
+      const handleBrigadeMembersUpdated = () => {
+        console.log("EmployeeHoursSummary: brigadeMembersUpdated event received, re-fetching data.");
+        loadData();
+      };
+      const handleTimeEntriesUpdated = () => {
+        console.log("EmployeeHoursSummary: timeEntriesUpdated event received, re-fetching data.");
+        loadData();
+      };
 
-        const membersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
-        setAllMembers(membersRaw ? JSON.parse(membersRaw) : []);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      window.addEventListener('brigadeMembersUpdated', handleBrigadeMembersUpdated);
+      window.addEventListener('timeEntriesUpdated', handleTimeEntriesUpdated);
 
-        const entriesRaw = localStorage.getItem(TIME_ENTRIES_STORAGE_KEY);
-        const parsedEntries = entriesRaw ? JSON.parse(entriesRaw).map((e: any) => ({ ...e, date: new Date(e.date) })) : [];
-        setAllTimeEntries(parsedEntries);
-
-      } catch (e) {
-        console.error("Error loading data for EmployeeHoursSummary:", e);
-        setViewConfig({ type: 'none' });
-      } finally {
-        setIsLoading(false);
-      }
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        window.removeEventListener('brigadeMembersUpdated', handleBrigadeMembersUpdated);
+        window.removeEventListener('timeEntriesUpdated', handleTimeEntriesUpdated);
+      };
     }
-  }, [isClient]);
+  }, [isClient, loadData]);
 
   useEffect(() => {
     if (isLoading || !viewConfig || !isClient) { 
       setProcessedHours([]);
       return;
     }
+    console.log("EmployeeHoursSummary: Processing hours. Members:", allMembers.length, "Entries:", allTimeEntries.length, "ViewConfig:", viewConfig);
 
     const calculateHoursForMember = (memberId: string): Omit<MemberHours, 'name' | 'role' | 'memberId'> => {
       const memberEntries = allTimeEntries.filter(e => e.memberId === memberId);
@@ -95,6 +131,7 @@ export default function EmployeeHoursSummary() {
       }
     }
     setProcessedHours(hoursToDisplay);
+    console.log("EmployeeHoursSummary: Processed hours:", hoursToDisplay.length > 0 ? hoursToDisplay : "None to display");
   }, [viewConfig, loggedInUsername, allMembers, allTimeEntries, isLoading, isClient]);
 
   if (!isClient || isLoading) {
@@ -153,7 +190,6 @@ export default function EmployeeHoursSummary() {
       );
     }
 
-    // For 'own' or 'specific'
     const singleMemberData = processedHours[0];
     return (
       <div className="space-y-2 text-sm">
@@ -201,7 +237,6 @@ export default function EmployeeHoursSummary() {
     return "Configuration de l'accès aux heures requise.";
   }
 
-
   return (
     <Card className="shadow-lg h-full flex flex-col">
       <CardHeader className="pb-3">
@@ -219,4 +254,3 @@ export default function EmployeeHoursSummary() {
     </Card>
   );
 }
-
