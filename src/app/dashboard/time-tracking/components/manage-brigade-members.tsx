@@ -42,6 +42,8 @@ interface ManageBrigadeMembersProps {
   onDeleteMember: (memberId: string) => void;
 }
 
+const NO_SCHEDULE_SELECTED_VALUE = "_NO_SCHEDULE_";
+
 export default function ManageBrigadeMembers({ members, scheduleTemplates, onAddMember, onUpdateMember, onDeleteMember }: ManageBrigadeMembersProps) {
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<BrigadeMember | null>(null);
@@ -147,9 +149,10 @@ export default function ManageBrigadeMembers({ members, scheduleTemplates, onAdd
                     <FormItem>
                       <FormLabel>Modèle d'Horaire Attribué</FormLabel>
                       <Select 
-                        onValueChange={field.onChange} 
-                        value={field.value || ""} // Ensure value is not undefined for Select
-                        defaultValue={field.value || ""}
+                        onValueChange={(value) => {
+                          field.onChange(value === NO_SCHEDULE_SELECTED_VALUE ? undefined : value);
+                        }} 
+                        value={field.value === undefined || field.value === "" ? NO_SCHEDULE_SELECTED_VALUE : field.value}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -157,13 +160,13 @@ export default function ManageBrigadeMembers({ members, scheduleTemplates, onAdd
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="">Aucun modèle</SelectItem>
+                          <SelectItem value={NO_SCHEDULE_SELECTED_VALUE}>Aucun modèle</SelectItem>
                           {scheduleTemplates.map(template => (
                             <SelectItem key={template.id} value={template.id}>
-                              {template.name} ({template.includesSaturday ? "L-S" : "L-V"}, {template.weeklyTotal}h)
+                              {template.name} ({template.weeklyTotal}h)
                             </SelectItem>
                           ))}
-                          {scheduleTemplates.length === 0 && <SelectItem value="" disabled>Aucun modèle disponible</SelectItem>}
+                          {scheduleTemplates.length === 0 && <SelectItem value={NO_SCHEDULE_SELECTED_VALUE + "_disabled"} disabled>Aucun modèle disponible</SelectItem>}
                         </SelectContent>
                       </Select>
                       <FormMessage />
