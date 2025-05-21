@@ -38,7 +38,6 @@ export const RUBRICS = [
   { id: 'dashboard', label: 'Tableau de Bord Principal' },
   { id: 'inventory', label: 'Gestion Stocks' },
   { id: 'benefits', label: 'Avantages Nature' },
-  // timeTracking global permission is removed
   { id: 'taskManagement', label: 'Gestion Tâches' },
   { id: 'costManagement', label: 'Gestion Coûts' },
   { id: 'menuPlanning', label: 'Planification Menus' },
@@ -68,7 +67,7 @@ export interface AppUser {
   simulatedStoredPassword?: string;
   permissions: Partial<Record<RubricId, boolean>>;
   viewableHourSummaryConfig?: ViewableHourSummaryConfig;
-  canViewOwnSchedule?: boolean;
+  // canViewOwnSchedule is now implicitly handled by viewableHourSummaryConfig.type === 'own'
 }
 
 const basePermissionsSchema = RUBRICS.reduce((acc, rubric) => {
@@ -92,7 +91,7 @@ const userFormSchema = z.object({
   }).default({}),
   viewableHourSummary_type: z.enum(['none', 'own', 'all', 'specific']).default('none'),
   viewableHourSummary_specificMemberId: z.string().optional(),
-  canViewOwnSchedule: z.boolean().default(false),
+  // canViewOwnSchedule removed
 }).refine(data => {
     if (data.passwordRequired && data.newPassword && data.newPassword.length < 3) {
         return false;
@@ -125,7 +124,7 @@ export default function UserManagement() {
   const [isUserFormOpen, setIsUserFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
   const [isClient, setIsClient] = useState(false);
-  const [dataLoaded, setDataLoaded] = useState(false); // New state to track initial data load
+  const [dataLoaded, setDataLoaded] = useState(false);
   const { toast } = useToast();
 
   const form = useForm<UserFormData>({
@@ -141,7 +140,6 @@ export default function UserManagement() {
       },
       viewableHourSummary_type: 'none',
       viewableHourSummary_specificMemberId: undefined,
-      canViewOwnSchedule: false,
     },
   });
 
@@ -149,7 +147,6 @@ export default function UserManagement() {
     setIsClient(true);
   }, []);
 
-  // Load data from localStorage ONCE on component mount if isClient is true
   useEffect(() => {
     if (isClient) {
       console.log("UserManagement: Effect to load initial data triggered.");
@@ -159,56 +156,44 @@ export default function UserManagement() {
         const storedUsersRaw = localStorage.getItem(APP_USERS_STORAGE_KEY);
         if (storedUsersRaw) {
           loadedUsersFromStorage = JSON.parse(storedUsersRaw);
-          console.log(`UserManagement: Successfully parsed ${loadedUsersFromStorage.length} users from localStorage:`, loadedUsersFromStorage);
-        } else {
-          console.log("UserManagement: No users found in localStorage. Initializing appUsers to [].");
         }
         setAppUsers(loadedUsersFromStorage);
 
         const storedBrigadeMembersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
         if (storedBrigadeMembersRaw) {
           loadedBrigadeMembersFromStorage = JSON.parse(storedBrigadeMembersRaw);
-          console.log(`UserManagement: Successfully parsed ${loadedBrigadeMembersFromStorage.length} brigade members.`);
-        } else {
-          console.log("UserManagement: No brigade members found in localStorage.");
         }
         setBrigadeMembers(loadedBrigadeMembersFromStorage);
 
       } catch (error) {
         console.error("UserManagement: Error loading data from localStorage:", error);
         toast({ title: "Erreur de chargement des données utilisateurs/brigade", variant: "destructive" });
-        setAppUsers([]); // Reset on error to ensure clean state
+        setAppUsers([]);
         setBrigadeMembers([]);
       } finally {
-        setDataLoaded(true); // Mark initial data load attempt as complete
+        setDataLoaded(true);
         console.log("UserManagement: Initial data load attempt finished. dataLoaded set to true.");
       }
     }
-  }, [isClient, toast]); // Runs when isClient becomes true
+  }, [isClient, toast]);
 
-  // Save appUsers to localStorage whenever it changes, ONLY if data has been loaded
   useEffect(() => {
     if (isClient && dataLoaded) {
       console.log(`UserManagement: Effect to save appUsers triggered. appUsers count: ${appUsers.length}. dataLoaded: ${dataLoaded}`);
       try {
         localStorage.setItem(APP_USERS_STORAGE_KEY, JSON.stringify(appUsers));
-        console.log("UserManagement: Successfully saved appUsers to localStorage:", appUsers);
       } catch (error) {
         console.error("UserManagement: Error saving appUsers to localStorage:", error);
         toast({ title: "Erreur de sauvegarde des utilisateurs", variant: "destructive" });
       }
-    } else if (isClient && !dataLoaded) {
-        console.log("UserManagement: Save effect for appUsers skipped because dataLoaded is false.");
     }
-  }, [appUsers, isClient, dataLoaded, toast]); // Depend on appUsers, isClient, and dataLoaded
+  }, [appUsers, isClient, dataLoaded, toast]);
 
-  // Update availableBrigadeMembers when appUsers or brigadeMembers change, only if client and data loaded
   useEffect(() => {
     if (isClient && dataLoaded) {
       const linkedMemberIds = appUsers.map(user => user.brigadeMemberId).filter(id => !!id);
       const updatedAvailableMembers = brigadeMembers.filter(member => !linkedMemberIds.includes(member.id));
       setAvailableBrigadeMembers(updatedAvailableMembers);
-      console.log("UserManagement: Updated availableBrigadeMembers:", updatedAvailableMembers);
     }
   }, [appUsers, brigadeMembers, isClient, dataLoaded]);
 
@@ -228,7 +213,6 @@ export default function UserManagement() {
         permissions: currentPermissions,
         viewableHourSummary_type: user.viewableHourSummaryConfig?.type || 'none',
         viewableHourSummary_specificMemberId: user.viewableHourSummaryConfig?.specificMemberId || undefined,
-        canViewOwnSchedule: user.canViewOwnSchedule || false,
       });
     } else {
       form.reset({
@@ -242,7 +226,6 @@ export default function UserManagement() {
         },
         viewableHourSummary_type: 'none',
         viewableHourSummary_specificMemberId: undefined,
-        canViewOwnSchedule: false,
       });
     }
     setIsUserFormOpen(true);
@@ -263,8 +246,7 @@ export default function UserManagement() {
       passwordRequired: data.passwordRequired,
       permissions: data.permissions,
       viewableHourSummaryConfig: summaryConfig,
-      canViewOwnSchedule: data.canViewOwnSchedule,
-      simulatedStoredPassword: passwordToStore, // Store the potentially new password
+      simulatedStoredPassword: passwordToStore,
     };
 
     if (editingUser) {
@@ -272,12 +254,10 @@ export default function UserManagement() {
         ? passwordToStore 
         : (data.passwordRequired ? editingUser.simulatedStoredPassword : undefined); 
 
-      console.log("UserManagement: Updating user:", editingUser.username);
       setAppUsers(prev => prev.map(u => u.id === editingUser.id ? { 
           ...editingUser, 
           ...baseUserData,
           simulatedStoredPassword: updatedSimulatedPassword,
-          // brigadeMemberId is part of editingUser, so it's preserved
         } : u));
       toast({ title: "Utilisateur Modifié", description: `L'utilisateur "${editingUser.username}" a été mis à jour.` });
     } else {
@@ -297,9 +277,7 @@ export default function UserManagement() {
         username: selectedMember.name,
         brigadeMemberId: selectedMember.id,
         ...baseUserData,
-        // Password is set via baseUserData
       };
-      console.log("UserManagement: Creating new user:", newUser.username);
       setAppUsers(prev => [...prev, newUser]);
       toast({ title: "Utilisateur Créé", description: `L'utilisateur "${newUser.username}" a été créé.` });
     }
@@ -312,7 +290,6 @@ export default function UserManagement() {
       toast({ title: "Suppression Interdite", description: "L'utilisateur 'Chef' ne peut pas être supprimé.", variant: "destructive" });
       return;
     }
-    console.log("UserManagement: Deleting user with ID:", userId);
     setAppUsers(prev => prev.filter(u => u.id !== userId));
     toast({ title: "Utilisateur Supprimé", description: `L'utilisateur "${userToDelete?.username || 'ID: '+userId}" a été supprimé.`, variant: "destructive" });
   };
@@ -323,7 +300,6 @@ export default function UserManagement() {
   .filter(key => key.startsWith('timeTracking_'))
   .some(key => (form.watch('permissions') as any)[key] === true);
 
-  const hasTimeTrackingSchedulesPermission = form.watch('permissions.timeTracking_schedules');
   const isEditingChef = editingUser?.username.toLowerCase() === 'chef';
 
 
@@ -475,17 +451,20 @@ export default function UserManagement() {
                     {!isEditingChef && (
                         <>
                         <div className="pt-4 border-t">
-                          <h3 className="text-md font-semibold mb-2 mt-2 flex items-center gap-1"><Eye className="w-4 h-4"/> Vue des Relevés d'Heures</h3>
+                          <h3 className="text-md font-semibold mb-2 mt-2 flex items-center gap-1"><Eye className="w-4 h-4"/> Vue des Relevés d'Heures & Modèles Horaires</h3>
+                           <FormDescription className="text-xs mb-2">
+                            Cette configuration détermine quels relevés d'heures ET quels modèles d'horaires l'utilisateur peut consulter.
+                          </FormDescription>
                           <FormField control={form.control} name="viewableHourSummary_type" render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Type de vue</FormLabel>
                                 <Select onValueChange={field.onChange} value={field.value} disabled={!hasSomeTimeTrackingPermission}>
                                 <FormControl><SelectTrigger><SelectValue placeholder="Choisir type de vue..." /></SelectTrigger></FormControl>
                                 <SelectContent>
-                                    <SelectItem value="none">Aucun relevé</SelectItem>
-                                    <SelectItem value="own">Son propre relevé uniquement</SelectItem>
-                                    <SelectItem value="all">Tous les relevés</SelectItem>
-                                    <SelectItem value="specific">Relevé d'un employé spécifique</SelectItem>
+                                    <SelectItem value="none">Aucun</SelectItem>
+                                    <SelectItem value="own">Ses propres données uniquement</SelectItem>
+                                    <SelectItem value="all">Données de tous les employés</SelectItem>
+                                    <SelectItem value="specific">Données d'un employé spécifique</SelectItem>
                                 </SelectContent>
                                 </Select>
                                 {!hasSomeTimeTrackingPermission && <FormDescription className="text-xs text-orange-600">Nécessite au moins une permission "Suivi des Heures".</FormDescription>}
@@ -496,7 +475,7 @@ export default function UserManagement() {
                           {currentSelectedSummaryType === 'specific' && hasSomeTimeTrackingPermission && (
                             <FormField control={form.control} name="viewableHourSummary_specificMemberId" render={({ field }) => (
                                 <FormItem className="mt-2">
-                                <FormLabel>Employé spécifique</FormLabel>
+                                <FormLabel>Employé spécifique à visualiser</FormLabel>
                                 <Select onValueChange={field.onChange} value={field.value || undefined}>
                                     <FormControl><SelectTrigger><SelectValue placeholder="Choisir un employé..." /></SelectTrigger></FormControl>
                                     <SelectContent>
@@ -510,21 +489,6 @@ export default function UserManagement() {
                             )}
                             />
                           )}
-                        </div>
-
-                        <div className="pt-4 border-t">
-                          <h3 className="text-md font-semibold mb-2 mt-2 flex items-center gap-1"><CalendarClock className="w-4 h-4"/> Accès Modèles Horaires</h3>
-                           <FormField control={form.control} name="canViewOwnSchedule" render={({ field }) => (
-                                <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 shadow-sm">
-                                    <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={!hasTimeTrackingSchedulesPermission} /></FormControl>
-                                    <div className="space-y-0.5">
-                                        <FormLabel className="font-normal text-sm cursor-pointer">
-                                          Autoriser la consultation de ses propres modèles d'horaires attribués
-                                        </FormLabel>
-                                        {!hasTimeTrackingSchedulesPermission && <FormDescription className="text-xs text-orange-600">Nécessite la permission "Modèles d'Horaires Hebdomadaires".</FormDescription>}
-                                    </div>
-                                </FormItem>
-                            )} />
                         </div>
                         </>
                     )}
@@ -600,26 +564,19 @@ export default function UserManagement() {
                         </ul>
                     </div>
                     <div>
-                        <p className="text-xs font-medium mb-1">Vue Relevés d'Heures :</p>
+                        <p className="text-xs font-medium mb-1">Vue Relevés d'Heures & Modèles Horaires :</p>
                         <p className="text-xs">
-                            {user.username.toLowerCase() === 'chef' ? "Tous les relevés (Admin)" :
-                             user.viewableHourSummaryConfig?.type === 'none' ? "Aucun relevé" :
-                             user.viewableHourSummaryConfig?.type === 'own' ? "Son propre relevé uniquement" :
-                             user.viewableHourSummaryConfig?.type === 'all' ? "Tous les relevés" :
+                            {user.username.toLowerCase() === 'chef' ? "Tous (Admin)" :
+                             user.viewableHourSummaryConfig?.type === 'none' ? "Aucun" :
+                             user.viewableHourSummaryConfig?.type === 'own' ? "Ses propres données uniquement" :
+                             user.viewableHourSummaryConfig?.type === 'all' ? "Données de tous les employés" :
                              user.viewableHourSummaryConfig?.type === 'specific' ? 
-                                `Relevé de: ${brigadeMembers.find(bm => bm.id === user.viewableHourSummaryConfig?.specificMemberId)?.name || 'N/D'}` :
+                                `Données de: ${brigadeMembers.find(bm => bm.id === user.viewableHourSummaryConfig?.specificMemberId)?.name || 'N/D'}` :
                                 "Non configuré"
                             }
                         </p>
                     </div>
-                    <div>
-                        <p className="text-xs font-medium mb-1">Accès Modèles Horaires :</p>
-                         <p className="text-xs">
-                            {user.username.toLowerCase() === 'chef' ? "Consultation & Gestion (Admin)" :
-                             user.canViewOwnSchedule ? "Consultation de ses modèles attribués" : "Aucun accès direct aux modèles"
-                            }
-                        </p>
-                    </div>
+
                   </div>
                 </CardContent>
               </Card>
@@ -632,5 +589,3 @@ export default function UserManagement() {
     </Card>
   );
 }
-
-    

@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFoo
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Save, PlusCircle, Edit2, Trash2, Filter, Lock } from "lucide-react"; // Added Lock
+import { Save, PlusCircle, Edit2, Trash2, Filter, Lock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import type { RubricId } from '@/app/dashboard/settings/components/user-management';
+import type { RubricId, ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management'; // Added ViewableHourSummaryConfig
 
 const DAYS_OF_WEEK: string[] = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI", "DIMANCHE"];
 
@@ -54,7 +54,7 @@ interface ManageWorkSchedulesProps {
   brigadeMembers: BrigadeMember[];
   onScheduleTemplatesChange: (updatedTemplates: WeeklyWorkSchedule[]) => void;
   loggedInUsername: string | null;
-  userPermissions: Partial<Record<RubricId, boolean>>;
+  viewConfig: ViewableHourSummaryConfig | null; // Changed from userPermissions
 }
 
 const ALL_MODELS_FILTER_VALUE = "_ALL_MODELS_";
@@ -64,7 +64,7 @@ export default function ManageWorkSchedules({
   brigadeMembers, 
   onScheduleTemplatesChange,
   loggedInUsername,
-  userPermissions
+  viewConfig // Changed from userPermissions
 }: ManageWorkSchedulesProps) {
   const [scheduleTemplates, setScheduleTemplates] = useState<WeeklyWorkSchedule[]>(initialScheduleTemplates);
   const [isTemplateFormOpen, setIsTemplateFormOpen] = useState(false);
@@ -82,8 +82,7 @@ export default function ManageWorkSchedules({
   }, [initialScheduleTemplates]);
 
   const isChef = useMemo(() => loggedInUsername?.toLowerCase() === 'chef', [loggedInUsername]);
-  const canUserViewOwnSchedules = useMemo(() => userPermissions?.canViewOwnSchedule === true, [userPermissions]);
-  const canManageTemplates = useMemo(() => isChef, [isChef]); // Only Chef can manage templates globally
+  const canManageTemplates = useMemo(() => isChef, [isChef]);
 
   const updateScheduleEntry = (
     templateId: string,
@@ -91,7 +90,7 @@ export default function ManageWorkSchedules({
     field: keyof Omit<DailyScheduleEntry, 'dayName' | 'plannedTotal'>,
     value: string
   ) => {
-    if (!canManageTemplates) return; // Prevent updates if not allowed
+    if (!canManageTemplates) return;
     setScheduleTemplates(prevTemplates =>
       prevTemplates.map(template => {
         if (template.id === templateId) {
@@ -117,7 +116,7 @@ export default function ManageWorkSchedules({
   };
 
   const handleApplicationNotesChange = (templateId: string, notes: string) => {
-    if (!canManageTemplates) return; // Prevent updates if not allowed
+    if (!canManageTemplates) return;
     setScheduleTemplates(prevTemplates =>
       prevTemplates.map(template =>
         template.id === templateId ? { ...template, applicationNotes: notes } : template
@@ -206,46 +205,55 @@ export default function ManageWorkSchedules({
   };
 
   const displayedScheduleTemplates = useMemo(() => {
-    if (isChef) {
-      if (selectedMemberIdForFilter === ALL_MODELS_FILTER_VALUE || !selectedMemberIdForFilter) {
-        return scheduleTemplates;
-      }
-      const selectedMember = brigadeMembers.find(m => m.id === selectedMemberIdForFilter);
-      if (!selectedMember || !selectedMember.assignedScheduleTemplateIds || selectedMember.assignedScheduleTemplateIds.length === 0) {
-        return [];
-      }
-      return scheduleTemplates.filter(st => selectedMember.assignedScheduleTemplateIds?.includes(st.id));
-    } else if (canUserViewOwnSchedules) {
-      const currentUserBrigadeMember = brigadeMembers.find(bm => bm.name.toLowerCase() === loggedInUsername?.toLowerCase());
-      if (!currentUserBrigadeMember || !currentUserBrigadeMember.assignedScheduleTemplateIds || currentUserBrigadeMember.assignedScheduleTemplateIds.length === 0) {
-        return [];
-      }
-      return scheduleTemplates.filter(st => currentUserBrigadeMember.assignedScheduleTemplateIds?.includes(st.id));
+    console.log("ManageWorkSchedules: Calculating displayedScheduleTemplates. IsChef:", isChef, "ViewConfig:", viewConfig);
+    if (isChef || viewConfig?.type === 'all') {
+        if (selectedMemberIdForFilter === ALL_MODELS_FILTER_VALUE || !selectedMemberIdForFilter) {
+            console.log("ManageWorkSchedules: Chef/All view, no filter. Showing all templates:", scheduleTemplates.length);
+            return scheduleTemplates;
+        }
+        const selectedMember = brigadeMembers.find(m => m.id === selectedMemberIdForFilter);
+        if (!selectedMember || !selectedMember.assignedScheduleTemplateIds || selectedMember.assignedScheduleTemplateIds.length === 0) {
+            console.log("ManageWorkSchedules: Chef/All view, specific member filter but no assigned schedules for:", selectedMember?.name);
+            return [];
+        }
+        const filtered = scheduleTemplates.filter(st => selectedMember.assignedScheduleTemplateIds?.includes(st.id));
+        console.log("ManageWorkSchedules: Chef/All view, filtered by member", selectedMember.name, "Found templates:", filtered.length);
+        return filtered;
+    } else if (viewConfig?.type === 'own' && loggedInUsername) {
+        const currentUserBrigadeMember = brigadeMembers.find(bm => bm.name.toLowerCase() === loggedInUsername.toLowerCase());
+        if (!currentUserBrigadeMember || !currentUserBrigadeMember.assignedScheduleTemplateIds || currentUserBrigadeMember.assignedScheduleTemplateIds.length === 0) {
+            console.log("ManageWorkSchedules: Own view, no assigned schedules for:", loggedInUsername);
+            return [];
+        }
+        const filtered = scheduleTemplates.filter(st => currentUserBrigadeMember.assignedScheduleTemplateIds?.includes(st.id));
+        console.log("ManageWorkSchedules: Own view for", loggedInUsername, "Found templates:", filtered.length);
+        return filtered;
+    } else if (viewConfig?.type === 'specific' && viewConfig.specificMemberId) {
+        const targetMember = brigadeMembers.find(m => m.id === viewConfig.specificMemberId);
+        if (!targetMember || !targetMember.assignedScheduleTemplateIds || targetMember.assignedScheduleTemplateIds.length === 0) {
+            console.log("ManageWorkSchedules: Specific view, no assigned schedules for target member:", targetMember?.name);
+            return [];
+        }
+        const filtered = scheduleTemplates.filter(st => targetMember.assignedScheduleTemplateIds?.includes(st.id));
+        console.log("ManageWorkSchedules: Specific view for target", targetMember.name, "Found templates:", filtered.length);
+        return filtered;
     }
-    return []; // Default to no templates if no permissions
-  }, [scheduleTemplates, selectedMemberIdForFilter, brigadeMembers, isChef, canUserViewOwnSchedules, loggedInUsername]);
+    console.log("ManageWorkSchedules: No specific view condition met, returning empty list.");
+    return [];
+  }, [scheduleTemplates, selectedMemberIdForFilter, brigadeMembers, isChef, loggedInUsername, viewConfig]);
 
 
   if (!isClient) {
     return <div className="flex justify-center items-center p-8">Chargement des modèles d'horaires...</div>;
   }
   
-  if (!isChef && !canUserViewOwnSchedules && userPermissions?.timeTracking_schedules) {
-     return (
-        <div className="text-muted-foreground text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
-            <Lock className="mx-auto h-12 w-12 text-muted-foreground" />
-            <p className="mt-2 text-sm">
-                Vous n'avez pas la permission de consulter les détails des modèles d'horaires.
-            </p>
-            <p className="text-xs text-muted-foreground/70">Contactez un administrateur pour obtenir les droits.</p>
-        </div>
-    );
-  }
+  const showFilter = isChef || viewConfig?.type === 'all';
+
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        {isChef && (
+        {showFilter && (
           <div className="w-full sm:w-auto sm:flex-grow">
             <Label htmlFor="member-filter-select" className="text-sm">Filtrer les modèles par employé assigné :</Label>
             <Select value={selectedMemberIdForFilter} onValueChange={setSelectedMemberIdForFilter}>
@@ -307,16 +315,20 @@ export default function ManageWorkSchedules({
 
       {scheduleTemplates.length === 0 && canManageTemplates ? (
         <p className="text-muted-foreground text-center py-6">Aucun modèle d'horaire créé. Cliquez sur "Ajouter un Modèle" pour commencer.</p>
-      ) : displayedScheduleTemplates.length === 0 && isChef && selectedMemberIdForFilter !== ALL_MODELS_FILTER_VALUE ? (
+      ) : displayedScheduleTemplates.length === 0 && (isChef || viewConfig?.type === 'all') && selectedMemberIdForFilter !== ALL_MODELS_FILTER_VALUE ? (
          <p className="text-muted-foreground text-center py-6">
             Aucun modèle d'horaire assigné à {brigadeMembers.find(m => m.id === selectedMemberIdForFilter)?.name || 'cet employé'}.
             <br/>
             <Button variant="link" onClick={() => setSelectedMemberIdForFilter(ALL_MODELS_FILTER_VALUE)}>Voir tous les modèles</Button>
          </p>
-      ): displayedScheduleTemplates.length === 0 && !isChef && canUserViewOwnSchedules ? (
+      ): displayedScheduleTemplates.length === 0 && !isChef && (viewConfig?.type === 'own' || viewConfig?.type === 'specific') ? (
          <p className="text-muted-foreground text-center py-6">
-            Aucun modèle d'horaire ne vous est assigné.
+            Aucun modèle d'horaire ne vous est assigné ou spécifié pour consultation.
          </p>
+      ) : displayedScheduleTemplates.length === 0 && viewConfig?.type === 'none' ? (
+          <p className="text-muted-foreground text-center py-6">
+            Vous n'avez pas la permission de consulter les modèles d'horaires.
+          </p>
       ) : (
         displayedScheduleTemplates.map((schedule) => (
           <Card key={schedule.id} className="shadow-md">
@@ -325,14 +337,15 @@ export default function ManageWorkSchedules({
                   <div>
                       <CardTitle className="flex items-center gap-2">
                         {schedule.name}
-                        {isChef && selectedMemberIdForFilter !== ALL_MODELS_FILTER_VALUE && brigadeMembers.find(m => m.id === selectedMemberIdForFilter) && (
+                        {(isChef || viewConfig?.type === 'all') && selectedMemberIdForFilter !== ALL_MODELS_FILTER_VALUE && brigadeMembers.find(m => m.id === selectedMemberIdForFilter) && (
                             <Badge variant="outline" className="text-xs font-normal">
                                 Assigné à {brigadeMembers.find(m => m.id === selectedMemberIdForFilter)?.name}
                             </Badge>
                         )}
-                        {!isChef && loggedInUsername && (
+                         {(!isChef && (viewConfig?.type === 'own' || viewConfig?.type === 'specific')) && loggedInUsername && (
                              <Badge variant="outline" className="text-xs font-normal">
-                                Assigné à vous ({loggedInUsername})
+                                {viewConfig?.type === 'own' ? `Assigné à vous (${loggedInUsername})` : 
+                                 viewConfig?.type === 'specific' ? `Assigné à ${brigadeMembers.find(m => m.id === viewConfig.specificMemberId)?.name || 'N/D'}` : ''}
                             </Badge>
                         )}
                       </CardTitle>
@@ -438,4 +451,3 @@ export default function ManageWorkSchedules({
     </div>
   );
 }
-

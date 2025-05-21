@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, FormEvent } from 'react';
@@ -67,7 +68,7 @@ export default function LoginPage() {
               simulatedStoredPassword: u.simulatedStoredPassword,
               permissions: u.permissions || {},
               viewableHourSummaryConfig: u.viewableHourSummaryConfig || { type: 'none' },
-              canViewOwnSchedule: typeof u.canViewOwnSchedule === 'boolean' ? u.canViewOwnSchedule : false,
+              // canViewOwnSchedule removed
             }));
           }
         }
@@ -91,7 +92,7 @@ export default function LoginPage() {
           simulatedStoredPassword: simulatedHash('000'),
           permissions: defaultChefPermissions,
           viewableHourSummaryConfig: { type: 'all' },
-          canViewOwnSchedule: true,
+          // canViewOwnSchedule implicitly true for chef via 'all' config
         });
       } else {
          users = users.map(u => {
@@ -101,8 +102,7 @@ export default function LoginPage() {
                     passwordRequired: true, 
                     simulatedStoredPassword: u.simulatedStoredPassword || simulatedHash('000'),
                     permissions: defaultChefPermissions, 
-                    viewableHourSummaryConfig: { type: 'all' }, 
-                    canViewOwnSchedule: true,
+                    viewableHourSummaryConfig: { type: 'all' },
                 };
             }
             return u;
@@ -118,7 +118,6 @@ export default function LoginPage() {
     
     let permissionsToStore = { ...user.permissions };
     let hourViewConfigToStore = user.viewableHourSummaryConfig || { type: 'none' as const };
-    let canViewOwnScheduleToStore = typeof user.canViewOwnSchedule === 'boolean' ? user.canViewOwnSchedule : false;
 
     if (user.username.toLowerCase() === 'chef') {
         permissionsToStore = ALL_RUBRIC_IDS.reduce((acc, rubricId) => {
@@ -126,12 +125,10 @@ export default function LoginPage() {
             return acc;
         }, {} as Partial<Record<RubricId, boolean>>);
         hourViewConfigToStore = { type: 'all' as const };
-        canViewOwnScheduleToStore = true; 
     }
     
     localStorage.setItem(LOGGED_IN_USER_PERMISSIONS_KEY, JSON.stringify(permissionsToStore));
     localStorage.setItem(LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY, JSON.stringify(hourViewConfigToStore));
-    // canViewOwnSchedule is part of permissionsToStore, no need to store separately if already included.
     router.push('/dashboard');
   };
 
@@ -278,4 +275,3 @@ export default function LoginPage() {
     </main>
   );
 }
-
