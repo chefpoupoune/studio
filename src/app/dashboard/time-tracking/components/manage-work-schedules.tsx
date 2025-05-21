@@ -29,6 +29,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge'; // Added Badge import
 
 const DAYS_OF_WEEK: string[] = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI", "DIMANCHE"];
 
@@ -72,8 +73,6 @@ export default function ManageWorkSchedules({
   }, []);
 
   useEffect(() => {
-    // This ensures that if the initialScheduleTemplates prop changes (e.g., loaded from localStorage on parent),
-    // this component's state reflects that.
     setScheduleTemplates(initialScheduleTemplates);
   }, [initialScheduleTemplates]);
 
@@ -118,7 +117,7 @@ export default function ManageWorkSchedules({
 
   const handleSaveAllTemplates = () => {
     if (!isClient) return;
-    onScheduleTemplatesChange(scheduleTemplates); // Call parent to update global state & localStorage
+    onScheduleTemplatesChange(scheduleTemplates); 
     toast({ title: "Modèles d'Horaires Sauvegardés", description: "Vos modifications ont été enregistrées." });
   };
 
@@ -147,17 +146,13 @@ export default function ManageWorkSchedules({
             ? t.days 
             : daysToUse.map(dayName => createInitialDailyEntry(dayName));
           
-          // Filter existingDaysData to only include days that should be present based on new includesSaturday
           const filteredDays = existingDaysData.filter(d => daysToUse.includes(d.dayName));
-          // Ensure all required days are present, add if missing
           daysToUse.forEach(dayName => {
             if (!filteredDays.find(d => d.dayName === dayName)) {
               filteredDays.push(createInitialDailyEntry(dayName));
             }
           });
-           // Sort days to maintain order
           filteredDays.sort((a, b) => DAYS_OF_WEEK.indexOf(a.dayName) - DAYS_OF_WEEK.indexOf(b.dayName));
-
 
           const totalWeeklyMinutes = filteredDays.reduce((acc, day) => acc + timeToMinutes(day.plannedTotal), 0);
 
@@ -186,14 +181,14 @@ export default function ManageWorkSchedules({
       toast({ title: "Modèle Créé", description: `Le modèle "${data.name}" a été créé.` });
     }
     setScheduleTemplates(updatedTemplates);
-    onScheduleTemplatesChange(updatedTemplates); // Propagate change to parent
+    onScheduleTemplatesChange(updatedTemplates); 
     setIsTemplateFormOpen(false);
   };
 
   const handleDeleteTemplate = (templateId: string, templateName: string) => {
     const updatedTemplates = scheduleTemplates.filter(t => t.id !== templateId);
     setScheduleTemplates(updatedTemplates);
-    onScheduleTemplatesChange(updatedTemplates); // Propagate change to parent
+    onScheduleTemplatesChange(updatedTemplates); 
     toast({ title: "Modèle Supprimé", description: `Le modèle "${templateName}" a été supprimé.`, variant: "destructive" });
   };
 
@@ -202,10 +197,19 @@ export default function ManageWorkSchedules({
       return scheduleTemplates;
     }
     const selectedMember = brigadeMembers.find(m => m.id === selectedMemberIdForFilter);
-    if (!selectedMember || !selectedMember.assignedScheduleTemplateIds) {
-      return [];
+    
+    // Debugging logs
+    // console.log("Selected Member for Filter:", selectedMember);
+    // console.log("Assigned IDs by member:", selectedMember?.assignedScheduleTemplateIds);
+    // console.log("All available templates:", scheduleTemplates.map(st => ({id: st.id, name: st.name})));
+
+    if (!selectedMember || !selectedMember.assignedScheduleTemplateIds || selectedMember.assignedScheduleTemplateIds.length === 0) {
+      // console.log("No templates assigned or member not found.");
+      return []; 
     }
-    return scheduleTemplates.filter(st => selectedMember.assignedScheduleTemplateIds?.includes(st.id));
+    const filteredTemplates = scheduleTemplates.filter(st => selectedMember.assignedScheduleTemplateIds?.includes(st.id));
+    // console.log("Filtered Templates for member:", filteredTemplates.map(st => ({id: st.id, name: st.name})));
+    return filteredTemplates;
   }, [scheduleTemplates, selectedMemberIdForFilter, brigadeMembers]);
 
 
@@ -393,3 +397,5 @@ export default function ManageWorkSchedules({
   );
 }
 
+
+    
