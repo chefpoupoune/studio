@@ -2,16 +2,17 @@
 "use client";
 
 import React, { useState, useMemo } from 'react';
-import type { Product, PurchaseOrder, PurchaseOrderItem, PurchaseOrderUnit } from '../types';
+import type { Product, PurchaseOrder, PurchaseOrderItem, PurchaseOrderUnit, PurchaseOrderStatus } from '../types';
 import { PURCHASE_ORDER_UNITS } from '../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, ShoppingBag, Printer, Loader2, Trash2 } from 'lucide-react';
+import { PlusCircle, ShoppingBag, Printer, Loader2, Trash2, CheckCircle2 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -42,6 +43,7 @@ interface GeneratePurchaseOrderProps {
   purchaseOrders: PurchaseOrder[];
   onAddPurchaseOrder: (items: PurchaseOrderItem[]) => void;
   onDeletePurchaseOrder: (orderId: string) => void; 
+  onReceivePurchaseOrder: (orderId: string) => void; // New prop
 }
 
 interface SelectedProductForPO extends Omit<PurchaseOrderItem, 'productName' | 'reference'> {
@@ -50,7 +52,7 @@ interface SelectedProductForPO extends Omit<PurchaseOrderItem, 'productName' | '
   selected: boolean;
 }
 
-export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddPurchaseOrder, onDeletePurchaseOrder }: GeneratePurchaseOrderProps) {
+export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddPurchaseOrder, onDeletePurchaseOrder, onReceivePurchaseOrder }: GeneratePurchaseOrderProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [orderItems, setOrderItems] = useState<SelectedProductForPO[]>([]);
   const [isPrinting, setIsPrinting] = useState(false);
@@ -64,7 +66,7 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
           productName: p.name,
           reference: p.reference,
           quantity: 1, 
-          unit: 'Piece' as PurchaseOrderUnit, // Default unit
+          unit: 'Piece' as PurchaseOrderUnit,
           selected: false,
         }))
       );
@@ -220,6 +222,11 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
     }
   };
 
+  const getStatusBadgeVariant = (status: PurchaseOrderStatus) => {
+    if (status === 'received') return 'success';
+    return 'secondary';
+  };
+
   return (
     <div className="space-y-6">
       <Card className="shadow-lg">
@@ -319,12 +326,45 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
             <div className="space-y-4">
               {purchaseOrders.slice(0,10).map(po => (
                 <Card key={po.id} className="bg-muted/30">
-                  <CardHeader className="flex flex-row justify-between items-start pb-2">
+                  <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-2">
                     <div>
-                      <CardTitle className="text-lg">Commande N°: {po.orderNumber}</CardTitle>
-                      <CardDescription>Date: {format(new Date(po.date), "dd MMMM yyyy", { locale: fr })}</CardDescription>
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="text-lg">Commande N°: {po.orderNumber}</CardTitle>
+                        <Badge variant={getStatusBadgeVariant(po.status)}>
+                            {po.status === 'pending' ? 'En attente' : 'Reçu'}
+                        </Badge>
+                      </div>
+                      <CardDescription>
+                        Date: {format(new Date(po.date), "dd MMMM yyyy", { locale: fr })}
+                        {po.status === 'received' && po.receivedDate && (
+                            ` | Reçu le: ${format(new Date(po.receivedDate), "dd MMMM yyyy", { locale: fr })}`
+                        )}
+                      </CardDescription>
                     </div>
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-2 mt-2 sm:mt-0">
+                      {po.status === 'pending' && (
+                         <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="default" size="sm" disabled={isPrinting}>
+                                    <CheckCircle2 className="mr-2 h-4 w-4" /> Valider Réception
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Confirmer la réception du Bon de Commande N° {po.orderNumber}?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        Cette action marquera la commande comme reçue et mettra à jour les stocks.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Annuler</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => onReceivePurchaseOrder(po.id)}>
+                                    Confirmer Réception
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                         </AlertDialog>
+                      )}
                       <Button variant="outline" size="sm" onClick={() => handlePrintPO(po)} disabled={isPrinting}>
                         {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Printer className="mr-2 h-4 w-4" />} 
                         Imprimer

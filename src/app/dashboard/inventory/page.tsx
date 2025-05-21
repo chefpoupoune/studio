@@ -13,6 +13,7 @@ import type { Product, StockMovement, PurchaseOrder, PurchaseOrderItem } from '.
 import React, { useState, useEffect, useCallback } from 'react';
 import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
+import { format } from 'date-fns';
 
 const initialProducts: Product[] = [
   { id: 'prod_1', name: 'Détergent Multi-Surfaces', reference: 'DMS001', quantity: 50 },
@@ -46,7 +47,7 @@ export default function InventoryPage() {
         if (storedMovements) setStockMovements(JSON.parse(storedMovements).map((m: StockMovement) => ({...m, date: new Date(m.date)})));
         
         const storedOrders = localStorage.getItem('inventory_purchase_orders');
-        if (storedOrders) setPurchaseOrders(JSON.parse(storedOrders).map((o: PurchaseOrder) => ({...o, date: new Date(o.date)})));
+        if (storedOrders) setPurchaseOrders(JSON.parse(storedOrders).map((o: PurchaseOrder) => ({...o, date: new Date(o.date), status: o.status || 'pending'})));
 
       } catch (e) {
         console.error("Error loading data from localStorage", e);
@@ -54,9 +55,10 @@ export default function InventoryPage() {
         localStorage.removeItem('inventory_stock_movements');
         localStorage.removeItem('inventory_purchase_orders');
         setProducts(initialProducts); 
+        toast({ title: "Erreur de chargement des données d'inventaire", variant: "destructive" });
       }
     }
-  }, [isClient]);
+  }, [isClient, toast]);
 
   useEffect(() => {
     if (isClient) {
@@ -132,6 +134,7 @@ export default function InventoryPage() {
           reference: product?.reference || 'N/A'
         };
       }),
+      status: 'pending',
     };
     setPurchaseOrders(prev => [newOrder, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     toast({ title: "Bon de commande créé", description: `Le bon de commande ${newOrder.orderNumber} a été généré.` });
@@ -142,6 +145,34 @@ export default function InventoryPage() {
     setPurchaseOrders(prev => prev.filter(po => po.id !== orderId));
     toast({ title: "Bon de Commande Supprimé", description: `Le bon de commande N° ${orderNumber} a été supprimé.`, variant: "destructive" });
   }, [purchaseOrders, toast]);
+
+  const handleReceivePurchaseOrder = useCallback((orderId: string) => {
+    const order = purchaseOrders.find(po => po.id === orderId);
+    if (!order || order.status === 'received') {
+      toast({ title: "Erreur", description: "Bon de commande non trouvé ou déjà reçu.", variant: "destructive"});
+      return;
+    }
+
+    // Update product quantities
+    let updatedProducts = [...products];
+    order.items.forEach(item => {
+      updatedProducts = updatedProducts.map(p => {
+        if (p.id === item.productId) {
+          return { ...p, quantity: p.quantity + item.quantity };
+        }
+        return p;
+      });
+    });
+    setProducts(updatedProducts.sort((a,b) => a.name.localeCompare(b.name)));
+
+    // Update PO status
+    setPurchaseOrders(prev => 
+      prev.map(po => 
+        po.id === orderId ? { ...po, status: 'received', receivedDate: new Date().toISOString() } : po
+      ).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    );
+    toast({ title: "Bon de Commande Reçu", description: `Le bon de commande ${order.orderNumber} a été marqué comme reçu et les stocks mis à jour.`});
+  }, [purchaseOrders, products, toast]);
 
 
   if (!isClient) {
@@ -206,6 +237,7 @@ export default function InventoryPage() {
             purchaseOrders={purchaseOrders}
             onAddPurchaseOrder={addPurchaseOrder}
             onDeletePurchaseOrder={deletePurchaseOrder} 
+            onReceivePurchaseOrder={handleReceivePurchaseOrder}
           />
         </TabsContent>
       </Tabs>

@@ -28,11 +28,14 @@ export interface PurchaseOrderItem {
   unit: PurchaseOrderUnit;
 }
 
+export type PurchaseOrderStatus = 'pending' | 'received';
+
 export interface PurchaseOrder {
   id: string;
   date: Date;
   orderNumber: string; 
   items: PurchaseOrderItem[];
-  // status: 'pending' | 'generated' | 'sent'; // Future enhancement
+  status: PurchaseOrderStatus;
+  receivedDate?: string; 
 }
 
