@@ -16,7 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2'; // Key versioned due to assignedScheduleTemplateIds change
+const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2'; 
 const TIME_ENTRIES_STORAGE_KEY = 'time_tracking_entries';
 const WORK_SCHEDULE_CUSTOM_TEMPLATES_KEY = "time_tracking_custom_schedule_templates_v2";
 
@@ -41,7 +41,6 @@ export default function TimeTrackingPage() {
       try {
         const storedMembersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
         if (storedMembersRaw) {
-          // Ensure assignedScheduleTemplateIds is always an array
           const parsedMembers = JSON.parse(storedMembersRaw);
           setBrigadeMembers(parsedMembers.map((m: any) => ({ ...m, assignedScheduleTemplateIds: Array.isArray(m.assignedScheduleTemplateIds) ? m.assignedScheduleTemplateIds : [] })));
         } else {
@@ -86,18 +85,14 @@ export default function TimeTrackingPage() {
     }
   }, [timeEntries, isClient]);
 
-  useEffect(() => {
-    if (isClient) {
-      localStorage.setItem(WORK_SCHEDULE_CUSTOM_TEMPLATES_KEY, JSON.stringify(scheduleTemplates));
-    }
-  }, [scheduleTemplates, isClient]);
-
+  // Removed useEffect for saving scheduleTemplates here
+  // as ManageWorkSchedules.tsx is responsible for saving them.
 
   const addMember = useCallback((member: Omit<BrigadeMember, 'id'>) => {
     const newMember = { 
       ...member, 
       id: `member_${Date.now()}`, 
-      assignedScheduleTemplateIds: member.assignedScheduleTemplateIds || [] 
+      assignedScheduleTemplateIds: Array.isArray(member.assignedScheduleTemplateIds) ? member.assignedScheduleTemplateIds : [] 
     };
     setBrigadeMembers(prev => [...prev, newMember].sort((a,b) => a.name.localeCompare(b.name)));
     toast({ title: "Membre Ajouté", description: `${member.name} a été ajouté à la brigade.` });
@@ -106,7 +101,7 @@ export default function TimeTrackingPage() {
   const updateMember = useCallback((updatedMember: BrigadeMember) => {
     const memberToUpdate = {
       ...updatedMember,
-      assignedScheduleTemplateIds: updatedMember.assignedScheduleTemplateIds || []
+      assignedScheduleTemplateIds: Array.isArray(updatedMember.assignedScheduleTemplateIds) ? updatedMember.assignedScheduleTemplateIds : []
     };
     setBrigadeMembers(prev => prev.map(m => m.id === memberToUpdate.id ? memberToUpdate : m).sort((a,b) => a.name.localeCompare(b.name)));
     setTimeEntries(prevEntries => prevEntries.map(entry => 
