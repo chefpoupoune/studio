@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -38,9 +37,11 @@ export const RUBRICS = [
   { id: 'dashboard', label: 'Tableau de Bord Principal' },
   { id: 'inventory', label: 'Gestion Stocks' },
   { id: 'benefits', label: 'Avantages Nature' },
+  // timeTracking is now handled by sub-rubrics
   { id: 'taskManagement', label: 'Gestion Tâches' },
   { id: 'costManagement', label: 'Gestion Coûts' },
   { id: 'menuPlanning', label: 'Planification Menus' },
+  { id: 'picnic', label: 'Pique Nique' }, // Nouvelle rubrique Pique Nique
   { id: 'pms', label: 'PMS' },
   { id: 'settings', label: 'Paramètres' },
 ] as const;
@@ -67,7 +68,6 @@ export interface AppUser {
   simulatedStoredPassword?: string;
   permissions: Partial<Record<RubricId, boolean>>;
   viewableHourSummaryConfig?: ViewableHourSummaryConfig;
-  // canViewOwnSchedule is now implicitly handled by viewableHourSummaryConfig.type === 'own'
 }
 
 const basePermissionsSchema = RUBRICS.reduce((acc, rubric) => {
@@ -91,7 +91,6 @@ const userFormSchema = z.object({
   }).default({}),
   viewableHourSummary_type: z.enum(['none', 'own', 'all', 'specific']).default('none'),
   viewableHourSummary_specificMemberId: z.string().optional(),
-  // canViewOwnSchedule removed
 }).refine(data => {
     if (data.passwordRequired && data.newPassword && data.newPassword.length < 3) {
         return false;
@@ -149,43 +148,52 @@ export default function UserManagement() {
 
   useEffect(() => {
     if (isClient) {
-      console.log("UserManagement: Effect to load initial data triggered.");
-      let loadedUsersFromStorage: AppUser[] = [];
-      let loadedBrigadeMembersFromStorage: BrigadeMember[] = [];
+      console.log("UserManagement: Load initial data from localStorage.");
+      let loadedUsers: AppUser[] = [];
+      let loadedMembers: BrigadeMember[] = [];
       try {
         const storedUsersRaw = localStorage.getItem(APP_USERS_STORAGE_KEY);
         if (storedUsersRaw) {
-          loadedUsersFromStorage = JSON.parse(storedUsersRaw);
+          loadedUsers = JSON.parse(storedUsersRaw);
+          console.log("UserManagement: Loaded users:", loadedUsers.length);
+        } else {
+          console.log("UserManagement: No users found in localStorage.");
         }
-        setAppUsers(loadedUsersFromStorage);
+        setAppUsers(loadedUsers);
 
         const storedBrigadeMembersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
         if (storedBrigadeMembersRaw) {
-          loadedBrigadeMembersFromStorage = JSON.parse(storedBrigadeMembersRaw);
+          loadedMembers = JSON.parse(storedBrigadeMembersRaw);
+          console.log("UserManagement: Loaded brigade members:", loadedMembers.length);
+        } else {
+          console.log("UserManagement: No brigade members found in localStorage.");
         }
-        setBrigadeMembers(loadedBrigadeMembersFromStorage);
+        setBrigadeMembers(loadedMembers);
 
       } catch (error) {
-        console.error("UserManagement: Error loading data from localStorage:", error);
+        console.error("UserManagement: Error loading data:", error);
         toast({ title: "Erreur de chargement des données utilisateurs/brigade", variant: "destructive" });
         setAppUsers([]);
         setBrigadeMembers([]);
       } finally {
         setDataLoaded(true);
-        console.log("UserManagement: Initial data load attempt finished. dataLoaded set to true.");
+        console.log("UserManagement: Initial data load finished. dataLoaded set to true.");
       }
     }
   }, [isClient, toast]);
 
   useEffect(() => {
     if (isClient && dataLoaded) {
-      console.log(`UserManagement: Effect to save appUsers triggered. appUsers count: ${appUsers.length}. dataLoaded: ${dataLoaded}`);
+      console.log(`UserManagement: Attempting to save ${appUsers.length} appUsers to localStorage. dataLoaded: ${dataLoaded}`);
       try {
         localStorage.setItem(APP_USERS_STORAGE_KEY, JSON.stringify(appUsers));
+        console.log("UserManagement: appUsers successfully saved to localStorage.");
       } catch (error) {
         console.error("UserManagement: Error saving appUsers to localStorage:", error);
         toast({ title: "Erreur de sauvegarde des utilisateurs", variant: "destructive" });
       }
+    } else {
+        console.log(`UserManagement: Save skipped. isClient: ${isClient}, dataLoaded: ${dataLoaded}`);
     }
   }, [appUsers, isClient, dataLoaded, toast]);
 
@@ -453,7 +461,7 @@ export default function UserManagement() {
                         <div className="pt-4 border-t">
                           <h3 className="text-md font-semibold mb-2 mt-2 flex items-center gap-1"><Eye className="w-4 h-4"/> Vue des Relevés d'Heures & Modèles Horaires</h3>
                            <FormDescription className="text-xs mb-2">
-                            Cette configuration détermine quels relevés d'heures ET quels modèles d'horaires l'utilisateur peut consulter.
+                            Définir quels relevés d'heures et modèles d'horaires cet utilisateur peut consulter.
                           </FormDescription>
                           <FormField control={form.control} name="viewableHourSummary_type" render={({ field }) => (
                             <FormItem>
@@ -589,3 +597,5 @@ export default function UserManagement() {
     </Card>
   );
 }
+
+    

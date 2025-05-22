@@ -1,4 +1,3 @@
-
 "use client";
 
 import * as React from "react";
@@ -31,34 +30,36 @@ import {
   ShieldCheck,
   PanelLeft,
   LogOut,
-  Clock
+  Clock,
+  ShoppingBasket // Ajouté pour Pique Nique
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import type { RubricId } from '@/app/dashboard/settings/components/user-management';
 import { RUBRICS as BASE_RUBRICS, TIME_TRACKING_SUB_RUBRICS } from '@/app/dashboard/settings/components/user-management';
-import { applyThemeMode, applyAccentColor, THEME_STORAGE_KEY, ACCENT_COLOR_STORAGE_KEY } from '@/lib/theme-utils'; // Import new utils
-import { DEFAULT_APP_PRIMARY_COLOR } from '@/config/colors'; // Import default color
+import { applyThemeMode, applyAccentColor, THEME_STORAGE_KEY, ACCENT_COLOR_STORAGE_KEY } from '@/lib/theme-utils';
+import { DEFAULT_APP_PRIMARY_COLOR } from '@/config/colors';
 
 const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1";
-type ThemeMode = 'light' | 'dark' | 'system'; // Define ThemeMode if not imported
+type ThemeMode = 'light' | 'dark' | 'system';
 
 
 interface NavItem {
   href: string;
   icon: React.ElementType;
   label: string;
-  rubricId: RubricId | 'timeTracking_parent'; 
+  rubricId: RubricId | 'timeTracking_parent' | 'picnic'; // Ajout de 'picnic'
 }
 
 const allNavItems: NavItem[] = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Tableau de Bord", rubricId: "dashboard" },
   { href: "/dashboard/inventory", icon: Archive, label: "Gestion Stocks", rubricId: "inventory" },
   { href: "/dashboard/benefits", icon: FileSpreadsheet, label: "Avantages Nature", rubricId: "benefits" },
-  { href: "/dashboard/time-tracking", icon: Clock, label: "Suivi Heures", rubricId: "timeTracking_parent" }, 
+  { href: "/dashboard/time-tracking", icon: Clock, label: "Suivi Heures", rubricId: "timeTracking_parent" },
   { href: "/dashboard/task-management", icon: ClipboardList, label: "Gestion Tâches", rubricId: "taskManagement" },
   { href: "/dashboard/cost-management", icon: DollarSign, label: "Gestion Coûts", rubricId: "costManagement" },
   { href: "/dashboard/menu-planning", icon: BookOpenText, label: "Planification Menus", rubricId: "menuPlanning" },
+  { href: "/dashboard/picnic", icon: ShoppingBasket, label: "Pique Nique", rubricId: "picnic" }, // Nouvelle rubrique
   { href: "/dashboard/pms", icon: ShieldCheck, label: "PMS", rubricId: "pms" },
   { href: "/dashboard/settings", icon: Settings, label: "Paramètres", rubricId: "settings" },
 ];
@@ -88,7 +89,7 @@ function AppSidebar() {
             if (item.rubricId === 'timeTracking_parent') {
               return TIME_TRACKING_SUB_RUBRICS.some(sub => storedPermissions[sub.id]);
             }
-            return storedPermissions[item.rubricId] === true;
+            return storedPermissions[item.rubricId as RubricId] === true;
           });
           setVisibleNavItems(filteredItems);
         } catch (e) {
@@ -208,7 +209,6 @@ export default function DashboardLayout({
             setAppLogoUrl(storedAppLogo);
         }
 
-        // Apply Theme Mode and Accent Color on initial load
         const storedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
         const initialThemeMode = storedTheme && ['light', 'dark', 'system'].includes(storedTheme) ? storedTheme : 'system';
         applyThemeMode(initialThemeMode);
@@ -232,7 +232,7 @@ export default function DashboardLayout({
         return () => mediaQuery.removeEventListener('change', handleChange);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run once on client mount
+  }, []); 
 
   React.useEffect(() => {
     if (isClient) {
@@ -265,7 +265,6 @@ export default function DashboardLayout({
 
       if (pathname === '/dashboard' || pathname === '/dashboard/') {
         if (!userPermissions.dashboard && username?.toLowerCase() !== 'chef') {
-            // This case should ideally not happen if login logic is correct and chef has all perms
         }
         return;
       }
@@ -280,7 +279,7 @@ export default function DashboardLayout({
           if (navItem.rubricId === 'timeTracking_parent') {
             hasAccessToSection = TIME_TRACKING_SUB_RUBRICS.some(sub => userPermissions[sub.id]);
           } else {
-            hasAccessToSection = !!userPermissions[navItem.rubricId];
+            hasAccessToSection = !!userPermissions[navItem.rubricId as RubricId];
           }
 
           if (!hasAccessToSection) {
@@ -288,7 +287,6 @@ export default function DashboardLayout({
           }
         } else {
            if (currentTopLevelPath) {
-            // router.replace('/dashboard');
            }
         }
       }
@@ -326,3 +324,5 @@ export default function DashboardLayout({
     </SidebarProvider>
   );
 }
+
+    
