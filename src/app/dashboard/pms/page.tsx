@@ -1,7 +1,8 @@
+
 "use client";
 
 import Link from 'next/link';
-import { ShieldCheck, SprayCan, Sparkles, Thermometer, Truck, ThermometerSnowflake, ArrowDownUp, Snowflake, Flame } from 'lucide-react'; // Removed ArrowLeft
+import { ShieldCheck, SprayCan, Sparkles, Thermometer, Truck, ThermometerSnowflake, ArrowDownUp, Snowflake, Flame } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
@@ -40,7 +41,7 @@ export default function PmsPage() {
             PMS (Plan de Maîtrise Sanitaire)
           </h1>
         </div>
-        {/* Back to Dashboard button removed */}
+        
       </div>
       <div className="mb-6 text-center sm:text-left">
         <CurrentDate />
@@ -48,28 +49,28 @@ export default function PmsPage() {
       
       <Tabs defaultValue="kitchen-cleaning" className="w-full">
         <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-8 gap-1 mb-6 bg-card p-1 rounded-lg"> 
-          <TabsTrigger value="kitchen-cleaning" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+          <TabsTrigger value="kitchen-cleaning" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <SprayCan className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Net. Cuisine
           </TabsTrigger>
-          <TabsTrigger value="restaurant-cleaning" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+          <TabsTrigger value="restaurant-cleaning" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <Sparkles className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Net. Restaurant
           </TabsTrigger>
-          <TabsTrigger value="temperature-monitoring" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+          <TabsTrigger value="temperature-monitoring" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <Thermometer className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Température
           </TabsTrigger>
-          <TabsTrigger value="cold-chain" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+          <TabsTrigger value="cold-chain" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <ThermometerSnowflake className="mr-1 sm:mr-2 h-4 w-4" /> Liaison Froide
           </TabsTrigger>
-          <TabsTrigger value="temp-change" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+          <TabsTrigger value="temp-change" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <ArrowDownUp className="mr-1 sm:mr-2 h-4 w-4" /> Baisse/Remise T°
           </TabsTrigger>
-          <TabsTrigger value="reception-monitoring" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+          <TabsTrigger value="reception-monitoring" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <Truck className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Réception
           </TabsTrigger>
-           <TabsTrigger value="defrosting-monitoring" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+           <TabsTrigger value="defrosting-monitoring" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <Snowflake className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Décongélation
           </TabsTrigger>
-          <TabsTrigger value="fryer-oil-tracking" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"> 
+          <TabsTrigger value="fryer-oil-tracking" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1"> 
             <Flame className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Friteuse / Huiles
           </TabsTrigger>
         </TabsList>
