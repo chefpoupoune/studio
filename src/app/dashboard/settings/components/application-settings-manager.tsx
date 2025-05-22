@@ -3,8 +3,8 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Cog, Palette, Bell, Database, Download, Upload, BellRing, ListChecks, Package, Info, RotateCcw, AlertTriangle, Image as ImageIcon, Trash2 as ImageIconTrash, Save } from 'lucide-react';
-import Image from 'next/image'; // For previewing the app logo
+import { Cog, Palette, Bell, Database, Download, Upload, BellRing, ListChecks, Package as PackageIcon, Info, RotateCcw, AlertTriangle, Image as ImageIcon, Trash2 as ImageIconTrash, Save } from 'lucide-react';
+import Image from 'next/image';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -95,7 +95,7 @@ const APP_SPECIFIC_KEYS = [
   'occasional_meal_num_people',
   'cost_pn_picnic_ingredients',
   'cost_pn_salad_ingredients',
-  'time_tracking_members_v2', // Updated key
+  'time_tracking_members_v2', 
   'time_tracking_entries',
   'task_management_tasks',
   THEME_STORAGE_KEY,
@@ -122,7 +122,7 @@ const APP_SPECIFIC_PREFIXES = [
   'temperature_sheet_daily_log_data_',
   'pms_kitchen_cleaning_records_v3_',
   'pms_restaurant_cleaning_records_v2_',
-  'pms_temperature_records_grid_v3_', // Updated key
+  'pms_temperature_records_grid_v3_', 
   'pms_reception_log_v1',
   'pms_temp_change_log_v1',
   'pms_defrosting_log_v1',
@@ -137,7 +137,6 @@ export default function ApplicationSettingsManager() {
   const [selectedThemeMode, setSelectedThemeMode] = useState<ThemeMode>('system');
   const [selectedAccentColor, setSelectedAccentColor] = useState<string>(DEFAULT_APP_PRIMARY_COLOR);
   
-  // Notification States
   const [emailNotifications, setEmailNotifications] = useState<boolean>(DEFAULT_NOTIFICATIONS_EMAIL);
   const [inAppGeneralNotifications, setInAppGeneralNotifications] = useState<boolean>(DEFAULT_NOTIFICATIONS_IN_APP_GENERAL);
   const [inAppNewTaskNotifications, setInAppNewTaskNotifications] = useState<boolean>(DEFAULT_NOTIFICATIONS_IN_APP_NEW_TASK);
@@ -146,7 +145,6 @@ export default function ApplicationSettingsManager() {
   const [soundNotificationsEnabled, setSoundNotificationsEnabled] = useState<boolean>(DEFAULT_NOTIFICATIONS_SOUND_ENABLED);
   const [notificationSoundChoice, setNotificationSoundChoice] = useState<string>(DEFAULT_NOTIFICATIONS_SOUND_CHOICE);
 
-  // App Logo State
   const [appLogoDataUrl, setAppLogoDataUrl] = useState<string | null>(null);
   const appLogoFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -211,27 +209,18 @@ export default function ApplicationSettingsManager() {
     }
   }, []);
 
-
+  // Effect to load initial settings from localStorage
   useEffect(() => {
     if (isClient) {
-      // Theme and Accent
       const storedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
-      const initialTheme = storedTheme && ['light', 'dark', 'system'].includes(storedTheme) ? storedTheme : 'system';
-      setSelectedThemeMode(initialTheme);
-      applyThemeMode(initialTheme);
+      setSelectedThemeMode(storedTheme && ['light', 'dark', 'system'].includes(storedTheme) ? storedTheme : 'system');
 
       const storedAccentColor = localStorage.getItem(ACCENT_COLOR_STORAGE_KEY);
-      const initialAccentColor = storedAccentColor || DEFAULT_APP_PRIMARY_COLOR;
-      setSelectedAccentColor(initialAccentColor);
-      applyAccentColor(initialAccentColor);
+      setSelectedAccentColor(storedAccentColor || DEFAULT_APP_PRIMARY_COLOR);
       
-      // App Logo
       const storedAppLogo = localStorage.getItem(APP_LOGO_STORAGE_KEY);
-      if (storedAppLogo) {
-        setAppLogoDataUrl(storedAppLogo);
-      }
+      setAppLogoDataUrl(storedAppLogo || null);
 
-      // Notifications
       setEmailNotifications(localStorage.getItem(NOTIFICATIONS_EMAIL_KEY) === 'true' || DEFAULT_NOTIFICATIONS_EMAIL);
       setInAppGeneralNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_GENERAL_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_GENERAL);
       setInAppNewTaskNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_NEW_TASK_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_NEW_TASK);
@@ -239,7 +228,6 @@ export default function ApplicationSettingsManager() {
       setInAppInventoryLowNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_INVENTORY_LOW);
       setSoundNotificationsEnabled(localStorage.getItem(NOTIFICATIONS_SOUND_ENABLED_KEY) === 'true' || DEFAULT_NOTIFICATIONS_SOUND_ENABLED);
       setNotificationSoundChoice(localStorage.getItem(NOTIFICATIONS_SOUND_CHOICE_KEY) || DEFAULT_NOTIFICATIONS_SOUND_CHOICE);
-
 
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
       const handleChange = () => {
@@ -250,14 +238,21 @@ export default function ApplicationSettingsManager() {
       mediaQuery.addEventListener('change', handleChange);
       return () => mediaQuery.removeEventListener('change', handleChange);
     }
-  }, [isClient, applyThemeMode, applyAccentColor]);
+  }, [isClient, applyThemeMode]); // Removed applyAccentColor from here
 
-  // Handlers for theme and accent
+  // Effect to apply theme and accent color when states change
+  useEffect(() => {
+    if (isClient) {
+      applyThemeMode(selectedThemeMode);
+      applyAccentColor(selectedAccentColor);
+    }
+  }, [isClient, selectedThemeMode, selectedAccentColor, applyThemeMode, applyAccentColor]);
+
+
   const handleThemeModeChange = (newMode: ThemeMode) => {
-    setSelectedThemeMode(newMode);
+    setSelectedThemeMode(newMode); // State update will trigger the effect above to apply the theme
     if (isClient) {
       localStorage.setItem(THEME_STORAGE_KEY, newMode);
-      applyThemeMode(newMode);
       toast({
         title: "Thème Mis à Jour",
         description: `Le mode d'affichage est maintenant réglé sur "${newMode === 'light' ? 'Clair' : newMode === 'dark' ? 'Sombre' : 'Système'}".`,
@@ -266,16 +261,13 @@ export default function ApplicationSettingsManager() {
   };
 
   const handleAccentColorInputChange = (newColor: string) => {
-    setSelectedAccentColor(newColor);
-    if (isClient) {
-      applyAccentColor(newColor); // Apply for live preview
-    }
+    setSelectedAccentColor(newColor); // State update triggers live preview via the useEffect above
   };
   
   const handleSaveAccentColor = () => {
     if (isClient) {
       localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, selectedAccentColor);
-      applyAccentColor(selectedAccentColor); // Ensure it's applied if somehow only state was changed
+      // applyAccentColor(selectedAccentColor); // No longer needed here, useEffect handles it
       toast({
         title: "Couleur d'Accentuation Enregistrée",
         description: `La couleur d'accentuation est maintenant ${selectedAccentColor}.`,
@@ -284,10 +276,9 @@ export default function ApplicationSettingsManager() {
   };
   
   const handleResetAccentColor = () => {
-    setSelectedAccentColor(DEFAULT_APP_PRIMARY_COLOR);
+    setSelectedAccentColor(DEFAULT_APP_PRIMARY_COLOR); // State update triggers useEffect to apply
     if (isClient) {
       localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, DEFAULT_APP_PRIMARY_COLOR);
-      applyAccentColor(DEFAULT_APP_PRIMARY_COLOR);
       toast({
         title: "Couleur d'Accentuation Réinitialisée",
         description: `La couleur d'accentuation a été réinitialisée à la valeur par défaut (${DEFAULT_APP_PRIMARY_COLOR}).`,
@@ -295,7 +286,6 @@ export default function ApplicationSettingsManager() {
     }
   };
 
-  // App Logo Handlers
   const handleAppLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -320,10 +310,11 @@ export default function ApplicationSettingsManager() {
     if (appLogoDataUrl && isClient) {
       localStorage.setItem(APP_LOGO_STORAGE_KEY, appLogoDataUrl);
       toast({ title: "Logo de l'Application Enregistré" });
-    } else if (!appLogoDataUrl && isClient) { // Handles case where user uploads then deletes preview then saves
+    } else if (!appLogoDataUrl && isClient) {
       localStorage.removeItem(APP_LOGO_STORAGE_KEY);
       toast({ title: "Logo de l'Application Supprimé" });
     }
+    window.location.reload(); // Force reload to update sidebar immediately
   };
 
   const handleDeleteAppLogo = () => {
@@ -333,10 +324,9 @@ export default function ApplicationSettingsManager() {
       toast({ title: "Logo de l'Application Supprimé", variant: "destructive" });
     }
     if (appLogoFileInputRef.current) appLogoFileInputRef.current.value = "";
+    window.location.reload(); // Force reload to update sidebar immediately
   };
 
-
-  // Handlers for notification preferences
   const createSwitchHandler = (
     setter: React.Dispatch<React.SetStateAction<boolean>>,
     key: string,
@@ -367,14 +357,11 @@ export default function ApplicationSettingsManager() {
         title: "Préférences Mises à Jour",
         description: `Son de notification réglé sur "${value}".`,
       });
-      // Potentially play the sound here if enabled
       if (soundNotificationsEnabled && value !== 'none') {
-        // This is a placeholder for actual sound playing logic
         console.log(`Playing sound: ${value}`);
       }
     }
   };
-
 
   const handleExportData = () => {
     if (!isClient) return;
@@ -449,32 +436,19 @@ export default function ApplicationSettingsManager() {
             title: "Données Importées",
             description: `${importedCount} éléments de données ont été importés. Veuillez recharger la page pour appliquer tous les changements.`,
           });
-          // Re-apply theme and accent color after import
-          const newTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
-          if (newTheme && ['light', 'dark', 'system'].includes(newTheme)) {
-            setSelectedThemeMode(newTheme); 
-            applyThemeMode(newTheme); 
-          } else {
-            setSelectedThemeMode('system');
-            applyThemeMode('system');
-            localStorage.setItem(THEME_STORAGE_KEY, 'system');
-          }
-          const newAccent = localStorage.getItem(ACCENT_COLOR_STORAGE_KEY);
-          if (newAccent) {
-            setSelectedAccentColor(newAccent); 
-            applyAccentColor(newAccent); 
-          } else {
-            setSelectedAccentColor(DEFAULT_APP_PRIMARY_COLOR);
-            applyAccentColor(DEFAULT_APP_PRIMARY_COLOR);
-            localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, DEFAULT_APP_PRIMARY_COLOR);
-          }
           
-          // App Logo
+          // Explicitly update states for theme and accent from newly imported localStorage values
+          const newTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
+          setSelectedThemeMode(newTheme && ['light', 'dark', 'system'].includes(newTheme) ? newTheme : 'system');
+          
+          const newAccent = localStorage.getItem(ACCENT_COLOR_STORAGE_KEY);
+          setSelectedAccentColor(newAccent || DEFAULT_APP_PRIMARY_COLOR);
+          
           const newAppLogo = localStorage.getItem(APP_LOGO_STORAGE_KEY);
           setAppLogoDataUrl(newAppLogo || null);
 
-
-          setTimeout(() => window.location.reload(), 1000);
+          // Consider reloading the page to ensure all components re-read from localStorage
+           setTimeout(() => window.location.reload(), 1000);
 
         } else {
             toast({ title: "Importation Partielle ou Vide", description: "Aucune donnée pertinente trouvée ou importée depuis le fichier.", variant: "default" });
@@ -653,7 +627,7 @@ export default function ApplicationSettingsManager() {
                     </div>
                      <div className="flex items-center justify-between">
                         <Label htmlFor="inapp-inventory-low" className="text-sm flex items-center gap-1.5 flex-grow">
-                            <Package className="w-4 h-4 text-muted-foreground/90"/> Alerte stock bas (Inventaire)
+                            <PackageIcon className="w-4 h-4 text-muted-foreground/90"/> Alerte stock bas (Inventaire)
                         </Label>
                         <Switch id="inapp-inventory-low" checked={inAppInventoryLowNotifications} onCheckedChange={handleInAppInventoryLowNotificationsChange} disabled={!isClient} />
                     </div>
@@ -751,4 +725,4 @@ export default function ApplicationSettingsManager() {
   );
 }
 
-      
+    
