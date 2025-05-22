@@ -15,10 +15,27 @@ import ReceptionMonitoring from './components/reception-monitoring';
 import ColdChainMonitoring from './components/cold-chain-monitoring';
 import TempChangeMonitoring from './components/temp-change-monitoring';
 import DefrostingMonitoring from './components/defrosting-monitoring'; 
-import FryerOilOverallMonitoring from './components/fryer-oil-overall-monitoring'; 
+import FryerOilOverallMonitoring from './components/fryer-oil-overall-monitoring';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { useIsMobile } from '@/hooks/use-mobile';
+
+const pmsTabsConfig = [
+  { value: "kitchen-cleaning", label: "Suivi Net. Cuisine", Icon: SprayCan, component: <KitchenCleaningMonitoring /> },
+  { value: "restaurant-cleaning", label: "Suivi Net. Restaurant", Icon: Sparkles, component: <RestaurantCleaningMonitoring /> },
+  { value: "temperature-monitoring", label: "Suivi Température", Icon: Thermometer, component: <TemperatureMonitoring /> },
+  { value: "cold-chain", label: "Liaison Froide", Icon: ThermometerSnowflake, component: <ColdChainMonitoring /> },
+  { value: "temp-change", label: "Baisse/Remise T°", Icon: ArrowDownUp, component: <TempChangeMonitoring /> },
+  { value: "reception-monitoring", label: "Suivi Réception", Icon: Truck, component: <ReceptionMonitoring /> },
+  { value: "defrosting-monitoring", label: "Suivi Décongélation", Icon: Snowflake, component: <DefrostingMonitoring /> },
+  { value: "fryer-oil-tracking", label: "Suivi Friteuse / Huiles", Icon: Flame, component: <FryerOilOverallMonitoring /> },
+];
+
 
 export default function PmsPage() {
   const [isClient, setIsClient] = React.useState(false);
+  const isMobile = useIsMobile();
+  const [activeTab, setActiveTab] = React.useState(pmsTabsConfig[0].value);
   
   React.useEffect(() => {
     setIsClient(true);
@@ -47,58 +64,41 @@ export default function PmsPage() {
         <CurrentDate />
       </div>
       
-      <Tabs defaultValue="kitchen-cleaning" className="w-full">
-        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-8 gap-1 mb-6 bg-card p-1 rounded-lg"> 
-          <TabsTrigger value="kitchen-cleaning" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-            <SprayCan className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Net. Cuisine
-          </TabsTrigger>
-          <TabsTrigger value="restaurant-cleaning" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-            <Sparkles className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Net. Restaurant
-          </TabsTrigger>
-          <TabsTrigger value="temperature-monitoring" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-            <Thermometer className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Température
-          </TabsTrigger>
-          <TabsTrigger value="cold-chain" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-            <ThermometerSnowflake className="mr-1 sm:mr-2 h-4 w-4" /> Liaison Froide
-          </TabsTrigger>
-          <TabsTrigger value="temp-change" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-            <ArrowDownUp className="mr-1 sm:mr-2 h-4 w-4" /> Baisse/Remise T°
-          </TabsTrigger>
-          <TabsTrigger value="reception-monitoring" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-            <Truck className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Réception
-          </TabsTrigger>
-           <TabsTrigger value="defrosting-monitoring" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-            <Snowflake className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Décongélation
-          </TabsTrigger>
-          <TabsTrigger value="fryer-oil-tracking" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1"> 
-            <Flame className="mr-1 sm:mr-2 h-4 w-4" /> Suivi Friteuse / Huiles
-          </TabsTrigger>
-        </TabsList>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        {isMobile ? (
+          <div className="mb-4">
+            <Label htmlFor="mobile-pms-nav-select" className="text-sm font-medium">Naviguer vers :</Label>
+            <Select value={activeTab} onValueChange={setActiveTab}>
+              <SelectTrigger id="mobile-pms-nav-select" className="w-full mt-1">
+                <SelectValue placeholder="Choisir une section..." />
+              </SelectTrigger>
+              <SelectContent>
+                {pmsTabsConfig.map(tab => (
+                  <SelectItem key={tab.value} value={tab.value} className="text-sm">
+                    <span className="flex items-center">
+                      <tab.Icon className="mr-2 h-4 w-4" />
+                      {tab.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : (
+          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-8 gap-1 mb-6 bg-card p-1 rounded-lg"> 
+            {pmsTabsConfig.map(tab => (
+              <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
+                <tab.Icon className="mr-1 sm:mr-2 h-4 w-4" /> {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        )}
 
-        <TabsContent value="kitchen-cleaning">
-          <KitchenCleaningMonitoring />
-        </TabsContent>
-        <TabsContent value="restaurant-cleaning">
-          <RestaurantCleaningMonitoring />
-        </TabsContent>
-        <TabsContent value="temperature-monitoring">
-          <TemperatureMonitoring />
-        </TabsContent>
-        <TabsContent value="cold-chain">
-          <ColdChainMonitoring />
-        </TabsContent>
-        <TabsContent value="temp-change">
-          <TempChangeMonitoring />
-        </TabsContent>
-        <TabsContent value="reception-monitoring">
-          <ReceptionMonitoring />
-        </TabsContent>
-        <TabsContent value="defrosting-monitoring">
-            <DefrostingMonitoring />
-        </TabsContent>
-        <TabsContent value="fryer-oil-tracking"> 
-            <FryerOilOverallMonitoring />
-        </TabsContent>
+        {pmsTabsConfig.map(tab => (
+          <TabsContent key={tab.value} value={tab.value}>
+            {tab.component}
+          </TabsContent>
+        ))}
       </Tabs>
     </div>
   );

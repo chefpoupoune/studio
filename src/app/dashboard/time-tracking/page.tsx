@@ -17,6 +17,10 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import type { RubricId, ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { useIsMobile } from '@/hooks/use-mobile';
+
 
 const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
 const TIME_ENTRIES_STORAGE_KEY = 'time_tracking_entries';
@@ -31,6 +35,15 @@ const initialBrigadeMembers: BrigadeMember[] = [
   { id: 'member_second_01', name: 'Alexandre Dubois', role: 'Second de Cuisine', assignedScheduleTemplateIds: [] },
 ];
 
+interface TimeTrackingTab {
+  value: string;
+  label: string;
+  Icon: React.ElementType;
+  component: React.ReactNode;
+  permissionKey: RubricId | 'always_visible_for_chef';
+}
+
+
 export default function TimeTrackingPage() {
   const [brigadeMembers, setBrigadeMembers] = useState<BrigadeMember[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
@@ -40,6 +53,24 @@ export default function TimeTrackingPage() {
   const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
   const [loggedInUserHourViewConfig, setLoggedInUserHourViewConfig] = useState<ViewableHourSummaryConfig | null>(null);
   const { toast } = useToast();
+  const isMobile = useIsMobile();
+  
+  const timeTrackingTabsConfig: TimeTrackingTab[] = [
+    { value: "personnel", label: "Gestion Personnel", Icon: Users, component: <ManageBrigadeMembers members={brigadeMembers} onAddMember={addMember} onUpdateMember={updateMember} onDeleteMember={deleteMember} scheduleTemplates={scheduleTemplates} />, permissionKey: 'timeTracking_personnel' },
+    { value: "recording", label: "Saisie & Historique", Icon: Clock, component: <RecordTimeLog members={brigadeMembers} timeEntries={timeEntries} onAddTimeEntry={addTimeEntry} onDeleteAllTimeEntries={handleDeleteAllTimeEntries} loggedInUsername={loggedInUsername} userPermissions={userPermissions} />, permissionKey: 'timeTracking_recording' },
+    { value: "summary", label: "Relevés & PDF", Icon: FileText, component: <MemberSummaryPdf members={brigadeMembers} timeEntries={timeEntries} loggedInUsername={loggedInUsername} userPermissions={userPermissions} />, permissionKey: 'timeTracking_summary' },
+    { value: "schedules", label: "Modèles d'Horaires", Icon: CalendarClock, component: <ManageWorkSchedules initialScheduleTemplates={scheduleTemplates} brigadeMembers={brigadeMembers} onScheduleTemplatesChange={handleScheduleTemplatesChange} loggedInUsername={loggedInUsername} viewConfig={loggedInUserHourViewConfig} />, permissionKey: 'timeTracking_schedules' },
+  ];
+  
+  const visibleTabs = React.useMemo(() => {
+    if (loggedInUsername?.toLowerCase() === 'chef') {
+      return timeTrackingTabsConfig;
+    }
+    return timeTrackingTabsConfig.filter(tab => userPermissions[tab.permissionKey as RubricId]);
+  }, [userPermissions, loggedInUsername, timeTrackingTabsConfig]);
+
+  const [activeTab, setActiveTab] = React.useState(visibleTabs.length > 0 ? visibleTabs[0].value : "");
+
 
   useEffect(() => {
     setIsClient(true);
@@ -167,12 +198,14 @@ export default function TimeTrackingPage() {
       localStorage.setItem(WORK_SCHEDULE_CUSTOM_TEMPLATES_KEY, JSON.stringify(updatedTemplates));
     }
   }, [isClient]);
-
-  const canViewPersonnel = userPermissions['timeTracking_personnel'] || loggedInUsername?.toLowerCase() === 'chef';
-  const canViewRecording = userPermissions['timeTracking_recording'] || loggedInUsername?.toLowerCase() === 'chef';
-  const canViewSummary = userPermissions['timeTracking_summary'] || loggedInUsername?.toLowerCase() === 'chef';
-  const canViewSchedules = userPermissions['timeTracking_schedules'] || loggedInUsername?.toLowerCase() === 'chef';
-  const defaultTab = canViewPersonnel ? "personnel" : canViewRecording ? "recording" : canViewSummary ? "summary" : canViewSchedules ? "schedules" : "";
+  
+  useEffect(() => {
+    if (visibleTabs.length > 0 && !visibleTabs.find(tab => tab.value === activeTab)) {
+      setActiveTab(visibleTabs[0].value);
+    } else if (visibleTabs.length === 0) {
+      setActiveTab("");
+    }
+  }, [visibleTabs, activeTab]);
 
 
   if (!isClient) {
@@ -197,82 +230,50 @@ export default function TimeTrackingPage() {
         <CurrentDate />
       </div>
 
-      <Tabs defaultValue={defaultTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-4 mb-6 bg-card p-1 rounded-lg">
-          {canViewPersonnel && (
-            <TabsTrigger value="personnel" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-              <Users className="mr-1 sm:mr-2 h-4 w-4" /> Gestion Personnel
-            </TabsTrigger>
-          )}
-          {canViewRecording && (
-            <TabsTrigger value="recording" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-              <Clock className="mr-1 sm:mr-2 h-4 w-4" /> Saisie & Historique
-            </TabsTrigger>
-          )}
-          {canViewSummary && (
-            <TabsTrigger value="summary" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-              <FileText className="mr-1 sm:mr-2 h-4 w-4" /> Relevés & PDF
-            </TabsTrigger>
-          )}
-          {canViewSchedules && (
-            <TabsTrigger value="schedules" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-              <CalendarClock className="mr-1 sm:mr-2 h-4 w-4" /> Modèles d'Horaires
-            </TabsTrigger>
-          )}
-        </TabsList>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        {isMobile ? (
+          <div className="mb-4">
+            <Label htmlFor="mobile-timetracking-nav-select" className="text-sm font-medium">Naviguer vers :</Label>
+            <Select value={activeTab} onValueChange={setActiveTab}>
+              <SelectTrigger id="mobile-timetracking-nav-select" className="w-full mt-1">
+                <SelectValue placeholder="Choisir une section..." />
+              </SelectTrigger>
+              <SelectContent>
+                {visibleTabs.map(tab => (
+                  <SelectItem key={tab.value} value={tab.value} className="text-sm">
+                    <span className="flex items-center">
+                      <tab.Icon className="mr-2 h-4 w-4" />
+                      {tab.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : (
+          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-4 mb-6 bg-card p-1 rounded-lg">
+            {visibleTabs.map(tab => (
+              <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
+                <tab.Icon className="mr-1 sm:mr-2 h-4 w-4" /> {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        )}
 
-        {canViewPersonnel && (
-          <TabsContent value="personnel">
-            <ManageBrigadeMembers
-              members={brigadeMembers}
-              onAddMember={addMember}
-              onUpdateMember={updateMember}
-              onDeleteMember={deleteMember}
-              scheduleTemplates={scheduleTemplates}
-            />
-          </TabsContent>
-        )}
-        {canViewRecording && (
-          <TabsContent value="recording">
-            <RecordTimeLog
-              members={brigadeMembers}
-              timeEntries={timeEntries}
-              onAddTimeEntry={addTimeEntry}
-              onDeleteAllTimeEntries={handleDeleteAllTimeEntries}
-              loggedInUsername={loggedInUsername}
-              userPermissions={userPermissions}
-            />
-          </TabsContent>
-        )}
-        {canViewSummary && (
-          <TabsContent value="summary">
-            <MemberSummaryPdf 
-              members={brigadeMembers}
-              timeEntries={timeEntries}
-              loggedInUsername={loggedInUsername}
-              userPermissions={userPermissions}
-            />
-          </TabsContent>
-        )}
-        {canViewSchedules && (
-          <TabsContent value="schedules">
-            <ManageWorkSchedules 
-              initialScheduleTemplates={scheduleTemplates}
-              brigadeMembers={brigadeMembers}
-              onScheduleTemplatesChange={handleScheduleTemplatesChange}
-              loggedInUsername={loggedInUsername}
-              viewConfig={loggedInUserHourViewConfig} 
-            />
-          </TabsContent>
-        )}
-         {!(canViewPersonnel || canViewRecording || canViewSummary || canViewSchedules) && (
+        {visibleTabs.length > 0 ? (
+          visibleTabs.map(tab => (
+            <TabsContent key={tab.value} value={tab.value}>
+              {tab.component}
+            </TabsContent>
+          ))
+        ) : (
            <TabsContent value="">
             <Card>
               <CardHeader><CardTitle>Accès Restreint</CardTitle></CardHeader>
               <CardContent><p className="text-muted-foreground">Vous n'avez pas la permission d'accéder aux sous-rubriques du Suivi des Heures.</p></CardContent>
             </Card>
            </TabsContent>
-         )}
+        )}
       </Tabs>
     </div>
   );

@@ -13,10 +13,22 @@ import PmsConfigManager from './components/pms-config-manager';
 import UserManagement from './components/user-management';
 import React, { useState, useEffect } from 'react'; 
 import type { RubricId } from './components/user-management'; 
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { useIsMobile } from '@/hooks/use-mobile';
+
+const settingsTabsConfig = [
+  { value: "pdf-layout", label: "Mises en Page PDF", Icon: FileCog, component: <PdfLayoutManager /> },
+  { value: "app-settings", label: "Paramètres Application", Icon: AppSettingsIcon, component: <ApplicationSettingsManager /> },
+  { value: "pms-config", label: "Paramètres PMS", Icon: ShieldAlert, component: <PmsConfigManager /> },
+  { value: "user-management", label: "Gestion Utilisateurs", Icon: Users, component: <UserManagement /> },
+];
 
 export default function SettingsPage() {
   const [isClient, setIsClient] = useState(false);
   const [hasAccess, setHasAccess] = useState(false);
+  const isMobile = useIsMobile();
+  const [activeTab, setActiveTab] = useState(settingsTabsConfig[0].value);
   
   useEffect(() => {
     setIsClient(true);
@@ -83,57 +95,41 @@ export default function SettingsPage() {
         <CurrentDate />
       </div>
       
-      <Tabs defaultValue="pdf-layout" className="w-full">
-        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-4 mb-6 bg-card p-1 rounded-lg">
-          <TabsTrigger value="pdf-layout" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-            <FileCog className="mr-1 sm:mr-2 h-4 w-4" /> Mises en Page PDF
-          </TabsTrigger>
-          <TabsTrigger value="app-settings" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-            <AppSettingsIcon className="mr-1 sm:mr-2 h-4 w-4" /> Paramètres Application
-          </TabsTrigger>
-          <TabsTrigger value="pms-config" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-            <ShieldAlert className="mr-1 sm:mr-2 h-4 w-4" /> Paramètres PMS
-          </TabsTrigger>
-          <TabsTrigger value="user-management" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-            <Users className="mr-1 sm:mr-2 h-4 w-4" /> Gestion Utilisateurs
-          </TabsTrigger>
-        </TabsList>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        {isMobile ? (
+          <div className="mb-4">
+            <Label htmlFor="mobile-settings-nav-select" className="text-sm font-medium">Naviguer vers :</Label>
+            <Select value={activeTab} onValueChange={setActiveTab}>
+              <SelectTrigger id="mobile-settings-nav-select" className="w-full mt-1">
+                <SelectValue placeholder="Choisir une section..." />
+              </SelectTrigger>
+              <SelectContent>
+                {settingsTabsConfig.map(tab => (
+                  <SelectItem key={tab.value} value={tab.value} className="text-sm">
+                    <span className="flex items-center">
+                      <tab.Icon className="mr-2 h-4 w-4" />
+                      {tab.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : (
+          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-4 mb-6 bg-card p-1 rounded-lg">
+            {settingsTabsConfig.map(tab => (
+              <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
+                <tab.Icon className="mr-1 sm:mr-2 h-4 w-4" /> {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        )}
 
-        <TabsContent value="pdf-layout">
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle>Gestion des Mises en Page PDF</CardTitle>
-              <CardDescription>
-                Personnalisez l'apparence de vos documents PDF, ajoutez des logos et ajustez les mises en page.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <PdfLayoutManager />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="app-settings">
-          <ApplicationSettingsManager />
-        </TabsContent>
-
-        <TabsContent value="pms-config">
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle>Configuration du Plan de Maîtrise Sanitaire (PMS)</CardTitle>
-              <CardDescription>
-                Définissez les zones, les tâches et les critères pour les différents modules de suivi du PMS.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <PmsConfigManager />
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="user-management">
-          <UserManagement />
-        </TabsContent>
+        {settingsTabsConfig.map(tab => (
+          <TabsContent key={tab.value} value={tab.value}>
+            {tab.component}
+          </TabsContent>
+        ))}
       </Tabs>
     </div>
   );

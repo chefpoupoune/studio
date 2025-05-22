@@ -14,6 +14,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const PRODUCTS_STORAGE_KEY = 'inventory_products';
 const STOCK_MOVEMENTS_STORAGE_KEY = 'inventory_stock_movements';
@@ -26,12 +29,22 @@ const initialProducts: Product[] = [
   { id: 'prod_4', name: 'Liquide Vaisselle Écologique', reference: 'LVE004', quantity: 30 },
 ];
 
+const inventoryTabsConfig = [
+  { value: "products", label: "Gestion Produits", Icon: PackagePlusIcon, componentName: "ManageProducts" },
+  { value: "movements", label: "Mouvements Stock", Icon: HistoryIcon, componentName: "ManageStockMovements" },
+  { value: "inventory", label: "Inventaire", Icon: ListOrderedIcon, componentName: "GenerateInventory" },
+  { value: "purchase-orders", label: "Bons de Commande", Icon: ShoppingCartIcon, componentName: "GeneratePurchaseOrder" },
+];
+
 export default function InventoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [isClient, setIsClient] = useState(false);
   const { toast } = useToast();
+  const isMobile = useIsMobile();
+  const [activeTab, setActiveTab] = useState(inventoryTabsConfig[0].value);
+
 
   useEffect(() => {
     setIsClient(true);
@@ -183,6 +196,13 @@ export default function InventoryPage() {
     toast({ title: "Bon de Commande Reçu", description: `Le bon de commande ${order.orderNumber} a été marqué comme reçu et les stocks mis à jour.`});
   }, [purchaseOrders, products, toast]);
 
+  const tabsContentMap: Record<string, React.ReactNode> = {
+    "products": <ManageProducts products={products} onAddProduct={addProduct} onUpdateProduct={updateProduct} onDeleteProduct={deleteProduct} />,
+    "movements": <ManageStockMovements products={products} stockMovements={stockMovements} onAddStockMovement={addStockMovement} onDeleteAllStockMovements={handleDeleteAllStockMovements} />,
+    "inventory": <GenerateInventory products={products} />,
+    "purchase-orders": <GeneratePurchaseOrder products={products} purchaseOrders={purchaseOrders} onAddPurchaseOrder={addPurchaseOrder} onDeletePurchaseOrder={deletePurchaseOrder} onReceivePurchaseOrder={handleReceivePurchaseOrder} />,
+  };
+
 
   if (!isClient) {
     return (
@@ -206,50 +226,41 @@ export default function InventoryPage() {
         <CurrentDate />
       </div>
 
-      <Tabs defaultValue="products" className="w-full">
-        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-4 mb-6 bg-card p-1 rounded-lg">
-          <TabsTrigger value="products" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-            <PackagePlusIcon className="mr-1 sm:mr-2 h-4 w-4" /> Gestion Produits
-          </TabsTrigger>
-          <TabsTrigger value="movements" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-            <HistoryIcon className="mr-1 sm:mr-2 h-4 w-4" /> Mouvements Stock
-          </TabsTrigger>
-          <TabsTrigger value="inventory" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-            <ListOrderedIcon className="mr-1 sm:mr-2 h-4 w-4" /> Inventaire
-          </TabsTrigger>
-          <TabsTrigger value="purchase-orders" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-            <ShoppingCartIcon className="mr-1 sm:mr-2 h-4 w-4" /> Bons de Commande
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="products">
-          <ManageProducts
-            products={products}
-            onAddProduct={addProduct}
-            onUpdateProduct={updateProduct}
-            onDeleteProduct={deleteProduct}
-          />
-        </TabsContent>
-        <TabsContent value="movements">
-          <ManageStockMovements
-            products={products}
-            stockMovements={stockMovements}
-            onAddStockMovement={addStockMovement}
-            onDeleteAllStockMovements={handleDeleteAllStockMovements}
-          />
-        </TabsContent>
-        <TabsContent value="inventory">
-          <GenerateInventory products={products} />
-        </TabsContent>
-        <TabsContent value="purchase-orders">
-          <GeneratePurchaseOrder 
-            products={products} 
-            purchaseOrders={purchaseOrders}
-            onAddPurchaseOrder={addPurchaseOrder}
-            onDeletePurchaseOrder={deletePurchaseOrder} 
-            onReceivePurchaseOrder={handleReceivePurchaseOrder}
-          />
-        </TabsContent>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        {isMobile ? (
+          <div className="mb-4">
+            <Label htmlFor="mobile-inventory-nav-select" className="text-sm font-medium">Naviguer vers :</Label>
+            <Select value={activeTab} onValueChange={setActiveTab}>
+              <SelectTrigger id="mobile-inventory-nav-select" className="w-full mt-1">
+                <SelectValue placeholder="Choisir une section..." />
+              </SelectTrigger>
+              <SelectContent>
+                {inventoryTabsConfig.map(tab => (
+                  <SelectItem key={tab.value} value={tab.value} className="text-sm">
+                    <span className="flex items-center">
+                      <tab.Icon className="mr-2 h-4 w-4" />
+                      {tab.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : (
+          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-4 mb-6 bg-card p-1 rounded-lg">
+            {inventoryTabsConfig.map(tab => (
+              <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
+                <tab.Icon className="mr-1 sm:mr-2 h-4 w-4" /> {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        )}
+        
+        {inventoryTabsConfig.map(tab => (
+          <TabsContent key={tab.value} value={tab.value}>
+            {tabsContentMap[tab.componentName]}
+          </TabsContent>
+        ))}
       </Tabs>
     </div>
   );

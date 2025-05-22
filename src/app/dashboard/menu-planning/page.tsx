@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 
 interface jsPDFWithAutoTable extends jsPDF {
@@ -35,6 +36,12 @@ const months = Array.from({ length: 12 }, (_, i) => ({
   label: format(new Date(currentYear, i), "MMMM", { locale: fr }),
 }));
 
+const menuPlanningTabsConfig = [
+  { value: "planning", label: "Planification Mensuelle", Icon: CalendarDays },
+  { value: "order-sheets", label: "Fiches de Commande", Icon: ClipboardCheck },
+  { value: "temperature-sheets", label: "Fiches de Température", Icon: Thermometer },
+];
+
 export default function MenuPlanningPage() {
   const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().getMonth().toString());
@@ -42,6 +49,9 @@ export default function MenuPlanningPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isGeneratingMonthlyPdf, setIsGeneratingMonthlyPdf] = useState(false);
   const { toast } = useToast();
+  const isMobile = useIsMobile();
+  const [activeTab, setActiveTab] = useState(menuPlanningTabsConfig[0].value);
+
 
   const generateMonthData = useCallback((year: number, month: number): DailyMenu[] => {
     const daysInSelectedMonth = getDaysInMonth(new Date(year, month));
@@ -245,15 +255,15 @@ export default function MenuPlanningPage() {
       });
 
       const themeRgbColors: Record<MenuThemeIdentifier, [number, number, number]> = {
-        froid: [147, 197, 253],   // Tailwind Blue-300 (darkened slightly for PDF)
-        vege: [110, 231, 183],    // Tailwind Green-300 (darkened slightly for PDF)
-        sam: [253, 224, 71],     // Tailwind Yellow-300 (darkened slightly for PDF)
-        poisson: [249, 168, 212], // Tailwind Pink-300 (darkened slightly for PDF)
-        fete: [252, 165, 165],    // Tailwind Orange-300 (darkened slightly for PDF)
+        froid: [139, 195, 255],   // Un bleu plus soutenu
+        vege: [110, 231, 183],    // Vert
+        sam: [253, 224, 71],     // Jaune
+        poisson: [249, 168, 212], // Rose
+        fete: [252, 165, 165],    // Orange
       };
-      const holidayWeekendColor: [number, number, number] = [250, 202, 21]; 
-      const holidayWeekdayColor: [number, number, number] = [253, 230, 138]; 
-      const weekendColor: [number, number, number] = [229, 231, 235]; 
+      const holidayWeekendColor: [number, number, number] = [250, 202, 21]; // Jaune foncé pour férié + weekend
+      const holidayWeekdayColor: [number, number, number] = [253, 230, 138]; // Jaune clair pour férié en semaine
+      const weekendColor: [number, number, number] = [229, 231, 235]; // Gris clair pour weekend
 
       doc.autoTable({
         head: head,
@@ -282,7 +292,10 @@ export default function MenuPlanningPage() {
               }
 
               if (fillColorToApply) {
-                data.cell.styles.fillColor = fillColorToApply; 
+                // Apply to all cells in the row for a full-row background color
+                for (let i = 0; i < data.row.cells.length; i++) {
+                    data.row.cells[i].styles.fillColor = fillColorToApply;
+                }
               }
             }
           }
@@ -316,6 +329,124 @@ export default function MenuPlanningPage() {
     }
   };
   
+  const planningContent = (
+    <Card className="shadow-lg">
+      <CardHeader>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarDays className="w-6 h-6 text-primary"/>
+              Sélection et Création des Menus
+            </CardTitle>
+            <CardDescription>
+              Choisissez une année et un mois pour afficher et modifier les menus. Les samedis et dimanches sont en gris, les jours fériés en jaune.
+              Les thèmes colorient la ligne : Bleu (Froid), Vert (Végé), Jaune (SAM), Rose (Poisson), Orange (Fête).
+            </CardDescription>
+          </div>
+          <Button onClick={generateMonthlyMenuPdf} disabled={isLoading || isGeneratingMonthlyPdf} className="w-full sm:w-auto">
+            {isGeneratingMonthlyPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileTextIcon className="mr-2 h-4 w-4" />}
+            Générer PDF Mensuel
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+          <div>
+            <Label htmlFor="year-select-planning">Année</Label>
+            <Select value={selectedYear} onValueChange={setSelectedYear}>
+              <SelectTrigger id="year-select-planning">
+                <SelectValue placeholder="Sélectionner une année" />
+              </SelectTrigger>
+              <SelectContent>
+                {years.map(year => (
+                  <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="month-select-planning">Mois</Label>
+            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+              <SelectTrigger id="month-select-planning">
+                <SelectValue placeholder="Sélectionner un mois" />
+              </SelectTrigger>
+              <SelectContent>
+                {months.map(month => (
+                  <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="flex justify-center items-center py-10">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <span className="ml-2 text-muted-foreground">Chargement des menus...</span>
+          </div>
+        ) : (
+          <MenuPlanningTable
+            year={parseInt(selectedYear)}
+            month={parseInt(selectedMonth)}
+            menuData={menuData}
+            onUpdateMenuEntry={handleUpdateMenuEntry}
+          />
+        )}
+      </CardContent>
+    </Card>
+  );
+
+  const orderSheetsContent = (
+     <Card className="shadow-lg">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ClipboardCheck className="w-6 h-6 text-primary"/>
+            Fiches de Commande Hebdomadaires
+          </CardTitle>
+          <CardDescription>
+            Générez les fiches de commande pour chaque semaine du mois sélectionné.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <WeeklyOrderSheets
+            year={parseInt(selectedYear)}
+            month={parseInt(selectedMonth)}
+            menuData={menuData}
+            isLoading={isLoading}
+          />
+        </CardContent>
+      </Card>
+  );
+
+  const temperatureSheetsContent = (
+     <Card className="shadow-lg">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Thermometer className="w-6 h-6 text-primary"/>
+            Fiches de Température Hebdomadaires
+          </CardTitle>
+          <CardDescription>
+            Consultez et remplissez les fiches de température pour chaque semaine du mois sélectionné, basées sur les plats planifiés.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <TemperatureSheet
+            year={parseInt(selectedYear)}
+            month={parseInt(selectedMonth)}
+            menuData={menuData}
+            isLoading={isLoading}
+          />
+        </CardContent>
+      </Card>
+  );
+
+  // Update component map based on the config
+  const tabsContentMap: Record<string, React.ReactNode> = {
+    "planning": planningContent,
+    "order-sheets": orderSheetsContent,
+    "temperature-sheets": temperatureSheetsContent,
+  };
+
   return (
     <div className="container mx-auto p-4 md:p-6 lg:p-8 min-h-screen">
       <div className="flex flex-col sm:flex-row items-center justify-between mb-6 gap-4">
@@ -331,129 +462,41 @@ export default function MenuPlanningPage() {
         <CurrentDate />
       </div>
       
-      <Tabs defaultValue="planning" className="w-full">
-        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-1 mb-6 bg-card p-1 rounded-lg">
-          <TabsTrigger value="planning" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-            <CalendarDays className="mr-1 sm:mr-2 h-4 w-4" /> Planification Mensuelle
-          </TabsTrigger>
-          <TabsTrigger value="order-sheets" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-            <ClipboardCheck className="mr-1 sm:mr-2 h-4 w-4" /> Fiches de Commande
-          </TabsTrigger>
-          <TabsTrigger value="temperature-sheets" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-            <Thermometer className="mr-1 sm:mr-2 h-4 w-4" /> Fiches de Température
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="planning">
-          <Card className="shadow-lg">
-            <CardHeader>
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <CalendarDays className="w-6 h-6 text-primary"/>
-                    Sélection et Création des Menus
-                  </CardTitle>
-                  <CardDescription>
-                    Choisissez une année et un mois pour afficher et modifier les menus. Les samedis et dimanches sont en gris, les jours fériés en jaune.
-                    Les thèmes colorient la ligne : Bleu (Froid), Vert (Végé), Jaune (SAM), Rose (Poisson), Orange (Fête).
-                  </CardDescription>
-                </div>
-                <Button onClick={generateMonthlyMenuPdf} disabled={isLoading || isGeneratingMonthlyPdf} className="w-full sm:w-auto">
-                  {isGeneratingMonthlyPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileTextIcon className="mr-2 h-4 w-4" />}
-                  Générer PDF Mensuel
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
-                <div>
-                  <Label htmlFor="year-select-planning">Année</Label>
-                  <Select value={selectedYear} onValueChange={setSelectedYear}>
-                    <SelectTrigger id="year-select-planning">
-                      <SelectValue placeholder="Sélectionner une année" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {years.map(year => (
-                        <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="month-select-planning">Mois</Label>
-                  <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                    <SelectTrigger id="month-select-planning">
-                      <SelectValue placeholder="Sélectionner un mois" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {months.map(month => (
-                        <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {isLoading ? (
-                <div className="flex justify-center items-center py-10">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  <span className="ml-2 text-muted-foreground">Chargement des menus...</span>
-                </div>
-              ) : (
-                <MenuPlanningTable
-                  year={parseInt(selectedYear)}
-                  month={parseInt(selectedMonth)}
-                  menuData={menuData}
-                  onUpdateMenuEntry={handleUpdateMenuEntry}
-                />
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        {isMobile ? (
+          <div className="mb-4">
+            <Label htmlFor="mobile-menuplanning-nav-select" className="text-sm font-medium">Naviguer vers :</Label>
+            <Select value={activeTab} onValueChange={setActiveTab}>
+              <SelectTrigger id="mobile-menuplanning-nav-select" className="w-full mt-1">
+                <SelectValue placeholder="Choisir une section..." />
+              </SelectTrigger>
+              <SelectContent>
+                {menuPlanningTabsConfig.map(tab => (
+                  <SelectItem key={tab.value} value={tab.value} className="text-sm">
+                    <span className="flex items-center">
+                      <tab.Icon className="mr-2 h-4 w-4" />
+                      {tab.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : (
+          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-1 mb-6 bg-card p-1 rounded-lg">
+            {menuPlanningTabsConfig.map(tab => (
+              <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
+                <tab.Icon className="mr-1 sm:mr-2 h-4 w-4" /> {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        )}
         
-        <TabsContent value="order-sheets">
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ClipboardCheck className="w-6 h-6 text-primary"/>
-                Fiches de Commande Hebdomadaires
-              </CardTitle>
-              <CardDescription>
-                Générez les fiches de commande pour chaque semaine du mois sélectionné.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <WeeklyOrderSheets
-                year={parseInt(selectedYear)}
-                month={parseInt(selectedMonth)}
-                menuData={menuData}
-                isLoading={isLoading}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="temperature-sheets">
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Thermometer className="w-6 h-6 text-primary"/>
-                Fiches de Température Hebdomadaires
-              </CardTitle>
-              <CardDescription>
-                Consultez et remplissez les fiches de température pour chaque semaine du mois sélectionné, basées sur les plats planifiés.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <TemperatureSheet
-                year={parseInt(selectedYear)}
-                month={parseInt(selectedMonth)}
-                menuData={menuData}
-                isLoading={isLoading}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {menuPlanningTabsConfig.map(tab => (
+          <TabsContent key={tab.value} value={tab.value}>
+            {tabsContentMap[tab.value]}
+          </TabsContent>
+        ))}
       </Tabs>
     </div>
   );
