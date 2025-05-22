@@ -10,15 +10,26 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowRightLeft, PlusCircle } from 'lucide-react';
+import { ArrowRightLeft, PlusCircle, Trash2 } from 'lucide-react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 
 const stockMovementSchema = z.object({
@@ -34,9 +45,10 @@ interface ManageStockMovementsProps {
   products: Product[];
   stockMovements: StockMovement[];
   onAddStockMovement: (movement: Omit<StockMovement, 'id' | 'date' | 'productName'>) => void;
+  onDeleteAllStockMovements: () => void;
 }
 
-export default function ManageStockMovements({ products, stockMovements, onAddStockMovement }: ManageStockMovementsProps) {
+export default function ManageStockMovements({ products, stockMovements, onAddStockMovement, onDeleteAllStockMovements }: ManageStockMovementsProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   
   const form = useForm<StockMovementFormData>({
@@ -207,6 +219,32 @@ export default function ManageStockMovements({ products, stockMovements, onAddSt
             </div>
           )}
         </CardContent>
+        {stockMovements.length > 0 && (
+          <CardFooter className="flex justify-end pt-4">
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm">
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Supprimer Tout l'Historique
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Êtes-vous sûr de vouloir supprimer tout l'historique des mouvements ?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Cette action est irréversible et supprimera tous les mouvements de stock enregistrés.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Annuler</AlertDialogCancel>
+                  <AlertDialogAction onClick={onDeleteAllStockMovements}>
+                    Supprimer Tout
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </CardFooter>
+        )}
       </Card>
     </div>
   );

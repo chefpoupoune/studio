@@ -15,6 +15,10 @@ import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 
+const PRODUCTS_STORAGE_KEY = 'inventory_products';
+const STOCK_MOVEMENTS_STORAGE_KEY = 'inventory_stock_movements';
+const PURCHASE_ORDERS_STORAGE_KEY = 'inventory_purchase_orders';
+
 const initialProducts: Product[] = [
   { id: 'prod_1', name: 'Détergent Multi-Surfaces', reference: 'DMS001', quantity: 50 },
   { id: 'prod_2', name: 'Lingettes Désinfectantes Pro', reference: 'LDP002', quantity: 100 },
@@ -36,24 +40,24 @@ export default function InventoryPage() {
   useEffect(() => {
     if (isClient) {
       try {
-        const storedProducts = localStorage.getItem('inventory_products');
+        const storedProducts = localStorage.getItem(PRODUCTS_STORAGE_KEY);
         if (storedProducts) {
           setProducts(JSON.parse(storedProducts));
         } else {
           setProducts(initialProducts); 
         }
 
-        const storedMovements = localStorage.getItem('inventory_stock_movements');
+        const storedMovements = localStorage.getItem(STOCK_MOVEMENTS_STORAGE_KEY);
         if (storedMovements) setStockMovements(JSON.parse(storedMovements).map((m: StockMovement) => ({...m, date: new Date(m.date)})));
         
-        const storedOrders = localStorage.getItem('inventory_purchase_orders');
+        const storedOrders = localStorage.getItem(PURCHASE_ORDERS_STORAGE_KEY);
         if (storedOrders) setPurchaseOrders(JSON.parse(storedOrders).map((o: PurchaseOrder) => ({...o, date: new Date(o.date), status: o.status || 'pending'})));
 
       } catch (e) {
         console.error("Error loading data from localStorage", e);
-        localStorage.removeItem('inventory_products');
-        localStorage.removeItem('inventory_stock_movements');
-        localStorage.removeItem('inventory_purchase_orders');
+        localStorage.removeItem(PRODUCTS_STORAGE_KEY);
+        localStorage.removeItem(STOCK_MOVEMENTS_STORAGE_KEY);
+        localStorage.removeItem(PURCHASE_ORDERS_STORAGE_KEY);
         setProducts(initialProducts); 
         toast({ title: "Erreur de chargement des données d'inventaire", variant: "destructive" });
       }
@@ -62,19 +66,19 @@ export default function InventoryPage() {
 
   useEffect(() => {
     if (isClient) {
-      localStorage.setItem('inventory_products', JSON.stringify(products));
+      localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(products));
     }
   }, [products, isClient]);
 
   useEffect(() => {
     if (isClient) {
-      localStorage.setItem('inventory_stock_movements', JSON.stringify(stockMovements));
+      localStorage.setItem(STOCK_MOVEMENTS_STORAGE_KEY, JSON.stringify(stockMovements));
     }
   }, [stockMovements, isClient]);
   
   useEffect(() => {
     if (isClient) {
-      localStorage.setItem('inventory_purchase_orders', JSON.stringify(purchaseOrders));
+      localStorage.setItem(PURCHASE_ORDERS_STORAGE_KEY, JSON.stringify(purchaseOrders));
     }
   }, [purchaseOrders, isClient]);
 
@@ -120,6 +124,11 @@ export default function InventoryPage() {
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     toast({ title: "Mouvement de stock enregistré", description: `${movement.quantity} ${product.name} (${movement.type === 'entry' ? 'entrée' : 'sortie'}).` });
   }, [products, toast]);
+
+  const handleDeleteAllStockMovements = useCallback(() => {
+    setStockMovements([]);
+    toast({ title: "Historique des Mouvements Supprimé", description: "Tous les mouvements de stock ont été effacés.", variant: "destructive" });
+  }, [toast]);
 
   const addPurchaseOrder = useCallback((orderItems: PurchaseOrderItem[]) => {
     const newOrder: PurchaseOrder = {
@@ -226,6 +235,7 @@ export default function InventoryPage() {
             products={products}
             stockMovements={stockMovements}
             onAddStockMovement={addStockMovement}
+            onDeleteAllStockMovements={handleDeleteAllStockMovements}
           />
         </TabsContent>
         <TabsContent value="inventory">
