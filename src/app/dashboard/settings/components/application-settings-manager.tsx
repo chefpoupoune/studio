@@ -3,12 +3,12 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Cog, Palette, Bell, Database, Download, Upload, BellRing, ListChecks, Package, Info, RotateCcw, AlertTriangle, Image as ImageIcon, Trash2 as ImageIconTrash } from 'lucide-react';
+import { Cog, Palette, Bell, Database, Download, Upload, BellRing, ListChecks, Package, Info, RotateCcw, AlertTriangle, Image as ImageIcon, Trash2 as ImageIconTrash, Save } from 'lucide-react';
 import Image from 'next/image'; // For previewing the app logo
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input'; // Added this import
+import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
@@ -95,7 +95,7 @@ const APP_SPECIFIC_KEYS = [
   'occasional_meal_num_people',
   'cost_pn_picnic_ingredients',
   'cost_pn_salad_ingredients',
-  'time_tracking_members',
+  'time_tracking_members_v2', // Updated key
   'time_tracking_entries',
   'task_management_tasks',
   THEME_STORAGE_KEY,
@@ -109,6 +109,10 @@ const APP_SPECIFIC_KEYS = [
   NOTIFICATIONS_SOUND_ENABLED_KEY,
   NOTIFICATIONS_SOUND_CHOICE_KEY,
   APP_LOGO_STORAGE_KEY,
+  'app_defined_users_v2',
+  'loggedInUserPermissions',
+  'loggedInUserHourViewConfig',
+  'time_tracking_custom_schedule_templates_v2',
 ];
 
 const APP_SPECIFIC_PREFIXES = [
@@ -118,7 +122,7 @@ const APP_SPECIFIC_PREFIXES = [
   'temperature_sheet_daily_log_data_',
   'pms_kitchen_cleaning_records_v3_',
   'pms_restaurant_cleaning_records_v2_',
-  'pms_temperature_records_grid_v3_',
+  'pms_temperature_records_grid_v3_', // Updated key
   'pms_reception_log_v1',
   'pms_temp_change_log_v1',
   'pms_defrosting_log_v1',
@@ -261,24 +265,34 @@ export default function ApplicationSettingsManager() {
     }
   };
 
-  const handleAccentColorChange = (newColor: string) => {
+  const handleAccentColorInputChange = (newColor: string) => {
     setSelectedAccentColor(newColor);
     if (isClient) {
-      localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, newColor);
-      applyAccentColor(newColor);
+      applyAccentColor(newColor); // Apply for live preview
+    }
+  };
+  
+  const handleSaveAccentColor = () => {
+    if (isClient) {
+      localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, selectedAccentColor);
+      applyAccentColor(selectedAccentColor); // Ensure it's applied if somehow only state was changed
       toast({
-        title: "Couleur d'Accentuation Mise à Jour",
-        description: `La couleur d'accentuation est maintenant ${newColor}.`,
+        title: "Couleur d'Accentuation Enregistrée",
+        description: `La couleur d'accentuation est maintenant ${selectedAccentColor}.`,
       });
     }
   };
   
   const handleResetAccentColor = () => {
-    handleAccentColorChange(DEFAULT_APP_PRIMARY_COLOR);
-    toast({
-      title: "Couleur d'Accentuation Réinitialisée",
-      description: `La couleur d'accentuation a été réinitialisée à la valeur par défaut (${DEFAULT_APP_PRIMARY_COLOR}).`,
-    });
+    setSelectedAccentColor(DEFAULT_APP_PRIMARY_COLOR);
+    if (isClient) {
+      localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, DEFAULT_APP_PRIMARY_COLOR);
+      applyAccentColor(DEFAULT_APP_PRIMARY_COLOR);
+      toast({
+        title: "Couleur d'Accentuation Réinitialisée",
+        description: `La couleur d'accentuation a été réinitialisée à la valeur par défaut (${DEFAULT_APP_PRIMARY_COLOR}).`,
+      });
+    }
   };
 
   // App Logo Handlers
@@ -306,7 +320,7 @@ export default function ApplicationSettingsManager() {
     if (appLogoDataUrl && isClient) {
       localStorage.setItem(APP_LOGO_STORAGE_KEY, appLogoDataUrl);
       toast({ title: "Logo de l'Application Enregistré" });
-    } else if (!appLogoDataUrl && isClient) {
+    } else if (!appLogoDataUrl && isClient) { // Handles case where user uploads then deletes preview then saves
       localStorage.removeItem(APP_LOGO_STORAGE_KEY);
       toast({ title: "Logo de l'Application Supprimé" });
     }
@@ -532,7 +546,7 @@ export default function ApplicationSettingsManager() {
                 )}
                 <div className="flex gap-2">
                     <Button onClick={handleSaveAppLogo} disabled={!isClient}>
-                        <Download className="mr-2 h-4 w-4"/> Enregistrer Logo
+                        <Save className="mr-2 h-4 w-4"/> Enregistrer Logo
                     </Button>
                     {appLogoDataUrl && (
                         <Button variant="destructive" onClick={handleDeleteAppLogo} disabled={!isClient}>
@@ -576,7 +590,7 @@ export default function ApplicationSettingsManager() {
                             type="color"
                             id="accent-color-picker"
                             value={selectedAccentColor}
-                            onChange={(e) => handleAccentColorChange(e.target.value)}
+                            onChange={(e) => handleAccentColorInputChange(e.target.value)}
                             className="h-8 w-10 rounded border-input bg-background p-0.5 cursor-pointer"
                             disabled={!isClient}
                         />
@@ -584,16 +598,25 @@ export default function ApplicationSettingsManager() {
                          <Button 
                             variant="outline" 
                             size="sm" 
+                            onClick={handleSaveAccentColor} 
+                            disabled={!isClient}
+                            className="ml-auto"
+                         >
+                            <Save className="mr-1.5 h-3.5 w-3.5" />
+                            Enregistrer Couleur
+                        </Button>
+                         <Button 
+                            variant="outline" 
+                            size="sm" 
                             onClick={handleResetAccentColor} 
                             disabled={!isClient || selectedAccentColor === DEFAULT_APP_PRIMARY_COLOR}
-                            className="ml-2"
                          >
                             <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
                             Réinitialiser
                         </Button>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                        La couleur d'accentuation est sauvegardée et appliquée dynamiquement à l'application.
+                        Changez la couleur et cliquez sur "Enregistrer Couleur" pour appliquer.
                     </p>
                 </div>
             </div>
@@ -727,5 +750,5 @@ export default function ApplicationSettingsManager() {
     </Card>
   );
 }
-    
 
+      
