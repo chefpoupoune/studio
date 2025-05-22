@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Cog, Palette, Bell, Database, Download, Upload, BellRing, ListChecks, Package as PackageIcon, Info, RotateCcw, AlertTriangle, Image as ImageIcon, Trash2 as ImageIconTrash, Save } from 'lucide-react';
+import { Cog, Palette, Bell, Database, Download, Upload, BellRing, ListChecks, PackageIcon, Info, RotateCcw, AlertTriangle, Image as ImageIcon, Trash2 as ImageIconTrash, Save } from 'lucide-react';
 import Image from 'next/image';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -25,9 +25,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { 
+  applyThemeMode, 
+  applyAccentColor, 
+  THEME_STORAGE_KEY, 
+  ACCENT_COLOR_STORAGE_KEY 
+} from '@/lib/theme-utils';
 
-const THEME_STORAGE_KEY = "app_settings_theme_mode";
-const ACCENT_COLOR_STORAGE_KEY = "app_settings_accent_color";
+
 const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1";
 
 // Notification settings keys
@@ -49,42 +54,8 @@ const DEFAULT_NOTIFICATIONS_SOUND_ENABLED = false;
 const DEFAULT_NOTIFICATIONS_SOUND_CHOICE = 'default';
 
 
-type ThemeMode = 'light' | 'dark' | 'system';
+export type ThemeMode = 'light' | 'dark' | 'system';
 
-// Helper function to convert HEX to HSL
-function hexToHsl(hex: string): { h: number; s: number; l: number } | null {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  if (!result) return null;
-
-  let r = parseInt(result[1], 16) / 255;
-  let g = parseInt(result[2], 16) / 255;
-  let b = parseInt(result[3], 16) / 255;
-
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  let h = 0, s = 0; 
-  let l = (max + min) / 2;
-
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-      case g: h = (b - r) / d + 2; break;
-      case b: h = (r - g) / d + 4; break;
-      default: h = 0; 
-    }
-    h /= 6;
-  }
-
-  return {
-    h: Math.round(h * 360),
-    s: Math.round(s * 100),
-    l: Math.round(l * 100),
-  };
-}
-
-// List of specific keys and prefixes for app data
 const APP_SPECIFIC_KEYS = [
   'inventory_products',
   'inventory_stock_movements',
@@ -95,7 +66,7 @@ const APP_SPECIFIC_KEYS = [
   'occasional_meal_num_people',
   'cost_pn_picnic_ingredients',
   'cost_pn_salad_ingredients',
-  'time_tracking_members_v2', 
+  'time_tracking_members_v2',
   'time_tracking_entries',
   'time_tracking_custom_schedule_templates_v2',
   'task_management_tasks',
@@ -122,13 +93,13 @@ const APP_SPECIFIC_PREFIXES = [
   'temperature_sheet_daily_log_data_',
   'pms_kitchen_cleaning_records_v3_',
   'pms_restaurant_cleaning_records_v2_',
-  'pms_temperature_records_grid_v3_', 
+  'pms_temperature_records_grid_v3_',
   'pms_reception_log_v1',
   'pms_temp_change_log_v1',
   'pms_defrosting_log_v1',
   'pms_fryer_maintenance_log_v1',
   'pms_fryer_oil_tpm_log_v1',
-  'benefits_employees_list_v1', // Should be removed as employee management is centralized
+  'benefits_employees_list_v1', 
   'benefits_tracking_',
 ];
 
@@ -136,7 +107,7 @@ const APP_SPECIFIC_PREFIXES = [
 export default function ApplicationSettingsManager() {
   const [selectedThemeMode, setSelectedThemeMode] = useState<ThemeMode>('system');
   const [selectedAccentColor, setSelectedAccentColor] = useState<string>(DEFAULT_APP_PRIMARY_COLOR);
-  
+
   const [emailNotifications, setEmailNotifications] = useState<boolean>(DEFAULT_NOTIFICATIONS_EMAIL);
   const [inAppGeneralNotifications, setInAppGeneralNotifications] = useState<boolean>(DEFAULT_NOTIFICATIONS_IN_APP_GENERAL);
   const [inAppNewTaskNotifications, setInAppNewTaskNotifications] = useState<boolean>(DEFAULT_NOTIFICATIONS_IN_APP_NEW_TASK);
@@ -158,94 +129,25 @@ export default function ApplicationSettingsManager() {
     setIsClient(true);
   }, []);
 
-  const applyThemeMode = useCallback((theme: ThemeMode) => {
-    if (typeof window === 'undefined') return;
-    console.log("[applyThemeMode] Applying theme:", theme);
-    const root = document.documentElement;
-    root.classList.remove('light', 'dark');
-
-    if (theme === 'system') {
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      root.classList.add(systemTheme);
-      console.log("[applyThemeMode] System theme detected as:", systemTheme);
-    } else {
-      root.classList.add(theme);
-    }
-  }, []);
-  
-  const applyAccentColor = useCallback((color: string) => {
-    if (typeof window === 'undefined') return;
-    console.log("[applyAccentColor] Attempting to apply color:", color);
-    const root = document.documentElement;
-    let colorToApply = color;
-    let hslColor = hexToHsl(colorToApply);
-  
-    if (!hslColor) {
-      console.warn(`[applyAccentColor] Invalid hex color "${color}" received or HSL conversion failed. Falling back to default: ${DEFAULT_APP_PRIMARY_COLOR}.`);
-      colorToApply = DEFAULT_APP_PRIMARY_COLOR;
-      hslColor = hexToHsl(colorToApply);
-      // Removed: setSelectedAccentColor(DEFAULT_APP_PRIMARY_COLOR); This was resetting the state.
-    }
-  
-    if (hslColor) {
-      console.log(`[applyAccentColor] Applying HSL: h=${hslColor.h}, s=${hslColor.s}%, l=${hslColor.l}% from color ${colorToApply}`);
-      root.style.setProperty('--primary-h', `${hslColor.h}`);
-      root.style.setProperty('--primary-s', `${hslColor.s}%`);
-      root.style.setProperty('--primary-l', `${hslColor.l}%`);
-      
-      root.style.setProperty('--accent-h', `${hslColor.h}`);
-      root.style.setProperty('--accent-s', `${hslColor.s}%`);
-      root.style.setProperty('--accent-l', `${hslColor.l}%`);
-
-      root.style.setProperty('--ring-h', `${hslColor.h}`);
-      root.style.setProperty('--ring-s', `${hslColor.s}%`);
-      root.style.setProperty('--ring-l', `${hslColor.l}%`);
-
-      const isLightAccent = hslColor.l > 60;
-      console.log(`[applyAccentColor] isLightAccent (l > 60): ${isLightAccent} (L: ${hslColor.l})`);
-
-      if (isLightAccent) { 
-        root.style.setProperty('--primary-foreground-h', `var(--default-primary-foreground-dark-h)`);
-        root.style.setProperty('--primary-foreground-s', `var(--default-primary-foreground-dark-s)`);
-        root.style.setProperty('--primary-foreground-l', `var(--default-primary-foreground-dark-l)`);
-        root.style.setProperty('--accent-foreground-h', `var(--default-accent-foreground-dark-h)`);
-        root.style.setProperty('--accent-foreground-s', `var(--default-accent-foreground-dark-s)`);
-        root.style.setProperty('--accent-foreground-l', `var(--default-accent-foreground-dark-l)`);
-        console.log("[applyAccentColor] Set dark foreground variables.");
-      } else { 
-        root.style.setProperty('--primary-foreground-h', `var(--default-primary-foreground-light-h)`);
-        root.style.setProperty('--primary-foreground-s', `var(--default-primary-foreground-light-s)`);
-        root.style.setProperty('--primary-foreground-l', `var(--default-primary-foreground-light-l)`);
-        root.style.setProperty('--accent-foreground-h', `var(--default-accent-foreground-light-h)`);
-        root.style.setProperty('--accent-foreground-s', `var(--default-accent-foreground-light-s)`);
-        root.style.setProperty('--accent-foreground-l', `var(--default-accent-foreground-light-l)`);
-        console.log("[applyAccentColor] Set light foreground variables.");
-      }
-    } else {
-        console.error("[applyAccentColor] CRITICAL: Default accent color is also invalid. Cannot apply accent color.");
-    }
-  }, []);
-
-  // Effect to load initial settings from localStorage
   useEffect(() => {
     if (isClient) {
-      console.log("[EFFECT Load Settings] Running. isClient:", isClient);
+      console.log("[Settings EFFECT Load] Running.");
       // Theme Mode
       const storedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
       const initialThemeMode = storedTheme && ['light', 'dark', 'system'].includes(storedTheme) ? storedTheme : 'system';
       setSelectedThemeMode(initialThemeMode);
-      console.log("[EFFECT Load Settings] Initial theme mode set to:", initialThemeMode);
+      console.log("[Settings EFFECT Load] Initial theme mode set to:", initialThemeMode);
 
       // Accent Color
       const storedAccentColor = localStorage.getItem(ACCENT_COLOR_STORAGE_KEY);
       const initialAccentColor = storedAccentColor || DEFAULT_APP_PRIMARY_COLOR;
       setSelectedAccentColor(initialAccentColor);
-      console.log("[EFFECT Load Settings] Initial accent color set to:", initialAccentColor, "(Stored: ", storedAccentColor, ")");
+      console.log("[Settings EFFECT Load] Initial accent color set to:", initialAccentColor, "(Stored: ", storedAccentColor, ")");
       
       // App Logo
       const storedAppLogo = localStorage.getItem(APP_LOGO_STORAGE_KEY);
       setAppLogoDataUrl(storedAppLogo || null);
-      console.log("[EFFECT Load Settings] App logo URL loaded.");
+      console.log("[Settings EFFECT Load] App logo URL loaded.");
 
       // Notification Settings
       setEmailNotifications(localStorage.getItem(NOTIFICATIONS_EMAIL_KEY) === 'true' || DEFAULT_NOTIFICATIONS_EMAIL);
@@ -255,37 +157,17 @@ export default function ApplicationSettingsManager() {
       setInAppInventoryLowNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_INVENTORY_LOW);
       setSoundNotificationsEnabled(localStorage.getItem(NOTIFICATIONS_SOUND_ENABLED_KEY) === 'true' || DEFAULT_NOTIFICATIONS_SOUND_ENABLED);
       setNotificationSoundChoice(localStorage.getItem(NOTIFICATIONS_SOUND_CHOICE_KEY) || DEFAULT_NOTIFICATIONS_SOUND_CHOICE);
-      console.log("[EFFECT Load Settings] Notification settings loaded.");
-
-      // Media query for system theme changes
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-      const handleChange = () => {
-        const currentThemeSetting = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
-        if (currentThemeSetting === 'system' || !currentThemeSetting) {
-           console.log("[System Theme Change] Re-applying system theme.");
-           applyThemeMode('system');
-        }
-      };
-      mediaQuery.addEventListener('change', handleChange);
-      return () => mediaQuery.removeEventListener('change', handleChange);
+      console.log("[Settings EFFECT Load] Notification settings loaded.");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClient]); // Removed applyThemeMode from deps as it's handled by the next effect
-
-  // Effect to apply theme and accent color when states change or on initial load after isClient
-  useEffect(() => {
-    if (isClient) {
-      console.log("[EFFECT Apply Styles] Running. Theme:", selectedThemeMode, "Accent:", selectedAccentColor);
-      applyThemeMode(selectedThemeMode);
-      applyAccentColor(selectedAccentColor);
-    }
-  }, [isClient, selectedThemeMode, selectedAccentColor, applyThemeMode, applyAccentColor]);
+  }, [isClient]); 
 
 
   const handleThemeModeChange = (newMode: ThemeMode) => {
     setSelectedThemeMode(newMode);
     if (isClient) {
       localStorage.setItem(THEME_STORAGE_KEY, newMode);
+      applyThemeMode(newMode); // Apply immediately
       toast({
         title: "Thème Mis à Jour",
         description: `Le mode d'affichage est maintenant réglé sur "${newMode === 'light' ? 'Clair' : newMode === 'dark' ? 'Sombre' : 'Système'}".`,
@@ -294,17 +176,16 @@ export default function ApplicationSettingsManager() {
   };
 
   const handleAccentColorInputChange = (newColor: string) => {
-    setSelectedAccentColor(newColor); 
-    // Live preview by applying immediately, but not saving yet
+    setSelectedAccentColor(newColor);
     if(isClient) {
-      applyAccentColor(newColor);
+      applyAccentColor(newColor); // Live preview
     }
   };
   
   const handleSaveAccentColor = () => {
     if (isClient) {
       localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, selectedAccentColor);
-      applyAccentColor(selectedAccentColor); // Ensure re-application if it was previewing default
+      applyAccentColor(selectedAccentColor); // Ensure application
       toast({
         title: "Couleur d'Accentuation Enregistrée",
         description: `La couleur d'accentuation est maintenant ${selectedAccentColor}.`,
@@ -348,13 +229,11 @@ export default function ApplicationSettingsManager() {
     if (appLogoDataUrl && isClient) {
       localStorage.setItem(APP_LOGO_STORAGE_KEY, appLogoDataUrl);
       toast({ title: "Logo de l'Application Enregistré" });
-    } else if (!appLogoDataUrl && isClient) { // If user cleared preview and saves
+    } else if (!appLogoDataUrl && isClient) { 
       localStorage.removeItem(APP_LOGO_STORAGE_KEY);
       toast({ title: "Logo de l'Application Supprimé" });
     }
-     // Force a reload to update the logo in the sidebar immediately.
-     // This is a bit heavy-handed but ensures visual consistency without complex state propagation.
-    window.location.reload();
+    window.location.reload(); // Force reload to update sidebar
   };
 
   const handleDeleteAppLogo = () => {
@@ -398,7 +277,7 @@ export default function ApplicationSettingsManager() {
         description: `Son de notification réglé sur "${value}".`,
       });
       if (soundNotificationsEnabled && value !== 'none') {
-        console.log(`[Notification Sound] Playing sound: ${value}`); // Placeholder for actual sound playing
+        console.log(`[Notification Sound] Playing sound: ${value}`); 
       }
     }
   };
@@ -477,17 +356,8 @@ export default function ApplicationSettingsManager() {
             description: `${importedCount} éléments de données ont été importés. Veuillez recharger la page pour appliquer tous les changements.`,
           });
           
-          // Explicitly update states for theme and accent from newly imported localStorage values
-          const newTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
-          setSelectedThemeMode(newTheme && ['light', 'dark', 'system'].includes(newTheme) ? newTheme : 'system');
-          
-          const newAccent = localStorage.getItem(ACCENT_COLOR_STORAGE_KEY);
-          setSelectedAccentColor(newAccent || DEFAULT_APP_PRIMARY_COLOR);
-          
-          const newAppLogo = localStorage.getItem(APP_LOGO_STORAGE_KEY);
-          setAppLogoDataUrl(newAppLogo || null);
-
-          // Consider reloading the page to ensure all components re-read from localStorage
+          // Force a reload to ensure all components pick up the new localStorage values,
+          // including DashboardLayout for theme/accent.
            setTimeout(() => window.location.reload(), 1000);
 
         } else {
@@ -764,5 +634,3 @@ export default function ApplicationSettingsManager() {
     </Card>
   );
 }
-
-    

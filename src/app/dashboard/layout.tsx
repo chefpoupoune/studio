@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from "react";
@@ -30,28 +31,31 @@ import {
   ShieldCheck,
   PanelLeft,
   LogOut,
-  Clock // Icon for Time Tracking main link
+  Clock
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import type { RubricId } from '@/app/dashboard/settings/components/user-management'; 
+import type { RubricId } from '@/app/dashboard/settings/components/user-management';
 import { RUBRICS as BASE_RUBRICS, TIME_TRACKING_SUB_RUBRICS } from '@/app/dashboard/settings/components/user-management';
-
+import { applyThemeMode, applyAccentColor, THEME_STORAGE_KEY, ACCENT_COLOR_STORAGE_KEY } from '@/lib/theme-utils'; // Import new utils
+import { DEFAULT_APP_PRIMARY_COLOR } from '@/config/colors'; // Import default color
 
 const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1";
+type ThemeMode = 'light' | 'dark' | 'system'; // Define ThemeMode if not imported
+
 
 interface NavItem {
   href: string;
   icon: React.ElementType;
   label: string;
-  rubricId: RubricId | 'timeTracking_parent'; // Special ID for the parent Time Tracking link
+  rubricId: RubricId | 'timeTracking_parent'; 
 }
 
 const allNavItems: NavItem[] = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Tableau de Bord", rubricId: "dashboard" },
   { href: "/dashboard/inventory", icon: Archive, label: "Gestion Stocks", rubricId: "inventory" },
   { href: "/dashboard/benefits", icon: FileSpreadsheet, label: "Avantages Nature", rubricId: "benefits" },
-  { href: "/dashboard/time-tracking", icon: Clock, label: "Suivi Heures", rubricId: "timeTracking_parent" }, // Parent link
+  { href: "/dashboard/time-tracking", icon: Clock, label: "Suivi Heures", rubricId: "timeTracking_parent" }, 
   { href: "/dashboard/task-management", icon: ClipboardList, label: "Gestion Tâches", rubricId: "taskManagement" },
   { href: "/dashboard/cost-management", icon: DollarSign, label: "Gestion Coûts", rubricId: "costManagement" },
   { href: "/dashboard/menu-planning", icon: BookOpenText, label: "Planification Menus", rubricId: "menuPlanning" },
@@ -82,7 +86,6 @@ function AppSidebar() {
           const storedPermissions = JSON.parse(storedPermissionsRaw) as Partial<Record<RubricId, boolean>>;
           const filteredItems = allNavItems.filter(item => {
             if (item.rubricId === 'timeTracking_parent') {
-              // Show "Suivi Heures" parent if any sub-rubric is permitted
               return TIME_TRACKING_SUB_RUBRICS.some(sub => storedPermissions[sub.id]);
             }
             return storedPermissions[item.rubricId] === true;
@@ -90,32 +93,30 @@ function AppSidebar() {
           setVisibleNavItems(filteredItems);
         } catch (e) {
           console.error("Error parsing stored permissions for sidebar", e);
-          setVisibleNavItems([]); 
+          setVisibleNavItems([]);
         }
       } else {
-        setVisibleNavItems([]); 
+        setVisibleNavItems([]);
       }
     }
-  }, [pathname]); 
+  }, [pathname]);
 
   React.useEffect(() => {
-    // Close mobile sidebar on pathname change
     if (openMobile) {
       setOpenMobile(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]); // Only depend on pathname to avoid closing loops
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]); 
 
   const handleLogout = () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('isLoggedIn');
       localStorage.removeItem('loggedInUsername');
       localStorage.removeItem('loggedInUserPermissions');
-      localStorage.removeItem('loggedInUserHourViewConfig'); 
+      localStorage.removeItem('loggedInUserHourViewConfig');
     }
     router.push('/login');
   };
-
 
   return (
     <Sidebar collapsible="icon" variant="sidebar" side="left">
@@ -206,15 +207,39 @@ export default function DashboardLayout({
         if (storedAppLogo) {
             setAppLogoUrl(storedAppLogo);
         }
+
+        // Apply Theme Mode and Accent Color on initial load
+        const storedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
+        const initialThemeMode = storedTheme && ['light', 'dark', 'system'].includes(storedTheme) ? storedTheme : 'system';
+        applyThemeMode(initialThemeMode);
+        console.log("[DashboardLayout] Applied theme:", initialThemeMode);
+
+        const storedAccentColor = localStorage.getItem(ACCENT_COLOR_STORAGE_KEY);
+        const initialAccentColor = storedAccentColor || DEFAULT_APP_PRIMARY_COLOR;
+        applyAccentColor(initialAccentColor);
+        console.log("[DashboardLayout] Applied accent color:", initialAccentColor);
+
+
+        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        const handleChange = () => {
+          const currentThemeSetting = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
+          if (currentThemeSetting === 'system' || !currentThemeSetting) {
+             console.log("[DashboardLayout] System theme changed, re-applying.");
+             applyThemeMode('system');
+          }
+        };
+        mediaQuery.addEventListener('change', handleChange);
+        return () => mediaQuery.removeEventListener('change', handleChange);
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on client mount
 
   React.useEffect(() => {
     if (isClient) {
       if (localStorage.getItem('isLoggedIn') !== 'true') {
         router.replace('/login');
       } else {
-        setAuthChecked(true); 
+        setAuthChecked(true);
       }
     }
   }, [isClient, router]);
@@ -223,7 +248,7 @@ export default function DashboardLayout({
     if (isClient && authChecked) {
       const username = localStorage.getItem('loggedInUsername');
       if (username?.toLowerCase() === 'chef') {
-        return; 
+        return;
       }
 
       const storedPermissionsRaw = localStorage.getItem('loggedInUserPermissions');
@@ -233,7 +258,7 @@ export default function DashboardLayout({
           userPermissions = JSON.parse(storedPermissionsRaw);
         } catch (e) {
           console.error("Error parsing permissions for route access control:", e);
-          router.replace('/dashboard'); 
+          router.replace('/dashboard');
           return;
         }
       }
@@ -244,12 +269,12 @@ export default function DashboardLayout({
         }
         return;
       }
-      
+
       const pathSegments = pathname.split('/');
       if (pathSegments.length > 2 && pathSegments[1] === 'dashboard') {
         const currentTopLevelPath = pathSegments[2];
         const navItem = allNavItems.find(item => item.href === `/dashboard/${currentTopLevelPath}`);
-        
+
         if (navItem) {
           let hasAccessToSection = false;
           if (navItem.rubricId === 'timeTracking_parent') {
@@ -257,13 +282,13 @@ export default function DashboardLayout({
           } else {
             hasAccessToSection = !!userPermissions[navItem.rubricId];
           }
-          
+
           if (!hasAccessToSection) {
-            router.replace('/dashboard'); 
+            router.replace('/dashboard');
           }
         } else {
-           if (currentTopLevelPath) { 
-            // router.replace('/dashboard'); 
+           if (currentTopLevelPath) {
+            // router.replace('/dashboard');
            }
         }
       }
