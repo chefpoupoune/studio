@@ -55,22 +55,6 @@ export default function TimeTrackingPage() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
   
-  const timeTrackingTabsConfig: TimeTrackingTab[] = [
-    { value: "personnel", label: "Gestion Personnel", Icon: Users, component: <ManageBrigadeMembers members={brigadeMembers} onAddMember={addMember} onUpdateMember={updateMember} onDeleteMember={deleteMember} scheduleTemplates={scheduleTemplates} />, permissionKey: 'timeTracking_personnel' },
-    { value: "recording", label: "Saisie & Historique", Icon: Clock, component: <RecordTimeLog members={brigadeMembers} timeEntries={timeEntries} onAddTimeEntry={addTimeEntry} onDeleteAllTimeEntries={handleDeleteAllTimeEntries} loggedInUsername={loggedInUsername} userPermissions={userPermissions} />, permissionKey: 'timeTracking_recording' },
-    { value: "summary", label: "Relevés & PDF", Icon: FileText, component: <MemberSummaryPdf members={brigadeMembers} timeEntries={timeEntries} loggedInUsername={loggedInUsername} userPermissions={userPermissions} />, permissionKey: 'timeTracking_summary' },
-    { value: "schedules", label: "Modèles d'Horaires", Icon: CalendarClock, component: <ManageWorkSchedules initialScheduleTemplates={scheduleTemplates} brigadeMembers={brigadeMembers} onScheduleTemplatesChange={handleScheduleTemplatesChange} loggedInUsername={loggedInUsername} viewConfig={loggedInUserHourViewConfig} />, permissionKey: 'timeTracking_schedules' },
-  ];
-  
-  const visibleTabs = React.useMemo(() => {
-    if (loggedInUsername?.toLowerCase() === 'chef') {
-      return timeTrackingTabsConfig;
-    }
-    return timeTrackingTabsConfig.filter(tab => userPermissions[tab.permissionKey as RubricId]);
-  }, [userPermissions, loggedInUsername, timeTrackingTabsConfig]);
-
-  const [activeTab, setActiveTab] = React.useState(visibleTabs.length > 0 ? visibleTabs[0].value : "");
-
 
   useEffect(() => {
     setIsClient(true);
@@ -198,11 +182,27 @@ export default function TimeTrackingPage() {
       localStorage.setItem(WORK_SCHEDULE_CUSTOM_TEMPLATES_KEY, JSON.stringify(updatedTemplates));
     }
   }, [isClient]);
+
+  const timeTrackingTabsConfig: TimeTrackingTab[] = [
+    { value: "personnel", label: "Gestion Personnel", Icon: Users, component: <ManageBrigadeMembers members={brigadeMembers} onAddMember={addMember} onUpdateMember={updateMember} onDeleteMember={deleteMember} scheduleTemplates={scheduleTemplates} />, permissionKey: 'timeTracking_personnel' },
+    { value: "recording", label: "Saisie & Historique", Icon: Clock, component: <RecordTimeLog members={brigadeMembers} timeEntries={timeEntries} onAddTimeEntry={addTimeEntry} onDeleteAllTimeEntries={handleDeleteAllTimeEntries} loggedInUsername={loggedInUsername} userPermissions={userPermissions} />, permissionKey: 'timeTracking_recording' },
+    { value: "summary", label: "Relevés & PDF", Icon: FileText, component: <MemberSummaryPdf members={brigadeMembers} timeEntries={timeEntries} loggedInUsername={loggedInUsername} userPermissions={userPermissions} />, permissionKey: 'timeTracking_summary' },
+    { value: "schedules", label: "Modèles d'Horaires", Icon: CalendarClock, component: <ManageWorkSchedules initialScheduleTemplates={scheduleTemplates} brigadeMembers={brigadeMembers} onScheduleTemplatesChange={handleScheduleTemplatesChange} loggedInUsername={loggedInUsername} viewConfig={loggedInUserHourViewConfig} />, permissionKey: 'timeTracking_schedules' },
+  ];
+  
+  const visibleTabs = React.useMemo(() => {
+    if (loggedInUsername?.toLowerCase() === 'chef') {
+      return timeTrackingTabsConfig;
+    }
+    return timeTrackingTabsConfig.filter(tab => userPermissions[tab.permissionKey as RubricId]);
+  }, [userPermissions, loggedInUsername, timeTrackingTabsConfig]); // Added timeTrackingTabsConfig dependency
+
+  const [activeTab, setActiveTab] = React.useState(visibleTabs.length > 0 ? visibleTabs[0].value : "");
   
   useEffect(() => {
     if (visibleTabs.length > 0 && !visibleTabs.find(tab => tab.value === activeTab)) {
       setActiveTab(visibleTabs[0].value);
-    } else if (visibleTabs.length === 0) {
+    } else if (visibleTabs.length === 0 && activeTab !== "") { // Ensure activeTab is reset if no tabs are visible
       setActiveTab("");
     }
   }, [visibleTabs, activeTab]);
@@ -267,7 +267,7 @@ export default function TimeTrackingPage() {
             </TabsContent>
           ))
         ) : (
-           <TabsContent value="">
+           <TabsContent value=""> {/* Provide a default value if no tabs are visible */}
             <Card>
               <CardHeader><CardTitle>Accès Restreint</CardTitle></CardHeader>
               <CardContent><p className="text-muted-foreground">Vous n'avez pas la permission d'accéder aux sous-rubriques du Suivi des Heures.</p></CardContent>
