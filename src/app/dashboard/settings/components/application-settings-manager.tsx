@@ -160,12 +160,14 @@ export default function ApplicationSettingsManager() {
 
   const applyThemeMode = useCallback((theme: ThemeMode) => {
     if (typeof window === 'undefined') return;
+    console.log("[applyThemeMode] Applying theme:", theme);
     const root = document.documentElement;
     root.classList.remove('light', 'dark');
 
     if (theme === 'system') {
       const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       root.classList.add(systemTheme);
+      console.log("[applyThemeMode] System theme detected as:", systemTheme);
     } else {
       root.classList.add(theme);
     }
@@ -174,9 +176,17 @@ export default function ApplicationSettingsManager() {
   const applyAccentColor = useCallback((color: string) => {
     if (typeof window === 'undefined') return;
     const root = document.documentElement;
-    const hslColor = hexToHsl(color);
-
+    let colorToApply = color;
+    let hslColor = hexToHsl(colorToApply);
+  
+    if (!hslColor) {
+      console.warn(`[applyAccentColor] Invalid hex color "${color}" received. Falling back to default: ${DEFAULT_APP_PRIMARY_COLOR}.`);
+      colorToApply = DEFAULT_APP_PRIMARY_COLOR;
+      hslColor = hexToHsl(colorToApply);
+    }
+  
     if (hslColor) {
+      console.log(`[applyAccentColor] Applying HSL: h=${hslColor.h}, s=${hslColor.s}%, l=${hslColor.l}% from color ${colorToApply}`);
       root.style.setProperty('--primary-h', `${hslColor.h}`);
       root.style.setProperty('--primary-s', `${hslColor.s}%`);
       root.style.setProperty('--primary-l', `${hslColor.l}%`);
@@ -190,6 +200,7 @@ export default function ApplicationSettingsManager() {
       root.style.setProperty('--ring-l', `${hslColor.l}%`);
 
       const isLightAccent = hslColor.l > 60;
+      console.log(`[applyAccentColor] isLightAccent (l > 60): ${isLightAccent} (L: ${hslColor.l})`);
 
       if (isLightAccent) { 
         root.style.setProperty('--primary-foreground-h', `var(--default-primary-foreground-dark-h)`);
@@ -198,6 +209,7 @@ export default function ApplicationSettingsManager() {
         root.style.setProperty('--accent-foreground-h', `var(--default-accent-foreground-dark-h)`);
         root.style.setProperty('--accent-foreground-s', `var(--default-accent-foreground-dark-s)`);
         root.style.setProperty('--accent-foreground-l', `var(--default-accent-foreground-dark-l)`);
+        console.log("[applyAccentColor] Set dark foreground variables.");
       } else { 
         root.style.setProperty('--primary-foreground-h', `var(--default-primary-foreground-light-h)`);
         root.style.setProperty('--primary-foreground-s', `var(--default-primary-foreground-light-s)`);
@@ -205,22 +217,35 @@ export default function ApplicationSettingsManager() {
         root.style.setProperty('--accent-foreground-h', `var(--default-accent-foreground-light-h)`);
         root.style.setProperty('--accent-foreground-s', `var(--default-accent-foreground-light-s)`);
         root.style.setProperty('--accent-foreground-l', `var(--default-accent-foreground-light-l)`);
+        console.log("[applyAccentColor] Set light foreground variables.");
       }
+    } else {
+        console.error("[applyAccentColor] CRITICAL: Default accent color is also invalid. Cannot apply accent color.");
     }
   }, []);
 
   // Effect to load initial settings from localStorage
   useEffect(() => {
     if (isClient) {
+      console.log("[EFFECT Load Settings] Running. isClient:", isClient);
+      // Theme Mode
       const storedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
-      setSelectedThemeMode(storedTheme && ['light', 'dark', 'system'].includes(storedTheme) ? storedTheme : 'system');
+      const initialThemeMode = storedTheme && ['light', 'dark', 'system'].includes(storedTheme) ? storedTheme : 'system';
+      setSelectedThemeMode(initialThemeMode);
+      console.log("[EFFECT Load Settings] Initial theme mode set to:", initialThemeMode);
 
+      // Accent Color
       const storedAccentColor = localStorage.getItem(ACCENT_COLOR_STORAGE_KEY);
-      setSelectedAccentColor(storedAccentColor || DEFAULT_APP_PRIMARY_COLOR);
+      const initialAccentColor = storedAccentColor || DEFAULT_APP_PRIMARY_COLOR;
+      setSelectedAccentColor(initialAccentColor);
+      console.log("[EFFECT Load Settings] Initial accent color set to:", initialAccentColor, "(Stored: ", storedAccentColor, ")");
       
+      // App Logo
       const storedAppLogo = localStorage.getItem(APP_LOGO_STORAGE_KEY);
       setAppLogoDataUrl(storedAppLogo || null);
+      console.log("[EFFECT Load Settings] App logo URL loaded.");
 
+      // Notification Settings
       setEmailNotifications(localStorage.getItem(NOTIFICATIONS_EMAIL_KEY) === 'true' || DEFAULT_NOTIFICATIONS_EMAIL);
       setInAppGeneralNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_GENERAL_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_GENERAL);
       setInAppNewTaskNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_NEW_TASK_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_NEW_TASK);
@@ -228,21 +253,27 @@ export default function ApplicationSettingsManager() {
       setInAppInventoryLowNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_INVENTORY_LOW);
       setSoundNotificationsEnabled(localStorage.getItem(NOTIFICATIONS_SOUND_ENABLED_KEY) === 'true' || DEFAULT_NOTIFICATIONS_SOUND_ENABLED);
       setNotificationSoundChoice(localStorage.getItem(NOTIFICATIONS_SOUND_CHOICE_KEY) || DEFAULT_NOTIFICATIONS_SOUND_CHOICE);
+      console.log("[EFFECT Load Settings] Notification settings loaded.");
 
+      // Media query for system theme changes
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
       const handleChange = () => {
-        if (localStorage.getItem(THEME_STORAGE_KEY) === 'system' || !localStorage.getItem(THEME_STORAGE_KEY)) {
+        // Check localStorage again to ensure it's still 'system'
+        const currentThemeSetting = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
+        if (currentThemeSetting === 'system' || !currentThemeSetting) {
+           console.log("[System Theme Change] Re-applying system theme.");
            applyThemeMode('system');
         }
       };
       mediaQuery.addEventListener('change', handleChange);
       return () => mediaQuery.removeEventListener('change', handleChange);
     }
-  }, [isClient, applyThemeMode]); // Removed applyAccentColor from here
+  }, [isClient, applyThemeMode]); // Added applyThemeMode as it's called within the media query listener
 
-  // Effect to apply theme and accent color when states change
+  // Effect to apply theme and accent color when states change or on initial load after isClient
   useEffect(() => {
     if (isClient) {
+      console.log("[EFFECT Apply Styles] Running. Theme:", selectedThemeMode, "Accent:", selectedAccentColor);
       applyThemeMode(selectedThemeMode);
       applyAccentColor(selectedAccentColor);
     }
@@ -250,7 +281,7 @@ export default function ApplicationSettingsManager() {
 
 
   const handleThemeModeChange = (newMode: ThemeMode) => {
-    setSelectedThemeMode(newMode); // State update will trigger the effect above to apply the theme
+    setSelectedThemeMode(newMode);
     if (isClient) {
       localStorage.setItem(THEME_STORAGE_KEY, newMode);
       toast({
@@ -261,13 +292,13 @@ export default function ApplicationSettingsManager() {
   };
 
   const handleAccentColorInputChange = (newColor: string) => {
-    setSelectedAccentColor(newColor); // State update triggers live preview via the useEffect above
+    setSelectedAccentColor(newColor); 
   };
   
   const handleSaveAccentColor = () => {
     if (isClient) {
       localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, selectedAccentColor);
-      // applyAccentColor(selectedAccentColor); // No longer needed here, useEffect handles it
+      applyAccentColor(selectedAccentColor); // Explicitly re-apply on save
       toast({
         title: "Couleur d'Accentuation Enregistrée",
         description: `La couleur d'accentuation est maintenant ${selectedAccentColor}.`,
@@ -276,9 +307,10 @@ export default function ApplicationSettingsManager() {
   };
   
   const handleResetAccentColor = () => {
-    setSelectedAccentColor(DEFAULT_APP_PRIMARY_COLOR); // State update triggers useEffect to apply
+    setSelectedAccentColor(DEFAULT_APP_PRIMARY_COLOR);
     if (isClient) {
       localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, DEFAULT_APP_PRIMARY_COLOR);
+      applyAccentColor(DEFAULT_APP_PRIMARY_COLOR); // Explicitly apply default on reset
       toast({
         title: "Couleur d'Accentuation Réinitialisée",
         description: `La couleur d'accentuation a été réinitialisée à la valeur par défaut (${DEFAULT_APP_PRIMARY_COLOR}).`,
@@ -358,7 +390,7 @@ export default function ApplicationSettingsManager() {
         description: `Son de notification réglé sur "${value}".`,
       });
       if (soundNotificationsEnabled && value !== 'none') {
-        console.log(`Playing sound: ${value}`);
+        console.log(`[Notification Sound] Playing sound: ${value}`); // Placeholder for actual sound playing
       }
     }
   };
@@ -724,5 +756,3 @@ export default function ApplicationSettingsManager() {
     </Card>
   );
 }
-
-    
