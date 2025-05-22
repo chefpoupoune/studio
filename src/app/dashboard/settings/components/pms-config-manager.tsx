@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import type { PmsZone, PmsTaskDefinition, PmsConfigurations } from '../types';
+import type { PmsZone, PmsTaskDefinition, PmsConfigurations, PmsEquipmentDefinition } from '../types';
 import { 
   PMS_KITCHEN_CLEANING_KEY, 
   PMS_RESTAURANT_CLEANING_KEY, 
@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { PlusCircle, Edit2, Trash2, ShieldAlert, ClipboardEdit, SprayCan, Sparkles, Thermometer, Flame } from 'lucide-react'; // Added Flame
+import { PlusCircle, Edit2, Trash2, ShieldAlert, ClipboardEdit, SprayCan, Sparkles, Thermometer, Flame } from 'lucide-react'; 
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -90,7 +90,6 @@ export default function PmsConfigManager() {
           [PMS_KITCHEN_CLEANING_KEY]: parsedData[PMS_KITCHEN_CLEANING_KEY] || [],
           [PMS_RESTAURANT_CLEANING_KEY]: parsedData[PMS_RESTAURANT_CLEANING_KEY] || [],
           [PMS_TEMPERATURE_MONITORING_KEY]: parsedData[PMS_TEMPERATURE_MONITORING_KEY] || [],
-          // Configuration for fryer oil monitoring is removed as it's now a log, not pre-configured tasks
         };
         setPmsConfigs(initialConfigs);
       } else {
@@ -199,11 +198,11 @@ export default function PmsConfigManager() {
 
   const handleDeleteZone = (categoryKey: string, itemId: string, itemName: string) => {
     const itemLabelSingular = categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "cet équipement" : "cette zone";
-    const itemLabelPlural = categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "ses configurations" : "ses tâches";
+    // const itemLabelPlural = categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "ses configurations" : "ses tâches"; // Not currently used in description
     
     const currentItems = pmsConfigs[categoryKey] || [];
     const updatedItems = currentItems.filter(item => item.id !== itemId);
-    saveConfigs({ ...pmsConfigs, [currentCategoryKey]: updatedItems });
+    saveConfigs({ ...pmsConfigs, [currentCategoryKey]: updatedItems }); // currentCategoryKey should be used here
     toast({ title: `${categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone"} Supprimé(e)`, description: `L'élément "${itemName}" a été supprimé.`, variant: "destructive" });
   };
 
@@ -388,8 +387,6 @@ export default function PmsConfigManager() {
       {renderCategoryConfig(PMS_RESTAURANT_CLEANING_KEY, "Suivi Nettoyage Restaurant", Sparkles, "Zone", "Tâche")}
       {renderCategoryConfig(PMS_TEMPERATURE_MONITORING_KEY, "Suivi des Températures", Thermometer, "Équipement")}
       
-      {/* Removed Fryer Oil Config section as it's now log-based */}
-      
       <Dialog open={isZoneDialogOpen} onOpenChange={setIsZoneDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -429,7 +426,7 @@ export default function PmsConfigManager() {
                       <FormMessage />
                     </FormItem>
                   )} />
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField control={form.control} name="targetTempMin" render={({ field }) => (
                       <FormItem><FormLabel>Cible T° Min (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: 0" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
                     )} />
@@ -437,7 +434,7 @@ export default function PmsConfigManager() {
                       <FormItem><FormLabel>Cible T° Max (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: 4" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
                     )} />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField control={form.control} name="tolerance1TempMin" render={({ field }) => (
                       <FormItem><FormLabel>Tolérance 1 T° Min (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: -2" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
                     )} />
@@ -445,7 +442,7 @@ export default function PmsConfigManager() {
                       <FormItem><FormLabel>Tolérance 1 T° Max (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: -1" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
                     )} />
                   </div>
-                   <div className="grid grid-cols-2 gap-4">
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField control={form.control} name="tolerance2TempMin" render={({ field }) => (
                       <FormItem><FormLabel>Tolérance 2 T° Min (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: 5" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
                     )} />
@@ -505,3 +502,4 @@ export default function PmsConfigManager() {
     </div>
   );
 }
+

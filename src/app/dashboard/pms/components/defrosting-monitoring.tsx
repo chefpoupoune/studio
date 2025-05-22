@@ -240,7 +240,7 @@ export default function DefrostingMonitoring() {
               <DialogHeader><DialogTitle>{editingEntry ? "Modifier" : "Nouvel"} Enregistrement de Décongélation</DialogTitle></DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-3 py-2 max-h-[75vh] overflow-y-auto pr-2">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                     <FormField control={form.control} name="defrostStartDate" render={({ field }) => (
                       <FormItem className="flex flex-col"><FormLabel>Date Décongélation</FormLabel>
                       <Popover><PopoverTrigger asChild><FormControl><Button variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
@@ -258,7 +258,7 @@ export default function DefrostingMonitoring() {
                   </div>
                   
                   <h4 className="text-md font-semibold pt-2 border-t mt-3">Informations d'Utilisation (Optionnel)</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                     <FormField control={form.control} name="useDate" render={({ field }) => (
                       <FormItem className="flex flex-col"><FormLabel>Date Utilisation</FormLabel>
                       <Popover><PopoverTrigger asChild><FormControl><Button variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
@@ -364,3 +364,4 @@ export default function DefrostingMonitoring() {
     </Card>
   );
 }
+

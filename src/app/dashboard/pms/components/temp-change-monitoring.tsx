@@ -165,7 +165,7 @@ export default function TempChangeMonitoring() {
         [
           { content: '', colSpan: 3, styles: { ...headStylesBase, fillColor: [255,255,255], textColor: [0,0,0] } }, 
           { content: 'REFROIDISSEMENT RAPIDE', colSpan: 5, styles: headStylesBase },
-          { content: 'REMISE EN TEMPERATURE', colSpan: 6, styles: headStylesBase }, //colspan is 6 now
+          { content: 'REMISE EN TEMPERATURE', colSpan: 6, styles: headStylesBase }, 
         ],
         [
           { content: 'Date', styles: headStylesBase },
@@ -248,7 +248,7 @@ export default function TempChangeMonitoring() {
               <DialogHeader><DialogTitle>{editingEntry ? "Modifier" : "Nouvel"} Enregistrement</DialogTitle></DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-3 py-2 max-h-[75vh] overflow-y-auto pr-2">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <FormField control={form.control} name="coolingDate" render={({ field }) => (
                       <FormItem className="flex flex-col"><FormLabel>Date Refroidissement</FormLabel>
                       <Popover><PopoverTrigger asChild><FormControl><Button variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
@@ -264,7 +264,7 @@ export default function TempChangeMonitoring() {
                   
                   <div className="pt-3">
                     <h4 className="text-md font-semibold mb-1 border-b pb-1">REFROIDISSEMENT RAPIDE</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mt-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mt-2">
                       <FormField control={form.control} name="coolingHotProductTime" render={({ field }) => (<FormItem><FormLabel>P. Chauds Heure</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
                       <FormField control={form.control} name="coolingHotProductTemp" render={({ field }) => (<FormItem><FormLabel>P. Chauds T°C</FormLabel><FormControl><Input placeholder="Ex: 65°C" {...field} /></FormControl><FormMessage /></FormItem>)} />
                       <FormField control={form.control} name="coolingColdProductTime" render={({ field }) => (<FormItem><FormLabel>P. Froids Heure</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
@@ -275,7 +275,7 @@ export default function TempChangeMonitoring() {
 
                   <div className="pt-3">
                     <h4 className="text-md font-semibold mb-1 border-b pb-1">REMISE EN TEMPERATURE</h4>
-                     <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mt-2"> {/* Changed to 5 columns to match the table */}
+                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-2">
                        <FormField control={form.control} name="reheatingDate" render={({ field }) => (
                         <FormItem className="flex flex-col"><FormLabel>Date Remise</FormLabel>
                         <Popover><PopoverTrigger asChild><FormControl><Button variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
@@ -396,3 +396,4 @@ export default function TempChangeMonitoring() {
     </Card>
   );
 }
+
