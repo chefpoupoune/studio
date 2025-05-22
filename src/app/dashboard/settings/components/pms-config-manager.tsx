@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { PlusCircle, Edit2, Trash2, ShieldAlert, ClipboardEdit, SprayCan, Sparkles, Thermometer, Flame } from 'lucide-react'; 
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -50,10 +50,10 @@ const temperatureEquipmentSchema = baseZoneSchema.extend({
   message: "Cible T° Min doit être ≤ Cible T° Max.", path: ['targetTempMin']
 })
 .refine(data => data.tolerance1TempMin === undefined || data.tolerance1TempMax === undefined || data.tolerance1TempMin <= data.tolerance1TempMax, {
-  message: "Tolérance 1 T° Min doit être ≤ Tolérance 1 T° Max.", path: ['tolerance1TempMin']
+  message: "Tol. 1 T° Min doit être ≤ Tol. 1 T° Max.", path: ['tolerance1TempMin']
 })
 .refine(data => data.tolerance2TempMin === undefined || data.tolerance2TempMax === undefined || data.tolerance2TempMin <= data.tolerance2TempMax, {
-  message: "Tolérance 2 T° Min doit être ≤ Tolérance 2 T° Max.", path: ['tolerance2TempMin']
+  message: "Tol. 2 T° Min doit être ≤ Tol. 2 T° Max.", path: ['tolerance2TempMin']
 });
 
 type ZoneFormData = z.infer<typeof baseZoneSchema>;
@@ -84,20 +84,22 @@ export default function PmsConfigManager() {
   useEffect(() => {
     try {
       const storedData = localStorage.getItem(PMS_CONFIG_STORAGE_KEY);
+      const initialConfigs: PmsConfigurations = {
+        [PMS_KITCHEN_CLEANING_KEY]: [],
+        [PMS_RESTAURANT_CLEANING_KEY]: [],
+        [PMS_TEMPERATURE_MONITORING_KEY]: [],
+        // Add future PMS categories here with default empty arrays
+      };
+
       if (storedData) {
         const parsedData = JSON.parse(storedData);
-        const initialConfigs: PmsConfigurations = {
-          [PMS_KITCHEN_CLEANING_KEY]: parsedData[PMS_KITCHEN_CLEANING_KEY] || [],
-          [PMS_RESTAURANT_CLEANING_KEY]: parsedData[PMS_RESTAURANT_CLEANING_KEY] || [],
-          [PMS_TEMPERATURE_MONITORING_KEY]: parsedData[PMS_TEMPERATURE_MONITORING_KEY] || [],
-        };
+        // Ensure all known keys exist in pmsConfigs
+        Object.keys(initialConfigs).forEach(key => {
+          initialConfigs[key] = parsedData[key] || [];
+        });
         setPmsConfigs(initialConfigs);
       } else {
-        setPmsConfigs({ 
-            [PMS_KITCHEN_CLEANING_KEY]: [], 
-            [PMS_RESTAURANT_CLEANING_KEY]: [],
-            [PMS_TEMPERATURE_MONITORING_KEY]: [],
-        });
+        setPmsConfigs(initialConfigs);
       }
     } catch (error) {
       console.error("Error loading PMS configs:", error);
@@ -106,7 +108,7 @@ export default function PmsConfigManager() {
           [PMS_RESTAURANT_CLEANING_KEY]: [],
           [PMS_TEMPERATURE_MONITORING_KEY]: [],
       });
-      toast({ title: "Erreur de chargement", description: "Configurations PMS corrompues.", variant: "destructive" });
+      toast({ title: "Erreur de chargement", description: "Configurations PMS corrompues. Réinitialisation.", variant: "destructive" });
     }
   }, [toast]);
 
@@ -117,22 +119,27 @@ export default function PmsConfigManager() {
             : zodResolver(baseZoneSchema);
         
         let defaultValues: any = { name: editingZone?.name || '' };
-        if (currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY && editingZone) {
-            defaultValues = {
-                name: editingZone.name || '',
-                equipmentType: editingZone.equipmentType || 'refrigerator',
-                targetTempMin: editingZone.targetTempMin ?? undefined,
-                targetTempMax: editingZone.targetTempMax ?? undefined,
-                tolerance1TempMin: editingZone.tolerance1TempMin ?? undefined,
-                tolerance1TempMax: editingZone.tolerance1TempMax ?? undefined,
-                tolerance2TempMin: editingZone.tolerance2TempMin ?? undefined,
-                tolerance2TempMax: editingZone.tolerance2TempMax ?? undefined,
-            };
-        } else if (currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY && !editingZone) {
-             defaultValues = {
-                name: '',
-                equipmentType: 'refrigerator',
-             };
+        if (currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY) {
+            if (editingZone) {
+                defaultValues = {
+                    name: editingZone.name || '',
+                    equipmentType: (editingZone as PmsEquipmentDefinition).equipmentType || 'refrigerator',
+                    targetTempMin: (editingZone as PmsEquipmentDefinition).targetTempMin ?? undefined,
+                    targetTempMax: (editingZone as PmsEquipmentDefinition).targetTempMax ?? undefined,
+                    tolerance1TempMin: (editingZone as PmsEquipmentDefinition).tolerance1TempMin ?? undefined,
+                    tolerance1TempMax: (editingZone as PmsEquipmentDefinition).tolerance1TempMax ?? undefined,
+                    tolerance2TempMin: (editingZone as PmsEquipmentDefinition).tolerance2TempMin ?? undefined,
+                    tolerance2TempMax: (editingZone as PmsEquipmentDefinition).tolerance2TempMax ?? undefined,
+                };
+            } else {
+                 defaultValues = {
+                    name: '',
+                    equipmentType: 'refrigerator',
+                    targetTempMin: undefined, targetTempMax: undefined,
+                    tolerance1TempMin: undefined, tolerance1TempMax: undefined,
+                    tolerance2TempMin: undefined, tolerance2TempMax: undefined,
+                 };
+            }
         }
         
         form.reset(defaultValues, { resolver } as any);
@@ -161,24 +168,28 @@ export default function PmsConfigManager() {
       updatedItemData = { ...editingZone, name: data.name, id: editingZone.id, tasks: editingZone.tasks || [] };
        if (currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY) {
         const tempData = data as TemperatureEquipmentFormData;
-        updatedItemData.equipmentType = tempData.equipmentType;
-        updatedItemData.targetTempMin = tempData.targetTempMin;
-        updatedItemData.targetTempMax = tempData.targetTempMax;
-        updatedItemData.tolerance1TempMin = tempData.tolerance1TempMin;
-        updatedItemData.tolerance1TempMax = tempData.tolerance1TempMax;
-        updatedItemData.tolerance2TempMin = tempData.tolerance2TempMin;
-        updatedItemData.tolerance2TempMax = tempData.tolerance2TempMax;
+        updatedItemData = {
+            ...updatedItemData,
+            equipmentType: tempData.equipmentType,
+            targetTempMin: tempData.targetTempMin,
+            targetTempMax: tempData.targetTempMax,
+            tolerance1TempMin: tempData.tolerance1TempMin,
+            tolerance1TempMax: tempData.tolerance1TempMax,
+            tolerance2TempMin: tempData.tolerance2TempMin,
+            tolerance2TempMax: tempData.tolerance2TempMax,
+        } as PmsEquipmentDefinition;
       }
       const updatedItems = currentItems.map(item => item.id === editingZone.id ? updatedItemData : item);
       saveConfigs({ ...pmsConfigs, [currentCategoryKey]: updatedItems });
       toast({ title: `${itemLabel} Modifié(e)`, description: `Le/La ${itemLabel.toLowerCase()} "${data.name}" a été mis(e) à jour.` });
     } else {
-      const baseNewItem: Omit<PmsZone, 'id' | 'tasks'> & { tasks?: PmsTaskDefinition[] } = { name: data.name, tasks: [] };
+      const newItemId = `${currentCategoryKey}_item_${Date.now()}`;
+      let baseNewItem: PmsZone = { name: data.name, id: newItemId, tasks: [] };
+
        if (currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY) {
         const tempData = data as TemperatureEquipmentFormData;
         updatedItemData = { 
           ...baseNewItem, 
-          id: `${currentCategoryKey}_item_${Date.now()}`,
           equipmentType: tempData.equipmentType,
           targetTempMin: tempData.targetTempMin,
           targetTempMax: tempData.targetTempMax,
@@ -186,9 +197,9 @@ export default function PmsConfigManager() {
           tolerance1TempMax: tempData.tolerance1TempMax,
           tolerance2TempMin: tempData.tolerance2TempMin,
           tolerance2TempMax: tempData.tolerance2TempMax,
-        };
+        } as PmsEquipmentDefinition;
       } else {
-        updatedItemData = { ...baseNewItem, id: `${currentCategoryKey}_item_${Date.now()}`, tasks: [] };
+        updatedItemData = { ...baseNewItem };
       }
       saveConfigs({ ...pmsConfigs, [currentCategoryKey]: [...currentItems, updatedItemData] });
       toast({ title: `${itemLabel} Ajouté(e)`, description: `Le/La ${itemLabel.toLowerCase()} "${data.name}" a été ajouté(e).` });
@@ -197,12 +208,12 @@ export default function PmsConfigManager() {
   };
 
   const handleDeleteZone = (categoryKey: string, itemId: string, itemName: string) => {
+    if (!currentCategoryKey) return; // Should not happen if button is displayed
     const itemLabelSingular = categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "cet équipement" : "cette zone";
-    // const itemLabelPlural = categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "ses configurations" : "ses tâches"; // Not currently used in description
     
     const currentItems = pmsConfigs[categoryKey] || [];
     const updatedItems = currentItems.filter(item => item.id !== itemId);
-    saveConfigs({ ...pmsConfigs, [currentCategoryKey]: updatedItems }); // currentCategoryKey should be used here
+    saveConfigs({ ...pmsConfigs, [categoryKey]: updatedItems }); 
     toast({ title: `${categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone"} Supprimé(e)`, description: `L'élément "${itemName}" a été supprimé.`, variant: "destructive" });
   };
 
@@ -238,6 +249,7 @@ export default function PmsConfigManager() {
   };
 
   const handleDeleteTask = (categoryKey: string, zoneId: string, taskId: string, taskName: string) => {
+    if (!currentCategoryKey) return; // Should not happen if button is displayed
     const currentItems = pmsConfigs[categoryKey] || [];
     const updatedItems = currentItems.map(item => {
       if (item.id === zoneId) {
@@ -245,8 +257,27 @@ export default function PmsConfigManager() {
       }
       return item;
     });
-    saveConfigs({ ...pmsConfigs, [currentCategoryKey]: updatedItems });
+    saveConfigs({ ...pmsConfigs, [categoryKey]: updatedItems });
     toast({ title: "Tâche Supprimée", description: `L'élément "${taskName}" a été supprimé.`, variant: "destructive" });
+  };
+
+  const getTemperatureSummary = (item: PmsEquipmentDefinition): string => {
+    const parts: string[] = [];
+    if (item.targetTempMin !== undefined && item.targetTempMax !== undefined) {
+      parts.push(`Cible: ${item.targetTempMin}-${item.targetTempMax}°C`);
+    } else if (item.targetTempMin !== undefined) {
+      parts.push(`Cible: ≥${item.targetTempMin}°C`);
+    } else if (item.targetTempMax !== undefined) {
+      parts.push(`Cible: ≤${item.targetTempMax}°C`);
+    }
+
+    if (item.tolerance1TempMin !== undefined && item.tolerance1TempMax !== undefined) {
+      parts.push(`Tol.1: ${item.tolerance1TempMin}-${item.tolerance1TempMax}°C`);
+    }
+    if (item.tolerance2TempMin !== undefined && item.tolerance2TempMax !== undefined) {
+      parts.push(`Tol.2: ${item.tolerance2TempMin}-${item.tolerance2TempMax}°C`);
+    }
+    return parts.join(' / ');
   };
 
   const renderCategoryConfig = (categoryKey: string, categoryLabel: string, IconComponent: React.ElementType, itemLabel: string = "Zone", taskItemLabel: string = "Tâche") => {
@@ -277,21 +308,19 @@ export default function PmsConfigManager() {
                 <AccordionItem value={item.id} key={item.id} className="group/item border-b">
                   <div className="flex items-center justify-between py-1 hover:bg-muted/20">
                     <AccordionTrigger className="flex-grow py-3 px-2 text-left">
-                      {item.name}
-                      {categoryKey === PMS_TEMPERATURE_MONITORING_KEY && item.equipmentType && (
-                        <span className="text-xs text-muted-foreground ml-2">({item.equipmentType === 'freezer' ? 'Congélateur' : 'Réfrigérateur'})</span>
-                      )}
-                       {categoryKey === PMS_TEMPERATURE_MONITORING_KEY && (
-                        <span className="text-xs text-muted-foreground ml-2 italic">
-                            (Cible: {item.targetTempMin ?? 'N/A'} à {item.targetTempMax ?? 'N/A'}°C
-                            { (item.tolerance1TempMin !== undefined || item.tolerance1TempMax !== undefined) && 
-                                `, Tol.1: ${item.tolerance1TempMin ?? 'N/A'} à ${item.tolerance1TempMax ?? 'N/A'}°C`
-                            }
-                            { (item.tolerance2TempMin !== undefined || item.tolerance2TempMax !== undefined) && 
-                                `, Tol.2: ${item.tolerance2TempMin ?? 'N/A'} à ${item.tolerance2TempMax ?? 'N/A'}°C`
-                            })
+                      <div className="flex flex-col">
+                        <span>
+                          {item.name}
+                          {categoryKey === PMS_TEMPERATURE_MONITORING_KEY && (item as PmsEquipmentDefinition).equipmentType && (
+                            <span className="text-xs text-muted-foreground ml-2">({(item as PmsEquipmentDefinition).equipmentType === 'freezer' ? 'Congélateur' : 'Réfrigérateur'})</span>
+                          )}
                         </span>
-                      )}
+                        {categoryKey === PMS_TEMPERATURE_MONITORING_KEY && (
+                            <span className="text-xs text-muted-foreground/80 font-normal mt-0.5">
+                                {getTemperatureSummary(item as PmsEquipmentDefinition)}
+                            </span>
+                        )}
+                      </div>
                     </AccordionTrigger>
                     <div className="pl-2 pr-2 space-x-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
                       <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleOpenZoneDialog(categoryKey, item);}} className="h-7 w-7">
@@ -388,7 +417,7 @@ export default function PmsConfigManager() {
       {renderCategoryConfig(PMS_TEMPERATURE_MONITORING_KEY, "Suivi des Températures", Thermometer, "Équipement")}
       
       <Dialog open={isZoneDialogOpen} onOpenChange={setIsZoneDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg md:max-w-xl"> {/* Adjusted width */}
           <DialogHeader>
             <DialogTitle>{editingZone ? "Modifier" : "Nouvel"} {currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone"}</DialogTitle>
             {currentCategoryKey && <CardDescription>Pour: {
@@ -416,7 +445,11 @@ export default function PmsConfigManager() {
                   <FormField control={form.control} name="equipmentType" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Type d'Équipement</FormLabel>
-                      <Select onValueChange={field.onChange} value={(field.value as string) || 'refrigerator'} defaultValue={(field.value as string) || 'refrigerator'}>
+                      <Select 
+                        onValueChange={field.onChange} 
+                        value={(field.value as string) || 'refrigerator'} 
+                        defaultValue={(field.value as string) || 'refrigerator'}
+                       >
                         <FormControl><SelectTrigger><SelectValue placeholder="Sélectionner un type" /></SelectTrigger></FormControl>
                         <SelectContent>
                           <SelectItem value="refrigerator">Réfrigérateur</SelectItem>
@@ -436,21 +469,21 @@ export default function PmsConfigManager() {
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField control={form.control} name="tolerance1TempMin" render={({ field }) => (
-                      <FormItem><FormLabel>Tolérance 1 T° Min (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: -2" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel>Tolérance 1 T° Min (°C)</FormLabel><FormControl><Input type="number" placeholder="Optionnel" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField control={form.control} name="tolerance1TempMax" render={({ field }) => (
-                      <FormItem><FormLabel>Tolérance 1 T° Max (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: -1" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel>Tolérance 1 T° Max (°C)</FormLabel><FormControl><Input type="number" placeholder="Optionnel" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
                     )} />
                   </div>
                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField control={form.control} name="tolerance2TempMin" render={({ field }) => (
-                      <FormItem><FormLabel>Tolérance 2 T° Min (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: 5" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel>Tolérance 2 T° Min (°C)</FormLabel><FormControl><Input type="number" placeholder="Optionnel" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField control={form.control} name="tolerance2TempMax" render={({ field }) => (
-                      <FormItem><FormLabel>Tolérance 2 T° Max (°C)</FormLabel><FormControl><Input type="number" placeholder="Ex: 7" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel>Tolérance 2 T° Max (°C)</FormLabel><FormControl><Input type="number" placeholder="Optionnel" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>
                     )} />
                   </div>
-                   <p className="text-xs text-muted-foreground">Laissez les champs de température vides si vous souhaitez utiliser les valeurs par défaut de l'application. Les plages de tolérance sont optionnelles.</p>
+                   <p className="text-xs text-muted-foreground">Laissez les champs de température vides si vous souhaitez utiliser les valeurs par défaut de l'application ou si une tolérance n'est pas applicable.</p>
                 </>
               )}
 
