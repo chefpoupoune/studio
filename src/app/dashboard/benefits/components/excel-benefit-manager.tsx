@@ -50,7 +50,7 @@ const months = Array.from({ length: 12 }, (_, i) => ({
 const SELECT_EMPTY_VALUE_PLACEHOLDER = "_SELECT_EMPTY_";
 
 interface BenefitTrackingTableProps {
-  employees: BenefitEmployee[];
+  employees: BenefitEmployee[]; // Now receives employees as a prop
 }
 
 export default function BenefitTrackingTable({ employees }: BenefitTrackingTableProps) {
@@ -144,7 +144,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
         format: pdfSettings.pageSize,
       }) as jsPDFWithAutoTable;
       
-      doc.setFont(pdfSettings.fontFamily);
+      doc.setFont(pdfSettings.fontFamily || 'helvetica'); // Use configured font or default
 
       const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
@@ -169,7 +169,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
             if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image') && headerRows[data.row.index][data.column.index] === '{logo}') {
               try {
                 const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
-                const format = imgProps.fileType.toUpperCase();
+                const formatType = imgProps.fileType.toUpperCase(); // Ensure format is uppercase
                 const cellPadding = 2; 
                 let imgWidth = data.cell.width - 2 * cellPadding;
                 let imgHeight = data.cell.height - 2 * cellPadding;
@@ -183,7 +183,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
                 }
                 const imgX = data.cell.x + (data.cell.width - imgWidth) / 2;
                 const imgY = data.cell.y + (data.cell.height - imgHeight) / 2;
-                doc.addImage(pdfSettings.logoUrl, format, imgX, imgY, imgWidth, imgHeight);
+                doc.addImage(pdfSettings.logoUrl, formatType, imgX, imgY, imgWidth, imgHeight);
               } catch (e: any) { 
                 console.error(`Error drawing logo in PDF header table: ${e.message || e}. Cell:`, data.cell, {logoUrl: pdfSettings.logoUrl ? pdfSettings.logoUrl.substring(0, 50) + "..." : "N/A"});
                 doc.setFillColor(230, 230, 230); doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
@@ -199,10 +199,10 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
       } else if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { 
         try {
             const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
-            const format = imgProps.fileType.toUpperCase();
+            const formatType = imgProps.fileType.toUpperCase(); // Ensure format is uppercase
             const desiredHeight = 30; 
             const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
-            doc.addImage(pdfSettings.logoUrl, format, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
+            doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
             currentY += desiredHeight + 5;
         } catch(e: any) {
             console.error(`Error drawing standalone logo in PDF: ${e.message || e}.`, {logoUrl: pdfSettings.logoUrl ? pdfSettings.logoUrl.substring(0, 50) + "..." : "N/A"});
@@ -245,7 +245,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
       (head[0] as any[]).push({ content: 'TOTAL', rowSpan: 2, styles: { ...headStyles, valign: 'middle'} });
 
 
-      const body = employees.flatMap(employee => { 
+      const body = employees.flatMap(employee => { // Use prop 'employees'
         const planningRow: any[] = [{ content: employee.name, rowSpan: 2, styles: { valign: 'middle', fontStyle: 'bold'} }, 'Planning'];
         const repasPrisRow: any[] = ['Repas Pris'];
 
@@ -367,11 +367,14 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <span className="ml-2 text-muted-foreground">Chargement des données...</span>
         </div>
-      ) : employees.length === 0 ? (
+      ) : employees.length === 0 ? ( // Use prop 'employees'
         <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
             <Users className="mx-auto h-12 w-12 text-muted-foreground" />
             <p className="mt-2 text-sm text-muted-foreground">
-                Aucun employé à afficher. Veuillez ajouter des employés dans la section "Gestion des Employés" ci-dessus.
+                Aucun membre de la brigade défini.
+            </p>
+            <p className="text-xs text-muted-foreground/70">
+                Veuillez les ajouter dans la section "Suivi des Heures" &gt; "Gestion Personnel" pour commencer le suivi des avantages.
             </p>
         </div>
       ) : (
@@ -400,7 +403,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
               </TableRow>
             </TableHeader>
             <TableBody>
-              {employees.map(employee => (
+              {employees.map(employee => ( // Use prop 'employees'
                 <React.Fragment key={employee.id}>
                   {(['planning', 'repasPris'] as const).map((type, typeIndex) => {
                     const dayRow = daysInSelectedMonth.map(day => {
@@ -464,8 +467,3 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
     </div>
   );
 }
-    
-    
-
-
-    
