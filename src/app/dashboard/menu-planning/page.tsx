@@ -161,7 +161,7 @@ export default function MenuPlanningPage() {
             if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image') && headerRows[data.row.index][data.column.index] === '{logo}') {
               try {
                 const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
-                const format = imgProps.fileType.toUpperCase();
+                const formatType = imgProps.fileType.toUpperCase();
                 const cellPadding = 2; 
                 let imgWidth = data.cell.width - 2 * cellPadding;
                 let imgHeight = data.cell.height - 2 * cellPadding;
@@ -175,7 +175,7 @@ export default function MenuPlanningPage() {
                 }
                 const imgX = data.cell.x + (data.cell.width - imgWidth) / 2;
                 const imgY = data.cell.y + (data.cell.height - imgHeight) / 2;
-                doc.addImage(pdfSettings.logoUrl, format, imgX, imgY, imgWidth, imgHeight);
+                doc.addImage(pdfSettings.logoUrl, formatType, imgX, imgY, imgWidth, imgHeight);
               } catch (e: any) { 
                 console.error(`Error drawing logo in PDF header table: ${e.message || e}. Cell:`, data.cell, {logoUrl: pdfSettings.logoUrl ? pdfSettings.logoUrl.substring(0, 50) + "..." : "N/A"});
                 doc.setFillColor(230, 230, 230); doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
@@ -191,10 +191,10 @@ export default function MenuPlanningPage() {
       } else if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { 
         try {
             const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
-            const format = imgProps.fileType.toUpperCase();
+            const formatType = imgProps.fileType.toUpperCase();
             const desiredHeight = 30; 
             const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
-            doc.addImage(pdfSettings.logoUrl, format, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
+            doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
             currentY += desiredHeight + 5;
         } catch(e: any) {
             console.error(`Error drawing standalone logo in PDF: ${e.message || e}.`, {logoUrl: pdfSettings.logoUrl ? pdfSettings.logoUrl.substring(0, 50) + "..." : "N/A"});
@@ -244,16 +244,15 @@ export default function MenuPlanningPage() {
         ];
       });
 
-      // Slightly darker theme colors for better PDF visibility
       const themeRgbColors: Record<MenuThemeIdentifier, [number, number, number]> = {
-        froid: [147, 197, 253],   // Tailwind Blue-300
-        vege: [167, 243, 208],    // Tailwind Green-200
-        sam: [253, 230, 138],     // Tailwind Yellow-200
-        poisson: [251, 207, 232], // Tailwind Pink-200
-        fete: [254, 215, 170],    // Tailwind Orange-200
+        froid: [147, 197, 253],   // Tailwind Blue-300 (darkened slightly for PDF)
+        vege: [110, 231, 183],    // Tailwind Green-300 (darkened slightly for PDF)
+        sam: [253, 224, 71],     // Tailwind Yellow-300 (darkened slightly for PDF)
+        poisson: [249, 168, 212], // Tailwind Pink-300 (darkened slightly for PDF)
+        fete: [252, 165, 165],    // Tailwind Orange-300 (darkened slightly for PDF)
       };
-      const holidayWeekendColor: [number, number, number] = [253, 224, 71]; 
-      const holidayWeekdayColor: [number, number, number] = [254, 240, 138]; 
+      const holidayWeekendColor: [number, number, number] = [250, 202, 21]; 
+      const holidayWeekdayColor: [number, number, number] = [253, 230, 138]; 
       const weekendColor: [number, number, number] = [229, 231, 235]; 
 
       doc.autoTable({
@@ -333,14 +332,14 @@ export default function MenuPlanningPage() {
       </div>
       
       <Tabs defaultValue="planning" className="w-full">
-        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-2 mb-6 bg-card p-1 rounded-lg">
-          <TabsTrigger value="planning" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-1 mb-6 bg-card p-1 rounded-lg">
+          <TabsTrigger value="planning" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <CalendarDays className="mr-1 sm:mr-2 h-4 w-4" /> Planification Mensuelle
           </TabsTrigger>
-          <TabsTrigger value="order-sheets" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+          <TabsTrigger value="order-sheets" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <ClipboardCheck className="mr-1 sm:mr-2 h-4 w-4" /> Fiches de Commande
           </TabsTrigger>
-          <TabsTrigger value="temperature-sheets" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+          <TabsTrigger value="temperature-sheets" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <Thermometer className="mr-1 sm:mr-2 h-4 w-4" /> Fiches de Température
           </TabsTrigger>
         </TabsList>
@@ -459,4 +458,3 @@ export default function MenuPlanningPage() {
     </div>
   );
 }
-

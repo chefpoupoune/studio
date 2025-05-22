@@ -165,9 +165,6 @@ export default function TimeTrackingPage() {
     setScheduleTemplates(updatedTemplates);
     if (isClient) {
       localStorage.setItem(WORK_SCHEDULE_CUSTOM_TEMPLATES_KEY, JSON.stringify(updatedTemplates));
-      // Note: We don't dispatch a custom event here as schedule template changes
-      // are less likely to require immediate updates in other unrelated dashboard components.
-      // If needed, a 'scheduleTemplatesUpdated' event could be added.
     }
   }, [isClient]);
 
@@ -201,24 +198,24 @@ export default function TimeTrackingPage() {
       </div>
 
       <Tabs defaultValue={defaultTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-6 bg-card p-1 rounded-lg">
+        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-4 mb-6 bg-card p-1 rounded-lg">
           {canViewPersonnel && (
-            <TabsTrigger value="personnel" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <TabsTrigger value="personnel" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
               <Users className="mr-1 sm:mr-2 h-4 w-4" /> Gestion Personnel
             </TabsTrigger>
           )}
           {canViewRecording && (
-            <TabsTrigger value="recording" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <TabsTrigger value="recording" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
               <Clock className="mr-1 sm:mr-2 h-4 w-4" /> Saisie & Historique
             </TabsTrigger>
           )}
           {canViewSummary && (
-            <TabsTrigger value="summary" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <TabsTrigger value="summary" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
               <FileText className="mr-1 sm:mr-2 h-4 w-4" /> Relevés & PDF
             </TabsTrigger>
           )}
           {canViewSchedules && (
-            <TabsTrigger value="schedules" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <TabsTrigger value="schedules" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
               <CalendarClock className="mr-1 sm:mr-2 h-4 w-4" /> Modèles d'Horaires
             </TabsTrigger>
           )}

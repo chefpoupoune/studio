@@ -207,17 +207,17 @@ export default function InventoryPage() {
       </div>
 
       <Tabs defaultValue="products" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-6 bg-card p-1 rounded-lg">
-          <TabsTrigger value="products" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-4 mb-6 bg-card p-1 rounded-lg">
+          <TabsTrigger value="products" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <PackagePlusIcon className="mr-1 sm:mr-2 h-4 w-4" /> Gestion Produits
           </TabsTrigger>
-          <TabsTrigger value="movements" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+          <TabsTrigger value="movements" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <HistoryIcon className="mr-1 sm:mr-2 h-4 w-4" /> Mouvements Stock
           </TabsTrigger>
-          <TabsTrigger value="inventory" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+          <TabsTrigger value="inventory" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <ListOrderedIcon className="mr-1 sm:mr-2 h-4 w-4" /> Inventaire
           </TabsTrigger>
-          <TabsTrigger value="purchase-orders" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+          <TabsTrigger value="purchase-orders" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <ShoppingCartIcon className="mr-1 sm:mr-2 h-4 w-4" /> Bons de Commande
           </TabsTrigger>
         </TabsList>

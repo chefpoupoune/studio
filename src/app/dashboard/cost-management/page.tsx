@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from 'next/link';
@@ -37,24 +38,23 @@ export default function CostManagementPage() {
             Gestion des Coûts
           </h1>
         </div>
-        {/* Back to Dashboard button removed */}
       </div>
       <div className="mb-6 text-center sm:text-left">
         <CurrentDate />
       </div>
       
       <Tabs defaultValue="monthly" className="w-full">
-        <TabsList className="grid w-full grid-cols-1 md:grid-cols-2 lg:grid-cols-4 mb-6 bg-card p-1 rounded-lg">
-          <TabsTrigger value="monthly" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 mb-6 bg-card p-1 rounded-lg">
+          <TabsTrigger value="monthly" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <CalendarDays className="mr-1 sm:mr-2 h-4 w-4" /> Coût de Revient Mensuel
           </TabsTrigger>
-          <TabsTrigger value="annual" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+          <TabsTrigger value="annual" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <CalendarRange className="mr-1 sm:mr-2 h-4 w-4" /> Coût de Revient Annuel
           </TabsTrigger>
-          <TabsTrigger value="picnic" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+          <TabsTrigger value="picnic" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <CookingPot className="mr-1 sm:mr-2 h-4 w-4" /> Coût Pique-Nique/Salade
           </TabsTrigger>
-          <TabsTrigger value="occasional" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+          <TabsTrigger value="occasional" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <UtensilsCrossed className="mr-1 sm:mr-2 h-4 w-4" /> Coût Repas Occasionnel
           </TabsTrigger>
         </TabsList>

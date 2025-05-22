@@ -1,7 +1,8 @@
+
 "use client"; 
 
 import Link from 'next/link';
-import { Settings as SettingsIcon, FileCog, Settings2 as AppSettingsIcon, ShieldAlert, Users, ShieldX } from 'lucide-react'; // Removed ArrowLeft
+import { Settings as SettingsIcon, FileCog, Settings2 as AppSettingsIcon, ShieldAlert, Users, ShieldX } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
@@ -61,7 +62,6 @@ export default function SettingsPage() {
         </p>
         <Link href="/dashboard" passHref>
           <Button variant="outline">
-            {/* <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard button removed from here as well */}
             Retour au Tableau de Bord
           </Button>
         </Link>
@@ -78,7 +78,6 @@ export default function SettingsPage() {
             Paramètres de l'Application
           </h1>
         </div>
-        {/* Back to Dashboard button removed */}
       </div>
       <div className="mb-6 text-center sm:text-left">
         <CurrentDate />
@@ -86,16 +85,16 @@ export default function SettingsPage() {
       
       <Tabs defaultValue="pdf-layout" className="w-full">
         <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-4 mb-6 bg-card p-1 rounded-lg">
-          <TabsTrigger value="pdf-layout" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+          <TabsTrigger value="pdf-layout" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <FileCog className="mr-1 sm:mr-2 h-4 w-4" /> Mises en Page PDF
           </TabsTrigger>
-          <TabsTrigger value="app-settings" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+          <TabsTrigger value="app-settings" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <AppSettingsIcon className="mr-1 sm:mr-2 h-4 w-4" /> Paramètres Application
           </TabsTrigger>
-          <TabsTrigger value="pms-config" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+          <TabsTrigger value="pms-config" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <ShieldAlert className="mr-1 sm:mr-2 h-4 w-4" /> Paramètres PMS
           </TabsTrigger>
-          <TabsTrigger value="user-management" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+          <TabsTrigger value="user-management" className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
             <Users className="mr-1 sm:mr-2 h-4 w-4" /> Gestion Utilisateurs
           </TabsTrigger>
         </TabsList>
