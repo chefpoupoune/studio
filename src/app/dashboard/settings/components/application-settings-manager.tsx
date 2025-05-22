@@ -97,6 +97,7 @@ const APP_SPECIFIC_KEYS = [
   'cost_pn_salad_ingredients',
   'time_tracking_members_v2', 
   'time_tracking_entries',
+  'time_tracking_custom_schedule_templates_v2',
   'task_management_tasks',
   THEME_STORAGE_KEY,
   ACCENT_COLOR_STORAGE_KEY,
@@ -112,7 +113,6 @@ const APP_SPECIFIC_KEYS = [
   'app_defined_users_v2',
   'loggedInUserPermissions',
   'loggedInUserHourViewConfig',
-  'time_tracking_custom_schedule_templates_v2',
 ];
 
 const APP_SPECIFIC_PREFIXES = [
@@ -128,7 +128,7 @@ const APP_SPECIFIC_PREFIXES = [
   'pms_defrosting_log_v1',
   'pms_fryer_maintenance_log_v1',
   'pms_fryer_oil_tpm_log_v1',
-  'benefits_employees_list_v1',
+  'benefits_employees_list_v1', // Should be removed as employee management is centralized
   'benefits_tracking_',
 ];
 
@@ -175,14 +175,16 @@ export default function ApplicationSettingsManager() {
   
   const applyAccentColor = useCallback((color: string) => {
     if (typeof window === 'undefined') return;
+    console.log("[applyAccentColor] Attempting to apply color:", color);
     const root = document.documentElement;
     let colorToApply = color;
     let hslColor = hexToHsl(colorToApply);
   
     if (!hslColor) {
-      console.warn(`[applyAccentColor] Invalid hex color "${color}" received. Falling back to default: ${DEFAULT_APP_PRIMARY_COLOR}.`);
+      console.warn(`[applyAccentColor] Invalid hex color "${color}" received or HSL conversion failed. Falling back to default: ${DEFAULT_APP_PRIMARY_COLOR}.`);
       colorToApply = DEFAULT_APP_PRIMARY_COLOR;
       hslColor = hexToHsl(colorToApply);
+      // Removed: setSelectedAccentColor(DEFAULT_APP_PRIMARY_COLOR); This was resetting the state.
     }
   
     if (hslColor) {
@@ -258,7 +260,6 @@ export default function ApplicationSettingsManager() {
       // Media query for system theme changes
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
       const handleChange = () => {
-        // Check localStorage again to ensure it's still 'system'
         const currentThemeSetting = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
         if (currentThemeSetting === 'system' || !currentThemeSetting) {
            console.log("[System Theme Change] Re-applying system theme.");
@@ -268,7 +269,8 @@ export default function ApplicationSettingsManager() {
       mediaQuery.addEventListener('change', handleChange);
       return () => mediaQuery.removeEventListener('change', handleChange);
     }
-  }, [isClient, applyThemeMode]); // Added applyThemeMode as it's called within the media query listener
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isClient]); // Removed applyThemeMode from deps as it's handled by the next effect
 
   // Effect to apply theme and accent color when states change or on initial load after isClient
   useEffect(() => {
@@ -293,12 +295,16 @@ export default function ApplicationSettingsManager() {
 
   const handleAccentColorInputChange = (newColor: string) => {
     setSelectedAccentColor(newColor); 
+    // Live preview by applying immediately, but not saving yet
+    if(isClient) {
+      applyAccentColor(newColor);
+    }
   };
   
   const handleSaveAccentColor = () => {
     if (isClient) {
       localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, selectedAccentColor);
-      applyAccentColor(selectedAccentColor); // Explicitly re-apply on save
+      applyAccentColor(selectedAccentColor); // Ensure re-application if it was previewing default
       toast({
         title: "Couleur d'Accentuation Enregistrée",
         description: `La couleur d'accentuation est maintenant ${selectedAccentColor}.`,
@@ -310,7 +316,7 @@ export default function ApplicationSettingsManager() {
     setSelectedAccentColor(DEFAULT_APP_PRIMARY_COLOR);
     if (isClient) {
       localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, DEFAULT_APP_PRIMARY_COLOR);
-      applyAccentColor(DEFAULT_APP_PRIMARY_COLOR); // Explicitly apply default on reset
+      applyAccentColor(DEFAULT_APP_PRIMARY_COLOR);
       toast({
         title: "Couleur d'Accentuation Réinitialisée",
         description: `La couleur d'accentuation a été réinitialisée à la valeur par défaut (${DEFAULT_APP_PRIMARY_COLOR}).`,
@@ -342,11 +348,13 @@ export default function ApplicationSettingsManager() {
     if (appLogoDataUrl && isClient) {
       localStorage.setItem(APP_LOGO_STORAGE_KEY, appLogoDataUrl);
       toast({ title: "Logo de l'Application Enregistré" });
-    } else if (!appLogoDataUrl && isClient) {
+    } else if (!appLogoDataUrl && isClient) { // If user cleared preview and saves
       localStorage.removeItem(APP_LOGO_STORAGE_KEY);
       toast({ title: "Logo de l'Application Supprimé" });
     }
-    window.location.reload(); // Force reload to update sidebar immediately
+     // Force a reload to update the logo in the sidebar immediately.
+     // This is a bit heavy-handed but ensures visual consistency without complex state propagation.
+    window.location.reload();
   };
 
   const handleDeleteAppLogo = () => {
@@ -356,7 +364,7 @@ export default function ApplicationSettingsManager() {
       toast({ title: "Logo de l'Application Supprimé", variant: "destructive" });
     }
     if (appLogoFileInputRef.current) appLogoFileInputRef.current.value = "";
-    window.location.reload(); // Force reload to update sidebar immediately
+    window.location.reload(); // Force reload
   };
 
   const createSwitchHandler = (
@@ -756,3 +764,5 @@ export default function ApplicationSettingsManager() {
     </Card>
   );
 }
+
+    
