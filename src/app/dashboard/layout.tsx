@@ -99,11 +99,12 @@ function AppSidebar() {
   }, [pathname]); 
 
   React.useEffect(() => {
+    // Close mobile sidebar on pathname change
     if (openMobile) {
       setOpenMobile(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, openMobile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]); // Only depend on pathname to avoid closing loops
 
   const handleLogout = () => {
     if (typeof window !== 'undefined') {
@@ -122,9 +123,9 @@ function AppSidebar() {
         <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
           <Link href="/dashboard" className="flex items-center gap-2">
             {appLogoUrl ? (
-              <Image src={appLogoUrl} alt="App Logo" width={32} height={32} className="rounded-sm object-contain" data-ai-hint="application logo" unoptimized/>
+              <Image src={appLogoUrl} alt="App Logo" width={32} height={32} className="rounded-sm object-contain" data-ai-hint="chef hat" unoptimized/>
             ) : (
-              <div className="w-8 h-8 bg-muted rounded-sm flex items-center justify-center text-muted-foreground text-xs" data-ai-hint="chef hat">Logo</div>
+              <div className="w-8 h-8 bg-muted rounded-sm flex items-center justify-center text-muted-foreground text-xs" data-ai-hint="application logo">Logo</div>
             )}
             <span className="font-semibold text-lg text-sidebar-primary">Gestion par L'excellence</span>
           </Link>
@@ -287,9 +288,9 @@ export default function DashboardLayout({
             <SidebarTrigger />
             <Link href="/dashboard" className="flex items-center gap-2">
                 {appLogoUrl ? (
-                  <Image src={appLogoUrl} alt="App Logo" width={32} height={32} className="rounded-sm object-contain" data-ai-hint="application logo" unoptimized/>
+                  <Image src={appLogoUrl} alt="App Logo" width={32} height={32} className="rounded-sm object-contain" data-ai-hint="chef hat" unoptimized/>
                 ) : (
-                  <div className="w-8 h-8 bg-muted rounded-sm flex items-center justify-center text-muted-foreground text-xs" data-ai-hint="chef hat">Logo</div>
+                  <div className="w-8 h-8 bg-muted rounded-sm flex items-center justify-center text-muted-foreground text-xs" data-ai-hint="application logo">Logo</div>
                 )}
                 <span className="font-semibold text-md">Gestion par L'excellence</span>
             </Link>
