@@ -36,22 +36,22 @@ const createInitialPicnicWeekData = (): PicnicWeekData => ({
   philipe: initialRowData(),
   plus: initialRowData(),
   autre: initialRowData(),
-  nb_bagette: initialRowData(),
+  nb_bagette: initialRowData(), // This will be calculated, but keep structure for type safety
   total_glaciere: initialRowData(),
 });
 
 const DISPLAY_ROWS_CONFIG: DisplayRowConfig[] = [
-  { id: 'gatien', label: 'Gatien', bgColor: 'bg-yellow-300', textColor: 'text-black', isInputRow: true, isESATContributor: true, isTotalContributor: true },
-  { id: 'cedric', label: 'Cedric', bgColor: 'bg-green-500', textColor: 'text-white', isInputRow: true, isESATContributor: true, isTotalContributor: true },
-  { id: 'dominique', label: 'Dominique', bgColor: 'bg-white', textColor: 'text-black', isInputRow: true, isESATContributor: true, isTotalContributor: true },
-  { id: 'maxime_l', label: 'Maxime L', bgColor: 'bg-red-500', textColor: 'text-white', isInputRow: true, isESATContributor: true, isTotalContributor: true },
-  { id: 'nicolas', label: 'Nicolas', bgColor: 'bg-black', textColor: 'text-white', isInputRow: true, isESATContributor: true, isTotalContributor: true },
-  { id: 'maxime_h', label: 'Maxime H', bgColor: 'bg-blue-500', textColor: 'text-white', isInputRow: true, isESATContributor: true, isTotalContributor: true },
-  { id: 'philipe', label: 'Philipe', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: true, isESATContributor: true, isTotalContributor: true },
-  { id: 'plus', label: 'PLUS', bgColor: 'bg-pink-500', textColor: 'text-white', isInputRow: true, isESATContributor: false, isTotalContributor: true },
-  { id: 'autre', label: 'autre', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: true, isESATContributor: false, isTotalContributor: true },
+  { id: 'gatien', label: 'Gatien', bgColor: 'bg-yellow-300', textColor: 'text-black', isInputRow: true, isTotalContributor: true },
+  { id: 'cedric', label: 'Cedric', bgColor: 'bg-green-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true },
+  { id: 'dominique', label: 'Dominique', bgColor: 'bg-white', textColor: 'text-black', isInputRow: true, isTotalContributor: true },
+  { id: 'maxime_l', label: 'Maxime L', bgColor: 'bg-red-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true },
+  { id: 'nicolas', label: 'Nicolas', bgColor: 'bg-black', textColor: 'text-white', isInputRow: true, isTotalContributor: true },
+  { id: 'maxime_h', label: 'Maxime H', bgColor: 'bg-blue-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true },
+  { id: 'philipe', label: 'Philipe', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: true, isTotalContributor: true },
+  { id: 'plus', label: 'PLUS', bgColor: 'bg-pink-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true },
+  { id: 'autre', label: 'autre', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: true, isTotalContributor: true },
   { id: 'total_global', label: 'TOTAL', bgColor: 'bg-orange-300', textColor: 'text-black', isInputRow: false },
-  { id: 'nb_bagette', label: 'NB de bagette', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: true },
+  { id: 'nb_bagette', label: 'NB de bagette', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: false }, // Changed isInputRow to false
   { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: true },
 ];
 
@@ -64,11 +64,22 @@ export default function NumberOfPicnics() {
     try {
       const storedData = localStorage.getItem(PICNIC_DATA_STORAGE_KEY);
       if (storedData) {
-        setPicnicData(JSON.parse(storedData));
+        const parsedData = JSON.parse(storedData);
+        // Ensure all keys from createInitialPicnicWeekData are present
+        const initialKeys = Object.keys(createInitialPicnicWeekData()) as PicnicRowKey[];
+        const completeData: Partial<PicnicWeekData> = {};
+        initialKeys.forEach(key => {
+          completeData[key] = parsedData[key] || initialRowData();
+        });
+        setPicnicData(completeData as PicnicWeekData);
+
+      } else {
+        setPicnicData(createInitialPicnicWeekData());
       }
     } catch (e) {
       console.error("Failed to load picnic data from localStorage", e);
       toast({ title: "Erreur de chargement", description: "Données de pique-nique corrompues.", variant: "destructive" });
+      setPicnicData(createInitialPicnicWeekData());
     }
   }, [toast]);
 
@@ -106,7 +117,7 @@ export default function NumberOfPicnics() {
   const calculateDailyTotal = useCallback((day: keyof DailyCounts, type: 'global'): number => {
     let sum = 0;
     for (const rowConfig of DISPLAY_ROWS_CONFIG) {
-      if (rowConfig.isInputRow) {
+      if (rowConfig.isInputRow) { // Sum only input rows
         if (type === 'global' && rowConfig.isTotalContributor) {
           sum += Number(picnicData[rowConfig.id as PicnicRowKey]?.[day]) || 0;
         }
@@ -150,18 +161,20 @@ export default function NumberOfPicnics() {
                     {rowConfig.label}
                   </TableCell>
                   {DAYS_OF_WEEK.map(day => (
-                    <TableCell key={`${rowConfig.id}-${day}`} className="p-1 text-center">
+                    <TableCell key={`${rowConfig.id}-${day}`} className={cn("p-1 text-center tabular-nums", rowConfig.bgColor, rowConfig.textColor)}>
                       {rowConfig.isInputRow ? (
                         <Input
                           type="number"
                           min="0"
                           value={picnicData[rowConfig.id as PicnicRowKey]?.[day] ?? ''}
                           onChange={(e) => handleInputChange(rowConfig.id as PicnicRowKey, day, e.target.value)}
-                          className={cn("h-8 text-center tabular-nums", rowConfig.bgColor, rowConfig.textColor, "placeholder:text-gray-500")}
+                          className={cn("h-8 text-center tabular-nums", "placeholder:text-gray-500")} // Removed individual bg/text color from input
                           placeholder="0"
                         />
                       ) : rowConfig.id === 'total_global' ? ( 
-                        <span className="font-semibold tabular-nums">{dailyGlobalTotals[day]}</span>
+                        <span className="font-semibold">{dailyGlobalTotals[day]}</span>
+                      ) : rowConfig.id === 'nb_bagette' ? (
+                        <span className="font-semibold">{Math.round(dailyGlobalTotals[day] / 2)}</span>
                       ) : null}
                     </TableCell>
                   ))}
