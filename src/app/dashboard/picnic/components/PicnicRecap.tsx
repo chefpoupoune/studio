@@ -29,7 +29,6 @@ const PICNIC_DATA_STORAGE_KEY_PREFIX = "picnic_nb_pn_data_v1_";
 const PICNIC_CLIENT_ORDERS_KEY_PREFIX = "picnic_client_orders_data_v3_";
 const PICNIC_BASE_BREAD_KEY_PREFIX = "picnic_base_bread_v1_"; 
 
-
 const initialRowData = (): PicnicRowData => ({
   lundi: '', mardi: '', mercredi: '', jeudi: '', vendredi: '', weeklyObservation: ''
 });
@@ -410,19 +409,17 @@ export default function PicnicRecap() {
                       return null; 
                     }
                     
-                    let clientCellRendered = false;
                     const rowSpanForClientName = (clientHasBaguettes && clientHasFaluches) ? 2 : 1;
 
                     return (
                       <React.Fragment key={recap.id}>
                         {clientHasBaguettes && (
                           <TableRow>
-                            {!clientCellRendered && (
+                            {rowSpanForClientName === 2 || (rowSpanForClientName === 1 && clientHasBaguettes) ? (
                               <TableCell rowSpan={rowSpanForClientName} className="font-medium sticky left-0 z-10 bg-card group-hover:bg-muted/50 w-[150px] align-middle">
                                 {recap.clientName || <span className="italic text-muted-foreground">Client non nommé</span>}
                               </TableCell>
-                            )}
-                            {clientCellRendered = true}
+                            ) : null}
                             <TableCell className="font-semibold">Baguette</TableCell>
                             {DAYS_OF_WEEK_KEYS.map(day => (
                               <TableCell key={`${recap.id}-baguette-${day}`} className="text-center">
@@ -433,11 +430,11 @@ export default function PicnicRecap() {
                         )}
                         {clientHasFaluches && (
                           <TableRow>
-                            {!clientCellRendered && (
+                            {rowSpanForClientName === 1 && clientHasFaluches ? ( // Only render if this is the only row or it's the faluche row and baguette wasn't rendered alone
                               <TableCell rowSpan={1} className="font-medium sticky left-0 z-10 bg-card group-hover:bg-muted/50 w-[150px] align-middle">
                                 {recap.clientName || <span className="italic text-muted-foreground">Client non nommé</span>}
                               </TableCell>
-                            )}
+                            ) : null}
                             <TableCell className="font-semibold">Faluche</TableCell>
                             {DAYS_OF_WEEK_KEYS.map(day => (
                               <TableCell key={`${recap.id}-faluche-${day}`} className="text-center">
@@ -512,9 +509,7 @@ export default function PicnicRecap() {
                 <TableRow>
                   <TableCell className="font-semibold bg-yellow-200 dark:bg-yellow-700/50 text-black">Pain (Total)</TableCell>
                   {DAYS_OF_WEEK_KEYS.map(day => {
-                    let dailyPainTotal = (Number(baseBreadNumber) || 0) + 
-                                         (weeklyRecapFooterTotals.baguette[day] || 0) + 
-                                         (weeklyRecapFooterTotals.faluche[day] || 0);
+                    let dailyPainTotal = (Number(baseBreadNumber) || 0);
                     if (day === 'mardi' || day === 'jeudi') {
                         dailyPainTotal += (dailyGlaciereTotals[day] || 0);
                     }
@@ -528,7 +523,7 @@ export default function PicnicRecap() {
                 <TableRow>
                   <TableCell className="font-semibold bg-orange-300 dark:bg-orange-800/50 text-black">Baguette</TableCell>
                   {DAYS_OF_WEEK_KEYS.map(day => {
-                    const totalBaguettesForDay = (weeklyRecapFooterTotals.baguette[day] || 0) + (dailyGlobalTotals[day] !== undefined ? Math.round(dailyGlobalTotals[day] / 2) : 0);
+                    const totalBaguettesForDay = (weeklyRecapFooterTotals.baguette[day] || 0) + (day === 'lundi' ? Math.round(dailyGlobalTotals[day] / 2) : 0);
                     return (
                       <TableCell key={`total-baguette-${day}`} className="text-center bg-orange-100 dark:bg-orange-700/40">
                         {totalBaguettesForDay > 0 ? totalBaguettesForDay : '-'}
