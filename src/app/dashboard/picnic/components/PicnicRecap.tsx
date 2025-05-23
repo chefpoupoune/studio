@@ -277,8 +277,11 @@ export default function PicnicRecap() {
         const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
         let currentY = pdfSettings.marginTop || 20;
         const pageHeight = doc.internal.pageSize.getHeight();
+        const pageWidth = doc.internal.pageSize.getWidth();
         const pageLeftMargin = pdfSettings.marginLeft || 20;
         const pageRightMargin = pdfSettings.marginRight || 20;
+        
+        const whiteTextForPdf: [number, number, number] = [255, 255, 255];
         const blackTextForPdf: [number, number, number] = [0, 0, 0];
 
 
@@ -303,70 +306,30 @@ export default function PicnicRecap() {
         }
         
         doc.setFontSize((pdfSettings.headerFontSize || 14) + 4);
-        doc.text(`Récapitulatif Pique Nique - ${weekDisplayString}`, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
+        doc.text(`Récapitulatif Pique Nique - ${weekDisplayString}`, pageWidth / 2, currentY, { align: 'center' });
         currentY += ((pdfSettings.headerFontSize || 14) + 4) * 0.7 + 5;
         doc.setFontSize(pdfSettings.defaultFontSize || 10);
         doc.text(`Généré le: ${generationDateFormatted}`, pageLeftMargin, currentY);
         currentY += (pdfSettings.defaultFontSize || 10) + 10;
 
         const tableBaseStyles = { fontSize: pdfSettings.tableBodyFontSize || 7, cellPadding: 1.5, font: pdfSettings.fontFamily || 'helvetica', lineColor: [180,180,180], lineWidth: 0.5 };
-        let tableHeadBaseStyles: any = { fontSize: (pdfSettings.tableHeaderFontSize || 8), fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1.5, font: pdfSettings.fontFamily || 'helvetica', textColor: blackTextForPdf };
+        let tableHeadBaseStyles: any = { fontSize: (pdfSettings.tableHeaderFontSize || 8), fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1.5, font: pdfSettings.fontFamily || 'helvetica' };
         
         if (pdfSettings.primaryColor) {
             const rgb = hexToRgb(pdfSettings.primaryColor);
             if (rgb) {
                 tableHeadBaseStyles.fillColor = rgb;
                 const brightness = (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000;
-                tableHeadBaseStyles.textColor = brightness > 125 ? blackTextForPdf : [255,255,255];
+                tableHeadBaseStyles.textColor = brightness > 125 ? blackTextForPdf : whiteTextForPdf;
             }
         } else {
             tableHeadBaseStyles.fillColor = [220,220,220];
+            tableHeadBaseStyles.textColor = blackTextForPdf;
         }
         const orangeHeaderStyle = {...tableHeadBaseStyles, fillColor: hexToRgb("#FED7AA") || [254, 229, 205], textColor: blackTextForPdf};
         const yellowRowBgColorForPdf = hexToRgb("#FEF9C3") || [254, 249, 195];
         const lightOrangeRowBgColorForPdf = hexToRgb("#FFEDD5") || [255, 237, 213];
         const clientRecapFooterColor = hexToRgb("#FFEBCD") || [255,235,205];
-
-        const didDrawCellHandler = (data: any) => {
-            if (data.table.id === 'nbPnTable' && data.section === 'body' && data.row.index < DISPLAY_ROWS_CONFIG_NB_PN_RECAP.length) {
-                const rowConfig = DISPLAY_ROWS_CONFIG_NB_PN_RECAP[data.row.index];
-                if (rowConfig && rowConfig.pdfBgColor) {
-                    data.cell.styles.fillColor = rowConfig.pdfBgColor;
-                    let textColorToApply = (rowConfig.pdfBgColor[0] * 299 + rowConfig.pdfBgColor[1] * 587 + rowConfig.pdfBgColor[2] * 114) / 1000 > 125 && !(rowConfig.pdfBgColor[0] === 255 && rowConfig.pdfBgColor[1] === 255 && rowConfig.pdfBgColor[2] === 255) ? blackTextForPdf : [255, 255, 255];
-                    if (rowConfig.textColor === 'text-black') textColorToApply = blackTextForPdf;
-                    else if (rowConfig.textColor === 'text-white') textColorToApply = [255,255,255];
-                    data.cell.styles.textColor = textColorToApply;
-                }
-            }
-        
-            if (data.section === 'head') {
-                const isDayHeader = (data.table.id === 'nbPnTable' && data.column.index > 0 && data.column.index <= DAYS_OF_WEEK_KEYS.length) ||
-                                    (data.table.id === 'clientRecapTable' && data.column.index >=2 && data.column.index < 2 + DAYS_OF_WEEK_KEYS.length) ||
-                                    (data.table.id === 'breadNeedsTable' && data.column.index > 0);
-        
-                if (isDayHeader) {
-                     data.cell.styles.fillColor = orangeHeaderStyle.fillColor;
-                     data.cell.styles.textColor = orangeHeaderStyle.textColor;
-                } else { 
-                    data.cell.styles.fillColor = tableHeadBaseStyles.fillColor;
-                    data.cell.styles.textColor = tableHeadBaseStyles.textColor;
-                }
-            }
-        
-            if (data.table.id === 'breadNeedsTable' && data.section === 'body') {
-                const firstCellText = String(data.row.cells[0]?.content || '').toLowerCase();
-                let rowBgColorToApply: [number,number,number] | undefined = undefined;
-                if (firstCellText.includes('pain (total)')) { rowBgColorToApply = yellowRowBgColorForPdf; }
-                else if (firstCellText.includes('baguette') || firstCellText.includes('faluche')) { rowBgColorToApply = lightOrangeRowBgColorForPdf; }
-                
-                if (rowBgColorToApply) {
-                    for (let i = 0; i < data.row.cells.length; i++) {
-                        data.row.cells[i].styles.fillColor = rowBgColorToApply;
-                        data.row.cells[i].styles.textColor = blackTextForPdf;
-                    }
-                }
-            }
-        };
         
         const pageFooterHandler = (data: any) => {
             const pageCount = doc.internal.getNumberOfPages();
@@ -377,6 +340,58 @@ export default function PicnicRecap() {
                 .replace('{totalPages}', pageCount.toString());
                 doc.setFontSize(pdfSettings.footerFontSize || 8);
                 doc.text(footerStr, pageLeftMargin, pageHeight - (pdfSettings.marginBottom || 20) / 2);
+            }
+        };
+        
+        const didDrawCellHandler = (data: any) => {
+            // Header coloring for days of the week (orange)
+            if (data.section === 'head') {
+                const isDayHeader = (data.table.id === 'nbPnTable' && data.column.index > 0 && data.column.index <= DAYS_OF_WEEK_KEYS.length) ||
+                                    (data.table.id === 'clientRecapTable' && data.column.index >=2 && data.column.index < 2 + DAYS_OF_WEEK_KEYS.length) ||
+                                    (data.table.id === 'breadNeedsTable' && data.column.index > 0);
+                if (isDayHeader) {
+                     data.cell.styles.fillColor = orangeHeaderStyle.fillColor;
+                     data.cell.styles.textColor = orangeHeaderStyle.textColor;
+                } else { // Default header style (Category, Client, Pain, etc.)
+                    data.cell.styles.fillColor = tableHeadBaseStyles.fillColor;
+                    data.cell.styles.textColor = tableHeadBaseStyles.textColor;
+                }
+            }
+
+            // Table 1: NB PN Table - Body Row Coloring
+            if (data.table.id === 'nbPnTable' && data.section === 'body' && data.row.index < DISPLAY_ROWS_CONFIG_NB_PN_RECAP.length) {
+                const rowConfig = DISPLAY_ROWS_CONFIG_NB_PN_RECAP[data.row.index];
+                if (rowConfig && rowConfig.pdfBgColor) {
+                    let textColorToApply = blackTextForPdf;
+                    if (rowConfig.textColor === 'text-white') {
+                        textColorToApply = whiteTextForPdf;
+                    } else if (rowConfig.textColor === 'text-black') {
+                        textColorToApply = blackTextForPdf;
+                    } else { 
+                        const brightness = (rowConfig.pdfBgColor[0] * 299 + rowConfig.pdfBgColor[1] * 587 + rowConfig.pdfBgColor[2] * 114) / 1000;
+                        textColorToApply = brightness > 130 ? blackTextForPdf : whiteTextForPdf;
+                    }
+                    // Apply to all cells in the current row
+                    Object.values(data.row.cells).forEach((cell: any) => {
+                        cell.styles.fillColor = rowConfig.pdfBgColor;
+                        cell.styles.textColor = textColorToApply;
+                    });
+                }
+            }
+        
+            // Table 3: Bread Needs Table - Body Row Coloring
+            if (data.table.id === 'breadNeedsTable' && data.section === 'body') {
+                const firstCellText = String(data.row.cells[0]?.content || '').toLowerCase();
+                let rowBgColorToApply: [number,number,number] | undefined = undefined;
+                if (firstCellText.includes('pain (total)')) { rowBgColorToApply = yellowRowBgColorForPdf; }
+                else if (firstCellText.includes('baguette') || firstCellText.includes('faluche')) { rowBgColorToApply = lightOrangeRowBgColorForPdf; }
+                
+                if (rowBgColorToApply) {
+                    Object.values(data.row.cells).forEach((cell: any) => {
+                        cell.styles.fillColor = rowBgColorToApply;
+                        cell.styles.textColor = blackTextForPdf; // Assuming black text for these light backgrounds
+                    });
+                }
             }
         };
 
@@ -399,8 +414,8 @@ export default function PicnicRecap() {
             return [rowConfig.label, ...dailyValues, rowData?.weeklyObservation || '-'];
         });
         
-        const nbPnColumnStyles: any = { 0: { fontStyle: 'bold', cellWidth: 100, halign: 'left' } };
-        DAYS_OF_WEEK_KEYS.forEach((_, index) => { nbPnColumnStyles[index + 1] = { cellWidth: 40, halign: 'center' }; });
+        const nbPnColumnStyles: any = { 0: { fontStyle: 'bold', cellWidth: 120, halign: 'left' } }; // Increased width for Category
+        DAYS_OF_WEEK_KEYS.forEach((_, index) => { nbPnColumnStyles[index + 1] = { cellWidth: 50, halign: 'center' }; }); // Increased width for days
         nbPnColumnStyles[DAYS_OF_WEEK_KEYS.length + 1] = { cellWidth: 'auto', halign: 'left' };
 
         doc.autoTable({
@@ -411,10 +426,10 @@ export default function PicnicRecap() {
             didDrawCell: didDrawCellHandler,
             didDrawPage: pageFooterHandler,
         });
-        currentY = (doc as any).lastAutoTable.finalY + 10;
+        currentY = (doc as any).lastAutoTable.finalY + 15;
 
         // Table 2: Récapitulatif Hebdomadaire des Commandes Clients
-        if (currentY + 60 > pageHeight - (pdfSettings.marginBottom || 20)) { doc.addPage(); currentY = pdfSettings.marginTop || 20; }
+        if (currentY + 80 > pageHeight - (pdfSettings.marginBottom || 20)) { doc.addPage(); currentY = pdfSettings.marginTop || 20; } // Check for page break
         doc.setFontSize((pdfSettings.defaultFontSize || 10) + 1);
         doc.text("Récapitulatif Hebdomadaire des Commandes Clients", pageLeftMargin, currentY);
         currentY += ((pdfSettings.defaultFontSize || 10) + 1) * 0.7 + 4;
@@ -424,7 +439,7 @@ export default function PicnicRecap() {
         weeklyClientRecapData.forEach(recap => {
             const clientHasBaguettes = DAYS_OF_WEEK_KEYS.some(day => recap.baguetteCounts[day] > 0);
             const clientHasFaluches = DAYS_OF_WEEK_KEYS.some(day => recap.falucheCounts[day] > 0);
-             if (!clientHasBaguettes && !clientHasFaluches && !recap.observation) return;
+            if (!clientHasBaguettes && !clientHasFaluches && !recap.observation) return;
 
             const rowSpan = ((clientHasBaguettes ? 1 : 0) + (clientHasFaluches ? 1 : 0)) || 1;
             
@@ -438,7 +453,7 @@ export default function PicnicRecap() {
             }
             if (clientHasFaluches) {
                 const falucheRow: any[] = [];
-                if (!clientHasBaguettes) { // If only faluches, client name and obs need to be in this row
+                if (!clientHasBaguettes) { 
                     falucheRow.push({ content: recap.clientName || 'Client non nommé', rowSpan: rowSpan, styles: { valign: 'middle', fontStyle: 'bold' } });
                 }
                 falucheRow.push('Faluche');
@@ -448,7 +463,7 @@ export default function PicnicRecap() {
                 }
                 clientRecapBody.push(falucheRow);
             }
-            if (!clientHasBaguettes && !clientHasFaluches && recap.observation) { // Only observation
+             if (!clientHasBaguettes && !clientHasFaluches && recap.observation) {
                  clientRecapBody.push([
                     { content: recap.clientName || 'Client non nommé', rowSpan: 1, styles: { valign: 'middle', fontStyle: 'bold' } },
                     '-', 
@@ -458,12 +473,12 @@ export default function PicnicRecap() {
             }
         });
         const clientRecapFoot: any[][] = [
-            [{content: 'Total Baguette', colSpan: 2, styles: {fontStyle:'bold', halign:'right'}}, ...DAYS_OF_WEEK_KEYS.map(day => weeklyRecapFooterTotals.baguette[day] > 0 ? weeklyRecapFooterTotals.baguette[day].toString() : '-'), ''],
-            [{content: 'Total Faluche', colSpan: 2, styles: {fontStyle:'bold', halign:'right'}}, ...DAYS_OF_WEEK_KEYS.map(day => weeklyRecapFooterTotals.faluche[day] > 0 ? weeklyRecapFooterTotals.faluche[day].toString() : '-'), '']
+            [{content: 'Total Baguette', colSpan: 2, styles:{fontStyle:'bold', halign:'right'}}, ...DAYS_OF_WEEK_KEYS.map(day => weeklyRecapFooterTotals.baguette[day] > 0 ? weeklyRecapFooterTotals.baguette[day].toString() : '-'), ''],
+            [{content: 'Total Faluche', colSpan: 2, styles:{fontStyle:'bold', halign:'right'}}, ...DAYS_OF_WEEK_KEYS.map(day => weeklyRecapFooterTotals.faluche[day] > 0 ? weeklyRecapFooterTotals.faluche[day].toString() : '-'), '']
         ];
         
-        const clientRecapColumnStyles : any = { 0: { fontStyle: 'bold', cellWidth: 100, halign: 'left' }, 1: {cellWidth: 50} };
-        DAYS_OF_WEEK_KEYS.forEach((_, index) => { clientRecapColumnStyles[index + 2] = { cellWidth: 40, halign: 'center' }; });
+        const clientRecapColumnStyles : any = { 0: { fontStyle: 'bold', cellWidth: 100, halign: 'left' }, 1: {cellWidth: 50, halign: 'left'} };
+        DAYS_OF_WEEK_KEYS.forEach((_, index) => { clientRecapColumnStyles[index + 2] = { cellWidth: 50, halign: 'center' }; }); // Increased width
         clientRecapColumnStyles[DAYS_OF_WEEK_KEYS.length + 2] = { cellWidth: 'auto', halign: 'left' };
 
         doc.autoTable({
@@ -475,42 +490,43 @@ export default function PicnicRecap() {
             didDrawCell: didDrawCellHandler,
             didDrawPage: pageFooterHandler,
         });
-        currentY = (doc as any).lastAutoTable.finalY + 10;
+        currentY = (doc as any).lastAutoTable.finalY + 15;
 
         // Table 3: Récapitulatif Journalier des Pains Nécessaires
-        if (currentY + 50 > pageHeight - (pdfSettings.marginBottom || 20)) { doc.addPage(); currentY = pdfSettings.marginTop || 20; }
+        if (currentY + 70 > pageHeight - (pdfSettings.marginBottom || 20)) { doc.addPage(); currentY = pdfSettings.marginTop || 20; } // Check for page break
         doc.setFontSize((pdfSettings.defaultFontSize || 10) + 1);
         doc.text("Récapitulatif Journalier des Pains Nécessaires", pageLeftMargin, currentY);
         currentY += ((pdfSettings.defaultFontSize || 10) + 1) * 0.7 + 4;
         
+        const baseBreadNumValue = Number(baseBreadNumber) || 0;
         const breadNeedsHead = [['Type de Pain', ...DAYS_OF_WEEK_KEYS.map(day => DAY_LABELS[day])]];
         const breadNeedsBodyPDF = [
             [
-                { content: 'Pain (Total)', styles: { fontStyle: 'bold'} },
+                'Pain (Total)',
                 ...DAYS_OF_WEEK_KEYS.map(day => {
-                    let dailyPainTotal = (Number(baseBreadNumber) || 0);
+                    let dailyPainTotal = baseBreadNumValue;
                     if (day === 'mardi' || day === 'jeudi') dailyPainTotal += (dailyGlaciereTotals[day] || 0);
-                    return { content: dailyPainTotal > 0 ? dailyPainTotal.toString() : '-' };
+                    return (dailyPainTotal > 0 ? dailyPainTotal.toString() : '-');
                 })
             ],
             [
-                { content: 'Baguette', styles: { fontStyle: 'bold'} },
+                'Baguette',
                 ...DAYS_OF_WEEK_KEYS.map(day => {
                     const totalBaguettesForDay = (weeklyRecapFooterTotals.baguette[day] || 0) + (day === 'lundi' ? Math.round(dailyGlobalTotals[day] / 2) : 0);
-                    return { content: totalBaguettesForDay > 0 ? totalBaguettesForDay.toString() : '-' };
+                    return (totalBaguettesForDay > 0 ? totalBaguettesForDay.toString() : '-');
                 })
             ],
             [
-                { content: 'Faluche', styles: { fontStyle: 'bold'} },
+                'Faluche',
                 ...DAYS_OF_WEEK_KEYS.map(day => {
                     const totalFaluchesForDay = (weeklyRecapFooterTotals.faluche[day] || 0) + ((day === 'mercredi' || day === 'vendredi') ? (dailyGlobalTotals[day] || 0) : 0);
-                    return { content: totalFaluchesForDay > 0 ? totalFaluchesForDay.toString() : '-' };
+                    return (totalFaluchesForDay > 0 ? totalFaluchesForDay.toString() : '-');
                 })
             ],
         ];
 
-        const breadNeedsColumnStyles : any = { 0: { fontStyle: 'bold', cellWidth: 100, halign: 'left' } };
-         DAYS_OF_WEEK_KEYS.forEach((_, index) => { breadNeedsColumnStyles[index + 1] = { cellWidth: 40, halign: 'center' }; });
+        const breadNeedsColumnStyles : any = { 0: { fontStyle: 'bold', cellWidth: 120, halign: 'left' } }; // Increased width
+         DAYS_OF_WEEK_KEYS.forEach((_, index) => { breadNeedsColumnStyles[index + 1] = { cellWidth: 50, halign: 'center' }; }); // Increased width
 
         doc.autoTable({
             head: breadNeedsHead, body: breadNeedsBodyPDF, startY: currentY, theme: 'grid',
@@ -875,6 +891,8 @@ export default function PicnicRecap() {
     </div>
   );
 }
+    
+
     
 
     
