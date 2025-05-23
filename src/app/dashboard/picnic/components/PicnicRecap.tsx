@@ -96,20 +96,23 @@ export default function PicnicRecap() {
       const storedPicnicDataRaw = localStorage.getItem(getPicnicDataStorageKey());
       if (storedPicnicDataRaw) {
         const parsedData = JSON.parse(storedPicnicDataRaw);
-        const completeData: Partial<PicnicWeekData> = {};
-        (Object.keys(createInitialPicnicWeekData()) as PicnicRowKey[]).forEach(key => {
-          completeData[key] = { 
-            ...(initialRowData()), 
-            ...parsedData[key]
-          };
+        setPicnicData(prevData => {
+            const completeData: Partial<PicnicWeekData> = {};
+            (Object.keys(createInitialPicnicWeekData()) as PicnicRowKey[]).forEach(key => {
+                completeData[key] = { 
+                    ...(initialRowData()), // Ensure all daily keys exist
+                    ...(parsedData[key] || {}), // Spread stored data for the row
+                    weeklyObservation: parsedData[key]?.weeklyObservation || prevData[key]?.weeklyObservation || '' // Persist observation
+                };
+            });
+            return completeData as PicnicWeekData;
         });
-        setPicnicData(completeData as PicnicWeekData);
       } else {
-        setPicnicData(currentPicnicDataForPreviousWeek => {
+        setPicnicData(currentDataForPreviousWeek => {
             const freshDataForNewWeek = createInitialPicnicWeekData();
-            (Object.keys(freshDataForNewWeek) as PicnicRowKey[]).forEach(key => {
-                if (currentPicnicDataForPreviousWeek && currentPicnicDataForPreviousWeek[key]?.weeklyObservation) {
-                    freshDataForNewWeek[key].weeklyObservation = currentPicnicDataForPreviousWeek[key].weeklyObservation;
+             (Object.keys(freshDataForNewWeek) as PicnicRowKey[]).forEach(key => {
+                if (currentDataForPreviousWeek && currentDataForPreviousWeek[key]?.weeklyObservation) {
+                    freshDataForNewWeek[key].weeklyObservation = currentDataForPreviousWeek[key].weeklyObservation;
                 }
             });
             return freshDataForNewWeek;
@@ -120,6 +123,7 @@ export default function PicnicRecap() {
       if (storedClientOrders) {
          const parsedClientOrders: ClientPicnicOrder[] = JSON.parse(storedClientOrders);
          setClientOrders(parsedClientOrders.map(order => ({
+          ...createInitialDailyClientPicnicData(), // This line was incorrect, should be createInitialClientOrder()
           ...order, 
           id: order.id || `client_order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, 
           days: { 
@@ -292,7 +296,7 @@ export default function PicnicRecap() {
         <CardHeader>
           <CardTitle>Récapitulatif Hebdomadaire NB PN (Pique-Niques Semaine)</CardTitle>
           <CardDescription>
-            Visualisation des nombres de pique-niques et observations pour la semaine sélectionnée. Les observations peuvent être modifiées ici.
+            Visualisation des nombres de pique-niques et observations pour la semaine sélectionnée.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -339,8 +343,7 @@ export default function PicnicRecap() {
                       );
                     })}
                     <TableCell className={cn("p-1", rowConfig.bgColor)}>
-                      {rowConfig.isInputRow ? (
-                        <Input
+                       <Input
                           type="text"
                           value={picnicData[rowConfig.id as PicnicRowKey]?.weeklyObservation ?? ''}
                           onChange={(e) => handleRecapObservationChange(rowConfig.id as PicnicRowKey, e.target.value)}
@@ -350,9 +353,6 @@ export default function PicnicRecap() {
                           )}
                           placeholder="Notes..."
                         />
-                      ) : (
-                        <span className={cn("block py-1.5", rowConfig.textColor)}>-</span>
-                      )}
                     </TableCell>
                   </TableRow>
                 )})}
@@ -460,6 +460,60 @@ export default function PicnicRecap() {
           )}
         </CardContent>
       </Card>
+
+      {/* New Daily Bread Summary Table */}
+      <Card className="shadow-md mt-8">
+        <CardHeader>
+          <CardTitle>Récapitulatif Journalier des Pains Nécessaires (Commandes Clients)</CardTitle>
+          <CardDescription>
+            Total des pains (tous types), baguettes et faluches nécessaires chaque jour pour les commandes clients de la semaine sélectionnée.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto border rounded-md">
+            <Table className="min-w-[600px]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[120px] min-w-[120px] bg-card"></TableHead>
+                  {DAYS_OF_WEEK_KEYS.map(day => (
+                    <TableHead key={day} className="text-center bg-orange-200 dark:bg-orange-700/50 text-black capitalize min-w-[80px]">
+                      {DAY_LABELS[day]}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody className="text-sm">
+                <TableRow>
+                  <TableCell className="font-semibold bg-yellow-200 dark:bg-yellow-700/50 text-black">Pain (Total)</TableCell>
+                  {DAYS_OF_WEEK_KEYS.map(day => (
+                    <TableCell key={`total-pain-${day}`} className="text-center bg-yellow-100 dark:bg-yellow-800/40">
+                      {(weeklyRecapFooterTotals.baguette[day] || 0) + (weeklyRecapFooterTotals.faluche[day] || 0)}
+                    </TableCell>
+                  ))}
+                </TableRow>
+                <TableRow>
+                  <TableCell className="font-semibold bg-orange-300 dark:bg-orange-800/50 text-black">Baguette</TableCell>
+                  {DAYS_OF_WEEK_KEYS.map(day => (
+                    <TableCell key={`total-baguette-${day}`} className="text-center bg-orange-100 dark:bg-orange-700/40">
+                      {weeklyRecapFooterTotals.baguette[day] > 0 ? weeklyRecapFooterTotals.baguette[day] : '-'}
+                    </TableCell>
+                  ))}
+                </TableRow>
+                <TableRow>
+                  <TableCell className="font-semibold bg-orange-300 dark:bg-orange-800/50 text-black">Faluche</TableCell>
+                  {DAYS_OF_WEEK_KEYS.map(day => (
+                    <TableCell key={`total-faluche-${day}`} className="text-center bg-orange-100 dark:bg-orange-700/40">
+                      {weeklyRecapFooterTotals.faluche[day] > 0 ? weeklyRecapFooterTotals.faluche[day] : '-'}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+
     </div>
   );
 }
