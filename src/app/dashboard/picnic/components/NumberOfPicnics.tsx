@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Button } from '@/components/ui/button';
 import { Save, Trash2, PlusCircle } from 'lucide-react';
 import type { PicnicWeekData, DailyCounts, PicnicRowKey, DisplayRowConfig, ClientPicnicOrder, BreadChoice } from '../types';
@@ -33,7 +33,7 @@ const DAY_LABELS: Record<keyof DailyCounts, string> = {
 };
 
 const PICNIC_DATA_STORAGE_KEY = "picnic_nb_pn_data_v1";
-const PICNIC_CLIENT_ORDERS_KEY = "picnic_client_orders_data_v2"; // Version up for breadChoice
+const PICNIC_CLIENT_ORDERS_KEY = "picnic_client_orders_data_v2"; 
 
 const initialRowData = (): DailyCounts => ({
   lundi: '', mardi: '', mercredi: '', jeudi: '', vendredi: ''
@@ -102,11 +102,10 @@ export default function NumberOfPicnics() {
       const storedClientOrders = localStorage.getItem(PICNIC_CLIENT_ORDERS_KEY);
       if (storedClientOrders) {
         const parsedClientOrders = JSON.parse(storedClientOrders);
-        // Ensure breadChoice exists with a default value
         setClientOrders(parsedClientOrders.map((order: any) => ({
-          ...createInitialClientOrder(), // Provides defaults like id and breadChoice
-          ...order, // Overwrites with stored data
-          breadChoice: order.breadChoice || 'none', // Explicitly ensure breadChoice has a valid default
+          ...createInitialClientOrder(), 
+          ...order, 
+          breadChoice: order.breadChoice || 'none', 
         })));
       } else {
         setClientOrders(Array.from({ length: 5 }, createInitialClientOrder));
@@ -229,6 +228,22 @@ export default function NumberOfPicnics() {
       return acc;
     }, {} as Record<keyof DailyCounts, number>);
   }, [picnicData]);
+
+  const clientBreadTotals = useMemo(() => {
+    let totalBaguettes = 0;
+    let totalFaluches = 0;
+    clientOrders.forEach(order => {
+      const nbPn = Number(order.nbPn);
+      if (!isNaN(nbPn) && nbPn > 0) {
+        if (order.breadChoice === 'baguette') {
+          totalBaguettes += nbPn;
+        } else if (order.breadChoice === 'faluche') {
+          totalFaluches += nbPn;
+        }
+      }
+    });
+    return { totalBaguettes, totalFaluches };
+  }, [clientOrders]);
 
 
   return (
@@ -401,6 +416,19 @@ export default function NumberOfPicnics() {
                   );
                 })}
               </TableBody>
+              <TableFooter>
+                <TableRow className="bg-amber-100 dark:bg-amber-800/50">
+                  <TableCell colSpan={3} className="text-right font-semibold">
+                    TOTAUX PAINS COMMANDÉS :
+                  </TableCell>
+                  <TableCell className="text-center font-bold">
+                    Baguettes: {clientBreadTotals.totalBaguettes}
+                  </TableCell>
+                  <TableCell className="text-center font-bold">
+                    Faluches: {clientBreadTotals.totalFaluches}
+                  </TableCell>
+                </TableRow>
+              </TableFooter>
             </Table>
           </div>
           <div className="mt-6 flex justify-between items-center">
@@ -441,3 +469,4 @@ export default function NumberOfPicnics() {
     </div>
   );
 }
+
