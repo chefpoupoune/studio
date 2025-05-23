@@ -38,7 +38,7 @@ const DAY_LABELS: Record<DayOfWeekKey, string> = {
 };
 
 const PICNIC_DATA_STORAGE_KEY_PREFIX = "picnic_nb_pn_data_v1_";
-const PICNIC_CLIENT_ORDERS_KEY_PREFIX = "picnic_client_orders_data_v3_"; // Version up for new structure
+const PICNIC_CLIENT_ORDERS_KEY_PREFIX = "picnic_client_orders_data_v3_";
 
 const initialRowData = (): DailyCounts => ({
   lundi: '', mardi: '', mercredi: '', jeudi: '', vendredi: ''
@@ -54,9 +54,9 @@ const createInitialPicnicWeekData = (): PicnicWeekData => ({
   philipe: initialRowData(),
   plus: initialRowData(),
   autre: initialRowData(),
-  nb_bagette: initialRowData(), // Will be calculated for display, but structure kept for data integrity
-  nb_faluche: initialRowData(), // Will be calculated for display
-  total_glaciere: initialRowData(), // Will be calculated for display
+  nb_bagette: initialRowData(), 
+  nb_faluche: initialRowData(), 
+  total_glaciere: initialRowData(),
 });
 
 const createInitialDailyClientPicnicData = (): DailyClientPicnicData => ({
@@ -134,7 +134,7 @@ export default function NumberOfPicnics() {
         setClientOrders(parsedClientOrders.map(order => ({
           ...createInitialClientOrder(), 
           ...order,
-          id: order.id || `client_order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, // ensure id
+          id: order.id || `client_order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
           days: { 
             lundi: { ...createInitialDailyClientPicnicData(), ...(order.days?.lundi || {}) },
             mardi: { ...createInitialDailyClientPicnicData(), ...(order.days?.mardi || {}) },
@@ -289,7 +289,7 @@ export default function NumberOfPicnics() {
     }, {} as Record<DayOfWeekKey, number>);
   }, [picnicData]);
 
-  const clientBreadTotals = useMemo(() => {
+  const clientDailyBreadTotals = useMemo(() => {
     const totals: Record<DayOfWeekKey, { baguettes: number; faluches: number }> = {
       lundi: { baguettes: 0, faluches: 0 },
       mardi: { baguettes: 0, faluches: 0 },
@@ -364,9 +364,10 @@ export default function NumberOfPicnics() {
                     <TableCell className={cn("font-medium sticky left-0 z-10", rowConfig.bgColor, rowConfig.textColor)}>
                       {rowConfig.label}
                     </TableCell>
-                    {DAYS_OF_WEEK_KEYS.map(day => (
-                      <TableCell key={`${rowConfig.id}-${day}`} className={cn("p-1 text-center tabular-nums", rowConfig.bgColor)}>
-                        {rowConfig.isInputRow ? (
+                    {DAYS_OF_WEEK_KEYS.map(day => {
+                      let cellContent: React.ReactNode;
+                      if (rowConfig.isInputRow) {
+                        cellContent = (
                           <Input
                             type="number"
                             min="0"
@@ -378,21 +379,24 @@ export default function NumberOfPicnics() {
                             )}
                             placeholder="0"
                           />
-                        ) : rowConfig.id === 'total_global' ? (
-                          <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{dailyGlobalTotals[day]}</span>
-                        ) : rowConfig.id === 'nb_bagette' ? (
-                          <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>
-                            {Math.round(dailyGlobalTotals[day] / 2)}
-                          </span>
-                        ) : rowConfig.id === 'nb_faluche' ? (
-                           <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>
-                            {day === 'mercredi' ? dailyGlobalTotals[day] : day === 'vendredi' ? dailyGlobalTotals[day] : '0'}
-                          </span>
-                        ) : rowConfig.id === 'total_glaciere' ? (
-                          <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{dailyGlaciereTotals[day]}</span>
-                        ) : null}
-                      </TableCell>
-                    ))}
+                        );
+                      } else if (rowConfig.id === 'total_global') {
+                        cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{dailyGlobalTotals[day]}</span>;
+                      } else if (rowConfig.id === 'nb_bagette') {
+                        const value = Math.round(dailyGlobalTotals[day] / 2);
+                        cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{value}</span>;
+                      } else if (rowConfig.id === 'nb_faluche') {
+                        const value = (day === 'mercredi' || day === 'vendredi') ? dailyGlobalTotals[day] : '0';
+                        cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{value}</span>;
+                      } else if (rowConfig.id === 'total_glaciere') {
+                        cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{dailyGlaciereTotals[day]}</span>;
+                      }
+                      return (
+                        <TableCell key={`${rowConfig.id}-${day}`} className={cn("p-1 text-center tabular-nums", rowConfig.bgColor)}>
+                           {cellContent}
+                        </TableCell>
+                      );
+                    })}
                   </TableRow>
                 ))}
               </TableBody>
@@ -401,7 +405,7 @@ export default function NumberOfPicnics() {
           <div className="mt-6 flex justify-end space-x-2">
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="outline">
+                   <Button variant="outline">
                       <Trash2 className="mr-2 h-4 w-4" />
                       Effacer Données Semaine
                   </Button>
@@ -515,14 +519,14 @@ export default function NumberOfPicnics() {
               </TableBody>
                <TableFooter>
                 <TableRow className="bg-amber-100 dark:bg-amber-800/50">
-                  <TableCell colSpan={1} className="text-right font-semibold text-black">TOTAUX PAINS COMMANDÉS :</TableCell>
+                  <TableCell colSpan={1} className="text-right font-semibold text-black sticky left-0 z-10 bg-amber-100 dark:bg-amber-800/50">TOTAUX PAINS COMMANDÉS :</TableCell>
                   {DAYS_OF_WEEK_KEYS.map(day => (
                     <React.Fragment key={`footer-total-${day}`}>
                       <TableCell className="text-center font-bold text-black">
-                        B: {clientBreadTotals[day].baguettes}
+                        B: {clientDailyBreadTotals[day].baguettes}
                       </TableCell>
                       <TableCell className="text-center font-bold text-black">
-                        F: {clientBreadTotals[day].faluches}
+                        F: {clientDailyBreadTotals[day].faluches}
                       </TableCell>
                     </React.Fragment>
                   ))}
@@ -582,8 +586,8 @@ export default function NumberOfPicnics() {
                         {DAYS_OF_WEEK_KEYS.map(day => (
                             <TableRow key={`total-summary-${day}`}>
                                 <TableCell className="font-medium capitalize">{DAY_LABELS[day]}</TableCell>
-                                <TableCell className="text-center font-semibold">{clientBreadTotals[day].baguettes}</TableCell>
-                                <TableCell className="text-center font-semibold">{clientBreadTotals[day].faluches}</TableCell>
+                                <TableCell className="text-center font-semibold">{clientDailyBreadTotals[day].baguettes}</TableCell>
+                                <TableCell className="text-center font-semibold">{clientDailyBreadTotals[day].faluches}</TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
@@ -595,3 +599,6 @@ export default function NumberOfPicnics() {
     </div>
   );
 }
+
+
+    
