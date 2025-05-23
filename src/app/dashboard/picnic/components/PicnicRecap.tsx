@@ -51,7 +51,7 @@ const createInitialPicnicWeekDataForRecap = (): PicnicWeekData => ({
   total_glaciere: initialRowDataForRecap(),
 });
 
-const DISPLAY_ROWS_CONFIG_NB_PN_RECAP: DisplayRowConfig[] = [
+const DISPLAY_ROWS_CONFIG_NB_PN_RECAP: Array<DisplayRowConfig & { pdfBgColor?: [number,number,number]}> = [
   { id: 'gatien', label: 'Gatien', bgColor: 'bg-yellow-300', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: [253, 224, 71] },
   { id: 'cedric', label: 'Cedric', bgColor: 'bg-green-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [34, 197, 94] },
   { id: 'dominique', label: 'Dominique', bgColor: 'bg-white', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: [255, 255, 255] },
@@ -102,13 +102,14 @@ export default function PicnicRecap() {
     setInitialDataLoaded(false); 
     try {
       const storedPicnicDataRaw = localStorage.getItem(getPicnicDataStorageKey());
-      setPicnicData(currentData => {
+      setPicnicData(currentData => { // Use functional update to access previous state if needed
         const freshData = createInitialPicnicWeekDataForRecap();
         const parsedStoredData = storedPicnicDataRaw ? JSON.parse(storedPicnicDataRaw) : {};
         (Object.keys(freshData) as PicnicRowKey[]).forEach(key => {
             freshData[key] = { 
                 ...(initialRowDataForRecap()), 
                 ...(parsedStoredData[key] || {}), 
+                // Persist weeklyObservation from previous week's data if loading a new week
                 weeklyObservation: parsedStoredData[key]?.weeklyObservation || currentData[key]?.weeklyObservation || '' 
             };
         });
@@ -130,7 +131,7 @@ export default function PicnicRecap() {
           }
         })));
       } else {
-        setClientOrders([]);
+        setClientOrders([]); // Start with no client orders if none stored for the week
       }
 
       const storedBaseBread = localStorage.getItem(getBaseBreadStorageKey());
@@ -157,7 +158,7 @@ export default function PicnicRecap() {
     setPicnicData(prevData => ({
         ...prevData,
         [rowId]: {
-            ...(prevData[rowId] || initialRowDataForRecap()),
+            ...(prevData[rowId] || initialRowDataForRecap()), // Ensure row data exists
             weeklyObservation: value,
         }
     }));
@@ -275,6 +276,10 @@ export default function PicnicRecap() {
 
         const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
         let currentY = pdfSettings.marginTop || 20;
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const pageLeftMargin = pdfSettings.marginLeft || 20;
+        const pageRightMargin = pdfSettings.marginRight || 20;
+        const availableWidth = doc.internal.pageSize.getWidth() - pageLeftMargin - pageRightMargin;
 
         if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
             try {
@@ -282,7 +287,7 @@ export default function PicnicRecap() {
                 const formatType = imgProps.fileType.toUpperCase();
                 const desiredHeight = 30;
                 const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
-                doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft || 20, currentY, imgWidth, desiredHeight);
+                doc.addImage(pdfSettings.logoUrl, formatType, pageLeftMargin, currentY, imgWidth, desiredHeight);
                 currentY += desiredHeight + 5;
             } catch (e) { console.error("Error adding logo to PDF:", e); }
         }
@@ -290,7 +295,7 @@ export default function PicnicRecap() {
             doc.setFontSize(pdfSettings.headerFontSize || 10);
             const headerLines = pdfSettings.headerText.split('\n');
             headerLines.forEach(line => {
-                doc.text(line, pdfSettings.marginLeft || 20, currentY);
+                doc.text(line, pageLeftMargin, currentY);
                 currentY += (pdfSettings.headerFontSize || 10) * 0.7 + 2;
             });
             currentY += 5;
@@ -300,11 +305,11 @@ export default function PicnicRecap() {
         doc.text(`Récapitulatif Pique Nique - ${weekDisplayString}`, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
         currentY += ((pdfSettings.headerFontSize || 14) + 4) * 0.7 + 5;
         doc.setFontSize(pdfSettings.defaultFontSize || 10);
-        doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft || 20, currentY);
+        doc.text(`Généré le: ${generationDateFormatted}`, pageLeftMargin, currentY);
         currentY += (pdfSettings.defaultFontSize || 10) + 10;
 
         const tableBaseStyles = { fontSize: pdfSettings.tableBodyFontSize || 7, cellPadding: 1.5, font: pdfSettings.fontFamily || 'helvetica'};
-        const tableHeadBaseStyles: any = { fontSize: (pdfSettings.tableHeaderFontSize || 8), fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1.5, font: pdfSettings.fontFamily || 'helvetica' };
+        let tableHeadBaseStyles: any = { fontSize: (pdfSettings.tableHeaderFontSize || 8), fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1.5, font: pdfSettings.fontFamily || 'helvetica' };
         if (pdfSettings.primaryColor) {
             const rgb = hexToRgb(pdfSettings.primaryColor);
             if (rgb) {
@@ -312,11 +317,15 @@ export default function PicnicRecap() {
                 const brightness = (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000;
                 tableHeadBaseStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
             }
+        } else {
+            tableHeadBaseStyles.fillColor = [220,220,220]; // Default grey if no primary color
+            tableHeadBaseStyles.textColor = [0,0,0];
         }
+        const orangeHeaderStyle = {...tableHeadBaseStyles, fillColor: hexToRgb("#FED7AA") || [254, 229, 205], textColor: [0,0,0]};
 
         // Table 1: Nombre de Pique-Niques (NB PN) pour la Semaine
         doc.setFontSize((pdfSettings.defaultFontSize || 10) + 2);
-        doc.text("Nombre de Pique-Niques (NB PN) pour la Semaine", pdfSettings.marginLeft || 20, currentY);
+        doc.text("Nombre de Pique-Niques (NB PN) pour la Semaine", pageLeftMargin, currentY);
         currentY += ((pdfSettings.defaultFontSize || 10) + 2) * 0.7 + 5;
 
         const nbPnTableHead = [['Catégorie', ...DAYS_OF_WEEK_KEYS.map(day => DAY_LABELS[day]), 'Observation (Semaine)']];
@@ -332,18 +341,18 @@ export default function PicnicRecap() {
             return [rowConfig.label, ...dailyValues, rowData?.weeklyObservation || '-'];
         });
         
-        const nbPnColumnStyles: any = { 0: { fontStyle: 'bold', cellWidth: 100, halign: 'left' } };
+        const nbPnColumnStyles: any = { 0: { fontStyle: 'bold', cellWidth: 80, halign: 'left' } };
         DAYS_OF_WEEK_KEYS.forEach((_, index) => {
-          nbPnColumnStyles[index + 1] = { cellWidth: 40, halign: 'center' };
+          nbPnColumnStyles[index + 1] = { cellWidth: 35, halign: 'center' };
         });
         nbPnColumnStyles[DAYS_OF_WEEK_KEYS.length + 1] = { cellWidth: 'auto', halign: 'left' };
 
 
         doc.autoTable({
             head: nbPnTableHead, body: nbPnTableBody, startY: currentY, theme: 'grid',
-            headStyles: {...tableHeadBaseStyles, fillColor: hexToRgb("#FDBA74") || [253,186,116], textColor: [0,0,0]}, // Specific orange header for this table
+            headStyles: orangeHeaderStyle, // Use orange header for day columns
             styles: tableBaseStyles, columnStyles: nbPnColumnStyles,
-            margin: { left: pdfSettings.marginLeft || 20, right: pdfSettings.marginRight || 20 },
+            margin: { left: pageLeftMargin, right: pageRightMargin },
             didDrawCell: (data) => {
                 if (data.section === 'body' && data.column.index === 0) {
                     const rowConfig = DISPLAY_ROWS_CONFIG_NB_PN_RECAP[data.row.index];
@@ -354,14 +363,21 @@ export default function PicnicRecap() {
                         if(rowConfig.textColor === 'text-black') data.cell.styles.textColor = [0,0,0];
                     }
                 }
+                 if (data.section === 'head' && data.column.index > 0 && data.column.index <= DAYS_OF_WEEK_KEYS.length) { // Day columns
+                    data.cell.styles.fillColor = hexToRgb("#FED7AA") || [254, 229, 205]; // Apply orange to day headers specifically
+                    data.cell.styles.textColor = [0,0,0];
+                } else if (data.section === 'head' && data.column.index === 0) { // Category column header
+                     data.cell.styles.fillColor = tableHeadBaseStyles.fillColor;
+                     data.cell.styles.textColor = tableHeadBaseStyles.textColor;
+                }
             }
         });
         currentY = (doc as any).lastAutoTable.finalY + 15;
 
         // Table 2: Récapitulatif Hebdomadaire des Commandes Clients
-        if (currentY + 40 > doc.internal.pageSize.getHeight() - (pdfSettings.marginBottom || 20)) { doc.addPage(); currentY = pdfSettings.marginTop || 20; }
+        if (currentY + 60 > pageHeight - (pdfSettings.marginBottom || 20)) { doc.addPage(); currentY = pdfSettings.marginTop || 20; } // Check for page break before next table
         doc.setFontSize((pdfSettings.defaultFontSize || 10) + 2);
-        doc.text("Récapitulatif Hebdomadaire des Commandes Clients", pdfSettings.marginLeft || 20, currentY);
+        doc.text("Récapitulatif Hebdomadaire des Commandes Clients", pageLeftMargin, currentY);
         currentY += ((pdfSettings.defaultFontSize || 10) + 2) * 0.7 + 5;
 
         const clientRecapHead = [['Client', 'Pain', ...DAYS_OF_WEEK_KEYS.map(day => DAY_LABELS[day]), 'Observation (Semaine)']];
@@ -369,33 +385,36 @@ export default function PicnicRecap() {
         weeklyClientRecapData.forEach(recap => {
             const clientHasBaguettes = DAYS_OF_WEEK_KEYS.some(day => recap.baguetteCounts[day] > 0);
             const clientHasFaluches = DAYS_OF_WEEK_KEYS.some(day => recap.falucheCounts[day] > 0);
-            if (!clientHasBaguettes && !clientHasFaluches) return;
+            if (!clientHasBaguettes && !clientHasFaluches && !recap.observation) return;
 
-            const rowSpan = (clientHasBaguettes && clientHasFaluches) ? 2 : 1;
-            let observationCellAdded = false;
-
+            const rowSpan = ((clientHasBaguettes ? 1 : 0) + (clientHasFaluches ? 1 : 0)) || 1;
+            
             if (clientHasBaguettes) {
-                const baguetteRow = [
+                clientRecapBody.push([
                     { content: recap.clientName || 'Client non nommé', rowSpan: rowSpan, styles: { valign: 'middle', fontStyle: 'bold' } },
                     'Baguette',
-                    ...DAYS_OF_WEEK_KEYS.map(day => recap.baguetteCounts[day] > 0 ? recap.baguetteCounts[day].toString() : '-')
-                ];
-                if(!observationCellAdded) {
-                    baguetteRow.push({content: recap.observation || '-', rowSpan: rowSpan, styles: { valign: 'middle' }});
-                    observationCellAdded = true;
-                }
-                clientRecapBody.push(baguetteRow);
+                    ...DAYS_OF_WEEK_KEYS.map(day => recap.baguetteCounts[day] > 0 ? recap.baguetteCounts[day].toString() : '-'),
+                    { content: recap.observation || '-', rowSpan: rowSpan, styles: { valign: 'middle' } }
+                ]);
             }
             if (clientHasFaluches) {
-                const falucheRow = ['Faluche', ...DAYS_OF_WEEK_KEYS.map(day => recap.falucheCounts[day] > 0 ? recap.falucheCounts[day].toString() : '-')];
-                if (!clientHasBaguettes) { 
-                    falucheRow.unshift({ content: recap.clientName || 'Client non nommé', rowSpan: 1, styles: { valign: 'middle', fontStyle: 'bold' } });
-                }
-                 if(!observationCellAdded) {
-                    falucheRow.push({content: recap.observation || '-', rowSpan: 1, styles: { valign: 'middle' }});
-                    observationCellAdded = true;
+                const falucheRow: any[] = [
+                    'Faluche',
+                    ...DAYS_OF_WEEK_KEYS.map(day => recap.falucheCounts[day] > 0 ? recap.falucheCounts[day].toString() : '-')
+                ];
+                if (!clientHasBaguettes) { // If only faluches, client name and obs go here
+                    falucheRow.unshift({ content: recap.clientName || 'Client non nommé', rowSpan: rowSpan, styles: { valign: 'middle', fontStyle: 'bold' } });
+                    falucheRow.push({ content: recap.observation || '-', rowSpan: rowSpan, styles: { valign: 'middle' } });
                 }
                 clientRecapBody.push(falucheRow);
+            }
+             if (!clientHasBaguettes && !clientHasFaluches && recap.observation) { // Only observation
+                 clientRecapBody.push([
+                    { content: recap.clientName || 'Client non nommé', rowSpan: 1, styles: { valign: 'middle', fontStyle: 'bold' } },
+                    '-', // No specific bread type
+                    ...DAYS_OF_WEEK_KEYS.map(() => '-'), // Empty cells for days
+                    { content: recap.observation, rowSpan: 1, styles: { valign: 'middle' } }
+                ]);
             }
         });
          const clientRecapFoot: any[][] = [
@@ -403,25 +422,24 @@ export default function PicnicRecap() {
             [{content: 'Total Faluche', colSpan: 2, styles: {fontStyle:'bold', halign:'right'}}, ...DAYS_OF_WEEK_KEYS.map(day => weeklyRecapFooterTotals.faluche[day] > 0 ? weeklyRecapFooterTotals.faluche[day].toString() : '-'), '']
         ];
         
-        const clientRecapHeadStyles = {...tableHeadBaseStyles, fillColor: hexToRgb("#FDBA74") || [253,186,116], textColor: [0,0,0]}; // Light Orange Header for client recap
-        const clientRecapColumnStyles : any = { 0: { fontStyle: 'bold', cellWidth: 100, halign: 'left' }, 1: {cellWidth: 50} };
+        const clientRecapColumnStyles : any = { 0: { fontStyle: 'bold', cellWidth: 80, halign: 'left' }, 1: {cellWidth: 40} };
         DAYS_OF_WEEK_KEYS.forEach((_, index) => {
-          clientRecapColumnStyles[index + 2] = { cellWidth: 40, halign: 'center' };
+          clientRecapColumnStyles[index + 2] = { cellWidth: 35, halign: 'center' };
         });
-        clientRecapColumnStyles[DAYS_OF_WEEK_KEYS.length + 2] = { cellWidth: 'auto', halign: 'left' }; // Observation column
+        clientRecapColumnStyles[DAYS_OF_WEEK_KEYS.length + 2] = { cellWidth: 'auto', halign: 'left' };
 
         doc.autoTable({
             head: clientRecapHead, body: clientRecapBody, foot: clientRecapFoot, startY: currentY, theme: 'grid',
-            headStyles: clientRecapHeadStyles, styles: tableBaseStyles, columnStyles: clientRecapColumnStyles,
-            margin: { left: pdfSettings.marginLeft || 20, right: pdfSettings.marginRight || 20 },
-            footStyles: {fillColor: hexToRgb("#FFEBCD") || [255,235,205], textColor: [0,0,0], fontStyle:'bold'} // Light orange footer
+            headStyles: orangeHeaderStyle, styles: tableBaseStyles, columnStyles: clientRecapColumnStyles,
+            margin: { left: pageLeftMargin, right: pageRightMargin },
+            footStyles: {fillColor: hexToRgb("#FFEBCD") || [255,235,205], textColor: [0,0,0], fontStyle:'bold'}
         });
         currentY = (doc as any).lastAutoTable.finalY + 15;
 
         // Table 3: Récapitulatif Journalier des Pains Nécessaires
-        if (currentY + 40 > doc.internal.pageSize.getHeight() - (pdfSettings.marginBottom || 20)) { doc.addPage(); currentY = pdfSettings.marginTop || 20; }
+        if (currentY + 50 > pageHeight - (pdfSettings.marginBottom || 20)) { doc.addPage(); currentY = pdfSettings.marginTop || 20; }
         doc.setFontSize((pdfSettings.defaultFontSize || 10) + 2);
-        doc.text("Récapitulatif Journalier des Pains Nécessaires", pdfSettings.marginLeft || 20, currentY);
+        doc.text("Récapitulatif Journalier des Pains Nécessaires", pageLeftMargin, currentY);
         currentY += ((pdfSettings.defaultFontSize || 10) + 2) * 0.7 + 5;
         
         const breadNeedsHead = [['Type de Pain', ...DAYS_OF_WEEK_KEYS.map(day => DAY_LABELS[day])]];
@@ -429,6 +447,8 @@ export default function PicnicRecap() {
             ['Pain (Total)', ...DAYS_OF_WEEK_KEYS.map(day => {
                 let dailyPainTotal = (Number(baseBreadNumber) || 0);
                 if (day === 'mardi' || day === 'jeudi') dailyPainTotal += (dailyGlaciereTotals[day] || 0);
+                // This was the line removed based on "ne doit pas prendre en compte les baguette et faluches"
+                // dailyPainTotal += (weeklyRecapFooterTotals.baguette[day] || 0) + (weeklyRecapFooterTotals.faluche[day] || 0);
                 return dailyPainTotal > 0 ? dailyPainTotal.toString() : '-';
             })],
             ['Baguette', ...DAYS_OF_WEEK_KEYS.map(day => {
@@ -444,34 +464,37 @@ export default function PicnicRecap() {
         const yellowRowBgColor = hexToRgb("#FEF9C3") || [254, 249, 195]; 
         const lightOrangeRowBgColor = hexToRgb("#FFEDD5") || [255, 237, 213]; 
 
-        const breadNeedsColumnStyles : any = { 0: { fontStyle: 'bold', cellWidth: 100, halign: 'left' } };
+        const breadNeedsColumnStyles : any = { 0: { fontStyle: 'bold', cellWidth: 80, halign: 'left' } };
          DAYS_OF_WEEK_KEYS.forEach((_, index) => {
-          breadNeedsColumnStyles[index + 1] = { cellWidth: 40, halign: 'center' };
+          breadNeedsColumnStyles[index + 1] = { cellWidth: 35, halign: 'center' };
         });
 
         doc.autoTable({
             head: breadNeedsHead, body: breadNeedsBody, startY: currentY, theme: 'grid',
-            headStyles: clientRecapHeadStyles, styles: tableBaseStyles, columnStyles: breadNeedsColumnStyles,
-            margin: { left: pdfSettings.marginLeft || 20, right: pdfSettings.marginRight || 20 },
+            headStyles: orangeHeaderStyle, styles: tableBaseStyles, columnStyles: breadNeedsColumnStyles,
+            margin: { left: pageLeftMargin, right: pageRightMargin },
             didDrawCell: (data) => {
                 if (data.section === 'body') {
                     const firstCellText = String(data.row.cells[0]?.content || '').toLowerCase();
+                    let rowBgColor: [number,number,number] | undefined = undefined;
                     if (firstCellText.includes('pain (total)')) {
-                        data.cell.styles.fillColor = yellowRowBgColor;
-                        data.cell.styles.textColor = [0,0,0];
+                        rowBgColor = yellowRowBgColor;
                     } else if (firstCellText.includes('baguette') || firstCellText.includes('faluche')) {
-                        data.cell.styles.fillColor = lightOrangeRowBgColor;
-                        data.cell.styles.textColor = [0,0,0];
+                        rowBgColor = lightOrangeRowBgColor;
                     }
-                     if (data.column.index > 0) { 
-                        if(firstCellText.includes('pain (total)')) data.row.cells[data.column.index].styles.fillColor = yellowRowBgColor;
-                        else if (firstCellText.includes('baguette') || firstCellText.includes('faluche')) data.row.cells[data.column.index].styles.fillColor = lightOrangeRowBgColor;
+                    if (rowBgColor) {
+                        // Apply to all cells in the row
+                        for (let i = 0; i < data.row.cells.length; i++) {
+                            data.row.cells[i].styles.fillColor = rowBgColor;
+                            data.row.cells[i].styles.textColor = [0,0,0]; 
+                        }
                     }
                 }
             }
         });
         currentY = (doc as any).lastAutoTable.finalY + 15;
 
+        // Footer
         const pageCount = doc.internal.getNumberOfPages();
         for (let i = 1; i <= pageCount; i++) {
             doc.setPage(i);
@@ -481,7 +504,7 @@ export default function PicnicRecap() {
                 .replace('{pageNumber}', i.toString())
                 .replace('{totalPages}', pageCount.toString());
                 doc.setFontSize(pdfSettings.footerFontSize || 8);
-                doc.text(footerStr, pdfSettings.marginLeft || 20, doc.internal.pageSize.getHeight() - (pdfSettings.marginBottom || 20) / 2);
+                doc.text(footerStr, pageLeftMargin, pageHeight - (pdfSettings.marginBottom || 20) / 2);
             }
         }
 
@@ -624,7 +647,7 @@ export default function PicnicRecap() {
             <p className="text-muted-foreground text-center py-4">Aucune commande client avec des quantités pour cette semaine.</p>
           ) : (
             <div className="overflow-x-auto border rounded-md">
-              <Table className="min-w-[1000px]"> {/* Increased min-width */}
+              <Table className="min-w-[1000px]"> 
                 <TableHeader>
                   <TableRow className="bg-orange-200 dark:bg-orange-700/50 text-xs">
                     <TableHead className="text-black dark:text-white sticky left-0 z-10 bg-orange-200 dark:bg-orange-700/50 w-[150px] min-w-[150px]">Client</TableHead>
@@ -640,62 +663,100 @@ export default function PicnicRecap() {
                     const clientHasBaguettes = DAYS_OF_WEEK_KEYS.some(day => recap.baguetteCounts[day] > 0);
                     const clientHasFaluches = DAYS_OF_WEEK_KEYS.some(day => recap.falucheCounts[day] > 0);
 
-                    if (!clientHasBaguettes && !clientHasFaluches) {
+                    if (!clientHasBaguettes && !clientHasFaluches && !recap.observation) {
                       return null; 
                     }
                     
                     let clientCellRendered = false;
-                    const rowSpanForClientName = (clientHasBaguettes && clientHasFaluches) ? 2 : 1;
+                    let observationCellRendered = false;
+                    const rowSpanForClientNameAndObservation = (clientHasBaguettes && clientHasFaluches) ? 2 : 1;
+                    
+                    const rowsToRender = [];
 
-                    return (
-                      <React.Fragment key={recap.id}>
-                        {clientHasBaguettes && (
-                          <TableRow>
-                            {!clientCellRendered && (
-                              <TableCell rowSpan={rowSpanForClientName} className="font-medium sticky left-0 z-10 bg-card group-hover:bg-muted/50 w-[150px] align-middle">
-                                {recap.clientName || <span className="italic text-muted-foreground">Client non nommé</span>}
-                              </TableCell>
-                            )}
-                            {clientCellRendered = true}
-                            <TableCell className="font-semibold">Baguette</TableCell>
-                            {DAYS_OF_WEEK_KEYS.map(day => (
-                              <TableCell key={`${recap.id}-baguette-${day}`} className="text-center">
-                                {recap.baguetteCounts[day] > 0 ? recap.baguetteCounts[day] : '-'}
-                              </TableCell>
-                            ))}
-                             {/* Observation Cell for Baguette Row (or spanning both if only one exists) */}
-                             {rowSpanForClientName === 1 && (
-                                <TableCell rowSpan={1} className="align-middle">{recap.observation || '-'}</TableCell>
-                             )}
-                             {rowSpanForClientName === 2 && !clientHasFaluches && ( // Baguette only, observation spans 1
-                                 <TableCell rowSpan={1} className="align-middle">{recap.observation || '-'}</TableCell>
-                             )}
-                             {rowSpanForClientName === 2 && clientHasFaluches && ( // Baguette and Faluche, observation spans 2 (rendered here)
-                                 <TableCell rowSpan={2} className="align-middle">{recap.observation || '-'}</TableCell>
-                             )}
-                          </TableRow>
-                        )}
-                        {clientHasFaluches && (
-                          <TableRow>
-                            {!clientCellRendered && (
-                              <TableCell rowSpan={1} className="font-medium sticky left-0 z-10 bg-card group-hover:bg-muted/50 w-[150px] align-middle">
-                                {recap.clientName || <span className="italic text-muted-foreground">Client non nommé</span>}
-                              </TableCell>
-                            )}
-                            <TableCell className="font-semibold">Faluche</TableCell>
-                            {DAYS_OF_WEEK_KEYS.map(day => (
-                              <TableCell key={`${recap.id}-faluche-${day}`} className="text-center">
-                                {recap.falucheCounts[day] > 0 ? recap.falucheCounts[day] : '-'}
-                              </TableCell>
-                            ))}
-                            {/* Observation Cell for Faluche Row (only if baguette row wasn't rendered and faluche is the only one) */}
-                            {rowSpanForClientName === 1 && !clientHasBaguettes && (
-                                 <TableCell rowSpan={1} className="align-middle">{recap.observation || '-'}</TableCell>
-                             )}
-                          </TableRow>
-                        )}
-                      </React.Fragment>
-                    );
+                    if (clientHasBaguettes) {
+                        const cells = [];
+                        if (!clientCellRendered) {
+                            cells.push(
+                                <TableCell key={`${recap.id}-client`} rowSpan={rowSpanForClientNameAndObservation} className="font-medium sticky left-0 z-10 bg-card group-hover:bg-muted/50 w-[150px] align-middle">
+                                    {recap.clientName || <span className="italic text-muted-foreground">Client non nommé</span>}
+                                </TableCell>
+                            );
+                            clientCellRendered = true;
+                        }
+                        cells.push(<TableCell key={`${recap.id}-breadtype-bag`} className="font-semibold">Baguette</TableCell>);
+                        DAYS_OF_WEEK_KEYS.forEach(day => {
+                            cells.push(
+                                <TableCell key={`${recap.id}-baguette-${day}`} className="text-center">
+                                    {recap.baguetteCounts[day] > 0 ? recap.baguetteCounts[day] : '-'}
+                                </TableCell>
+                            );
+                        });
+                        if (!observationCellRendered) {
+                             cells.push(
+                                <TableCell key={`${recap.id}-obs`} rowSpan={rowSpanForClientNameAndObservation} className="align-middle">
+                                    {recap.observation || '-'}
+                                </TableCell>
+                            );
+                            observationCellRendered = true;
+                        }
+                        rowsToRender.push(<TableRow key={`${recap.id}-baguette-row`}>{cells}</TableRow>);
+                    }
+
+                    if (clientHasFaluches) {
+                        const cells = [];
+                         if (!clientCellRendered) {
+                            cells.push(
+                                <TableCell key={`${recap.id}-client`} rowSpan={rowSpanForClientNameAndObservation} className="font-medium sticky left-0 z-10 bg-card group-hover:bg-muted/50 w-[150px] align-middle">
+                                    {recap.clientName || <span className="italic text-muted-foreground">Client non nommé</span>}
+                                </TableCell>
+                            );
+                            clientCellRendered = true;
+                        }
+                        cells.push(<TableCell key={`${recap.id}-breadtype-fal`} className="font-semibold">Faluche</TableCell>);
+                        DAYS_OF_WEEK_KEYS.forEach(day => {
+                            cells.push(
+                                <TableCell key={`${recap.id}-faluche-${day}`} className="text-center">
+                                    {recap.falucheCounts[day] > 0 ? recap.falucheCounts[day] : '-'}
+                                </TableCell>
+                            );
+                        });
+                        if (!observationCellRendered) {
+                             cells.push(
+                                <TableCell key={`${recap.id}-obs`} rowSpan={rowSpanForClientNameAndObservation} className="align-middle">
+                                    {recap.observation || '-'}
+                                </TableCell>
+                            );
+                            observationCellRendered = true;
+                        }
+                        rowsToRender.push(<TableRow key={`${recap.id}-faluche-row`}>{cells}</TableRow>);
+                    }
+                    
+                    // Handle case where only observation exists but no bread orders
+                    if (!clientHasBaguettes && !clientHasFaluches && recap.observation) {
+                        const cells = [];
+                        if (!clientCellRendered) {
+                             cells.push(
+                                <TableCell key={`${recap.id}-client`} rowSpan={1} className="font-medium sticky left-0 z-10 bg-card group-hover:bg-muted/50 w-[150px] align-middle">
+                                    {recap.clientName || <span className="italic text-muted-foreground">Client non nommé</span>}
+                                </TableCell>
+                            );
+                        }
+                         cells.push(<TableCell key={`${recap.id}-breadtype-none`} className="font-semibold">-</TableCell>);
+                         DAYS_OF_WEEK_KEYS.forEach(day => {
+                            cells.push(<TableCell key={`${recap.id}-none-${day}`} className="text-center">-</TableCell>);
+                         });
+                         if (!observationCellRendered) {
+                             cells.push(
+                                <TableCell key={`${recap.id}-obs`} rowSpan={1} className="align-middle">
+                                    {recap.observation || '-'}
+                                </TableCell>
+                            );
+                         }
+                        rowsToRender.push(<TableRow key={`${recap.id}-obs-only-row`}>{cells}</TableRow>);
+                    }
+
+
+                    return <React.Fragment key={recap.id}>{rowsToRender}</React.Fragment>;
                   })}
                 </TableBody>
                  <TableFooter className="text-xs">
@@ -706,7 +767,7 @@ export default function PicnicRecap() {
                             {weeklyRecapFooterTotals.baguette[day] > 0 ? weeklyRecapFooterTotals.baguette[day] : '-'}
                           </TableCell>
                         ))}
-                         <TableCell className="text-black dark:text-white"></TableCell> {/* Empty for Observation column */}
+                         <TableCell className="text-black dark:text-white"></TableCell> 
                     </TableRow>
                     <TableRow className="bg-orange-100 dark:bg-orange-800/50">
                         <TableCell colSpan={2} className="text-right font-bold text-black dark:text-white sticky left-0 z-10 bg-orange-100 dark:bg-orange-800/50">Total Faluche</TableCell>
@@ -715,7 +776,7 @@ export default function PicnicRecap() {
                             {weeklyRecapFooterTotals.faluche[day] > 0 ? weeklyRecapFooterTotals.faluche[day] : '-'}
                           </TableCell>
                         ))}
-                        <TableCell className="text-black dark:text-white"></TableCell> {/* Empty for Observation column */}
+                        <TableCell className="text-black dark:text-white"></TableCell> 
                     </TableRow>
                 </TableFooter>
               </Table>
