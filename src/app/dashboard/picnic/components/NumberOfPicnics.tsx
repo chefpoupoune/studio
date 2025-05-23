@@ -6,8 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Button } from '@/components/ui/button';
-import { Save, Trash2, PlusCircle } from 'lucide-react';
-import type { PicnicWeekData, DailyCounts, PicnicRowKey, DisplayRowConfig, ClientPicnicOrder, BreadChoice } from '../types';
+import { Label } from '@/components/ui/label';
+import { Save, Trash2, PlusCircle, Calendar as CalendarIcon } from 'lucide-react';
+import type { PicnicWeekData, DailyCounts, PicnicRowKey, DisplayRowConfig, ClientPicnicOrder, BreadChoice, DailyClientPicnicData, DayOfWeekKey } from '../types';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -22,9 +23,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { format, startOfWeek, endOfWeek, addDays, parseISO } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
-const DAYS_OF_WEEK: (keyof DailyCounts)[] = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'];
-const DAY_LABELS: Record<keyof DailyCounts, string> = {
+const DAYS_OF_WEEK_KEYS: DayOfWeekKey[] = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'];
+const DAY_LABELS: Record<DayOfWeekKey, string> = {
   lundi: 'Lundi',
   mardi: 'Mardi',
   mercredi: 'Mercredi',
@@ -32,8 +37,8 @@ const DAY_LABELS: Record<keyof DailyCounts, string> = {
   vendredi: 'Vendredi',
 };
 
-const PICNIC_DATA_STORAGE_KEY = "picnic_nb_pn_data_v1";
-const PICNIC_CLIENT_ORDERS_KEY = "picnic_client_orders_data_v2"; 
+const PICNIC_DATA_STORAGE_KEY_PREFIX = "picnic_nb_pn_data_v1_";
+const PICNIC_CLIENT_ORDERS_KEY_PREFIX = "picnic_client_orders_data_v3_"; // Version up for new structure
 
 const initialRowData = (): DailyCounts => ({
   lundi: '', mardi: '', mercredi: '', jeudi: '', vendredi: ''
@@ -49,17 +54,27 @@ const createInitialPicnicWeekData = (): PicnicWeekData => ({
   philipe: initialRowData(),
   plus: initialRowData(),
   autre: initialRowData(),
-  nb_bagette: initialRowData(), 
-  nb_faluche: initialRowData(), 
+  nb_bagette: initialRowData(),
+  nb_faluche: initialRowData(),
   total_glaciere: initialRowData(),
+});
+
+const createInitialDailyClientPicnicData = (): DailyClientPicnicData => ({
+  nbPn: '',
+  breadChoice: 'none',
 });
 
 const createInitialClientOrder = (): ClientPicnicOrder => ({
   id: `client_order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
   clientName: '',
-  nbPn: '',
   observation: '',
-  breadChoice: 'none', 
+  days: {
+    lundi: createInitialDailyClientPicnicData(),
+    mardi: createInitialDailyClientPicnicData(),
+    mercredi: createInitialDailyClientPicnicData(),
+    jeudi: createInitialDailyClientPicnicData(),
+    vendredi: createInitialDailyClientPicnicData(),
+  },
 });
 
 const DISPLAY_ROWS_CONFIG: DisplayRowConfig[] = [
@@ -78,15 +93,29 @@ const DISPLAY_ROWS_CONFIG: DisplayRowConfig[] = [
   { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: false },
 ];
 
-
 export default function NumberOfPicnics() {
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [picnicData, setPicnicData] = useState<PicnicWeekData>(createInitialPicnicWeekData());
   const [clientOrders, setClientOrders] = useState<ClientPicnicOrder[]>([]);
   const { toast } = useToast();
 
+  const weekIdentifier = useMemo(() => {
+    const monday = startOfWeek(selectedDate, { weekStartsOn: 1 });
+    return format(monday, 'yyyy-MM-dd');
+  }, [selectedDate]);
+
+  const weekDisplayString = useMemo(() => {
+    const monday = startOfWeek(selectedDate, { weekStartsOn: 1 });
+    const sunday = endOfWeek(selectedDate, { weekStartsOn: 1 });
+    return `Semaine du : ${format(monday, 'dd MMMM', { locale: fr })} au ${format(sunday, 'dd MMMM yyyy', { locale: fr })}`;
+  }, [selectedDate]);
+
+  const getPicnicDataStorageKey = useCallback(() => `${PICNIC_DATA_STORAGE_KEY_PREFIX}${weekIdentifier}`, [weekIdentifier]);
+  const getClientOrdersStorageKey = useCallback(() => `${PICNIC_CLIENT_ORDERS_KEY_PREFIX}${weekIdentifier}`, [weekIdentifier]);
+
   useEffect(() => {
     try {
-      const storedData = localStorage.getItem(PICNIC_DATA_STORAGE_KEY);
+      const storedData = localStorage.getItem(getPicnicDataStorageKey());
       if (storedData) {
         const parsedData = JSON.parse(storedData);
         const initialKeys = Object.keys(createInitialPicnicWeekData()) as PicnicRowKey[];
@@ -99,56 +128,62 @@ export default function NumberOfPicnics() {
         setPicnicData(createInitialPicnicWeekData());
       }
 
-      const storedClientOrders = localStorage.getItem(PICNIC_CLIENT_ORDERS_KEY);
+      const storedClientOrders = localStorage.getItem(getClientOrdersStorageKey());
       if (storedClientOrders) {
-        const parsedClientOrders = JSON.parse(storedClientOrders);
-        setClientOrders(parsedClientOrders.map((order: any) => ({
-          ...createInitialClientOrder(), 
-          ...order, 
-          breadChoice: order.breadChoice || 'none', 
+        const parsedClientOrders: ClientPicnicOrder[] = JSON.parse(storedClientOrders);
+        setClientOrders(parsedClientOrders.map(order => ({
+          ...createInitialClientOrder(), // Ensure all default daily structures are present
+          ...order,
+          days: { // Ensure each day has the correct structure
+            lundi: { ...createInitialDailyClientPicnicData(), ...(order.days?.lundi || {}) },
+            mardi: { ...createInitialDailyClientPicnicData(), ...(order.days?.mardi || {}) },
+            mercredi: { ...createInitialDailyClientPicnicData(), ...(order.days?.mercredi || {}) },
+            jeudi: { ...createInitialDailyClientPicnicData(), ...(order.days?.jeudi || {}) },
+            vendredi: { ...createInitialDailyClientPicnicData(), ...(order.days?.vendredi || {}) },
+          }
         })));
       } else {
-        setClientOrders(Array.from({ length: 5 }, createInitialClientOrder));
+        setClientOrders(Array.from({ length: 3 }, createInitialClientOrder)); // Start with 3 empty client rows
       }
     } catch (e) {
-      console.error("Failed to load picnic data from localStorage", e);
-      toast({ title: "Erreur de chargement", description: "Données de pique-nique corrompues.", variant: "destructive" });
+      console.error("Failed to load picnic data from localStorage for week " + weekIdentifier, e);
+      toast({ title: "Erreur de chargement", description: "Données de pique-nique corrompues pour la semaine sélectionnée.", variant: "destructive" });
       setPicnicData(createInitialPicnicWeekData());
-      setClientOrders(Array.from({ length: 5 }, createInitialClientOrder));
+      setClientOrders(Array.from({ length: 3 }, createInitialClientOrder));
     }
-  }, [toast]);
+  }, [getPicnicDataStorageKey, getClientOrdersStorageKey, toast, weekIdentifier]);
 
   const saveData = useCallback(() => {
     try {
-      localStorage.setItem(PICNIC_DATA_STORAGE_KEY, JSON.stringify(picnicData));
+      localStorage.setItem(getPicnicDataStorageKey(), JSON.stringify(picnicData));
       toast({ title: "Données Hebdomadaires Sauvegardées", description: "Les nombres de pique-niques de la semaine ont été enregistrés." });
     } catch (e) {
       console.error("Failed to save picnic data to localStorage", e);
       toast({ title: "Erreur de sauvegarde (semaine)", variant: "destructive" });
     }
-  }, [picnicData, toast]);
-  
+  }, [picnicData, toast, getPicnicDataStorageKey]);
+
   const saveClientOrders = useCallback(() => {
     try {
-      localStorage.setItem(PICNIC_CLIENT_ORDERS_KEY, JSON.stringify(clientOrders));
+      localStorage.setItem(getClientOrdersStorageKey(), JSON.stringify(clientOrders));
       toast({ title: "Commandes Clients Sauvegardées", description: "Les commandes clients pour pique-niques ont été enregistrées." });
     } catch (e) {
       console.error("Failed to save client orders to localStorage", e);
       toast({ title: "Erreur de sauvegarde (commandes clients)", variant: "destructive" });
     }
-  }, [clientOrders, toast]);
+  }, [clientOrders, toast, getClientOrdersStorageKey]);
 
   const handleConfirmClearData = () => {
     setPicnicData(createInitialPicnicWeekData());
     toast({ title: "Données hebdomadaires effacées", variant: "destructive"});
   };
-  
+
   const handleConfirmClearClientOrders = () => {
-    setClientOrders(Array.from({ length: 5 }, createInitialClientOrder)); 
+    setClientOrders(Array.from({ length: 3 }, createInitialClientOrder));
     toast({ title: "Données commandes clients effacées", variant: "destructive"});
   };
 
-  const handleInputChange = (rowId: PicnicRowKey, day: keyof DailyCounts, value: string) => {
+  const handleInputChange = (rowId: PicnicRowKey, day: DayOfWeekKey, value: string) => {
     const numericValue = value === '' ? '' : parseInt(value, 10);
     if (value === '' || (!isNaN(numericValue) && numericValue >= 0)) {
       setPicnicData(prevData => ({
@@ -160,27 +195,50 @@ export default function NumberOfPicnics() {
       }));
     }
   };
-  
-  const handleClientOrderInputChange = (index: number, field: keyof Omit<ClientPicnicOrder, 'id' | 'breadChoice'>, value: string) => {
+
+  const handleClientOrderClientNameChange = (index: number, value: string) => {
     setClientOrders(prevOrders => {
       const newOrders = [...prevOrders];
-      const updatedOrder = { ...newOrders[index], [field]: value };
-
-      if (field === 'nbPn') {
-        const nbPnValue = Number(value);
-        if (isNaN(nbPnValue) || nbPnValue <= 0) {
-          updatedOrder.breadChoice = 'none';
-        }
-      }
-      newOrders[index] = updatedOrder;
+      newOrders[index] = { ...newOrders[index], clientName: value };
+      return newOrders;
+    });
+  };
+  
+  const handleClientOrderObservationChange = (index: number, value: string) => {
+    setClientOrders(prevOrders => {
+      const newOrders = [...prevOrders];
+      newOrders[index] = { ...newOrders[index], observation: value };
       return newOrders;
     });
   };
 
-  const handleClientOrderBreadChange = (index: number, choice: BreadChoice) => {
+  const handleClientOrderDailyInputChange = (index: number, day: DayOfWeekKey, field: 'nbPn', value: string) => {
     setClientOrders(prevOrders => {
       const newOrders = [...prevOrders];
-      newOrders[index] = { ...newOrders[index], breadChoice: choice };
+      const updatedDayData = { ...newOrders[index].days[day], [field]: value };
+
+      if (field === 'nbPn') {
+        const nbPnValue = Number(value);
+        if (isNaN(nbPnValue) || nbPnValue <= 0) {
+          updatedDayData.breadChoice = 'none';
+        }
+      }
+      newOrders[index] = {
+        ...newOrders[index],
+        days: { ...newOrders[index].days, [day]: updatedDayData }
+      };
+      return newOrders;
+    });
+  };
+
+  const handleClientOrderDailyBreadChange = (index: number, day: DayOfWeekKey, choice: BreadChoice) => {
+    setClientOrders(prevOrders => {
+      const newOrders = [...prevOrders];
+      const updatedDayData = { ...newOrders[index].days[day], breadChoice: choice };
+      newOrders[index] = {
+        ...newOrders[index],
+        days: { ...newOrders[index].days, [day]: updatedDayData }
+      };
       return newOrders;
     });
   };
@@ -193,11 +251,10 @@ export default function NumberOfPicnics() {
     setClientOrders(prevOrders => prevOrders.filter(order => order.id !== idToDelete));
   };
 
-
-  const calculateDailyTotal = useCallback((day: keyof DailyCounts): number => {
+  const calculateDailyTotal = useCallback((day: DayOfWeekKey): number => {
     let sum = 0;
     for (const rowConfig of DISPLAY_ROWS_CONFIG) {
-      if (rowConfig.isInputRow && rowConfig.isTotalContributor) { 
+      if (rowConfig.isInputRow && rowConfig.isTotalContributor) {
           sum += Number(picnicData[rowConfig.id as PicnicRowKey]?.[day]) || 0;
       }
     }
@@ -205,14 +262,14 @@ export default function NumberOfPicnics() {
   }, [picnicData]);
 
   const dailyGlobalTotals = useMemo(() => {
-    return DAYS_OF_WEEK.reduce((acc, day) => {
+    return DAYS_OF_WEEK_KEYS.reduce((acc, day) => {
       acc[day] = calculateDailyTotal(day);
       return acc;
-    }, {} as Record<keyof DailyCounts, number>);
+    }, {} as Record<DayOfWeekKey, number>);
   }, [calculateDailyTotal]);
 
   const dailyGlaciereTotals = useMemo(() => {
-    return DAYS_OF_WEEK.reduce((acc, day) => {
+    return DAYS_OF_WEEK_KEYS.reduce((acc, day) => {
       let count = 0;
       const contributorRows: PicnicRowKey[] = DISPLAY_ROWS_CONFIG
         .filter(config => config.isInputRow && config.isTotalContributor)
@@ -226,28 +283,58 @@ export default function NumberOfPicnics() {
       }
       acc[day] = count;
       return acc;
-    }, {} as Record<keyof DailyCounts, number>);
+    }, {} as Record<DayOfWeekKey, number>);
   }, [picnicData]);
 
-  const clientBreadTotals = useMemo(() => {
-    let totalBaguettes = 0;
-    let totalFaluches = 0;
+  const dailyBreadTotals = useMemo(() => {
+    const totals: Record<DayOfWeekKey, { baguettes: number; faluches: number }> = {
+      lundi: { baguettes: 0, faluches: 0 },
+      mardi: { baguettes: 0, faluches: 0 },
+      mercredi: { baguettes: 0, faluches: 0 },
+      jeudi: { baguettes: 0, faluches: 0 },
+      vendredi: { baguettes: 0, faluches: 0 },
+    };
+
     clientOrders.forEach(order => {
-      const nbPn = Number(order.nbPn);
-      if (!isNaN(nbPn) && nbPn > 0) {
-        if (order.breadChoice === 'baguette') {
-          totalBaguettes += nbPn;
-        } else if (order.breadChoice === 'faluche') {
-          totalFaluches += nbPn;
+      DAYS_OF_WEEK_KEYS.forEach(day => {
+        const dayData = order.days[day];
+        const nbPn = Number(dayData.nbPn);
+        if (!isNaN(nbPn) && nbPn > 0) {
+          if (dayData.breadChoice === 'baguette') {
+            totals[day].baguettes += nbPn;
+          } else if (dayData.breadChoice === 'faluche') {
+            totals[day].faluches += nbPn;
+          }
         }
-      }
+      });
     });
-    return { totalBaguettes, totalFaluches };
+    return totals;
   }, [clientOrders]);
 
 
   return (
     <div className="space-y-8">
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-4">
+        <h2 className="text-xl font-semibold">{weekDisplayString}</h2>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" className="w-full sm:w-auto">
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {format(selectedDate, "dd/MM/yyyy", { locale: fr })}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0">
+            <Calendar
+              mode="single"
+              selected={selectedDate}
+              onSelect={(date) => date && setSelectedDate(date)}
+              initialFocus
+              locale={fr}
+            />
+          </PopoverContent>
+        </Popover>
+      </div>
+
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Nombre de Pique-Niques (NB PN) pour la Semaine</CardTitle>
@@ -261,7 +348,7 @@ export default function NumberOfPicnics() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[180px] min-w-[180px] sticky left-0 z-10 bg-card">Catégorie</TableHead>
-                  {DAYS_OF_WEEK.map(day => (
+                  {DAYS_OF_WEEK_KEYS.map(day => (
                     <TableHead key={day} className="text-center bg-orange-300 text-black capitalize min-w-[100px]">
                       {DAY_LABELS[day]}
                     </TableHead>
@@ -274,7 +361,7 @@ export default function NumberOfPicnics() {
                     <TableCell className={cn("font-medium sticky left-0 z-10", rowConfig.bgColor, rowConfig.textColor)}>
                       {rowConfig.label}
                     </TableCell>
-                    {DAYS_OF_WEEK.map(day => (
+                    {DAYS_OF_WEEK_KEYS.map(day => (
                       <TableCell key={`${rowConfig.id}-${day}`} className={cn("p-1 text-center tabular-nums", rowConfig.bgColor)}>
                         {rowConfig.isInputRow ? (
                           <Input
@@ -289,14 +376,14 @@ export default function NumberOfPicnics() {
                             )}
                             placeholder="0"
                           />
-                        ) : rowConfig.id === 'total_global' ? ( 
+                        ) : rowConfig.id === 'total_global' ? (
                           <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{dailyGlobalTotals[day]}</span>
                         ) : rowConfig.id === 'nb_bagette' ? (
                           <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>
                             {day === 'lundi' ? Math.round(dailyGlobalTotals[day] / 2) : '0'}
                           </span>
                         ) : rowConfig.id === 'nb_faluche' ? (
-                          <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>
+                           <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>
                             {day === 'mercredi' ? dailyGlobalTotals[day] : day === 'vendredi' ? dailyGlobalTotals[day] : '0'}
                           </span>
                         ) : rowConfig.id === 'total_glaciere' ? (
@@ -342,93 +429,88 @@ export default function NumberOfPicnics() {
 
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>Commandes Clients Pique-Niques</CardTitle>
+          <CardTitle>Commandes Clients Pique-Niques pour la Semaine</CardTitle>
           <CardDescription>
-            Saisissez les commandes spécifiques des clients pour les pique-niques et choisissez le type de pain.
+            Saisissez les commandes spécifiques des clients, le nombre de pique-niques par jour et choisissez le type de pain.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto border rounded-md">
-            <Table className="min-w-[800px]">
+            <Table className="min-w-[1200px]">
               <TableHeader>
                 <TableRow className="bg-amber-200">
-                  <TableHead className="w-[200px] min-w-[200px] text-black">Client</TableHead>
-                  <TableHead className="w-[100px] min-w-[100px] text-center text-black">NB PN</TableHead>
-                  <TableHead className="w-[150px] min-w-[150px] text-center text-black">Type de Pain</TableHead>
-                  <TableHead className="w-[250px] min-w-[250px] text-black">Observation</TableHead>
-                  <TableHead className="w-[100px] min-w-[100px] text-center text-black">Actions</TableHead>
+                  <TableHead className="w-[150px] min-w-[150px] text-black sticky left-0 z-10 bg-amber-200">Client</TableHead>
+                  {DAYS_OF_WEEK_KEYS.map(day => (
+                    <React.Fragment key={`header-${day}`}>
+                      <TableHead className="w-[80px] min-w-[80px] text-center text-black capitalize">{DAY_LABELS[day]} NB PN</TableHead>
+                      <TableHead className="w-[120px] min-w-[120px] text-center text-black capitalize">{DAY_LABELS[day]} Pain</TableHead>
+                    </React.Fragment>
+                  ))}
+                  <TableHead className="w-[200px] min-w-[200px] text-black">Observation (Semaine)</TableHead>
+                  <TableHead className="w-[80px] min-w-[80px] text-center text-black sticky right-0 z-10 bg-amber-200">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {clientOrders.map((order, index) => {
-                  const nbPnValue = Number(order.nbPn);
-                  const isNbPnZeroOrInvalid = isNaN(nbPnValue) || nbPnValue <= 0;
-                  return (
+                {clientOrders.map((order, index) => (
                     <TableRow key={order.id}>
-                      <TableCell className="p-1">
+                      <TableCell className="p-1 sticky left-0 z-10 bg-card group-hover:bg-muted/50">
                         <Input
                           value={order.clientName}
-                          onChange={(e) => handleClientOrderInputChange(index, 'clientName', e.target.value)}
+                          onChange={(e) => handleClientOrderClientNameChange(index, e.target.value)}
                           className="h-8"
                           placeholder="Nom du client"
                         />
                       </TableCell>
-                      <TableCell className="p-1">
-                        <Input
-                          type="number"
-                          min="0"
-                          value={order.nbPn}
-                          onChange={(e) => handleClientOrderInputChange(index, 'nbPn', e.target.value)}
-                          className="h-8 text-center"
-                          placeholder="0"
-                        />
-                      </TableCell>
-                      <TableCell className="p-1">
-                        <Select
-                          value={isNbPnZeroOrInvalid ? 'none' : order.breadChoice}
-                          onValueChange={(value) => handleClientOrderBreadChange(index, value as BreadChoice)}
-                          disabled={isNbPnZeroOrInvalid}
-                        >
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue placeholder="Choisir pain..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none" className="text-xs">Aucun</SelectItem>
-                            <SelectItem value="baguette" className="text-xs">Baguette</SelectItem>
-                            <SelectItem value="faluche" className="text-xs">Faluche</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
+                      {DAYS_OF_WEEK_KEYS.map(day => {
+                        const nbPnValue = Number(order.days[day].nbPn);
+                        const isNbPnZeroOrInvalid = isNaN(nbPnValue) || nbPnValue <= 0;
+                        return (
+                          <React.Fragment key={`${order.id}-${day}`}>
+                            <TableCell className="p-1">
+                              <Input
+                                type="number"
+                                min="0"
+                                value={order.days[day].nbPn}
+                                onChange={(e) => handleClientOrderDailyInputChange(index, day, 'nbPn', e.target.value)}
+                                className="h-8 text-center"
+                                placeholder="0"
+                              />
+                            </TableCell>
+                            <TableCell className="p-1">
+                              <Select
+                                value={isNbPnZeroOrInvalid ? 'none' : order.days[day].breadChoice}
+                                onValueChange={(value) => handleClientOrderDailyBreadChange(index, day, value as BreadChoice)}
+                                disabled={isNbPnZeroOrInvalid}
+                              >
+                                <SelectTrigger className="h-8 text-xs">
+                                  <SelectValue placeholder="Pain..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none" className="text-xs">Aucun</SelectItem>
+                                  <SelectItem value="baguette" className="text-xs">Baguette</SelectItem>
+                                  <SelectItem value="faluche" className="text-xs">Faluche</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                          </React.Fragment>
+                        );
+                      })}
                       <TableCell className="p-1">
                         <Input
                           value={order.observation}
-                          onChange={(e) => handleClientOrderInputChange(index, 'observation', e.target.value)}
+                          onChange={(e) => handleClientOrderObservationChange(index, e.target.value)}
                           className="h-8"
                           placeholder="Détails..."
                         />
                       </TableCell>
-                      <TableCell className="p-1 text-center">
+                      <TableCell className="p-1 text-center sticky right-0 z-10 bg-card group-hover:bg-muted/50">
                         <Button variant="destructive" size="icon" onClick={() => handleDeleteClientOrderRow(order.id)} className="h-8 w-8">
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </TableCell>
                     </TableRow>
-                  );
-                })}
+                  ))}
               </TableBody>
-              <TableFooter>
-                <TableRow className="bg-amber-100 dark:bg-amber-800/50">
-                  <TableCell colSpan={3} className="text-right font-semibold">
-                    TOTAUX PAINS COMMANDÉS :
-                  </TableCell>
-                  <TableCell className="text-center font-bold">
-                    Baguettes: {clientBreadTotals.totalBaguettes}
-                  </TableCell>
-                  <TableCell className="text-center font-bold">
-                    Faluches: {clientBreadTotals.totalFaluches}
-                  </TableCell>
-                </TableRow>
-              </TableFooter>
             </Table>
           </div>
           <div className="mt-6 flex justify-between items-center">
@@ -447,7 +529,7 @@ export default function NumberOfPicnics() {
                     <AlertDialogHeader>
                         <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
                         <AlertDialogDescription>
-                        Êtes-vous sûr de vouloir effacer toutes les commandes clients ? Cette action est irréversible.
+                        Êtes-vous sûr de vouloir effacer toutes les commandes clients pour cette semaine ? Cette action est irréversible.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -464,9 +546,34 @@ export default function NumberOfPicnics() {
                 </Button>
             </div>
           </div>
+
+          <Card className="mt-8 shadow-md">
+            <CardHeader>
+                <CardTitle>Récapitulatif des Pains par Jour pour les Commandes Clients</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <Table>
+                    <TableHeader>
+                        <TableRow className="bg-amber-100 dark:bg-amber-800/50">
+                            <TableHead className="w-[150px] text-black">Jour</TableHead>
+                            <TableHead className="text-center text-black">Total Baguettes</TableHead>
+                            <TableHead className="text-center text-black">Total Faluches</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {DAYS_OF_WEEK_KEYS.map(day => (
+                            <TableRow key={`total-${day}`}>
+                                <TableCell className="font-medium capitalize">{DAY_LABELS[day]}</TableCell>
+                                <TableCell className="text-center font-semibold">{dailyBreadTotals[day].baguettes}</TableCell>
+                                <TableCell className="text-center font-semibold">{dailyBreadTotals[day].faluches}</TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </CardContent>
+          </Card>
         </CardContent>
       </Card>
     </div>
   );
 }
-
