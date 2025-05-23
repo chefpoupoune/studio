@@ -6,8 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from '@/components/ui/button';
-import { Save, Trash2, PlusCircle } from 'lucide-react'; // Added PlusCircle
-import type { PicnicWeekData, DailyCounts, PicnicRowKey, DisplayRowConfig, ClientPicnicOrder } from '../types';
+import { Save, Trash2, PlusCircle } from 'lucide-react';
+import type { PicnicWeekData, DailyCounts, PicnicRowKey, DisplayRowConfig, ClientPicnicOrder, BreadChoice } from '../types';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -21,6 +21,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const DAYS_OF_WEEK: (keyof DailyCounts)[] = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'];
 const DAY_LABELS: Record<keyof DailyCounts, string> = {
@@ -32,7 +33,7 @@ const DAY_LABELS: Record<keyof DailyCounts, string> = {
 };
 
 const PICNIC_DATA_STORAGE_KEY = "picnic_nb_pn_data_v1";
-const PICNIC_CLIENT_ORDERS_KEY = "picnic_client_orders_data_v1"; 
+const PICNIC_CLIENT_ORDERS_KEY = "picnic_client_orders_data_v2"; // Version up for breadChoice
 
 const initialRowData = (): DailyCounts => ({
   lundi: '', mardi: '', mercredi: '', jeudi: '', vendredi: ''
@@ -58,8 +59,7 @@ const createInitialClientOrder = (): ClientPicnicOrder => ({
   clientName: '',
   nbPn: '',
   observation: '',
-  totalBaguette: '', // Value will be calculated for display
-  totalFaluche: '', // Value will be calculated for display
+  breadChoice: 'none', 
 });
 
 const DISPLAY_ROWS_CONFIG: DisplayRowConfig[] = [
@@ -101,9 +101,14 @@ export default function NumberOfPicnics() {
 
       const storedClientOrders = localStorage.getItem(PICNIC_CLIENT_ORDERS_KEY);
       if (storedClientOrders) {
-        setClientOrders(JSON.parse(storedClientOrders));
+        const parsedClientOrders = JSON.parse(storedClientOrders);
+        // Ensure breadChoice exists with a default value
+        setClientOrders(parsedClientOrders.map((order: any) => ({
+          ...createInitialClientOrder(), // Provides defaults like id and breadChoice
+          ...order, // Overwrites with stored data
+          breadChoice: order.breadChoice || 'none', // Explicitly ensure breadChoice has a valid default
+        })));
       } else {
-        // Initialize with 5 empty rows if no data is found
         setClientOrders(Array.from({ length: 5 }, createInitialClientOrder));
       }
     } catch (e) {
@@ -144,7 +149,6 @@ export default function NumberOfPicnics() {
     toast({ title: "Données commandes clients effacées", variant: "destructive"});
   };
 
-
   const handleInputChange = (rowId: PicnicRowKey, day: keyof DailyCounts, value: string) => {
     const numericValue = value === '' ? '' : parseInt(value, 10);
     if (value === '' || (!isNaN(numericValue) && numericValue >= 0)) {
@@ -158,11 +162,26 @@ export default function NumberOfPicnics() {
     }
   };
   
-  const handleClientOrderInputChange = (index: number, field: keyof Omit<ClientPicnicOrder, 'id' | 'totalBaguette' | 'totalFaluche'>, value: string) => {
+  const handleClientOrderInputChange = (index: number, field: keyof Omit<ClientPicnicOrder, 'id' | 'breadChoice'>, value: string) => {
     setClientOrders(prevOrders => {
       const newOrders = [...prevOrders];
-      newOrders[index] = { ...newOrders[index], [field]: value };
-      // totalBaguette and totalFaluche are now derived, so no need to update them here based on input
+      const updatedOrder = { ...newOrders[index], [field]: value };
+
+      if (field === 'nbPn') {
+        const nbPnValue = Number(value);
+        if (isNaN(nbPnValue) || nbPnValue <= 0) {
+          updatedOrder.breadChoice = 'none';
+        }
+      }
+      newOrders[index] = updatedOrder;
+      return newOrders;
+    });
+  };
+
+  const handleClientOrderBreadChange = (index: number, choice: BreadChoice) => {
+    setClientOrders(prevOrders => {
+      const newOrders = [...prevOrders];
+      newOrders[index] = { ...newOrders[index], breadChoice: choice };
       return newOrders;
     });
   };
@@ -249,14 +268,14 @@ export default function NumberOfPicnics() {
                             value={picnicData[rowConfig.id as PicnicRowKey]?.[day] ?? ''}
                             onChange={(e) => handleInputChange(rowConfig.id as PicnicRowKey, day, e.target.value)}
                             className={cn(
-                              "h-8 text-center tabular-nums bg-transparent", // Ensure background is transparent
-                              rowConfig.textColor === 'text-white' ? "text-white placeholder:text-gray-300" : "text-black placeholder:text-gray-500",
-                              `${rowConfig.bgColor.replace('bg-','border-')}/50 focus:border-ring` 
+                              "h-8 text-center tabular-nums bg-transparent",
+                              rowConfig.textColor === 'text-white' ? "text-white placeholder:text-gray-300 focus:ring-white/50" : "text-black placeholder:text-gray-500 focus:ring-black/50",
+                              `border-transparent focus:border-current focus:ring-1`
                             )}
                             placeholder="0"
                           />
                         ) : rowConfig.id === 'total_global' ? ( 
-                          <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{dailyGlobalTotals[day]}</span> // Added py-1.5 for similar height
+                          <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{dailyGlobalTotals[day]}</span>
                         ) : rowConfig.id === 'nb_bagette' ? (
                           <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>
                             {day === 'lundi' ? Math.round(dailyGlobalTotals[day] / 2) : '0'}
@@ -310,7 +329,7 @@ export default function NumberOfPicnics() {
         <CardHeader>
           <CardTitle>Commandes Clients Pique-Niques</CardTitle>
           <CardDescription>
-            Saisissez les commandes spécifiques des clients pour les pique-niques.
+            Saisissez les commandes spécifiques des clients pour les pique-niques et choisissez le type de pain.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -320,17 +339,15 @@ export default function NumberOfPicnics() {
                 <TableRow className="bg-amber-200">
                   <TableHead className="w-[200px] min-w-[200px] text-black">Client</TableHead>
                   <TableHead className="w-[100px] min-w-[100px] text-center text-black">NB PN</TableHead>
+                  <TableHead className="w-[150px] min-w-[150px] text-center text-black">Type de Pain</TableHead>
                   <TableHead className="w-[250px] min-w-[250px] text-black">Observation</TableHead>
-                  <TableHead className="w-[120px] min-w-[120px] text-center text-black">Total Baguette</TableHead>
-                  <TableHead className="w-[120px] min-w-[120px] text-center text-black">Total Faluche</TableHead>
                   <TableHead className="w-[100px] min-w-[100px] text-center text-black">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {clientOrders.map((order, index) => {
                   const nbPnValue = Number(order.nbPn);
-                  const calculatedBaguettes = !isNaN(nbPnValue) && nbPnValue > 0 ? Math.round(nbPnValue / 2) : 0;
-                  const calculatedFaluches = !isNaN(nbPnValue) && nbPnValue > 0 ? nbPnValue : 0;
+                  const isNbPnZeroOrInvalid = isNaN(nbPnValue) || nbPnValue <= 0;
                   return (
                     <TableRow key={order.id}>
                       <TableCell className="p-1">
@@ -352,22 +369,28 @@ export default function NumberOfPicnics() {
                         />
                       </TableCell>
                       <TableCell className="p-1">
+                        <Select
+                          value={isNbPnZeroOrInvalid ? 'none' : order.breadChoice}
+                          onValueChange={(value) => handleClientOrderBreadChange(index, value as BreadChoice)}
+                          disabled={isNbPnZeroOrInvalid}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="Choisir pain..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none" className="text-xs">Aucun</SelectItem>
+                            <SelectItem value="baguette" className="text-xs">Baguette</SelectItem>
+                            <SelectItem value="faluche" className="text-xs">Faluche</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="p-1">
                         <Input
                           value={order.observation}
                           onChange={(e) => handleClientOrderInputChange(index, 'observation', e.target.value)}
                           className="h-8"
                           placeholder="Détails..."
                         />
-                      </TableCell>
-                      <TableCell className="p-1 text-center">
-                        <span className="h-8 flex items-center justify-center tabular-nums">
-                          {calculatedBaguettes}
-                        </span>
-                      </TableCell>
-                      <TableCell className="p-1 text-center">
-                        <span className="h-8 flex items-center justify-center tabular-nums">
-                          {calculatedFaluches}
-                        </span>
                       </TableCell>
                       <TableCell className="p-1 text-center">
                         <Button variant="destructive" size="icon" onClick={() => handleDeleteClientOrderRow(order.id)} className="h-8 w-8">
