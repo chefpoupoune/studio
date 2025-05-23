@@ -52,19 +52,19 @@ const createInitialPicnicWeekDataForRecap = (): PicnicWeekData => ({
 });
 
 const DISPLAY_ROWS_CONFIG_NB_PN_RECAP: Array<DisplayRowConfig & { pdfBgColor?: [number,number,number]}> = [
-  { id: 'gatien', label: 'Gatien', bgColor: 'bg-yellow-300', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: hexToRgb("#FDE047") || [253,224,71] }, // Tailwind yellow-300
-  { id: 'cedric', label: 'Cedric', bgColor: 'bg-green-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: hexToRgb("#22C55E") || [34,197,94] },   // Tailwind green-500
-  { id: 'dominique', label: 'Dominique', bgColor: 'bg-white', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: hexToRgb("#FFFFFF") || [255,255,255] }, // White
-  { id: 'maxime_l', label: 'Maxime L', bgColor: 'bg-red-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: hexToRgb("#EF4444") || [239,68,68] },   // Tailwind red-500
-  { id: 'nicolas', label: 'Nicolas', bgColor: 'bg-black', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: hexToRgb("#000000") || [0,0,0] },     // Black
-  { id: 'maxime_h', label: 'Maxime H', bgColor: 'bg-blue-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: hexToRgb("#3B82F6") || [59,130,246] },  // Tailwind blue-500
-  { id: 'philipe', label: 'Philipe', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: hexToRgb("#F97316") || [249,115,22]}, // Tailwind orange-500
-  { id: 'plus', label: 'PLUS', bgColor: 'bg-pink-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: hexToRgb("#EC4899") || [236,72,153] },     // Tailwind pink-500
-  { id: 'autre', label: 'autre', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: hexToRgb("#9333EA") || [147,51,234] }, // Tailwind purple-600
-  { id: 'total_global', label: 'TOTAL', bgColor: 'bg-orange-300', textColor: 'text-black', isInputRow: false, pdfBgColor: hexToRgb("#FDBA74") || [253,186,116] },// Tailwind orange-300
-  { id: 'nb_bagette', label: 'NB de bagette', bgColor: 'bg-gray-300', textColor: 'text-black', isInputRow: false, pdfBgColor: hexToRgb("#D1D5DB") || [209,213,219] }, // Tailwind gray-300
-  { id: 'nb_faluche', label: 'NB de Faluche', bgColor: 'bg-gray-300', textColor: 'text-black', isInputRow: false, pdfBgColor: hexToRgb("#D1D5DB") || [209,213,219] }, // Tailwind gray-300
-  { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: false, pdfBgColor: hexToRgb("#F97316") || [249,115,22] }, // Tailwind orange-500
+  { id: 'gatien', label: 'Gatien', bgColor: 'bg-yellow-300', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: hexToRgb("#FDE047") || [253,224,71] }, 
+  { id: 'cedric', label: 'Cedric', bgColor: 'bg-green-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: hexToRgb("#22C55E") || [34,197,94] },   
+  { id: 'dominique', label: 'Dominique', bgColor: 'bg-white', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: hexToRgb("#FFFFFF") || [255,255,255] }, 
+  { id: 'maxime_l', label: 'Maxime L', bgColor: 'bg-red-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: hexToRgb("#EF4444") || [239,68,68] },   
+  { id: 'nicolas', label: 'Nicolas', bgColor: 'bg-black', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: hexToRgb("#000000") || [0,0,0] },     
+  { id: 'maxime_h', label: 'Maxime H', bgColor: 'bg-blue-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: hexToRgb("#3B82F6") || [59,130,246] },  
+  { id: 'philipe', label: 'Philipe', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: hexToRgb("#F97316") || [249,115,22]}, 
+  { id: 'plus', label: 'PLUS', bgColor: 'bg-pink-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: hexToRgb("#EC4899") || [236,72,153] },     
+  { id: 'autre', label: 'autre', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: hexToRgb("#9333EA") || [147,51,234] }, 
+  { id: 'total_global', label: 'TOTAL', bgColor: 'bg-orange-300', textColor: 'text-black', isInputRow: false, pdfBgColor: hexToRgb("#FDBA74") || [253,186,116] },
+  { id: 'nb_bagette', label: 'NB de bagette', bgColor: 'bg-gray-300', textColor: 'text-black', isInputRow: false, pdfBgColor: hexToRgb("#D1D5DB") || [209,213,219] }, 
+  { id: 'nb_faluche', label: 'NB de Faluche', bgColor: 'bg-gray-300', textColor: 'text-black', isInputRow: false, pdfBgColor: hexToRgb("#D1D5DB") || [209,213,219] }, 
+  { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: false, pdfBgColor: hexToRgb("#F97316") || [249,115,22] }, 
 ];
 
 
@@ -310,7 +310,7 @@ export default function PicnicRecap() {
         currentY += (pdfSettings.defaultFontSize || 10) + 10;
 
         const tableBaseStyles = { fontSize: pdfSettings.tableBodyFontSize || 7, cellPadding: 1.5, font: pdfSettings.fontFamily || 'helvetica', lineColor: [180,180,180], lineWidth: 0.5 };
-        let tableHeadBaseStyles: any = { fontSize: (pdfSettings.tableHeaderFontSize || 8), fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1.5, font: pdfSettings.fontFamily || 'helvetica', textColor: [0,0,0] };
+        let tableHeadBaseStyles: any = { fontSize: (pdfSettings.tableHeaderFontSize || 8), fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1.5, font: pdfSettings.fontFamily || 'helvetica', textColor: blackTextForPdf };
         
         if (pdfSettings.primaryColor) {
             const rgb = hexToRgb(pdfSettings.primaryColor);
@@ -328,13 +328,14 @@ export default function PicnicRecap() {
         const clientRecapFooterColor = hexToRgb("#FFEBCD") || [255,235,205];
 
         const didDrawCellHandler = (data: any) => {
-            if (data.table.id === 'nbPnTable' && data.section === 'body' && data.column.index === 0 && data.row.index < DISPLAY_ROWS_CONFIG_NB_PN_RECAP.length) {
+            if (data.table.id === 'nbPnTable' && data.section === 'body' && data.row.index < DISPLAY_ROWS_CONFIG_NB_PN_RECAP.length) {
                 const rowConfig = DISPLAY_ROWS_CONFIG_NB_PN_RECAP[data.row.index];
                 if (rowConfig && rowConfig.pdfBgColor) {
                     data.cell.styles.fillColor = rowConfig.pdfBgColor;
-                    const brightness = (rowConfig.pdfBgColor[0] * 299 + rowConfig.pdfBgColor[1] * 587 + rowConfig.pdfBgColor[2] * 114) / 1000;
-                    data.cell.styles.textColor = brightness > 125 && !(rowConfig.pdfBgColor[0] === 255 && rowConfig.pdfBgColor[1] === 255 && rowConfig.pdfBgColor[2] === 255) ? blackTextForPdf : [255,255,255];
-                    if(rowConfig.textColor === 'text-black') data.cell.styles.textColor = blackTextForPdf;
+                    let textColorToApply = (rowConfig.pdfBgColor[0] * 299 + rowConfig.pdfBgColor[1] * 587 + rowConfig.pdfBgColor[2] * 114) / 1000 > 125 && !(rowConfig.pdfBgColor[0] === 255 && rowConfig.pdfBgColor[1] === 255 && rowConfig.pdfBgColor[2] === 255) ? blackTextForPdf : [255, 255, 255];
+                    if (rowConfig.textColor === 'text-black') textColorToApply = blackTextForPdf;
+                    else if (rowConfig.textColor === 'text-white') textColorToApply = [255,255,255];
+                    data.cell.styles.textColor = textColorToApply;
                 }
             }
         
@@ -436,17 +437,18 @@ export default function PicnicRecap() {
                 ]);
             }
             if (clientHasFaluches) {
-                const falucheRow: any[] = [
-                    'Faluche',
-                    ...DAYS_OF_WEEK_KEYS.map(day => recap.falucheCounts[day] > 0 ? recap.falucheCounts[day].toString() : '-')
-                ];
-                if (!clientHasBaguettes) {
-                    falucheRow.unshift({ content: recap.clientName || 'Client non nommé', rowSpan: rowSpan, styles: { valign: 'middle', fontStyle: 'bold' } });
+                const falucheRow: any[] = [];
+                if (!clientHasBaguettes) { // If only faluches, client name and obs need to be in this row
+                    falucheRow.push({ content: recap.clientName || 'Client non nommé', rowSpan: rowSpan, styles: { valign: 'middle', fontStyle: 'bold' } });
+                }
+                falucheRow.push('Faluche');
+                falucheRow.push(...DAYS_OF_WEEK_KEYS.map(day => recap.falucheCounts[day] > 0 ? recap.falucheCounts[day].toString() : '-'));
+                 if (!clientHasBaguettes) {
                     falucheRow.push({ content: recap.observation || '-', rowSpan: rowSpan, styles: { valign: 'middle' } });
                 }
                 clientRecapBody.push(falucheRow);
             }
-            if (!clientHasBaguettes && !clientHasFaluches && recap.observation) {
+            if (!clientHasBaguettes && !clientHasFaluches && recap.observation) { // Only observation
                  clientRecapBody.push([
                     { content: recap.clientName || 'Client non nommé', rowSpan: 1, styles: { valign: 'middle', fontStyle: 'bold' } },
                     '-', 
@@ -873,6 +875,8 @@ export default function PicnicRecap() {
     </div>
   );
 }
+    
+
     
 
     
