@@ -40,23 +40,23 @@ const DAY_LABELS: Record<DayOfWeekKey, string> = {
 const PICNIC_DATA_STORAGE_KEY_PREFIX = "picnic_nb_pn_data_v1_";
 const PICNIC_CLIENT_ORDERS_KEY_PREFIX = "picnic_client_orders_data_v3_"; 
 
-const initialRowDayValues = (): PicnicRowData => ({ // Updated to return PicnicRowData
+const initialRowData = (): PicnicRowData => ({
   lundi: '', mardi: '', mercredi: '', jeudi: '', vendredi: '', weeklyObservation: ''
 });
 
 const createInitialPicnicWeekData = (): PicnicWeekData => ({
-  gatien: initialRowDayValues(),
-  cedric: initialRowDayValues(),
-  dominique: initialRowDayValues(),
-  maxime_l: initialRowDayValues(),
-  nicolas: initialRowDayValues(),
-  maxime_h: initialRowDayValues(),
-  philipe: initialRowDayValues(),
-  plus: initialRowDayValues(),
-  autre: initialRowDayValues(),
-  nb_bagette: initialRowDayValues(), 
-  nb_faluche: initialRowDayValues(), 
-  total_glaciere: initialRowDayValues(),
+  gatien: initialRowData(),
+  cedric: initialRowData(),
+  dominique: initialRowData(),
+  maxime_l: initialRowData(),
+  nicolas: initialRowData(),
+  maxime_h: initialRowData(),
+  philipe: initialRowData(),
+  plus: initialRowData(),
+  autre: initialRowData(),
+  nb_bagette: initialRowData(), 
+  nb_faluche: initialRowData(), 
+  total_glaciere: initialRowData(),
 });
 
 const createInitialDailyClientPicnicData = (): DailyClientPicnicData => ({
@@ -117,17 +117,24 @@ export default function NumberOfPicnics() {
 
   useEffect(() => {
     try {
-      const storedData = localStorage.getItem(getPicnicDataStorageKey());
-      if (storedData) {
-        const parsedData = JSON.parse(storedData);
-        const initialKeys = Object.keys(createInitialPicnicWeekData()) as PicnicRowKey[];
+      const storedPicnicDataRaw = localStorage.getItem(getPicnicDataStorageKey());
+      if (storedPicnicDataRaw) {
+        const parsedData = JSON.parse(storedPicnicDataRaw);
         const completeData: Partial<PicnicWeekData> = {};
-        initialKeys.forEach(key => {
-          completeData[key] = { ...(initialRowDayValues()), ...parsedData[key] }; // Ensure weeklyObservation is initialized
+        (Object.keys(createInitialPicnicWeekData()) as PicnicRowKey[]).forEach(key => {
+          completeData[key] = { ...(initialRowData()), ...parsedData[key] };
         });
         setPicnicData(completeData as PicnicWeekData);
       } else {
-        setPicnicData(createInitialPicnicWeekData());
+        setPicnicData(currentPicnicDataForPreviousWeek => {
+            const freshDataForNewWeek = createInitialPicnicWeekData();
+            (Object.keys(freshDataForNewWeek) as PicnicRowKey[]).forEach(key => {
+                if (currentPicnicDataForPreviousWeek && currentPicnicDataForPreviousWeek[key]?.weeklyObservation) {
+                    freshDataForNewWeek[key].weeklyObservation = currentPicnicDataForPreviousWeek[key].weeklyObservation;
+                }
+            });
+            return freshDataForNewWeek;
+        });
       }
 
       const storedClientOrders = localStorage.getItem(getClientOrdersStorageKey());
@@ -177,7 +184,8 @@ export default function NumberOfPicnics() {
   }, [clientOrders, toast, getClientOrdersStorageKey]);
 
   const handleConfirmClearData = () => {
-    setPicnicData(createInitialPicnicWeekData());
+    // When clearing data for the week, also clear observations as they are tied to that week's data context
+    setPicnicData(createInitialPicnicWeekData()); 
     toast({ title: "Données hebdomadaires effacées", variant: "destructive"});
   };
 
@@ -309,7 +317,7 @@ export default function NumberOfPicnics() {
       const nbPn = Number(dayData.nbPn);
       if (!isNaN(nbPn) && nbPn > 0) {
         if (dayData.breadChoice === 'baguette') {
-          baguettes += Math.round(nbPn / 2);
+          baguettes += Math.round(nbPn / 2); // Divide by 2 for baguettes
         } else if (dayData.breadChoice === 'faluche') {
           faluches += nbPn;
         }
@@ -420,7 +428,7 @@ export default function NumberOfPicnics() {
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto border rounded-md">
-            <Table className="min-w-[950px]"> {/* Increased min-width for observation column */}
+            <Table className="min-w-[1050px]"> {/* Increased min-width for observation column */}
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[180px] min-w-[180px] sticky left-0 z-10 bg-card">Catégorie</TableHead>
@@ -429,7 +437,7 @@ export default function NumberOfPicnics() {
                       {DAY_LABELS[day]}
                     </TableHead>
                   ))}
-                  <TableHead className="text-center min-w-[200px]">Observation (Semaine)</TableHead> {/* New Header */}
+                  <TableHead className="text-center min-w-[200px]">Observation (Semaine)</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -471,7 +479,6 @@ export default function NumberOfPicnics() {
                         </TableCell>
                       );
                     })}
-                    {/* Observation Cell */}
                     <TableCell className={cn("p-1", rowConfig.bgColor)}>
                       {rowConfig.isInputRow ? (
                         <Input
@@ -620,11 +627,11 @@ export default function NumberOfPicnics() {
               </TableBody>
               <TableFooter>
                 <TableRow className="bg-amber-100 dark:bg-amber-800/50">
-                    <TableCell colSpan={1} className="text-right font-semibold text-black dark:text-white">
+                    <TableCell colSpan={2} className="text-right font-semibold text-black dark:text-white">
                         TOTAUX PAINS ({DAY_LABELS[selectedClientOrderDay].toUpperCase()}) :
                     </TableCell>
-                    <TableCell colSpan={2} className="text-left font-bold text-black dark:text-white">
-                       Baguette: {clientBreadTotalsForSelectedDay.baguettes}, Faluche: {clientBreadTotalsForSelectedDay.faluches}
+                    <TableCell className="text-left font-bold text-black dark:text-white">
+                       B: {clientBreadTotalsForSelectedDay.baguettes}, F: {clientBreadTotalsForSelectedDay.faluches}
                     </TableCell>
                     <TableCell colSpan={2}></TableCell>
                 </TableRow>
@@ -765,3 +772,4 @@ export default function NumberOfPicnics() {
   );
 }
     
+

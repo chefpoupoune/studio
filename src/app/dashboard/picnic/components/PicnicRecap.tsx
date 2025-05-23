@@ -52,7 +52,6 @@ const createInitialDailyClientPicnicData = (): DailyClientPicnicData => ({
   breadChoice: 'none',
 });
 
-// This config is used for styling and identifying input rows in the *first* table (NB PN recap)
 const DISPLAY_ROWS_CONFIG_NB_PN: DisplayRowConfig[] = [
   { id: 'gatien', label: 'Gatien', bgColor: 'bg-yellow-300', textColor: 'text-black', isInputRow: true, isTotalContributor: true },
   { id: 'cedric', label: 'Cedric', bgColor: 'bg-green-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true },
@@ -84,7 +83,7 @@ export default function PicnicRecap() {
 
   const weekDisplayString = useMemo(() => {
     const monday = startOfWeek(selectedDate, { weekStartsOn: 1 });
-    const friday = addDays(monday, 4); // Assuming a Mon-Fri week for display
+    const friday = addDays(monday, 4); 
     return `Semaine du : ${format(monday, 'dd MMMM', { locale: fr })} au ${format(friday, 'dd MMMM yyyy', { locale: fr })}`;
   }, [selectedDate]);
 
@@ -94,19 +93,27 @@ export default function PicnicRecap() {
   useEffect(() => {
     setIsLoading(true);
     try {
-      const storedPicnicData = localStorage.getItem(getPicnicDataStorageKey());
-      if (storedPicnicData) {
-        const parsedData = JSON.parse(storedPicnicData);
+      const storedPicnicDataRaw = localStorage.getItem(getPicnicDataStorageKey());
+      if (storedPicnicDataRaw) {
+        const parsedData = JSON.parse(storedPicnicDataRaw);
         const completeData: Partial<PicnicWeekData> = {};
         (Object.keys(createInitialPicnicWeekData()) as PicnicRowKey[]).forEach(key => {
           completeData[key] = { 
-            ...(initialRowData()), // Ensures all day keys and weeklyObservation are initialized
+            ...(initialRowData()), 
             ...parsedData[key]
           };
         });
         setPicnicData(completeData as PicnicWeekData);
       } else {
-        setPicnicData(createInitialPicnicWeekData());
+        setPicnicData(currentPicnicDataForPreviousWeek => {
+            const freshDataForNewWeek = createInitialPicnicWeekData();
+            (Object.keys(freshDataForNewWeek) as PicnicRowKey[]).forEach(key => {
+                if (currentPicnicDataForPreviousWeek && currentPicnicDataForPreviousWeek[key]?.weeklyObservation) {
+                    freshDataForNewWeek[key].weeklyObservation = currentPicnicDataForPreviousWeek[key].weeklyObservation;
+                }
+            });
+            return freshDataForNewWeek;
+        });
       }
 
       const storedClientOrders = localStorage.getItem(getClientOrdersStorageKey());
@@ -124,7 +131,7 @@ export default function PicnicRecap() {
           }
         })));
       } else {
-        setClientOrders([]); // Initialize with empty if no data, NB PN tab will init with 3 rows
+        setClientOrders([]);
       }
     } catch (e) {
       console.error("Failed to load picnic recap data from localStorage for week " + weekIdentifier, e);
@@ -140,7 +147,7 @@ export default function PicnicRecap() {
     setPicnicData(prevData => ({
         ...prevData,
         [rowId]: {
-            ...(prevData[rowId] || initialRowData()), // Ensure row data exists
+            ...(prevData[rowId] || initialRowData()),
             weeklyObservation: value,
         }
     }));
@@ -223,7 +230,7 @@ export default function PicnicRecap() {
           clientName: order.clientName,
           baguetteCounts: baguetteCounts,
           falucheCounts: falucheCounts,
-          observation: order.observation // Keep weekly observation for client recap
+          observation: order.observation 
         };
     });
   }, [clientOrders]);
@@ -369,7 +376,7 @@ export default function PicnicRecap() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {clientOrders.filter(order => order.clientName.trim() !== '' || DAYS_OF_WEEK_KEYS.some(day => Number(order.days[day].nbPn) > 0)).length === 0 ? (
+          {weeklyClientRecapData.length === 0 ? (
             <p className="text-muted-foreground text-center py-4">Aucune commande client avec des quantités pour cette semaine.</p>
           ) : (
             <div className="overflow-x-auto border rounded-md">
@@ -413,7 +420,7 @@ export default function PicnicRecap() {
                         )}
                         {clientHasFaluches && (
                           <TableRow>
-                             {rowSpanForClientName === 1 && clientHasFaluches && !clientHasBaguettes ? ( // Only if Faluche is the only bread type
+                             {rowSpanForClientName === 1 && clientHasFaluches && !clientHasBaguettes ? ( 
                               <TableCell rowSpan={1} className="font-medium sticky left-0 z-10 bg-card group-hover:bg-muted/50 w-[150px] align-middle">
                                 {recap.clientName || <span className="italic text-muted-foreground">Client non nommé</span>}
                               </TableCell>
