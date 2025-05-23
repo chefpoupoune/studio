@@ -38,7 +38,7 @@ const DAY_LABELS: Record<DayOfWeekKey, string> = {
 };
 
 const PICNIC_DATA_STORAGE_KEY_PREFIX = "picnic_nb_pn_data_v1_";
-const PICNIC_CLIENT_ORDERS_KEY_PREFIX = "picnic_client_orders_data_v3_"; // Incremented key
+const PICNIC_CLIENT_ORDERS_KEY_PREFIX = "picnic_client_orders_data_v3_"; 
 
 const initialRowData = (): DailyCounts => ({
   lundi: '', mardi: '', mercredi: '', jeudi: '', vendredi: ''
@@ -93,22 +93,6 @@ const DISPLAY_ROWS_CONFIG: DisplayRowConfig[] = [
   { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: false },
 ];
 
-interface DailyBreadCounts {
-  lundi: number;
-  mardi: number;
-  mercredi: number;
-  jeudi: number;
-  vendredi: number;
-}
-
-interface ClientWeeklyBreadRecap {
-  id: string; 
-  clientName: string;
-  baguetteCounts: DailyBreadCounts;
-  falucheCounts: DailyBreadCounts;
-}
-
-
 export default function NumberOfPicnics() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [picnicData, setPicnicData] = useState<PicnicWeekData>(createInitialPicnicWeekData());
@@ -123,8 +107,10 @@ export default function NumberOfPicnics() {
 
   const weekDisplayString = useMemo(() => {
     const monday = startOfWeek(selectedDate, { weekStartsOn: 1 });
-    return `Semaine du : ${format(monday, 'dd MMMM', { locale: fr })} au ${format(addDays(monday, 4), 'dd MMMM yyyy', { locale: fr })}`;
+    const friday = addDays(monday, 4);
+    return `Semaine du : ${format(monday, 'dd MMMM', { locale: fr })} au ${format(friday, 'dd MMMM yyyy', { locale: fr })}`;
   }, [selectedDate]);
+
 
   const getPicnicDataStorageKey = useCallback(() => `${PICNIC_DATA_STORAGE_KEY_PREFIX}${weekIdentifier}`, [weekIdentifier]);
   const getClientOrdersStorageKey = useCallback(() => `${PICNIC_CLIENT_ORDERS_KEY_PREFIX}${weekIdentifier}`, [weekIdentifier]);
@@ -150,7 +136,7 @@ export default function NumberOfPicnics() {
         setClientOrders(parsedClientOrders.map(order => ({
           ...createInitialClientOrder(), 
           ...order,
-          id: order.id || `client_order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, // Ensure ID exists
+          id: order.id || `client_order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, 
           days: { 
             lundi: { ...createInitialDailyClientPicnicData(), ...(order.days?.lundi || {}) },
             mardi: { ...createInitialDailyClientPicnicData(), ...(order.days?.mardi || {}) },
@@ -312,24 +298,24 @@ export default function NumberOfPicnics() {
       const nbPn = Number(dayData.nbPn);
       if (!isNaN(nbPn) && nbPn > 0) {
         if (dayData.breadChoice === 'baguette') {
-          baguettes += nbPn;
+          baguettes += Math.round(nbPn / 2); // Apply /2 here for daily recap too
         } else if (dayData.breadChoice === 'faluche') {
           faluches += nbPn;
         }
       }
     });
     return {
-      baguettes: Math.round(baguettes / 2),
+      baguettes: baguettes,
       faluches: faluches,
     };
   }, [clientOrders, selectedClientOrderDay]);
 
-  const weeklyClientRecapData: ClientWeeklyBreadRecap[] = useMemo(() => {
+  const weeklyClientRecapData = useMemo(() => {
     return clientOrders
       .filter(order => order.clientName.trim() !== '' || DAYS_OF_WEEK_KEYS.some(day => Number(order.days[day].nbPn) > 0))
       .map(order => {
-        const dailyBaguetteCounts: DailyBreadCounts = {} as any;
-        const dailyFalucheCounts: DailyBreadCounts = {} as any;
+        const dailyBaguetteCounts: Record<DayOfWeekKey, number> = {} as any;
+        const dailyFalucheCounts: Record<DayOfWeekKey, number> = {} as any;
 
         DAYS_OF_WEEK_KEYS.forEach(day => {
           const dayData = order.days[day];
@@ -360,7 +346,7 @@ export default function NumberOfPicnics() {
   }, [clientOrders]);
 
   const weeklyRecapFooterTotals = useMemo(() => {
-    const totals: { baguette: DailyBreadCounts, faluche: DailyBreadCounts } = {
+    const totals: { baguette: Record<DayOfWeekKey, number>, faluche: Record<DayOfWeekKey, number> } = {
       baguette: { lundi: 0, mardi: 0, mercredi: 0, jeudi: 0, vendredi: 0 },
       faluche: { lundi: 0, mardi: 0, mercredi: 0, jeudi: 0, vendredi: 0 },
     };
@@ -451,7 +437,7 @@ export default function NumberOfPicnics() {
                             onChange={(e) => handleInputChange(rowConfig.id as PicnicRowKey, day, e.target.value)}
                             className={cn(
                               "h-8 text-center tabular-nums bg-transparent border-transparent focus:border-current focus:ring-1",
-                              rowConfig.textColor === 'text-white' ? "text-white placeholder:text-gray-300 focus:ring-white/50" : "text-black placeholder:text-gray-500 focus:ring-black/50"
+                              rowConfig.textColor.includes('white') ? "text-white placeholder:text-gray-300 focus:ring-white/50" : "text-black placeholder:text-gray-500 focus:ring-black/50"
                             )}
                             placeholder="0"
                           />
@@ -462,7 +448,7 @@ export default function NumberOfPicnics() {
                         const value = Math.round(dailyGlobalTotals[day] / 2);
                         cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{value}</span>;
                       } else if (rowConfig.id === 'nb_faluche') {
-                        const value = (day === 'mercredi' || day === 'vendredi') ? dailyGlobalTotals[day] : '0';
+                        const value = (day === 'mercredi' || day === 'vendredi') ? dailyGlobalTotals[day] : 0;
                         cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{value}</span>;
                       } else if (rowConfig.id === 'total_glaciere') {
                         cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{dailyGlaciereTotals[day]}</span>;
@@ -538,11 +524,11 @@ export default function NumberOfPicnics() {
             <Table className="min-w-[800px]">
               <TableHeader>
                 <TableRow className="bg-amber-200 dark:bg-amber-700/50">
-                  <TableHead className="w-[200px] min-w-[200px] text-black sticky left-0 z-10 bg-amber-200 dark:bg-amber-700/50">Client</TableHead>
-                  <TableHead className="w-[120px] min-w-[120px] text-center text-black capitalize">NB PN ({DAY_LABELS[selectedClientOrderDay]})</TableHead>
-                  <TableHead className="w-[150px] min-w-[150px] text-center text-black capitalize">Pain ({DAY_LABELS[selectedClientOrderDay]})</TableHead>
-                  <TableHead className="w-[250px] min-w-[250px] text-black">Observation (Semaine)</TableHead>
-                  <TableHead className="w-[80px] min-w-[80px] text-center text-black sticky right-0 z-10 bg-amber-200 dark:bg-amber-700/50">Actions</TableHead>
+                  <TableHead className="w-[200px] min-w-[200px] text-black dark:text-white sticky left-0 z-10 bg-amber-200 dark:bg-amber-700/50">Client</TableHead>
+                  <TableHead className="w-[120px] min-w-[120px] text-center text-black dark:text-white capitalize">NB PN ({DAY_LABELS[selectedClientOrderDay]})</TableHead>
+                  <TableHead className="w-[150px] min-w-[150px] text-center text-black dark:text-white capitalize">Pain ({DAY_LABELS[selectedClientOrderDay]})</TableHead>
+                  <TableHead className="w-[250px] min-w-[250px] text-black dark:text-white">Observation (Semaine)</TableHead>
+                  <TableHead className="w-[80px] min-w-[80px] text-center text-black dark:text-white sticky right-0 z-10 bg-amber-200 dark:bg-amber-700/50">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -652,10 +638,9 @@ export default function NumberOfPicnics() {
         </CardContent>
       </Card>
 
-      {/* Weekly Client Recap Table as per IMAGE */}
       <Card className="shadow-lg mt-8">
         <CardHeader>
-          <CardTitle>Récapitulatif Hebdomadaire des Commandes Clients (selon image)</CardTitle>
+          <CardTitle>Récapitulatif Hebdomadaire des Commandes Clients</CardTitle>
           <CardDescription>
             Totaux par type de pain pour chaque client sur la semaine sélectionnée : {weekDisplayString}.
           </CardDescription>
@@ -676,29 +661,53 @@ export default function NumberOfPicnics() {
                   </TableRow>
                 </TableHeader>
                 <TableBody className="text-xs">
-                  {weeklyClientRecapData.map((recap) => (
-                    <React.Fragment key={recap.id}>
-                      <TableRow>
-                        <TableCell rowSpan={2} className="font-medium sticky left-0 z-10 bg-card group-hover:bg-muted/50 w-[150px] align-middle">
-                          {recap.clientName || <span className="italic text-muted-foreground">Client non nommé</span>}
-                        </TableCell>
-                        <TableCell className="font-semibold">Baguette</TableCell>
-                        {DAYS_OF_WEEK_KEYS.map(day => (
-                          <TableCell key={`${recap.id}-baguette-${day}`} className="text-center">
-                            {recap.baguetteCounts[day] > 0 ? recap.baguetteCounts[day] : '-'}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                      <TableRow>
-                        <TableCell className="font-semibold">Faluche</TableCell>
-                        {DAYS_OF_WEEK_KEYS.map(day => (
-                          <TableCell key={`${recap.id}-faluche-${day}`} className="text-center">
-                            {recap.falucheCounts[day] > 0 ? recap.falucheCounts[day] : '-'}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    </React.Fragment>
-                  ))}
+                  {weeklyClientRecapData.map((recap) => {
+                    const clientHasBaguettes = DAYS_OF_WEEK_KEYS.some(day => recap.baguetteCounts[day] > 0);
+                    const clientHasFaluches = DAYS_OF_WEEK_KEYS.some(day => recap.falucheCounts[day] > 0);
+
+                    if (!clientHasBaguettes && !clientHasFaluches) {
+                      return null; 
+                    }
+                    
+                    let clientCellRendered = false;
+                    const rowSpanForClientName = (clientHasBaguettes && clientHasFaluches) ? 2 : 1;
+
+                    return (
+                      <React.Fragment key={recap.id}>
+                        {clientHasBaguettes && (
+                          <TableRow>
+                            {!clientCellRendered && (
+                              <TableCell rowSpan={rowSpanForClientName} className="font-medium sticky left-0 z-10 bg-card group-hover:bg-muted/50 w-[150px] align-middle">
+                                {recap.clientName || <span className="italic text-muted-foreground">Client non nommé</span>}
+                              </TableCell>
+                            )}
+                            {clientCellRendered = true}
+                            <TableCell className="font-semibold">Baguette</TableCell>
+                            {DAYS_OF_WEEK_KEYS.map(day => (
+                              <TableCell key={`${recap.id}-baguette-${day}`} className="text-center">
+                                {recap.baguetteCounts[day] > 0 ? recap.baguetteCounts[day] : '-'}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        )}
+                        {clientHasFaluches && (
+                          <TableRow>
+                            {!clientCellRendered && (
+                              <TableCell rowSpan={1} className="font-medium sticky left-0 z-10 bg-card group-hover:bg-muted/50 w-[150px] align-middle">
+                                {recap.clientName || <span className="italic text-muted-foreground">Client non nommé</span>}
+                              </TableCell>
+                            )}
+                            <TableCell className="font-semibold">Faluche</TableCell>
+                            {DAYS_OF_WEEK_KEYS.map(day => (
+                              <TableCell key={`${recap.id}-faluche-${day}`} className="text-center">
+                                {recap.falucheCounts[day] > 0 ? recap.falucheCounts[day] : '-'}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                 </TableBody>
                  <TableFooter className="text-xs">
                     <TableRow className="bg-orange-100 dark:bg-orange-800/50">
