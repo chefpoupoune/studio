@@ -109,9 +109,9 @@ export default function PicnicRecap() {
       if (storedClientOrders) {
          const parsedClientOrders: ClientPicnicOrder[] = JSON.parse(storedClientOrders);
          setClientOrders(parsedClientOrders.map(order => ({
-          ...order, // Spread existing order properties
-          id: order.id || `client_order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, // Ensure ID
-          days: { // Ensure all days are present with default structure
+          ...order, 
+          id: order.id || `client_order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, 
+          days: { 
             lundi: { ...createInitialDailyClientPicnicData(), ...(order.days?.lundi || {}) },
             mardi: { ...createInitialDailyClientPicnicData(), ...(order.days?.mardi || {}) },
             mercredi: { ...createInitialDailyClientPicnicData(), ...(order.days?.mercredi || {}) },
@@ -263,7 +263,7 @@ export default function PicnicRecap() {
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto border rounded-md">
-            <Table className="min-w-[800px]">
+            <Table className="min-w-[950px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[180px] min-w-[180px] sticky left-0 z-10 bg-card">Catégorie</TableHead>
@@ -272,6 +272,7 @@ export default function PicnicRecap() {
                       {DAY_LABELS[day]}
                     </TableHead>
                   ))}
+                  <TableHead className="text-center min-w-[150px]">Observation</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -301,6 +302,7 @@ export default function PicnicRecap() {
                         </TableCell>
                       );
                     })}
+                    <TableCell className={cn("p-1 text-center", rowConfig.bgColor, rowConfig.textColor)}>-</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
