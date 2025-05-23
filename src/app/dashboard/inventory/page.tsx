@@ -41,19 +41,10 @@ export default function InventoryPage() {
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [isClient, setIsClient] = useState(false);
-  const [dataLoaded, setDataLoaded] = useState(false); // New state
+  const [dataLoaded, setDataLoaded] = useState(false);
   const { toast } = useToast();
   const isMobile = useIsMobile();
   
-  const inventoryTabsConfig: InventoryTab[] = [
-    { value: "products", label: "Gestion Produits", Icon: PackagePlusIcon, component: <ManageProducts products={products} onAddProduct={addProduct} onUpdateProduct={updateProduct} onDeleteProduct={deleteProduct} /> },
-    { value: "movements", label: "Mouvements Stock", Icon: HistoryIcon, component: <ManageStockMovements products={products} stockMovements={stockMovements} onAddStockMovement={addStockMovement} onDeleteAllStockMovements={handleDeleteAllStockMovements} /> },
-    { value: "inventory", label: "Inventaire", Icon: ListOrderedIcon, component: <GenerateInventory products={products} /> },
-    { value: "purchase-orders", label: "Bons de Commande", Icon: ShoppingCartIcon, component: <GeneratePurchaseOrder products={products} purchaseOrders={purchaseOrders} onAddPurchaseOrder={addPurchaseOrder} onDeletePurchaseOrder={deletePurchaseOrder} onReceivePurchaseOrder={handleReceivePurchaseOrder}/> },
-  ];
-  const [activeTab, setActiveTab] = useState(inventoryTabsConfig[0].value);
-
-
   useEffect(() => {
     setIsClient(true);
   }, []);
@@ -61,6 +52,7 @@ export default function InventoryPage() {
   useEffect(() => {
     if (isClient) {
       console.log("InventoryPage: Attempting to load data from localStorage.");
+      setDataLoaded(false); // Ensure dataLoaded is false before loading
       try {
         const storedProducts = localStorage.getItem(PRODUCTS_STORAGE_KEY);
         if (storedProducts) {
@@ -227,6 +219,13 @@ export default function InventoryPage() {
     toast({ title: "Bon de Commande Reçu", description: `Le bon de commande ${order.orderNumber} a été marqué comme reçu et les stocks mis à jour.`});
   }, [purchaseOrders, products, toast]);
 
+  const inventoryTabsConfig: InventoryTab[] = [
+    { value: "products", label: "Gestion Produits", Icon: PackagePlusIcon, component: <ManageProducts products={products} onAddProduct={addProduct} onUpdateProduct={updateProduct} onDeleteProduct={deleteProduct} /> },
+    { value: "movements", label: "Mouvements Stock", Icon: HistoryIcon, component: <ManageStockMovements products={products} stockMovements={stockMovements} onAddStockMovement={addStockMovement} onDeleteAllStockMovements={handleDeleteAllStockMovements} /> },
+    { value: "inventory", label: "Inventaire", Icon: ListOrderedIcon, component: <GenerateInventory products={products} /> },
+    { value: "purchase-orders", label: "Bons de Commande", Icon: ShoppingCartIcon, component: <GeneratePurchaseOrder products={products} purchaseOrders={purchaseOrders} onAddPurchaseOrder={addPurchaseOrder} onDeletePurchaseOrder={deletePurchaseOrder} onReceivePurchaseOrder={handleReceivePurchaseOrder}/> },
+  ];
+  const [activeTab, setActiveTab] = useState(inventoryTabsConfig[0].value);
 
   if (!isClient) {
     return (
@@ -290,3 +289,5 @@ export default function InventoryPage() {
   );
 }
 
+
+    
