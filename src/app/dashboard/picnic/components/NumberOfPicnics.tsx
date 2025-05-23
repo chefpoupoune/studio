@@ -51,7 +51,7 @@ const DISPLAY_ROWS_CONFIG: DisplayRowConfig[] = [
   { id: 'plus', label: 'PLUS', bgColor: 'bg-pink-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true },
   { id: 'autre', label: 'autre', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: true, isTotalContributor: true },
   { id: 'total_global', label: 'TOTAL', bgColor: 'bg-orange-300', textColor: 'text-black', isInputRow: false },
-  { id: 'nb_bagette', label: 'NB de bagette', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: false }, // Changed isInputRow to false
+  { id: 'nb_bagette', label: 'NB de bagette', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: false },
   { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: true },
 ];
 
@@ -168,13 +168,15 @@ export default function NumberOfPicnics() {
                           min="0"
                           value={picnicData[rowConfig.id as PicnicRowKey]?.[day] ?? ''}
                           onChange={(e) => handleInputChange(rowConfig.id as PicnicRowKey, day, e.target.value)}
-                          className={cn("h-8 text-center tabular-nums", "placeholder:text-gray-500")} // Removed individual bg/text color from input
+                          className={cn("h-8 text-center tabular-nums", "placeholder:text-gray-500")}
                           placeholder="0"
                         />
                       ) : rowConfig.id === 'total_global' ? ( 
                         <span className="font-semibold">{dailyGlobalTotals[day]}</span>
                       ) : rowConfig.id === 'nb_bagette' ? (
-                        <span className="font-semibold">{Math.round(dailyGlobalTotals[day] / 2)}</span>
+                        <span className="font-semibold">
+                          {day === 'lundi' ? Math.round(dailyGlobalTotals[day] / 2) : '0'}
+                        </span>
                       ) : null}
                     </TableCell>
                   ))}
