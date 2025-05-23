@@ -10,6 +10,17 @@ import { Save, Trash2 } from 'lucide-react';
 import type { PicnicWeekData, DailyCounts, PicnicRowKey, DisplayRowConfig } from '../types';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const DAYS_OF_WEEK: (keyof DailyCounts)[] = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'];
 const DAY_LABELS: Record<keyof DailyCounts, string> = {
@@ -36,9 +47,9 @@ const createInitialPicnicWeekData = (): PicnicWeekData => ({
   philipe: initialRowData(),
   plus: initialRowData(),
   autre: initialRowData(),
-  nb_bagette: initialRowData(), // This will be calculated, but keep structure
-  nb_faluche: initialRowData(), // This will be calculated, but keep structure
-  total_glaciere: initialRowData(), // This will be calculated
+  nb_bagette: initialRowData(),
+  nb_faluche: initialRowData(),
+  total_glaciere: initialRowData(),
 });
 
 const DISPLAY_ROWS_CONFIG: DisplayRowConfig[] = [
@@ -54,7 +65,7 @@ const DISPLAY_ROWS_CONFIG: DisplayRowConfig[] = [
   { id: 'total_global', label: 'TOTAL', bgColor: 'bg-orange-300', textColor: 'text-black', isInputRow: false },
   { id: 'nb_bagette', label: 'NB de bagette', bgColor: 'bg-gray-300', textColor: 'text-black', isInputRow: false },
   { id: 'nb_faluche', label: 'NB de Faluche', bgColor: 'bg-gray-300', textColor: 'text-black', isInputRow: false },
-  { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: false }, // Changed to not be an input row
+  { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: false },
 ];
 
 
@@ -94,12 +105,10 @@ export default function NumberOfPicnics() {
     }
   }, [picnicData, toast]);
   
-  const clearData = () => {
-    if(confirm("Êtes-vous sûr de vouloir effacer toutes les données de cette semaine ?")) {
-        setPicnicData(createInitialPicnicWeekData());
-        localStorage.removeItem(PICNIC_DATA_STORAGE_KEY);
-        toast({ title: "Données effacées", variant: "destructive"});
-    }
+  const handleConfirmClearData = () => {
+    setPicnicData(createInitialPicnicWeekData());
+    localStorage.removeItem(PICNIC_DATA_STORAGE_KEY);
+    toast({ title: "Données effacées", variant: "destructive"});
   };
 
   const handleInputChange = (rowId: PicnicRowKey, day: keyof DailyCounts, value: string) => {
@@ -188,7 +197,8 @@ export default function NumberOfPicnics() {
                           onChange={(e) => handleInputChange(rowConfig.id as PicnicRowKey, day, e.target.value)}
                           className={cn(
                             "h-8 text-center tabular-nums bg-transparent",
-                            rowConfig.textColor === 'text-white' ? "text-white placeholder:text-gray-300" : "text-black placeholder:text-gray-500"
+                            rowConfig.textColor === 'text-white' ? "text-white placeholder:text-gray-300" : "text-black placeholder:text-gray-500",
+                            `${rowConfig.bgColor.replace('bg-','border-')}/50 focus:border-ring` // Dynamic border based on bg
                           )}
                           placeholder="0"
                         />
@@ -213,10 +223,28 @@ export default function NumberOfPicnics() {
           </Table>
         </div>
         <div className="mt-6 flex justify-end space-x-2">
-            <Button variant="outline" onClick={clearData}>
-                <Trash2 className="mr-2 h-4 w-4" />
-                Effacer Données Semaine
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline">
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Effacer Données Semaine
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Êtes-vous sûr de vouloir effacer toutes les données de cette semaine pour les pique-niques ? Cette action est irréversible.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Annuler</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleConfirmClearData}>
+                    Effacer
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             <Button onClick={saveData}>
                 <Save className="mr-2 h-4 w-4" />
                 Sauvegarder Données
