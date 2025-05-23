@@ -54,9 +54,9 @@ const createInitialPicnicWeekData = (): PicnicWeekData => ({
   philipe: initialRowData(),
   plus: initialRowData(),
   autre: initialRowData(),
-  nb_bagette: initialRowData(),
-  nb_faluche: initialRowData(),
-  total_glaciere: initialRowData(),
+  nb_bagette: initialRowData(), // Will be calculated for display, but structure kept for data integrity
+  nb_faluche: initialRowData(), // Will be calculated for display
+  total_glaciere: initialRowData(), // Will be calculated for display
 });
 
 const createInitialDailyClientPicnicData = (): DailyClientPicnicData => ({
@@ -132,9 +132,10 @@ export default function NumberOfPicnics() {
       if (storedClientOrders) {
         const parsedClientOrders: ClientPicnicOrder[] = JSON.parse(storedClientOrders);
         setClientOrders(parsedClientOrders.map(order => ({
-          ...createInitialClientOrder(), // Ensure all default daily structures are present
+          ...createInitialClientOrder(), 
           ...order,
-          days: { // Ensure each day has the correct structure
+          id: order.id || `client_order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, // ensure id
+          days: { 
             lundi: { ...createInitialDailyClientPicnicData(), ...(order.days?.lundi || {}) },
             mardi: { ...createInitialDailyClientPicnicData(), ...(order.days?.mardi || {}) },
             mercredi: { ...createInitialDailyClientPicnicData(), ...(order.days?.mercredi || {}) },
@@ -143,7 +144,7 @@ export default function NumberOfPicnics() {
           }
         })));
       } else {
-        setClientOrders(Array.from({ length: 3 }, createInitialClientOrder)); // Start with 3 empty client rows
+        setClientOrders(Array.from({ length: 3 }, createInitialClientOrder)); 
       }
     } catch (e) {
       console.error("Failed to load picnic data from localStorage for week " + weekIdentifier, e);
@@ -215,7 +216,8 @@ export default function NumberOfPicnics() {
   const handleClientOrderDailyInputChange = (index: number, day: DayOfWeekKey, field: 'nbPn', value: string) => {
     setClientOrders(prevOrders => {
       const newOrders = [...prevOrders];
-      const updatedDayData = { ...newOrders[index].days[day], [field]: value };
+      const currentDayData = newOrders[index].days[day];
+      const updatedDayData = { ...currentDayData, [field]: value };
 
       if (field === 'nbPn') {
         const nbPnValue = Number(value);
@@ -234,7 +236,8 @@ export default function NumberOfPicnics() {
   const handleClientOrderDailyBreadChange = (index: number, day: DayOfWeekKey, choice: BreadChoice) => {
     setClientOrders(prevOrders => {
       const newOrders = [...prevOrders];
-      const updatedDayData = { ...newOrders[index].days[day], breadChoice: choice };
+      const currentDayData = newOrders[index].days[day];
+      const updatedDayData = { ...currentDayData, breadChoice: choice };
       newOrders[index] = {
         ...newOrders[index],
         days: { ...newOrders[index].days, [day]: updatedDayData }
@@ -286,7 +289,7 @@ export default function NumberOfPicnics() {
     }, {} as Record<DayOfWeekKey, number>);
   }, [picnicData]);
 
-  const dailyBreadTotals = useMemo(() => {
+  const clientBreadTotals = useMemo(() => {
     const totals: Record<DayOfWeekKey, { baguettes: number; faluches: number }> = {
       lundi: { baguettes: 0, faluches: 0 },
       mardi: { baguettes: 0, faluches: 0 },
@@ -370,9 +373,8 @@ export default function NumberOfPicnics() {
                             value={picnicData[rowConfig.id as PicnicRowKey]?.[day] ?? ''}
                             onChange={(e) => handleInputChange(rowConfig.id as PicnicRowKey, day, e.target.value)}
                             className={cn(
-                              "h-8 text-center tabular-nums bg-transparent",
-                              rowConfig.textColor === 'text-white' ? "text-white placeholder:text-gray-300 focus:ring-white/50" : "text-black placeholder:text-gray-500 focus:ring-black/50",
-                              `border-transparent focus:border-current focus:ring-1`
+                              "h-8 text-center tabular-nums bg-transparent border-transparent focus:border-current focus:ring-1",
+                              rowConfig.textColor === 'text-white' ? "text-white placeholder:text-gray-300 focus:ring-white/50" : "text-black placeholder:text-gray-500 focus:ring-black/50"
                             )}
                             placeholder="0"
                           />
@@ -380,7 +382,7 @@ export default function NumberOfPicnics() {
                           <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{dailyGlobalTotals[day]}</span>
                         ) : rowConfig.id === 'nb_bagette' ? (
                           <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>
-                            {day === 'lundi' ? Math.round(dailyGlobalTotals[day] / 2) : '0'}
+                            {Math.round(dailyGlobalTotals[day] / 2)}
                           </span>
                         ) : rowConfig.id === 'nb_faluche' ? (
                            <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>
@@ -511,6 +513,22 @@ export default function NumberOfPicnics() {
                     </TableRow>
                   ))}
               </TableBody>
+               <TableFooter>
+                <TableRow className="bg-amber-100 dark:bg-amber-800/50">
+                  <TableCell colSpan={1} className="text-right font-semibold text-black">TOTAUX PAINS COMMANDÉS :</TableCell>
+                  {DAYS_OF_WEEK_KEYS.map(day => (
+                    <React.Fragment key={`footer-total-${day}`}>
+                      <TableCell className="text-center font-bold text-black">
+                        B: {clientBreadTotals[day].baguettes}
+                      </TableCell>
+                      <TableCell className="text-center font-bold text-black">
+                        F: {clientBreadTotals[day].faluches}
+                      </TableCell>
+                    </React.Fragment>
+                  ))}
+                  <TableCell colSpan={2}></TableCell>
+                </TableRow>
+              </TableFooter>
             </Table>
           </div>
           <div className="mt-6 flex justify-between items-center">
@@ -562,10 +580,10 @@ export default function NumberOfPicnics() {
                     </TableHeader>
                     <TableBody>
                         {DAYS_OF_WEEK_KEYS.map(day => (
-                            <TableRow key={`total-${day}`}>
+                            <TableRow key={`total-summary-${day}`}>
                                 <TableCell className="font-medium capitalize">{DAY_LABELS[day]}</TableCell>
-                                <TableCell className="text-center font-semibold">{dailyBreadTotals[day].baguettes}</TableCell>
-                                <TableCell className="text-center font-semibold">{dailyBreadTotals[day].faluches}</TableCell>
+                                <TableCell className="text-center font-semibold">{clientBreadTotals[day].baguettes}</TableCell>
+                                <TableCell className="text-center font-semibold">{clientBreadTotals[day].faluches}</TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
