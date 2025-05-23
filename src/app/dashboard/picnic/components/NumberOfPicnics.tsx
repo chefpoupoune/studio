@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Save, Trash2, PlusCircle, Calendar as CalendarIcon } from 'lucide-react';
+import { Save, Trash2, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { PicnicWeekData, DailyCounts, PicnicRowKey, DisplayRowConfig, ClientPicnicOrder, BreadChoice, DailyClientPicnicData, DayOfWeekKey } from '../types';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -25,7 +25,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { format, startOfWeek, endOfWeek, addDays, parseISO } from 'date-fns';
+import { format, startOfWeek, endOfWeek, addDays, subDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 const DAYS_OF_WEEK_KEYS: DayOfWeekKey[] = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'];
@@ -321,28 +321,43 @@ export default function NumberOfPicnics() {
     return totals;
   }, [clientOrders]);
 
+  const handlePreviousWeek = () => {
+    setSelectedDate(prevDate => subDays(prevDate, 7));
+  };
+
+  const handleNextWeek = () => {
+    setSelectedDate(prevDate => addDays(prevDate, 7));
+  };
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-4">
         <h2 className="text-xl font-semibold">{weekDisplayString}</h2>
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" className="w-full sm:w-auto">
-              <CalendarIcon className="mr-2 h-4 w-4" />
-              {format(selectedDate, "dd/MM/yyyy", { locale: fr })}
+        <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" onClick={handlePreviousWeek} aria-label="Semaine précédente">
+              <ChevronLeft className="h-4 w-4" />
             </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0">
-            <Calendar
-              mode="single"
-              selected={selectedDate}
-              onSelect={(date) => date && setSelectedDate(date)}
-              initialFocus
-              locale={fr}
-            />
-          </PopoverContent>
-        </Popover>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="w-auto">
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {format(selectedDate, "dd/MM", { locale: fr })} (Sél. Sem.)
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => date && setSelectedDate(date)}
+                  initialFocus
+                  locale={fr}
+                />
+              </PopoverContent>
+            </Popover>
+            <Button variant="outline" size="icon" onClick={handleNextWeek} aria-label="Semaine suivante">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+        </div>
       </div>
 
       <Card className="shadow-lg">
@@ -393,7 +408,7 @@ export default function NumberOfPicnics() {
                         const value = Math.round(dailyGlobalTotals[day] / 2);
                         cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{value}</span>;
                       } else if (rowConfig.id === 'nb_faluche') {
-                         const value = (day === 'mercredi' || day === 'vendredi') ? dailyGlobalTotals[day] : '0';
+                        const value = (day === 'mercredi' || day === 'vendredi') ? dailyGlobalTotals[day] : '0';
                         cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{value}</span>;
                       } else if (rowConfig.id === 'total_glaciere') {
                         cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{dailyGlaciereTotals[day]}</span>;
@@ -451,8 +466,8 @@ export default function NumberOfPicnics() {
           <div className="overflow-x-auto border rounded-md">
             <Table className="min-w-[1200px]">
               <TableHeader>
-                <TableRow className="bg-amber-200">
-                  <TableHead className="w-[150px] min-w-[150px] text-black sticky left-0 z-10 bg-amber-200">Client</TableHead>
+                <TableRow className="bg-amber-200 dark:bg-amber-700/50">
+                  <TableHead className="w-[150px] min-w-[150px] text-black sticky left-0 z-10 bg-amber-200 dark:bg-amber-700/50">Client</TableHead>
                   {DAYS_OF_WEEK_KEYS.map(day => (
                     <React.Fragment key={`header-${day}`}>
                       <TableHead className="w-[80px] min-w-[80px] text-center text-black capitalize">{DAY_LABELS[day]} NB PN</TableHead>
@@ -460,7 +475,7 @@ export default function NumberOfPicnics() {
                     </React.Fragment>
                   ))}
                   <TableHead className="w-[200px] min-w-[200px] text-black">Observation (Semaine)</TableHead>
-                  <TableHead className="w-[80px] min-w-[80px] text-center text-black sticky right-0 z-10 bg-amber-200">Actions</TableHead>
+                  <TableHead className="w-[80px] min-w-[80px] text-center text-black sticky right-0 z-10 bg-amber-200 dark:bg-amber-700/50">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -524,22 +539,6 @@ export default function NumberOfPicnics() {
                     </TableRow>
                   ))}
               </TableBody>
-               <TableFooter>
-                <TableRow className="bg-amber-100 dark:bg-amber-800/50">
-                  <TableCell className="text-right font-semibold text-black sticky left-0 z-10 bg-amber-100 dark:bg-amber-800/50">TOTAUX PAINS COMMANDÉS :</TableCell>
-                  {DAYS_OF_WEEK_KEYS.map(day => (
-                    <React.Fragment key={`footer-total-${day}`}>
-                      <TableCell className="text-center font-bold text-black">
-                        B: {clientBreadTotals[day].baguettes}
-                      </TableCell>
-                      <TableCell className="text-center font-bold text-black">
-                        F: {clientBreadTotals[day].faluches}
-                      </TableCell>
-                    </React.Fragment>
-                  ))}
-                  <TableCell colSpan={2}></TableCell> 
-                </TableRow>
-              </TableFooter>
             </Table>
           </div>
           <div className="mt-6 flex justify-between items-center">
@@ -584,9 +583,9 @@ export default function NumberOfPicnics() {
                 <Table>
                     <TableHeader>
                         <TableRow className="bg-amber-100 dark:bg-amber-800/50">
-                            <TableHead className="w-[150px] text-black">Jour</TableHead>
-                            <TableHead className="text-center text-black">Total Baguettes (Nb Pn / 2)</TableHead>
-                            <TableHead className="text-center text-black">Total Faluches (Nb Pn)</TableHead>
+                            <TableHead className="w-[150px] text-black dark:text-white">Jour</TableHead>
+                            <TableHead className="text-center text-black dark:text-white">Total Baguettes (Nb Pn / 2)</TableHead>
+                            <TableHead className="text-center text-black dark:text-white">Total Faluches (Nb Pn)</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -607,3 +606,4 @@ export default function NumberOfPicnics() {
   );
 }
 
+    
