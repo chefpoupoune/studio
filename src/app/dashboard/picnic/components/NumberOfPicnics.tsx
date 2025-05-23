@@ -289,7 +289,7 @@ export default function NumberOfPicnics() {
     }, {} as Record<DayOfWeekKey, number>);
   }, [picnicData]);
 
-  const clientDailyBreadTotals = useMemo(() => {
+  const clientBreadTotals = useMemo(() => {
     const totals: Record<DayOfWeekKey, { baguettes: number; faluches: number }> = {
       lundi: { baguettes: 0, faluches: 0 },
       mardi: { baguettes: 0, faluches: 0 },
@@ -297,6 +297,8 @@ export default function NumberOfPicnics() {
       jeudi: { baguettes: 0, faluches: 0 },
       vendredi: { baguettes: 0, faluches: 0 },
     };
+    
+    let sumOfBaguettesNbPn: Record<DayOfWeekKey, number> = { lundi:0, mardi:0, mercredi:0, jeudi:0, vendredi:0 };
 
     clientOrders.forEach(order => {
       DAYS_OF_WEEK_KEYS.forEach(day => {
@@ -304,13 +306,18 @@ export default function NumberOfPicnics() {
         const nbPn = Number(dayData.nbPn);
         if (!isNaN(nbPn) && nbPn > 0) {
           if (dayData.breadChoice === 'baguette') {
-            totals[day].baguettes += nbPn;
+            sumOfBaguettesNbPn[day] += nbPn;
           } else if (dayData.breadChoice === 'faluche') {
             totals[day].faluches += nbPn;
           }
         }
       });
     });
+
+    DAYS_OF_WEEK_KEYS.forEach(day => {
+        totals[day].baguettes = Math.round(sumOfBaguettesNbPn[day] / 2);
+    });
+
     return totals;
   }, [clientOrders]);
 
@@ -386,7 +393,7 @@ export default function NumberOfPicnics() {
                         const value = Math.round(dailyGlobalTotals[day] / 2);
                         cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{value}</span>;
                       } else if (rowConfig.id === 'nb_faluche') {
-                        const value = (day === 'mercredi' || day === 'vendredi') ? dailyGlobalTotals[day] : '0';
+                         const value = (day === 'mercredi' || day === 'vendredi') ? dailyGlobalTotals[day] : '0';
                         cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{value}</span>;
                       } else if (rowConfig.id === 'total_glaciere') {
                         cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{dailyGlaciereTotals[day]}</span>;
@@ -519,18 +526,18 @@ export default function NumberOfPicnics() {
               </TableBody>
                <TableFooter>
                 <TableRow className="bg-amber-100 dark:bg-amber-800/50">
-                  <TableCell colSpan={1} className="text-right font-semibold text-black sticky left-0 z-10 bg-amber-100 dark:bg-amber-800/50">TOTAUX PAINS COMMANDÉS :</TableCell>
+                  <TableCell className="text-right font-semibold text-black sticky left-0 z-10 bg-amber-100 dark:bg-amber-800/50">TOTAUX PAINS COMMANDÉS :</TableCell>
                   {DAYS_OF_WEEK_KEYS.map(day => (
                     <React.Fragment key={`footer-total-${day}`}>
                       <TableCell className="text-center font-bold text-black">
-                        B: {clientDailyBreadTotals[day].baguettes}
+                        B: {clientBreadTotals[day].baguettes}
                       </TableCell>
                       <TableCell className="text-center font-bold text-black">
-                        F: {clientDailyBreadTotals[day].faluches}
+                        F: {clientBreadTotals[day].faluches}
                       </TableCell>
                     </React.Fragment>
                   ))}
-                  <TableCell colSpan={2}></TableCell>
+                  <TableCell colSpan={2}></TableCell> 
                 </TableRow>
               </TableFooter>
             </Table>
@@ -578,16 +585,16 @@ export default function NumberOfPicnics() {
                     <TableHeader>
                         <TableRow className="bg-amber-100 dark:bg-amber-800/50">
                             <TableHead className="w-[150px] text-black">Jour</TableHead>
-                            <TableHead className="text-center text-black">Total Baguettes</TableHead>
-                            <TableHead className="text-center text-black">Total Faluches</TableHead>
+                            <TableHead className="text-center text-black">Total Baguettes (Nb Pn / 2)</TableHead>
+                            <TableHead className="text-center text-black">Total Faluches (Nb Pn)</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {DAYS_OF_WEEK_KEYS.map(day => (
                             <TableRow key={`total-summary-${day}`}>
                                 <TableCell className="font-medium capitalize">{DAY_LABELS[day]}</TableCell>
-                                <TableCell className="text-center font-semibold">{clientDailyBreadTotals[day].baguettes}</TableCell>
-                                <TableCell className="text-center font-semibold">{clientDailyBreadTotals[day].faluches}</TableCell>
+                                <TableCell className="text-center font-semibold">{clientBreadTotals[day].baguettes}</TableCell>
+                                <TableCell className="text-center font-semibold">{clientBreadTotals[day].faluches}</TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
@@ -600,5 +607,3 @@ export default function NumberOfPicnics() {
   );
 }
 
-
-    
