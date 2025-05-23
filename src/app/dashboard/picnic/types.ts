@@ -24,3 +24,12 @@ export interface DisplayRowConfig {
   isTotalContributor?: boolean; 
 }
 
+// New type for the second table (Client Picnic Orders)
+export interface ClientPicnicOrder {
+  id: string;
+  clientName: string;
+  nbPn: string; // Kept as string to allow empty input, convert to number on use
+  observation: string;
+  totalBaguette: string; // Kept as string
+  totalFaluche: string; // Kept as string
+}
