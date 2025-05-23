@@ -36,8 +36,8 @@ const createInitialPicnicWeekData = (): PicnicWeekData => ({
   philipe: initialRowData(),
   plus: initialRowData(),
   autre: initialRowData(),
-  nb_bagette: initialRowData(),
-  nb_faluche: initialRowData(), // Nouvelle ligne
+  nb_bagette: initialRowData(), // This will be calculated, but keep structure
+  nb_faluche: initialRowData(), // This will also be calculated
   total_glaciere: initialRowData(),
 });
 
@@ -53,7 +53,7 @@ const DISPLAY_ROWS_CONFIG: DisplayRowConfig[] = [
   { id: 'autre', label: 'autre', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: true, isTotalContributor: true },
   { id: 'total_global', label: 'TOTAL', bgColor: 'bg-orange-300', textColor: 'text-black', isInputRow: false },
   { id: 'nb_bagette', label: 'NB de bagette', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: false },
-  { id: 'nb_faluche', label: 'NB de Faluche', bgColor: 'bg-yellow-200', textColor: 'text-black', isInputRow: true, isTotalContributor: false }, // Nouvelle ligne
+  { id: 'nb_faluche', label: 'NB de Faluche', bgColor: 'bg-yellow-200', textColor: 'text-black', isInputRow: false, isTotalContributor: false },
   { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: true },
 ];
 
@@ -115,13 +115,11 @@ export default function NumberOfPicnics() {
     }
   };
 
-  const calculateDailyTotal = useCallback((day: keyof DailyCounts, type: 'global'): number => {
+  const calculateDailyTotal = useCallback((day: keyof DailyCounts): number => {
     let sum = 0;
     for (const rowConfig of DISPLAY_ROWS_CONFIG) {
-      if (rowConfig.isInputRow) { 
-        if (type === 'global' && rowConfig.isTotalContributor) {
+      if (rowConfig.isInputRow && rowConfig.isTotalContributor) { 
           sum += Number(picnicData[rowConfig.id as PicnicRowKey]?.[day]) || 0;
-        }
       }
     }
     return sum;
@@ -129,7 +127,7 @@ export default function NumberOfPicnics() {
 
   const dailyGlobalTotals = useMemo(() => {
     return DAYS_OF_WEEK.reduce((acc, day) => {
-      acc[day] = calculateDailyTotal(day, 'global');
+      acc[day] = calculateDailyTotal(day);
       return acc;
     }, {} as Record<keyof DailyCounts, number>);
   }, [calculateDailyTotal]);
@@ -171,11 +169,9 @@ export default function NumberOfPicnics() {
                           onChange={(e) => handleInputChange(rowConfig.id as PicnicRowKey, day, e.target.value)}
                           className={cn(
                             "h-8 text-center tabular-nums",
-                            // Apply text color from config to input placeholder and text for better visibility
-                            rowConfig.textColor.startsWith('text-white') ? "text-white placeholder:text-gray-300" : "text-black placeholder:text-gray-500",
-                            rowConfig.bgColor // Keep the background color of the input transparent or match cell for inputs
+                            rowConfig.textColor.startsWith('text-white') ? "text-white placeholder:text-gray-300" : "text-black placeholder:text-gray-500"
                           )}
-                          style={{ backgroundColor: 'transparent' }} // Ensure input background is transparent to show cell color
+                          style={{ backgroundColor: 'transparent' }}
                           placeholder="0"
                         />
                       ) : rowConfig.id === 'total_global' ? ( 
@@ -183,6 +179,10 @@ export default function NumberOfPicnics() {
                       ) : rowConfig.id === 'nb_bagette' ? (
                         <span className="font-semibold">
                           {day === 'lundi' ? Math.round(dailyGlobalTotals[day] / 2) : '0'}
+                        </span>
+                      ) : rowConfig.id === 'nb_faluche' ? (
+                        <span className="font-semibold">
+                          {day === 'mercredi' ? dailyGlobalTotals[day] : day === 'vendredi' ? dailyGlobalTotals[day] : '0'}
                         </span>
                       ) : null}
                     </TableCell>
