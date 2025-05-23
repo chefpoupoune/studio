@@ -111,13 +111,13 @@ export default function PicnicRecap() {
         });
       } else {
         setPicnicData(currentData => {
-            const freshData = createInitialPicnicWeekData();
-             (Object.keys(freshData) as PicnicRowKey[]).forEach(key => {
+            const freshDataForNewWeek = createInitialPicnicWeekData();
+            (Object.keys(freshDataForNewWeek) as PicnicRowKey[]).forEach(key => {
                 if (currentData && currentData[key]?.weeklyObservation) {
-                    freshData[key].weeklyObservation = currentData[key].weeklyObservation;
+                    freshDataForNewWeek[key].weeklyObservation = currentData[key].weeklyObservation;
                 }
             });
-            return freshData;
+            return freshDataForNewWeek;
         });
       }
 
@@ -337,7 +337,7 @@ export default function PicnicRecap() {
                       if (rowConfig.id === 'total_global') {
                         cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{dailyGlobalTotals[day]}</span>;
                       } else if (rowConfig.id === 'nb_bagette') {
-                        const value = Math.round(dailyGlobalTotals[day] / 2);
+                        const value = day === 'lundi' ? Math.round(dailyGlobalTotals[day] / 2) : 0;
                         cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{value}</span>;
                       } else if (rowConfig.id === 'nb_faluche') {
                         const value = (day === 'mercredi' || day === 'vendredi') ? dailyGlobalTotals[day] : 0;
@@ -528,7 +528,7 @@ export default function PicnicRecap() {
                 <TableRow>
                   <TableCell className="font-semibold bg-orange-300 dark:bg-orange-800/50 text-black">Baguette</TableCell>
                   {DAYS_OF_WEEK_KEYS.map(day => {
-                    const totalBaguettesForDay = (weeklyRecapFooterTotals.baguette[day] || 0) + Math.round((dailyGlobalTotals[day] || 0) / 2);
+                    const totalBaguettesForDay = (weeklyRecapFooterTotals.baguette[day] || 0) + (dailyGlobalTotals[day] !== undefined ? Math.round(dailyGlobalTotals[day] / 2) : 0);
                     return (
                       <TableCell key={`total-baguette-${day}`} className="text-center bg-orange-100 dark:bg-orange-700/40">
                         {totalBaguettesForDay > 0 ? totalBaguettesForDay : '-'}
@@ -555,6 +555,8 @@ export default function PicnicRecap() {
     </div>
   );
 }
+    
+
     
 
     
