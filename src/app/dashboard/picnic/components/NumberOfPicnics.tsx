@@ -38,7 +38,7 @@ const DAY_LABELS: Record<DayOfWeekKey, string> = {
 };
 
 const PICNIC_DATA_STORAGE_KEY_PREFIX = "picnic_nb_pn_data_v1_";
-const PICNIC_CLIENT_ORDERS_KEY_PREFIX = "picnic_client_orders_data_v3_";
+const PICNIC_CLIENT_ORDERS_KEY_PREFIX = "picnic_client_orders_data_v3_"; // Incremented key
 
 const initialRowData = (): DailyCounts => ({
   lundi: '', mardi: '', mercredi: '', jeudi: '', vendredi: ''
@@ -93,6 +93,22 @@ const DISPLAY_ROWS_CONFIG: DisplayRowConfig[] = [
   { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: false },
 ];
 
+interface DailyBreadCounts {
+  lundi: number;
+  mardi: number;
+  mercredi: number;
+  jeudi: number;
+  vendredi: number;
+}
+
+interface ClientWeeklyBreadRecap {
+  id: string; 
+  clientName: string;
+  baguetteCounts: DailyBreadCounts;
+  falucheCounts: DailyBreadCounts;
+}
+
+
 export default function NumberOfPicnics() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [picnicData, setPicnicData] = useState<PicnicWeekData>(createInitialPicnicWeekData());
@@ -134,7 +150,7 @@ export default function NumberOfPicnics() {
         setClientOrders(parsedClientOrders.map(order => ({
           ...createInitialClientOrder(), 
           ...order,
-          id: order.id || `client_order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          id: order.id || `client_order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, // Ensure ID exists
           days: { 
             lundi: { ...createInitialDailyClientPicnicData(), ...(order.days?.lundi || {}) },
             mardi: { ...createInitialDailyClientPicnicData(), ...(order.days?.mardi || {}) },
@@ -308,77 +324,53 @@ export default function NumberOfPicnics() {
     };
   }, [clientOrders, selectedClientOrderDay]);
 
-  const weeklyClientRecapData = useMemo(() => {
-    return clientOrders.map(order => {
-      let totalWeeklyNbPn = 0;
-      let tempWeeklyBaguettesForCalc = 0;
-      let totalWeeklyFaluches = 0;
+  const weeklyClientRecapData: ClientWeeklyBreadRecap[] = useMemo(() => {
+    return clientOrders
+      .filter(order => order.clientName.trim() !== '' || DAYS_OF_WEEK_KEYS.some(day => Number(order.days[day].nbPn) > 0))
+      .map(order => {
+        const dailyBaguetteCounts: DailyBreadCounts = {} as any;
+        const dailyFalucheCounts: DailyBreadCounts = {} as any;
 
-      const dailyBreakdown: Record<DayOfWeekKey, { nbPn: string; breadChoice: BreadChoice; }> = {} as any;
-
-      DAYS_OF_WEEK_KEYS.forEach(day => {
-        const dayData = order.days[day];
-        const nbPn = Number(dayData.nbPn) || 0;
-        totalWeeklyNbPn += nbPn;
-
-        if (dayData.breadChoice === 'baguette' && nbPn > 0) {
-          tempWeeklyBaguettesForCalc += nbPn;
-        } else if (dayData.breadChoice === 'faluche' && nbPn > 0) {
-          totalWeeklyFaluches += nbPn;
-        }
-        dailyBreakdown[day] = {
-          nbPn: dayData.nbPn,
-          breadChoice: dayData.breadChoice,
+        DAYS_OF_WEEK_KEYS.forEach(day => {
+          const dayData = order.days[day];
+          const nbPn = Number(dayData.nbPn) || 0;
+          if (nbPn > 0) {
+            if (dayData.breadChoice === 'baguette') {
+              dailyBaguetteCounts[day] = Math.round(nbPn / 2);
+              dailyFalucheCounts[day] = 0;
+            } else if (dayData.breadChoice === 'faluche') {
+              dailyFalucheCounts[day] = nbPn;
+              dailyBaguetteCounts[day] = 0;
+            } else {
+              dailyBaguetteCounts[day] = 0;
+              dailyFalucheCounts[day] = 0;
+            }
+          } else {
+            dailyBaguetteCounts[day] = 0;
+            dailyFalucheCounts[day] = 0;
+          }
+        });
+        return {
+          id: order.id,
+          clientName: order.clientName,
+          baguetteCounts: dailyBaguetteCounts,
+          falucheCounts: dailyFalucheCounts,
         };
-      });
-
-      return {
-        id: order.id,
-        clientName: order.clientName,
-        observation: order.observation,
-        days: dailyBreakdown,
-        totalWeeklyNbPn,
-        totalWeeklyBaguettes: Math.round(tempWeeklyBaguettesForCalc / 2),
-        totalWeeklyFaluches,
-      };
-    }).filter(recap => recap.clientName.trim() !== '' || recap.totalWeeklyNbPn > 0);
+    });
   }, [clientOrders]);
 
   const weeklyRecapFooterTotals = useMemo(() => {
-    const dailyTotals: Record<DayOfWeekKey, { nbPn: number; baguettes: number; faluches: number }> = {
-      lundi: { nbPn: 0, baguettes: 0, faluches: 0 },
-      mardi: { nbPn: 0, baguettes: 0, faluches: 0 },
-      mercredi: { nbPn: 0, baguettes: 0, faluches: 0 },
-      jeudi: { nbPn: 0, baguettes: 0, faluches: 0 },
-      vendredi: { nbPn: 0, baguettes: 0, faluches: 0 },
+    const totals: { baguette: DailyBreadCounts, faluche: DailyBreadCounts } = {
+      baguette: { lundi: 0, mardi: 0, mercredi: 0, jeudi: 0, vendredi: 0 },
+      faluche: { lundi: 0, mardi: 0, mercredi: 0, jeudi: 0, vendredi: 0 },
     };
-    let grandTotalNbPn = 0;
-    let grandTotalBaguettes = 0;
-    let grandTotalFaluches = 0;
-
     weeklyClientRecapData.forEach(recap => {
-      grandTotalNbPn += recap.totalWeeklyNbPn;
-      grandTotalBaguettes += recap.totalWeeklyBaguettes;
-      grandTotalFaluches += recap.totalWeeklyFaluches;
-
       DAYS_OF_WEEK_KEYS.forEach(day => {
-        const dayData = recap.days[day];
-        dailyTotals[day].nbPn += Number(dayData.nbPn) || 0;
-        let dailyBaguetteNbPn = 0;
-        if (dayData.breadChoice === 'baguette') {
-          dailyBaguetteNbPn = Number(dayData.nbPn) || 0;
-          dailyTotals[day].baguettes += dailyBaguetteNbPn; 
-        } else if (dayData.breadChoice === 'faluche') {
-          dailyTotals[day].faluches += Number(dayData.nbPn) || 0;
-        }
+        totals.baguette[day] += recap.baguetteCounts[day] || 0;
+        totals.faluche[day] += recap.falucheCounts[day] || 0;
       });
     });
-    
-    DAYS_OF_WEEK_KEYS.forEach(day => {
-      dailyTotals[day].baguettes = Math.round(dailyTotals[day].baguettes / 2);
-    });
-
-    return { dailyTotals, grandTotalNbPn, grandTotalBaguettes, grandTotalFaluches };
+    return totals;
   }, [weeklyClientRecapData]);
 
 
@@ -389,13 +381,6 @@ export default function NumberOfPicnics() {
   const handleNextWeek = () => {
     setSelectedDate(prevDate => addDays(prevDate, 7));
   };
-  
-  const getBreadShortDisplay = (breadChoice: BreadChoice): string => {
-    if (breadChoice === 'baguette') return 'B';
-    if (breadChoice === 'faluche') return 'F';
-    return '-';
-  };
-
 
   return (
     <div className="space-y-8">
@@ -477,7 +462,7 @@ export default function NumberOfPicnics() {
                         const value = Math.round(dailyGlobalTotals[day] / 2);
                         cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{value}</span>;
                       } else if (rowConfig.id === 'nb_faluche') {
-                         const value = (day === 'mercredi' || day === 'vendredi') ? dailyGlobalTotals[day] : '0';
+                        const value = (day === 'mercredi' || day === 'vendredi') ? dailyGlobalTotals[day] : '0';
                         cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{value}</span>;
                       } else if (rowConfig.id === 'total_glaciere') {
                         cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{dailyGlaciereTotals[day]}</span>;
@@ -667,12 +652,12 @@ export default function NumberOfPicnics() {
         </CardContent>
       </Card>
 
-      {/* Weekly Client Recap Table */}
+      {/* Weekly Client Recap Table as per IMAGE */}
       <Card className="shadow-lg mt-8">
         <CardHeader>
-          <CardTitle>Récapitulatif Hebdomadaire des Commandes Clients</CardTitle>
+          <CardTitle>Récapitulatif Hebdomadaire des Commandes Clients (selon image)</CardTitle>
           <CardDescription>
-            Totaux des commandes clients pour la semaine sélectionnée : {weekDisplayString}.
+            Totaux par type de pain pour chaque client sur la semaine sélectionnée : {weekDisplayString}.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -680,55 +665,57 @@ export default function NumberOfPicnics() {
             <p className="text-muted-foreground text-center py-4">Aucune commande client avec des quantités pour cette semaine.</p>
           ) : (
             <div className="overflow-x-auto border rounded-md">
-              <Table className="min-w-[1200px]">
+              <Table className="min-w-[900px]">
                 <TableHeader>
-                  <TableRow className="bg-sky-100 dark:bg-sky-800/50 text-xs">
-                    <TableHead className="text-black dark:text-white sticky left-0 z-10 bg-sky-100 dark:bg-sky-800/50 w-[150px] min-w-[150px]">Client</TableHead>
+                  <TableRow className="bg-orange-200 dark:bg-orange-700/50 text-xs">
+                    <TableHead className="text-black dark:text-white sticky left-0 z-10 bg-orange-200 dark:bg-orange-700/50 w-[150px] min-w-[150px]">Client</TableHead>
+                    <TableHead className="text-black dark:text-white w-[100px] min-w-[100px]">Pain</TableHead>
                     {DAYS_OF_WEEK_KEYS.map(day => (
-                      <React.Fragment key={day}>
-                        <TableHead className="text-center text-black dark:text-white min-w-[60px]">{DAY_LABELS[day]}<br/>NB PN</TableHead>
-                        <TableHead className="text-center text-black dark:text-white min-w-[50px]">Pain</TableHead>
-                      </React.Fragment>
+                        <TableHead key={day} className="text-center text-black dark:text-white min-w-[80px] capitalize">{DAY_LABELS[day]}</TableHead>
                     ))}
-                    <TableHead className="text-center text-black dark:text-white min-w-[80px]">Total<br/>NB PN (Sem.)</TableHead>
-                    <TableHead className="text-center text-black dark:text-white min-w-[80px]">Total<br/>Baguettes (Sem.)</TableHead>
-                    <TableHead className="text-center text-black dark:text-white min-w-[80px]">Total<br/>Faluches (Sem.)</TableHead>
-                    <TableHead className="text-black dark:text-white min-w-[200px]">Observation (Semaine)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="text-xs">
                   {weeklyClientRecapData.map((recap) => (
-                    <TableRow key={recap.id}>
-                      <TableCell className="font-medium sticky left-0 z-10 bg-card group-hover:bg-muted/50 w-[150px]">{recap.clientName || <span className="italic text-muted-foreground">Client non nommé</span>}</TableCell>
-                      {DAYS_OF_WEEK_KEYS.map(day => (
-                        <React.Fragment key={`${recap.id}-${day}`}>
-                          <TableCell className="text-center">{recap.days[day].nbPn || '-'}</TableCell>
-                          <TableCell className="text-center">{getBreadShortDisplay(recap.days[day].breadChoice)}</TableCell>
-                        </React.Fragment>
-                      ))}
-                      <TableCell className="text-center font-semibold">{recap.totalWeeklyNbPn}</TableCell>
-                      <TableCell className="text-center font-semibold">{recap.totalWeeklyBaguettes}</TableCell>
-                      <TableCell className="text-center font-semibold">{recap.totalWeeklyFaluches}</TableCell>
-                      <TableCell>{recap.observation}</TableCell>
-                    </TableRow>
+                    <React.Fragment key={recap.id}>
+                      <TableRow>
+                        <TableCell rowSpan={2} className="font-medium sticky left-0 z-10 bg-card group-hover:bg-muted/50 w-[150px] align-middle">
+                          {recap.clientName || <span className="italic text-muted-foreground">Client non nommé</span>}
+                        </TableCell>
+                        <TableCell className="font-semibold">Baguette</TableCell>
+                        {DAYS_OF_WEEK_KEYS.map(day => (
+                          <TableCell key={`${recap.id}-baguette-${day}`} className="text-center">
+                            {recap.baguetteCounts[day] > 0 ? recap.baguetteCounts[day] : '-'}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="font-semibold">Faluche</TableCell>
+                        {DAYS_OF_WEEK_KEYS.map(day => (
+                          <TableCell key={`${recap.id}-faluche-${day}`} className="text-center">
+                            {recap.falucheCounts[day] > 0 ? recap.falucheCounts[day] : '-'}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    </React.Fragment>
                   ))}
                 </TableBody>
                  <TableFooter className="text-xs">
-                    <TableRow className="bg-sky-200 dark:bg-sky-700/60">
-                        <TableCell className="text-right font-bold text-black dark:text-white sticky left-0 z-10 bg-sky-200 dark:bg-sky-700/60">TOTAUX JOURNALIERS:</TableCell>
+                    <TableRow className="bg-orange-100 dark:bg-orange-800/50">
+                        <TableCell colSpan={2} className="text-right font-bold text-black dark:text-white sticky left-0 z-10 bg-orange-100 dark:bg-orange-800/50">Total Baguette</TableCell>
                         {DAYS_OF_WEEK_KEYS.map(day => (
-                          <React.Fragment key={`footer-total-${day}`}>
-                            <TableCell className="text-center font-bold text-black dark:text-white">{weeklyRecapFooterTotals.dailyTotals[day].nbPn}</TableCell>
-                            <TableCell className="text-center font-bold text-black dark:text-white">
-                                B: {weeklyRecapFooterTotals.dailyTotals[day].baguettes}<br/>
-                                F: {weeklyRecapFooterTotals.dailyTotals[day].faluches}
-                            </TableCell>
-                          </React.Fragment>
+                          <TableCell key={`footer-total-baguette-${day}`} className="text-center font-bold text-black dark:text-white">
+                            {weeklyRecapFooterTotals.baguette[day] > 0 ? weeklyRecapFooterTotals.baguette[day] : '-'}
+                          </TableCell>
                         ))}
-                        <TableCell className="text-center font-extrabold text-black dark:text-white">{weeklyRecapFooterTotals.grandTotalNbPn}</TableCell>
-                        <TableCell className="text-center font-extrabold text-black dark:text-white">{weeklyRecapFooterTotals.grandTotalBaguettes}</TableCell>
-                        <TableCell className="text-center font-extrabold text-black dark:text-white">{weeklyRecapFooterTotals.grandTotalFaluches}</TableCell>
-                        <TableCell></TableCell>
+                    </TableRow>
+                    <TableRow className="bg-orange-100 dark:bg-orange-800/50">
+                        <TableCell colSpan={2} className="text-right font-bold text-black dark:text-white sticky left-0 z-10 bg-orange-100 dark:bg-orange-800/50">Total Faluche</TableCell>
+                        {DAYS_OF_WEEK_KEYS.map(day => (
+                          <TableCell key={`footer-total-faluche-${day}`} className="text-center font-bold text-black dark:text-white">
+                            {weeklyRecapFooterTotals.faluche[day] > 0 ? weeklyRecapFooterTotals.faluche[day] : '-'}
+                          </TableCell>
+                        ))}
                     </TableRow>
                 </TableFooter>
               </Table>
