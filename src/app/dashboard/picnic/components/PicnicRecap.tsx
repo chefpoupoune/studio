@@ -102,30 +102,18 @@ export default function PicnicRecap() {
     setInitialDataLoaded(false); 
     try {
       const storedPicnicDataRaw = localStorage.getItem(getPicnicDataStorageKey());
-      if (storedPicnicDataRaw) {
-        const parsedData = JSON.parse(storedPicnicDataRaw);
-        setPicnicData(currentData => {
-            const freshData = createInitialPicnicWeekDataForRecap();
-            (Object.keys(freshData) as PicnicRowKey[]).forEach(key => {
-                freshData[key] = { 
-                    ...(initialRowDataForRecap()), 
-                    ...(parsedData[key] || {}), 
-                    weeklyObservation: parsedData[key]?.weeklyObservation || currentData[key]?.weeklyObservation || '' 
-                };
-            });
-            return freshData;
+      setPicnicData(currentData => {
+        const freshData = createInitialPicnicWeekDataForRecap();
+        const parsedStoredData = storedPicnicDataRaw ? JSON.parse(storedPicnicDataRaw) : {};
+        (Object.keys(freshData) as PicnicRowKey[]).forEach(key => {
+            freshData[key] = { 
+                ...(initialRowDataForRecap()), 
+                ...(parsedStoredData[key] || {}), 
+                weeklyObservation: parsedStoredData[key]?.weeklyObservation || currentData[key]?.weeklyObservation || '' 
+            };
         });
-      } else {
-        setPicnicData(currentData => {
-            const freshDataForNewWeek = createInitialPicnicWeekDataForRecap();
-            (Object.keys(freshDataForNewWeek) as PicnicRowKey[]).forEach(key => {
-                if (currentData && currentData[key]?.weeklyObservation) {
-                    freshDataForNewWeek[key].weeklyObservation = currentData[key].weeklyObservation;
-                }
-            });
-            return freshDataForNewWeek;
-        });
-      }
+        return freshData;
+      });
 
       const storedClientOrders = localStorage.getItem(getClientOrdersStorageKey());
       if (storedClientOrders) {
@@ -252,7 +240,7 @@ export default function PicnicRecap() {
           clientName: order.clientName,
           baguetteCounts: baguetteCounts,
           falucheCounts: falucheCounts,
-          observation: order.observation 
+          observation: order.observation || ''
         };
     });
   }, [clientOrders]);
@@ -353,7 +341,8 @@ export default function PicnicRecap() {
 
         doc.autoTable({
             head: nbPnTableHead, body: nbPnTableBody, startY: currentY, theme: 'grid',
-            headStyles: tableHeadBaseStyles, styles: tableBaseStyles, columnStyles: nbPnColumnStyles,
+            headStyles: {...tableHeadBaseStyles, fillColor: hexToRgb("#FDBA74") || [253,186,116], textColor: [0,0,0]}, // Specific orange header for this table
+            styles: tableBaseStyles, columnStyles: nbPnColumnStyles,
             margin: { left: pdfSettings.marginLeft || 20, right: pdfSettings.marginRight || 20 },
             didDrawCell: (data) => {
                 if (data.section === 'body' && data.column.index === 0) {
@@ -375,7 +364,7 @@ export default function PicnicRecap() {
         doc.text("Récapitulatif Hebdomadaire des Commandes Clients", pdfSettings.marginLeft || 20, currentY);
         currentY += ((pdfSettings.defaultFontSize || 10) + 2) * 0.7 + 5;
 
-        const clientRecapHead = [['Client', 'Pain', ...DAYS_OF_WEEK_KEYS.map(day => DAY_LABELS[day])]];
+        const clientRecapHead = [['Client', 'Pain', ...DAYS_OF_WEEK_KEYS.map(day => DAY_LABELS[day]), 'Observation (Semaine)']];
         const clientRecapBody: any[][] = [];
         weeklyClientRecapData.forEach(recap => {
             const clientHasBaguettes = DAYS_OF_WEEK_KEYS.some(day => recap.baguetteCounts[day] > 0);
@@ -383,31 +372,43 @@ export default function PicnicRecap() {
             if (!clientHasBaguettes && !clientHasFaluches) return;
 
             const rowSpan = (clientHasBaguettes && clientHasFaluches) ? 2 : 1;
+            let observationCellAdded = false;
+
             if (clientHasBaguettes) {
-                clientRecapBody.push([
+                const baguetteRow = [
                     { content: recap.clientName || 'Client non nommé', rowSpan: rowSpan, styles: { valign: 'middle', fontStyle: 'bold' } },
                     'Baguette',
                     ...DAYS_OF_WEEK_KEYS.map(day => recap.baguetteCounts[day] > 0 ? recap.baguetteCounts[day].toString() : '-')
-                ]);
+                ];
+                if(!observationCellAdded) {
+                    baguetteRow.push({content: recap.observation || '-', rowSpan: rowSpan, styles: { valign: 'middle' }});
+                    observationCellAdded = true;
+                }
+                clientRecapBody.push(baguetteRow);
             }
             if (clientHasFaluches) {
-                const row = ['Faluche', ...DAYS_OF_WEEK_KEYS.map(day => recap.falucheCounts[day] > 0 ? recap.falucheCounts[day].toString() : '-')];
+                const falucheRow = ['Faluche', ...DAYS_OF_WEEK_KEYS.map(day => recap.falucheCounts[day] > 0 ? recap.falucheCounts[day].toString() : '-')];
                 if (!clientHasBaguettes) { 
-                    row.unshift({ content: recap.clientName || 'Client non nommé', rowSpan: 1, styles: { valign: 'middle', fontStyle: 'bold' } });
+                    falucheRow.unshift({ content: recap.clientName || 'Client non nommé', rowSpan: 1, styles: { valign: 'middle', fontStyle: 'bold' } });
                 }
-                clientRecapBody.push(row);
+                 if(!observationCellAdded) {
+                    falucheRow.push({content: recap.observation || '-', rowSpan: 1, styles: { valign: 'middle' }});
+                    observationCellAdded = true;
+                }
+                clientRecapBody.push(falucheRow);
             }
         });
          const clientRecapFoot: any[][] = [
-            [{content: 'Total Baguette', colSpan: 2, styles: {fontStyle:'bold', halign:'right'}}, ...DAYS_OF_WEEK_KEYS.map(day => weeklyRecapFooterTotals.baguette[day] > 0 ? weeklyRecapFooterTotals.baguette[day].toString() : '-')],
-            [{content: 'Total Faluche', colSpan: 2, styles: {fontStyle:'bold', halign:'right'}}, ...DAYS_OF_WEEK_KEYS.map(day => weeklyRecapFooterTotals.faluche[day] > 0 ? weeklyRecapFooterTotals.faluche[day].toString() : '-')]
+            [{content: 'Total Baguette', colSpan: 2, styles: {fontStyle:'bold', halign:'right'}}, ...DAYS_OF_WEEK_KEYS.map(day => weeklyRecapFooterTotals.baguette[day] > 0 ? weeklyRecapFooterTotals.baguette[day].toString() : '-'), ''],
+            [{content: 'Total Faluche', colSpan: 2, styles: {fontStyle:'bold', halign:'right'}}, ...DAYS_OF_WEEK_KEYS.map(day => weeklyRecapFooterTotals.faluche[day] > 0 ? weeklyRecapFooterTotals.faluche[day].toString() : '-'), '']
         ];
         
-        const clientRecapHeadStyles = {...tableHeadBaseStyles, fillColor: hexToRgb("#FED7AA") || [254,229,205], textColor: [0,0,0]}; // Orange Header
+        const clientRecapHeadStyles = {...tableHeadBaseStyles, fillColor: hexToRgb("#FDBA74") || [253,186,116], textColor: [0,0,0]}; // Light Orange Header for client recap
         const clientRecapColumnStyles : any = { 0: { fontStyle: 'bold', cellWidth: 100, halign: 'left' }, 1: {cellWidth: 50} };
         DAYS_OF_WEEK_KEYS.forEach((_, index) => {
           clientRecapColumnStyles[index + 2] = { cellWidth: 40, halign: 'center' };
         });
+        clientRecapColumnStyles[DAYS_OF_WEEK_KEYS.length + 2] = { cellWidth: 'auto', halign: 'left' }; // Observation column
 
         doc.autoTable({
             head: clientRecapHead, body: clientRecapBody, foot: clientRecapFoot, startY: currentY, theme: 'grid',
@@ -440,8 +441,8 @@ export default function PicnicRecap() {
             })],
         ];
 
-        const yellowRowBgColor = hexToRgb("#FEF9C3") || [254, 249, 195]; // Approx bg-yellow-200
-        const lightOrangeRowBgColor = hexToRgb("#FFEDD5") || [255, 237, 213]; // Approx bg-orange-300
+        const yellowRowBgColor = hexToRgb("#FEF9C3") || [254, 249, 195]; 
+        const lightOrangeRowBgColor = hexToRgb("#FFEDD5") || [255, 237, 213]; 
 
         const breadNeedsColumnStyles : any = { 0: { fontStyle: 'bold', cellWidth: 100, halign: 'left' } };
          DAYS_OF_WEEK_KEYS.forEach((_, index) => {
@@ -462,7 +463,7 @@ export default function PicnicRecap() {
                         data.cell.styles.fillColor = lightOrangeRowBgColor;
                         data.cell.styles.textColor = [0,0,0];
                     }
-                     if (data.column.index > 0) { // Daily data cells
+                     if (data.column.index > 0) { 
                         if(firstCellText.includes('pain (total)')) data.row.cells[data.column.index].styles.fillColor = yellowRowBgColor;
                         else if (firstCellText.includes('baguette') || firstCellText.includes('faluche')) data.row.cells[data.column.index].styles.fillColor = lightOrangeRowBgColor;
                     }
@@ -615,7 +616,7 @@ export default function PicnicRecap() {
         <CardHeader>
           <CardTitle>Récapitulatif Hebdomadaire des Commandes Clients</CardTitle>
           <CardDescription>
-            Totaux par type de pain pour chaque client sur la semaine sélectionnée.
+            Totaux par type de pain pour chaque client sur la semaine sélectionnée : {weekDisplayString}.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -623,7 +624,7 @@ export default function PicnicRecap() {
             <p className="text-muted-foreground text-center py-4">Aucune commande client avec des quantités pour cette semaine.</p>
           ) : (
             <div className="overflow-x-auto border rounded-md">
-              <Table className="min-w-[900px]">
+              <Table className="min-w-[1000px]"> {/* Increased min-width */}
                 <TableHeader>
                   <TableRow className="bg-orange-200 dark:bg-orange-700/50 text-xs">
                     <TableHead className="text-black dark:text-white sticky left-0 z-10 bg-orange-200 dark:bg-orange-700/50 w-[150px] min-w-[150px]">Client</TableHead>
@@ -631,10 +632,11 @@ export default function PicnicRecap() {
                     {DAYS_OF_WEEK_KEYS.map(day => (
                         <TableHead key={day} className="text-center text-black dark:text-white min-w-[80px] capitalize">{DAY_LABELS[day]}</TableHead>
                     ))}
+                    <TableHead className="text-black dark:text-white w-[200px] min-w-[200px]">Observation (Semaine)</TableHead> 
                   </TableRow>
                 </TableHeader>
                 <TableBody className="text-xs">
-                  {weeklyClientRecapData.map((recap) => {
+                {weeklyClientRecapData.map((recap) => {
                     const clientHasBaguettes = DAYS_OF_WEEK_KEYS.some(day => recap.baguetteCounts[day] > 0);
                     const clientHasFaluches = DAYS_OF_WEEK_KEYS.some(day => recap.falucheCounts[day] > 0);
 
@@ -661,6 +663,16 @@ export default function PicnicRecap() {
                                 {recap.baguetteCounts[day] > 0 ? recap.baguetteCounts[day] : '-'}
                               </TableCell>
                             ))}
+                             {/* Observation Cell for Baguette Row (or spanning both if only one exists) */}
+                             {rowSpanForClientName === 1 && (
+                                <TableCell rowSpan={1} className="align-middle">{recap.observation || '-'}</TableCell>
+                             )}
+                             {rowSpanForClientName === 2 && !clientHasFaluches && ( // Baguette only, observation spans 1
+                                 <TableCell rowSpan={1} className="align-middle">{recap.observation || '-'}</TableCell>
+                             )}
+                             {rowSpanForClientName === 2 && clientHasFaluches && ( // Baguette and Faluche, observation spans 2 (rendered here)
+                                 <TableCell rowSpan={2} className="align-middle">{recap.observation || '-'}</TableCell>
+                             )}
                           </TableRow>
                         )}
                         {clientHasFaluches && (
@@ -676,6 +688,10 @@ export default function PicnicRecap() {
                                 {recap.falucheCounts[day] > 0 ? recap.falucheCounts[day] : '-'}
                               </TableCell>
                             ))}
+                            {/* Observation Cell for Faluche Row (only if baguette row wasn't rendered and faluche is the only one) */}
+                            {rowSpanForClientName === 1 && !clientHasBaguettes && (
+                                 <TableCell rowSpan={1} className="align-middle">{recap.observation || '-'}</TableCell>
+                             )}
                           </TableRow>
                         )}
                       </React.Fragment>
@@ -690,6 +706,7 @@ export default function PicnicRecap() {
                             {weeklyRecapFooterTotals.baguette[day] > 0 ? weeklyRecapFooterTotals.baguette[day] : '-'}
                           </TableCell>
                         ))}
+                         <TableCell className="text-black dark:text-white"></TableCell> {/* Empty for Observation column */}
                     </TableRow>
                     <TableRow className="bg-orange-100 dark:bg-orange-800/50">
                         <TableCell colSpan={2} className="text-right font-bold text-black dark:text-white sticky left-0 z-10 bg-orange-100 dark:bg-orange-800/50">Total Faluche</TableCell>
@@ -698,6 +715,7 @@ export default function PicnicRecap() {
                             {weeklyRecapFooterTotals.faluche[day] > 0 ? weeklyRecapFooterTotals.faluche[day] : '-'}
                           </TableCell>
                         ))}
+                        <TableCell className="text-black dark:text-white"></TableCell> {/* Empty for Observation column */}
                     </TableRow>
                 </TableFooter>
               </Table>
@@ -748,8 +766,6 @@ export default function PicnicRecap() {
                     if (day === 'mardi' || day === 'jeudi') {
                         dailyPainTotal += (dailyGlaciereTotals[day] || 0);
                     }
-                    // This line previously added baguette and faluche totals. Removing them based on user request.
-                    // dailyPainTotal += (weeklyRecapFooterTotals.baguette[day] || 0) + (weeklyRecapFooterTotals.faluche[day] || 0);
                     return (
                         <TableCell key={`total-pain-${day}`} className="text-center bg-yellow-100 dark:bg-yellow-800/40">
                             {dailyPainTotal > 0 ? dailyPainTotal : '-'}
