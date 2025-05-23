@@ -37,7 +37,7 @@ const createInitialPicnicWeekData = (): PicnicWeekData => ({
   plus: initialRowData(),
   autre: initialRowData(),
   nb_bagette: initialRowData(),
-  nb_bagette_esat: initialRowData(),
+  // nb_bagette_esat: initialRowData(), // Removed
   total_glaciere: initialRowData(),
 });
 
@@ -48,14 +48,14 @@ const DISPLAY_ROWS_CONFIG: DisplayRowConfig[] = [
   { id: 'maxime_l', label: 'Maxime L', bgColor: 'bg-red-500', textColor: 'text-white', isInputRow: true, isESATContributor: true, isTotalContributor: true },
   { id: 'nicolas', label: 'Nicolas', bgColor: 'bg-black', textColor: 'text-white', isInputRow: true, isESATContributor: true, isTotalContributor: true },
   { id: 'maxime_h', label: 'Maxime H', bgColor: 'bg-blue-500', textColor: 'text-white', isInputRow: true, isESATContributor: true, isTotalContributor: true },
-  { id: 'philipe', label: 'Philipe', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: true, isESATContributor: true, isTotalContributor: true }, // Adjusted color
+  { id: 'philipe', label: 'Philipe', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: true, isESATContributor: true, isTotalContributor: true },
   { id: 'plus', label: 'PLUS', bgColor: 'bg-pink-500', textColor: 'text-white', isInputRow: true, isESATContributor: false, isTotalContributor: true },
-  { id: 'autre', label: 'autre', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: true, isESATContributor: false, isTotalContributor: true }, // Adjusted color
-  { id: 'total_esat', label: 'total ESAT', bgColor: 'bg-yellow-400', textColor: 'text-black', isInputRow: false }, // Adjusted color
-  { id: 'total_global', label: 'TOTAL', bgColor: 'bg-orange-300', textColor: 'text-black', isInputRow: false }, // Adjusted color
-  { id: 'nb_bagette', label: 'NB de bagette', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: true }, // Adjusted color
-  { id: 'nb_bagette_esat', label: 'NB de bagette ESAT', bgColor: 'bg-yellow-400', textColor: 'text-black', isInputRow: true }, // Adjusted color
-  { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: true }, // Adjusted color
+  { id: 'autre', label: 'autre', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: true, isESATContributor: false, isTotalContributor: true },
+  // { id: 'total_esat', label: 'total ESAT', bgColor: 'bg-yellow-400', textColor: 'text-black', isInputRow: false }, // Removed
+  { id: 'total_global', label: 'TOTAL', bgColor: 'bg-orange-300', textColor: 'text-black', isInputRow: false },
+  { id: 'nb_bagette', label: 'NB de bagette', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: true },
+  // { id: 'nb_bagette_esat', label: 'NB de bagette ESAT', bgColor: 'bg-yellow-400', textColor: 'text-black', isInputRow: true }, // Removed
+  { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: true },
 ];
 
 
@@ -106,13 +106,13 @@ export default function NumberOfPicnics() {
     }
   };
 
-  const calculateDailyTotal = useCallback((day: keyof DailyCounts, type: 'esat' | 'global'): number => {
+  const calculateDailyTotal = useCallback((day: keyof DailyCounts, type: 'global'): number => {
+    // Removed 'esat' type as it's no longer displayed. 
+    // The 'isESATContributor' flag remains on individual rows if needed for other logic later.
     let sum = 0;
     for (const rowConfig of DISPLAY_ROWS_CONFIG) {
       if (rowConfig.isInputRow) {
-        if (type === 'esat' && rowConfig.isESATContributor) {
-          sum += Number(picnicData[rowConfig.id as PicnicRowKey]?.[day]) || 0;
-        } else if (type === 'global' && rowConfig.isTotalContributor) {
+        if (type === 'global' && rowConfig.isTotalContributor) {
           sum += Number(picnicData[rowConfig.id as PicnicRowKey]?.[day]) || 0;
         }
       }
@@ -120,12 +120,13 @@ export default function NumberOfPicnics() {
     return sum;
   }, [picnicData]);
 
-  const dailyEsatTotals = useMemo(() => {
-    return DAYS_OF_WEEK.reduce((acc, day) => {
-      acc[day] = calculateDailyTotal(day, 'esat');
-      return acc;
-    }, {} as Record<keyof DailyCounts, number>);
-  }, [calculateDailyTotal]);
+  // Removed dailyEsatTotals calculation as the display row is removed.
+  // const dailyEsatTotals = useMemo(() => {
+  //   return DAYS_OF_WEEK.reduce((acc, day) => {
+  //     acc[day] = calculateDailyTotal(day, 'esat');
+  //     return acc;
+  //   }, {} as Record<keyof DailyCounts, number>);
+  // }, [calculateDailyTotal]);
 
   const dailyGlobalTotals = useMemo(() => {
     return DAYS_OF_WEEK.reduce((acc, day) => {
@@ -172,9 +173,7 @@ export default function NumberOfPicnics() {
                           className={cn("h-8 text-center tabular-nums", rowConfig.bgColor, rowConfig.textColor, "placeholder:text-gray-500")}
                           placeholder="0"
                         />
-                      ) : rowConfig.id === 'total_esat' ? (
-                        <span className="font-semibold tabular-nums">{dailyEsatTotals[day]}</span>
-                      ) : rowConfig.id === 'total_global' ? (
+                      ) : rowConfig.id === 'total_global' ? ( // Only total_global remains as a calculated display row here
                         <span className="font-semibold tabular-nums">{dailyGlobalTotals[day]}</span>
                       ) : null}
                     </TableCell>
