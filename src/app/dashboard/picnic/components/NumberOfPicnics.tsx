@@ -32,7 +32,7 @@ const DAY_LABELS: Record<keyof DailyCounts, string> = {
 };
 
 const PICNIC_DATA_STORAGE_KEY = "picnic_nb_pn_data_v1";
-const PICNIC_CLIENT_ORDERS_KEY = "picnic_client_orders_data_v1"; // New key for client orders
+const PICNIC_CLIENT_ORDERS_KEY = "picnic_client_orders_data_v1"; 
 
 const initialRowData = (): DailyCounts => ({
   lundi: '', mardi: '', mercredi: '', jeudi: '', vendredi: ''
@@ -58,8 +58,8 @@ const createInitialClientOrder = (): ClientPicnicOrder => ({
   clientName: '',
   nbPn: '',
   observation: '',
-  totalBaguette: '',
-  totalFaluche: '',
+  totalBaguette: '', // Value will be calculated for display
+  totalFaluche: '', // Value will be calculated for display
 });
 
 const DISPLAY_ROWS_CONFIG: DisplayRowConfig[] = [
@@ -103,6 +103,7 @@ export default function NumberOfPicnics() {
       if (storedClientOrders) {
         setClientOrders(JSON.parse(storedClientOrders));
       } else {
+        // Initialize with 5 empty rows if no data is found
         setClientOrders(Array.from({ length: 5 }, createInitialClientOrder));
       }
     } catch (e) {
@@ -157,10 +158,11 @@ export default function NumberOfPicnics() {
     }
   };
   
-  const handleClientOrderInputChange = (index: number, field: keyof Omit<ClientPicnicOrder, 'id' | 'totalBaguette'>, value: string) => {
+  const handleClientOrderInputChange = (index: number, field: keyof Omit<ClientPicnicOrder, 'id' | 'totalBaguette' | 'totalFaluche'>, value: string) => {
     setClientOrders(prevOrders => {
       const newOrders = [...prevOrders];
       newOrders[index] = { ...newOrders[index], [field]: value };
+      // totalBaguette and totalFaluche are now derived, so no need to update them here based on input
       return newOrders;
     });
   };
@@ -247,24 +249,24 @@ export default function NumberOfPicnics() {
                             value={picnicData[rowConfig.id as PicnicRowKey]?.[day] ?? ''}
                             onChange={(e) => handleInputChange(rowConfig.id as PicnicRowKey, day, e.target.value)}
                             className={cn(
-                              "h-8 text-center tabular-nums",
-                              rowConfig.textColor === 'text-white' ? "text-white placeholder:text-gray-300 bg-transparent" : "text-black placeholder:text-gray-500 bg-transparent",
+                              "h-8 text-center tabular-nums bg-transparent", // Ensure background is transparent
+                              rowConfig.textColor === 'text-white' ? "text-white placeholder:text-gray-300" : "text-black placeholder:text-gray-500",
                               `${rowConfig.bgColor.replace('bg-','border-')}/50 focus:border-ring` 
                             )}
                             placeholder="0"
                           />
                         ) : rowConfig.id === 'total_global' ? ( 
-                          <span className={cn("font-semibold", rowConfig.textColor)}>{dailyGlobalTotals[day]}</span>
+                          <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{dailyGlobalTotals[day]}</span> // Added py-1.5 for similar height
                         ) : rowConfig.id === 'nb_bagette' ? (
-                          <span className={cn("font-semibold", rowConfig.textColor)}>
+                          <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>
                             {day === 'lundi' ? Math.round(dailyGlobalTotals[day] / 2) : '0'}
                           </span>
                         ) : rowConfig.id === 'nb_faluche' ? (
-                          <span className={cn("font-semibold", rowConfig.textColor)}>
+                          <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>
                             {day === 'mercredi' ? dailyGlobalTotals[day] : day === 'vendredi' ? dailyGlobalTotals[day] : '0'}
                           </span>
                         ) : rowConfig.id === 'total_glaciere' ? (
-                          <span className={cn("font-semibold", rowConfig.textColor)}>{dailyGlaciereTotals[day]}</span>
+                          <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{dailyGlaciereTotals[day]}</span>
                         ) : null}
                       </TableCell>
                     ))}
@@ -328,6 +330,7 @@ export default function NumberOfPicnics() {
                 {clientOrders.map((order, index) => {
                   const nbPnValue = Number(order.nbPn);
                   const calculatedBaguettes = !isNaN(nbPnValue) && nbPnValue > 0 ? Math.round(nbPnValue / 2) : 0;
+                  const calculatedFaluches = !isNaN(nbPnValue) && nbPnValue > 0 ? nbPnValue : 0;
                   return (
                     <TableRow key={order.id}>
                       <TableCell className="p-1">
@@ -361,15 +364,10 @@ export default function NumberOfPicnics() {
                           {calculatedBaguettes}
                         </span>
                       </TableCell>
-                      <TableCell className="p-1">
-                        <Input
-                          type="number"
-                          min="0"
-                          value={order.totalFaluche}
-                          onChange={(e) => handleClientOrderInputChange(index, 'totalFaluche', e.target.value)}
-                          className="h-8 text-center"
-                          placeholder="0"
-                        />
+                      <TableCell className="p-1 text-center">
+                        <span className="h-8 flex items-center justify-center tabular-nums">
+                          {calculatedFaluches}
+                        </span>
                       </TableCell>
                       <TableCell className="p-1 text-center">
                         <Button variant="destructive" size="icon" onClick={() => handleDeleteClientOrderRow(order.id)} className="h-8 w-8">
@@ -420,5 +418,3 @@ export default function NumberOfPicnics() {
     </div>
   );
 }
-
-    
