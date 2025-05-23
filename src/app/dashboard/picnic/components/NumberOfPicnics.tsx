@@ -97,6 +97,7 @@ export default function NumberOfPicnics() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [picnicData, setPicnicData] = useState<PicnicWeekData>(createInitialPicnicWeekData());
   const [clientOrders, setClientOrders] = useState<ClientPicnicOrder[]>([]);
+  const [selectedClientOrderDay, setSelectedClientOrderDay] = useState<DayOfWeekKey>('lundi');
   const { toast } = useToast();
 
   const weekIdentifier = useMemo(() => {
@@ -106,8 +107,8 @@ export default function NumberOfPicnics() {
 
   const weekDisplayString = useMemo(() => {
     const monday = startOfWeek(selectedDate, { weekStartsOn: 1 });
-    const sunday = endOfWeek(selectedDate, { weekStartsOn: 1 });
-    return `Semaine du : ${format(monday, 'dd MMMM', { locale: fr })} au ${format(sunday, 'dd MMMM yyyy', { locale: fr })}`;
+    const sunday = endOfWeek(selectedDate, { weekStartsOn: 1 }); // Friday actually, for display purposes
+    return `Semaine du : ${format(monday, 'dd MMMM', { locale: fr })} au ${format(addDays(monday, 4), 'dd MMMM yyyy', { locale: fr })}`;
   }, [selectedDate]);
 
   const getPicnicDataStorageKey = useCallback(() => `${PICNIC_DATA_STORAGE_KEY_PREFIX}${weekIdentifier}`, [weekIdentifier]);
@@ -213,17 +214,15 @@ export default function NumberOfPicnics() {
     });
   };
 
-  const handleClientOrderDailyInputChange = (index: number, day: DayOfWeekKey, field: 'nbPn', value: string) => {
+  const handleClientOrderDailyInputChange = (index: number, day: DayOfWeekKey, value: string) => {
     setClientOrders(prevOrders => {
       const newOrders = [...prevOrders];
       const currentDayData = newOrders[index].days[day];
-      const updatedDayData = { ...currentDayData, [field]: value };
+      const updatedDayData = { ...currentDayData, nbPn: value };
 
-      if (field === 'nbPn') {
-        const nbPnValue = Number(value);
-        if (isNaN(nbPnValue) || nbPnValue <= 0) {
-          updatedDayData.breadChoice = 'none';
-        }
+      const nbPnValue = Number(value);
+      if (isNaN(nbPnValue) || nbPnValue <= 0) {
+        updatedDayData.breadChoice = 'none';
       }
       newOrders[index] = {
         ...newOrders[index],
@@ -289,37 +288,26 @@ export default function NumberOfPicnics() {
     }, {} as Record<DayOfWeekKey, number>);
   }, [picnicData]);
 
-  const clientBreadTotals = useMemo(() => {
-    const totals: Record<DayOfWeekKey, { baguettes: number; faluches: number }> = {
-      lundi: { baguettes: 0, faluches: 0 },
-      mardi: { baguettes: 0, faluches: 0 },
-      mercredi: { baguettes: 0, faluches: 0 },
-      jeudi: { baguettes: 0, faluches: 0 },
-      vendredi: { baguettes: 0, faluches: 0 },
-    };
+  const clientBreadTotalsForSelectedDay = useMemo(() => {
+    let baguettes = 0;
+    let faluches = 0;
     
-    let sumOfBaguettesNbPn: Record<DayOfWeekKey, number> = { lundi:0, mardi:0, mercredi:0, jeudi:0, vendredi:0 };
-
     clientOrders.forEach(order => {
-      DAYS_OF_WEEK_KEYS.forEach(day => {
-        const dayData = order.days[day];
-        const nbPn = Number(dayData.nbPn);
-        if (!isNaN(nbPn) && nbPn > 0) {
-          if (dayData.breadChoice === 'baguette') {
-            sumOfBaguettesNbPn[day] += nbPn;
-          } else if (dayData.breadChoice === 'faluche') {
-            totals[day].faluches += nbPn;
-          }
+      const dayData = order.days[selectedClientOrderDay];
+      const nbPn = Number(dayData.nbPn);
+      if (!isNaN(nbPn) && nbPn > 0) {
+        if (dayData.breadChoice === 'baguette') {
+          baguettes += nbPn;
+        } else if (dayData.breadChoice === 'faluche') {
+          faluches += nbPn;
         }
-      });
+      }
     });
-
-    DAYS_OF_WEEK_KEYS.forEach(day => {
-        totals[day].baguettes = Math.round(sumOfBaguettesNbPn[day] / 2);
-    });
-
-    return totals;
-  }, [clientOrders]);
+    return {
+      baguettes: Math.round(baguettes / 2), // Baguettes are still /2
+      faluches: faluches,
+    };
+  }, [clientOrders, selectedClientOrderDay]);
 
   const handlePreviousWeek = () => {
     setSelectedDate(prevDate => subDays(prevDate, 7));
@@ -351,6 +339,7 @@ export default function NumberOfPicnics() {
                   onSelect={(date) => date && setSelectedDate(date)}
                   initialFocus
                   locale={fr}
+                  weekStartsOn={1}
                 />
               </PopoverContent>
             </Popover>
@@ -457,88 +446,109 @@ export default function NumberOfPicnics() {
 
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>Commandes Clients Pique-Niques pour la Semaine</CardTitle>
+          <CardTitle>Commandes Clients Pique-Niques</CardTitle>
           <CardDescription>
-            Saisissez les commandes spécifiques des clients, le nombre de pique-niques par jour et choisissez le type de pain.
+            Saisissez les commandes spécifiques des clients, le nombre de pique-niques et choisissez le type de pain pour le jour sélectionné.
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 flex items-end gap-4">
+            <div className="flex-grow">
+              <Label htmlFor="client-order-day-select">Sélectionner un Jour</Label>
+              <Select value={selectedClientOrderDay} onValueChange={(value) => setSelectedClientOrderDay(value as DayOfWeekKey)}>
+                <SelectTrigger id="client-order-day-select" className="mt-1">
+                  <SelectValue placeholder="Choisir un jour..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {DAYS_OF_WEEK_KEYS.map(day => (
+                    <SelectItem key={day} value={day} className="capitalize">
+                      {DAY_LABELS[day]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           <div className="overflow-x-auto border rounded-md">
-            <Table className="min-w-[1200px]">
+            <Table className="min-w-[800px]">
               <TableHeader>
                 <TableRow className="bg-amber-200 dark:bg-amber-700/50">
-                  <TableHead className="w-[150px] min-w-[150px] text-black sticky left-0 z-10 bg-amber-200 dark:bg-amber-700/50">Client</TableHead>
-                  {DAYS_OF_WEEK_KEYS.map(day => (
-                    <React.Fragment key={`header-${day}`}>
-                      <TableHead className="w-[80px] min-w-[80px] text-center text-black capitalize">{DAY_LABELS[day]} NB PN</TableHead>
-                      <TableHead className="w-[120px] min-w-[120px] text-center text-black capitalize">{DAY_LABELS[day]} Pain</TableHead>
-                    </React.Fragment>
-                  ))}
-                  <TableHead className="w-[200px] min-w-[200px] text-black">Observation (Semaine)</TableHead>
+                  <TableHead className="w-[200px] min-w-[200px] text-black sticky left-0 z-10 bg-amber-200 dark:bg-amber-700/50">Client</TableHead>
+                  <TableHead className="w-[120px] min-w-[120px] text-center text-black capitalize">NB PN ({DAY_LABELS[selectedClientOrderDay]})</TableHead>
+                  <TableHead className="w-[150px] min-w-[150px] text-center text-black capitalize">Pain ({DAY_LABELS[selectedClientOrderDay]})</TableHead>
+                  <TableHead className="w-[250px] min-w-[250px] text-black">Observation (Semaine)</TableHead>
                   <TableHead className="w-[80px] min-w-[80px] text-center text-black sticky right-0 z-10 bg-amber-200 dark:bg-amber-700/50">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {clientOrders.map((order, index) => (
-                    <TableRow key={order.id}>
-                      <TableCell className="p-1 sticky left-0 z-10 bg-card group-hover:bg-muted/50">
-                        <Input
-                          value={order.clientName}
-                          onChange={(e) => handleClientOrderClientNameChange(index, e.target.value)}
-                          className="h-8"
-                          placeholder="Nom du client"
-                        />
-                      </TableCell>
-                      {DAYS_OF_WEEK_KEYS.map(day => {
-                        const nbPnValue = Number(order.days[day].nbPn);
-                        const isNbPnZeroOrInvalid = isNaN(nbPnValue) || nbPnValue <= 0;
-                        return (
-                          <React.Fragment key={`${order.id}-${day}`}>
-                            <TableCell className="p-1">
-                              <Input
-                                type="number"
-                                min="0"
-                                value={order.days[day].nbPn}
-                                onChange={(e) => handleClientOrderDailyInputChange(index, day, 'nbPn', e.target.value)}
-                                className="h-8 text-center"
-                                placeholder="0"
-                              />
-                            </TableCell>
-                            <TableCell className="p-1">
-                              <Select
-                                value={isNbPnZeroOrInvalid ? 'none' : order.days[day].breadChoice}
-                                onValueChange={(value) => handleClientOrderDailyBreadChange(index, day, value as BreadChoice)}
-                                disabled={isNbPnZeroOrInvalid}
-                              >
-                                <SelectTrigger className="h-8 text-xs">
-                                  <SelectValue placeholder="Pain..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="none" className="text-xs">Aucun</SelectItem>
-                                  <SelectItem value="baguette" className="text-xs">Baguette</SelectItem>
-                                  <SelectItem value="faluche" className="text-xs">Faluche</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </TableCell>
-                          </React.Fragment>
-                        );
-                      })}
-                      <TableCell className="p-1">
-                        <Input
-                          value={order.observation}
-                          onChange={(e) => handleClientOrderObservationChange(index, e.target.value)}
-                          className="h-8"
-                          placeholder="Détails..."
-                        />
-                      </TableCell>
-                      <TableCell className="p-1 text-center sticky right-0 z-10 bg-card group-hover:bg-muted/50">
-                        <Button variant="destructive" size="icon" onClick={() => handleDeleteClientOrderRow(order.id)} className="h-8 w-8">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                {clientOrders.map((order, index) => {
+                    const dayData = order.days[selectedClientOrderDay];
+                    const nbPnValue = Number(dayData.nbPn);
+                    const isNbPnZeroOrInvalid = isNaN(nbPnValue) || nbPnValue <= 0;
+                    return (
+                        <TableRow key={order.id}>
+                        <TableCell className="p-1 sticky left-0 z-10 bg-card group-hover:bg-muted/50">
+                            <Input
+                            value={order.clientName}
+                            onChange={(e) => handleClientOrderClientNameChange(index, e.target.value)}
+                            className="h-8"
+                            placeholder="Nom du client"
+                            />
+                        </TableCell>
+                        <TableCell className="p-1">
+                            <Input
+                            type="number"
+                            min="0"
+                            value={dayData.nbPn}
+                            onChange={(e) => handleClientOrderDailyInputChange(index, selectedClientOrderDay, e.target.value)}
+                            className="h-8 text-center"
+                            placeholder="0"
+                            />
+                        </TableCell>
+                        <TableCell className="p-1">
+                            <Select
+                            value={isNbPnZeroOrInvalid ? 'none' : dayData.breadChoice}
+                            onValueChange={(value) => handleClientOrderDailyBreadChange(index, selectedClientOrderDay, value as BreadChoice)}
+                            disabled={isNbPnZeroOrInvalid}
+                            >
+                            <SelectTrigger className="h-8 text-xs">
+                                <SelectValue placeholder="Pain..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none" className="text-xs">Aucun</SelectItem>
+                                <SelectItem value="baguette" className="text-xs">Baguette</SelectItem>
+                                <SelectItem value="faluche" className="text-xs">Faluche</SelectItem>
+                            </SelectContent>
+                            </Select>
+                        </TableCell>
+                        <TableCell className="p-1">
+                            <Input
+                            value={order.observation}
+                            onChange={(e) => handleClientOrderObservationChange(index, e.target.value)}
+                            className="h-8"
+                            placeholder="Détails..."
+                            />
+                        </TableCell>
+                        <TableCell className="p-1 text-center sticky right-0 z-10 bg-card group-hover:bg-muted/50">
+                            <Button variant="destructive" size="icon" onClick={() => handleDeleteClientOrderRow(order.id)} className="h-8 w-8">
+                            <Trash2 className="h-4 w-4" />
+                            </Button>
+                        </TableCell>
+                        </TableRow>
+                    );
+                })}
               </TableBody>
+              <TableFooter>
+                <TableRow className="bg-amber-100 dark:bg-amber-800/50">
+                    <TableCell colSpan={2} className="text-right font-semibold text-black dark:text-white">
+                        TOTAUX PAINS POUR {DAY_LABELS[selectedClientOrderDay].toUpperCase()} :
+                    </TableCell>
+                    <TableCell className="text-center font-bold text-black dark:text-white">
+                        B: {clientBreadTotalsForSelectedDay.baguettes} / F: {clientBreadTotalsForSelectedDay.faluches}
+                    </TableCell>
+                    <TableCell colSpan={2}></TableCell>
+                </TableRow>
+              </TableFooter>
             </Table>
           </div>
           <div className="mt-6 flex justify-between items-center">
@@ -550,7 +560,7 @@ export default function NumberOfPicnics() {
                     <AlertDialogTrigger asChild>
                     <Button variant="outline">
                         <Trash2 className="mr-2 h-4 w-4" />
-                        Effacer Toutes les Commandes Clients
+                        Effacer Commandes Clients (semaine)
                     </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
@@ -574,32 +584,6 @@ export default function NumberOfPicnics() {
                 </Button>
             </div>
           </div>
-
-          <Card className="mt-8 shadow-md">
-            <CardHeader>
-                <CardTitle>Récapitulatif des Pains par Jour pour les Commandes Clients</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <Table>
-                    <TableHeader>
-                        <TableRow className="bg-amber-100 dark:bg-amber-800/50">
-                            <TableHead className="w-[150px] text-black dark:text-white">Jour</TableHead>
-                            <TableHead className="text-center text-black dark:text-white">Total Baguettes (Nb Pn / 2)</TableHead>
-                            <TableHead className="text-center text-black dark:text-white">Total Faluches (Nb Pn)</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {DAYS_OF_WEEK_KEYS.map(day => (
-                            <TableRow key={`total-summary-${day}`}>
-                                <TableCell className="font-medium capitalize">{DAY_LABELS[day]}</TableCell>
-                                <TableCell className="text-center font-semibold">{clientBreadTotals[day].baguettes}</TableCell>
-                                <TableCell className="text-center font-semibold">{clientBreadTotals[day].faluches}</TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </CardContent>
-          </Card>
         </CardContent>
       </Card>
     </div>
