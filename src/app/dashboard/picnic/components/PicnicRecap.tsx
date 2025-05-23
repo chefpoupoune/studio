@@ -520,26 +520,32 @@ export default function PicnicRecap() {
                     }
                     return (
                         <TableCell key={`total-pain-${day}`} className="text-center bg-yellow-100 dark:bg-yellow-800/40">
-                            {dailyPainTotal}
+                            {dailyPainTotal > 0 ? dailyPainTotal : '-'}
                         </TableCell>
                     );
                   })}
                 </TableRow>
                 <TableRow>
                   <TableCell className="font-semibold bg-orange-300 dark:bg-orange-800/50 text-black">Baguette</TableCell>
-                  {DAYS_OF_WEEK_KEYS.map(day => (
-                    <TableCell key={`total-baguette-${day}`} className="text-center bg-orange-100 dark:bg-orange-700/40">
-                      {weeklyRecapFooterTotals.baguette[day] > 0 ? weeklyRecapFooterTotals.baguette[day] : '-'}
-                    </TableCell>
-                  ))}
+                  {DAYS_OF_WEEK_KEYS.map(day => {
+                    const totalBaguettesForDay = (weeklyRecapFooterTotals.baguette[day] || 0) + Math.round((dailyGlobalTotals[day] || 0) / 2);
+                    return (
+                      <TableCell key={`total-baguette-${day}`} className="text-center bg-orange-100 dark:bg-orange-700/40">
+                        {totalBaguettesForDay > 0 ? totalBaguettesForDay : '-'}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
                 <TableRow>
                   <TableCell className="font-semibold bg-orange-300 dark:bg-orange-800/50 text-black">Faluche</TableCell>
-                  {DAYS_OF_WEEK_KEYS.map(day => (
-                    <TableCell key={`total-faluche-${day}`} className="text-center bg-orange-100 dark:bg-orange-700/40">
-                      {weeklyRecapFooterTotals.faluche[day] > 0 ? weeklyRecapFooterTotals.faluche[day] : '-'}
-                    </TableCell>
-                  ))}
+                  {DAYS_OF_WEEK_KEYS.map(day => {
+                    const totalFaluchesForDay = (weeklyRecapFooterTotals.faluche[day] || 0) + ((day === 'mercredi' || day === 'vendredi') ? (dailyGlobalTotals[day] || 0) : 0);
+                    return (
+                      <TableCell key={`total-faluche-${day}`} className="text-center bg-orange-100 dark:bg-orange-700/40">
+                        {totalFaluchesForDay > 0 ? totalFaluchesForDay : '-'}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
               </TableBody>
             </Table>
