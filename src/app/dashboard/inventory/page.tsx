@@ -29,20 +29,28 @@ const initialProducts: Product[] = [
   { id: 'prod_4', name: 'Liquide Vaisselle Écologique', reference: 'LVE004', quantity: 30 },
 ];
 
-const inventoryTabsConfig = [
-  { value: "products", label: "Gestion Produits", Icon: PackagePlusIcon, componentName: "ManageProducts" },
-  { value: "movements", label: "Mouvements Stock", Icon: HistoryIcon, componentName: "ManageStockMovements" },
-  { value: "inventory", label: "Inventaire", Icon: ListOrderedIcon, componentName: "GenerateInventory" },
-  { value: "purchase-orders", label: "Bons de Commande", Icon: ShoppingCartIcon, componentName: "GeneratePurchaseOrder" },
-];
+interface InventoryTab {
+  value: string;
+  label: string;
+  Icon: React.ElementType;
+  component: React.ReactNode;
+}
 
 export default function InventoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [isClient, setIsClient] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false); // New state
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  
+  const inventoryTabsConfig: InventoryTab[] = [
+    { value: "products", label: "Gestion Produits", Icon: PackagePlusIcon, component: <ManageProducts products={products} onAddProduct={addProduct} onUpdateProduct={updateProduct} onDeleteProduct={deleteProduct} /> },
+    { value: "movements", label: "Mouvements Stock", Icon: HistoryIcon, component: <ManageStockMovements products={products} stockMovements={stockMovements} onAddStockMovement={addStockMovement} onDeleteAllStockMovements={handleDeleteAllStockMovements} /> },
+    { value: "inventory", label: "Inventaire", Icon: ListOrderedIcon, component: <GenerateInventory products={products} /> },
+    { value: "purchase-orders", label: "Bons de Commande", Icon: ShoppingCartIcon, component: <GeneratePurchaseOrder products={products} purchaseOrders={purchaseOrders} onAddPurchaseOrder={addPurchaseOrder} onDeletePurchaseOrder={deletePurchaseOrder} onReceivePurchaseOrder={handleReceivePurchaseOrder}/> },
+  ];
   const [activeTab, setActiveTab] = useState(inventoryTabsConfig[0].value);
 
 
@@ -52,48 +60,71 @@ export default function InventoryPage() {
   
   useEffect(() => {
     if (isClient) {
+      console.log("InventoryPage: Attempting to load data from localStorage.");
       try {
         const storedProducts = localStorage.getItem(PRODUCTS_STORAGE_KEY);
         if (storedProducts) {
+          console.log("InventoryPage: Found stored products.");
           setProducts(JSON.parse(storedProducts));
         } else {
+          console.log("InventoryPage: No stored products found, using initialProducts.");
           setProducts(initialProducts); 
         }
 
         const storedMovements = localStorage.getItem(STOCK_MOVEMENTS_STORAGE_KEY);
-        if (storedMovements) setStockMovements(JSON.parse(storedMovements).map((m: StockMovement) => ({...m, date: new Date(m.date)})));
+        if (storedMovements) {
+          console.log("InventoryPage: Found stored movements.");
+          setStockMovements(JSON.parse(storedMovements).map((m: StockMovement) => ({...m, date: new Date(m.date)})));
+        } else {
+          console.log("InventoryPage: No stored movements found, defaulting to empty array.");
+          setStockMovements([]);
+        }
         
         const storedOrders = localStorage.getItem(PURCHASE_ORDERS_STORAGE_KEY);
-        if (storedOrders) setPurchaseOrders(JSON.parse(storedOrders).map((o: PurchaseOrder) => ({...o, date: new Date(o.date), status: o.status || 'pending'})));
+        if (storedOrders) {
+          console.log("InventoryPage: Found stored orders.");
+          setPurchaseOrders(JSON.parse(storedOrders).map((o: PurchaseOrder) => ({...o, date: new Date(o.date), status: o.status || 'pending'})));
+        } else {
+          console.log("InventoryPage: No stored orders found, defaulting to empty array.");
+          setPurchaseOrders([]);
+        }
 
       } catch (e) {
-        console.error("Error loading data from localStorage", e);
+        console.error("InventoryPage: Error loading data from localStorage", e);
         localStorage.removeItem(PRODUCTS_STORAGE_KEY);
         localStorage.removeItem(STOCK_MOVEMENTS_STORAGE_KEY);
         localStorage.removeItem(PURCHASE_ORDERS_STORAGE_KEY);
         setProducts(initialProducts); 
-        toast({ title: "Erreur de chargement des données d'inventaire", variant: "destructive" });
+        setStockMovements([]);
+        setPurchaseOrders([]);
+        toast({ title: "Erreur de chargement des données d'inventaire", description: "Les données ont été réinitialisées aux valeurs par défaut.", variant: "destructive" });
+      } finally {
+        setDataLoaded(true);
+        console.log("InventoryPage: Data loading complete, dataLoaded set to true.");
       }
     }
   }, [isClient, toast]);
 
   useEffect(() => {
-    if (isClient) {
+    if (isClient && dataLoaded) {
+      console.log("InventoryPage: Saving products to localStorage", products);
       localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(products));
     }
-  }, [products, isClient]);
+  }, [products, isClient, dataLoaded]);
 
   useEffect(() => {
-    if (isClient) {
+    if (isClient && dataLoaded) {
+      console.log("InventoryPage: Saving stock movements to localStorage", stockMovements);
       localStorage.setItem(STOCK_MOVEMENTS_STORAGE_KEY, JSON.stringify(stockMovements));
     }
-  }, [stockMovements, isClient]);
+  }, [stockMovements, isClient, dataLoaded]);
   
   useEffect(() => {
-    if (isClient) {
+    if (isClient && dataLoaded) {
+      console.log("InventoryPage: Saving purchase orders to localStorage", purchaseOrders);
       localStorage.setItem(PURCHASE_ORDERS_STORAGE_KEY, JSON.stringify(purchaseOrders));
     }
-  }, [purchaseOrders, isClient]);
+  }, [purchaseOrders, isClient, dataLoaded]);
 
 
   const addProduct = useCallback((product: Omit<Product, 'id'>) => {
@@ -196,13 +227,6 @@ export default function InventoryPage() {
     toast({ title: "Bon de Commande Reçu", description: `Le bon de commande ${order.orderNumber} a été marqué comme reçu et les stocks mis à jour.`});
   }, [purchaseOrders, products, toast]);
 
-  const tabsContentMap: Record<string, React.ReactNode> = {
-    "products": <ManageProducts products={products} onAddProduct={addProduct} onUpdateProduct={updateProduct} onDeleteProduct={deleteProduct} />,
-    "movements": <ManageStockMovements products={products} stockMovements={stockMovements} onAddStockMovement={addStockMovement} onDeleteAllStockMovements={handleDeleteAllStockMovements} />,
-    "inventory": <GenerateInventory products={products} />,
-    "purchase-orders": <GeneratePurchaseOrder products={products} purchaseOrders={purchaseOrders} onAddPurchaseOrder={addPurchaseOrder} onDeletePurchaseOrder={deletePurchaseOrder} onReceivePurchaseOrder={handleReceivePurchaseOrder} />,
-  };
-
 
   if (!isClient) {
     return (
@@ -258,10 +282,11 @@ export default function InventoryPage() {
         
         {inventoryTabsConfig.map(tab => (
           <TabsContent key={tab.value} value={tab.value}>
-            {tabsContentMap[tab.componentName]}
+            {tab.component}
           </TabsContent>
         ))}
       </Tabs>
     </div>
   );
 }
+
