@@ -48,9 +48,9 @@ const createInitialPicnicWeekData = (): PicnicWeekData => ({
   philipe: initialRowData(),
   plus: initialRowData(),
   autre: initialRowData(),
-  nb_bagette: initialRowData(), // Will be calculated, but keep structure
-  nb_faluche: initialRowData(), // Will be calculated, but keep structure
-  total_glaciere: initialRowData(), // Will be calculated
+  nb_bagette: initialRowData(), 
+  nb_faluche: initialRowData(), 
+  total_glaciere: initialRowData(),
 });
 
 const createInitialClientOrder = (): ClientPicnicOrder => ({
@@ -103,7 +103,6 @@ export default function NumberOfPicnics() {
       if (storedClientOrders) {
         setClientOrders(JSON.parse(storedClientOrders));
       } else {
-        // Add a few empty rows by default for the new table if none are stored
         setClientOrders(Array.from({ length: 5 }, createInitialClientOrder));
       }
     } catch (e) {
@@ -136,13 +135,11 @@ export default function NumberOfPicnics() {
 
   const handleConfirmClearData = () => {
     setPicnicData(createInitialPicnicWeekData());
-    // localStorage.removeItem(PICNIC_DATA_STORAGE_KEY); // Keep this if you want to clear this specific table
     toast({ title: "Données hebdomadaires effacées", variant: "destructive"});
   };
   
   const handleConfirmClearClientOrders = () => {
-    setClientOrders(Array.from({ length: 5 }, createInitialClientOrder)); // Reset to 5 empty rows
-    // localStorage.removeItem(PICNIC_CLIENT_ORDERS_KEY); // Keep this if you want to clear this specific table
+    setClientOrders(Array.from({ length: 5 }, createInitialClientOrder)); 
     toast({ title: "Données commandes clients effacées", variant: "destructive"});
   };
 
@@ -160,7 +157,7 @@ export default function NumberOfPicnics() {
     }
   };
   
-  const handleClientOrderInputChange = (index: number, field: keyof ClientPicnicOrder, value: string) => {
+  const handleClientOrderInputChange = (index: number, field: keyof Omit<ClientPicnicOrder, 'id' | 'totalBaguette'>, value: string) => {
     setClientOrders(prevOrders => {
       const newOrders = [...prevOrders];
       newOrders[index] = { ...newOrders[index], [field]: value };
@@ -250,8 +247,8 @@ export default function NumberOfPicnics() {
                             value={picnicData[rowConfig.id as PicnicRowKey]?.[day] ?? ''}
                             onChange={(e) => handleInputChange(rowConfig.id as PicnicRowKey, day, e.target.value)}
                             className={cn(
-                              "h-8 text-center tabular-nums bg-transparent",
-                              rowConfig.textColor === 'text-white' ? "text-white placeholder:text-gray-300" : "text-black placeholder:text-gray-500",
+                              "h-8 text-center tabular-nums",
+                              rowConfig.textColor === 'text-white' ? "text-white placeholder:text-gray-300 bg-transparent" : "text-black placeholder:text-gray-500 bg-transparent",
                               `${rowConfig.bgColor.replace('bg-','border-')}/50 focus:border-ring` 
                             )}
                             placeholder="0"
@@ -307,7 +304,6 @@ export default function NumberOfPicnics() {
         </CardContent>
       </Card>
 
-      {/* New Client Orders Table */}
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Commandes Clients Pique-Niques</CardTitle>
@@ -329,61 +325,60 @@ export default function NumberOfPicnics() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {clientOrders.map((order, index) => (
-                  <TableRow key={order.id}>
-                    <TableCell className="p-1">
-                      <Input
-                        value={order.clientName}
-                        onChange={(e) => handleClientOrderInputChange(index, 'clientName', e.target.value)}
-                        className="h-8"
-                        placeholder="Nom du client"
-                      />
-                    </TableCell>
-                    <TableCell className="p-1">
-                      <Input
-                        type="number"
-                        min="0"
-                        value={order.nbPn}
-                        onChange={(e) => handleClientOrderInputChange(index, 'nbPn', e.target.value)}
-                        className="h-8 text-center"
-                        placeholder="0"
-                      />
-                    </TableCell>
-                    <TableCell className="p-1">
-                      <Input
-                        value={order.observation}
-                        onChange={(e) => handleClientOrderInputChange(index, 'observation', e.target.value)}
-                        className="h-8"
-                        placeholder="Détails..."
-                      />
-                    </TableCell>
-                    <TableCell className="p-1">
-                      <Input
-                        type="number"
-                        min="0"
-                        value={order.totalBaguette}
-                        onChange={(e) => handleClientOrderInputChange(index, 'totalBaguette', e.target.value)}
-                        className="h-8 text-center"
-                        placeholder="0"
-                      />
-                    </TableCell>
-                    <TableCell className="p-1">
-                      <Input
-                        type="number"
-                        min="0"
-                        value={order.totalFaluche}
-                        onChange={(e) => handleClientOrderInputChange(index, 'totalFaluche', e.target.value)}
-                        className="h-8 text-center"
-                        placeholder="0"
-                      />
-                    </TableCell>
-                    <TableCell className="p-1 text-center">
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteClientOrderRow(order.id)} className="h-8 w-8">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {clientOrders.map((order, index) => {
+                  const nbPnValue = Number(order.nbPn);
+                  const calculatedBaguettes = !isNaN(nbPnValue) && nbPnValue > 0 ? Math.round(nbPnValue / 2) : 0;
+                  return (
+                    <TableRow key={order.id}>
+                      <TableCell className="p-1">
+                        <Input
+                          value={order.clientName}
+                          onChange={(e) => handleClientOrderInputChange(index, 'clientName', e.target.value)}
+                          className="h-8"
+                          placeholder="Nom du client"
+                        />
+                      </TableCell>
+                      <TableCell className="p-1">
+                        <Input
+                          type="number"
+                          min="0"
+                          value={order.nbPn}
+                          onChange={(e) => handleClientOrderInputChange(index, 'nbPn', e.target.value)}
+                          className="h-8 text-center"
+                          placeholder="0"
+                        />
+                      </TableCell>
+                      <TableCell className="p-1">
+                        <Input
+                          value={order.observation}
+                          onChange={(e) => handleClientOrderInputChange(index, 'observation', e.target.value)}
+                          className="h-8"
+                          placeholder="Détails..."
+                        />
+                      </TableCell>
+                      <TableCell className="p-1 text-center">
+                        <span className="h-8 flex items-center justify-center tabular-nums">
+                          {calculatedBaguettes}
+                        </span>
+                      </TableCell>
+                      <TableCell className="p-1">
+                        <Input
+                          type="number"
+                          min="0"
+                          value={order.totalFaluche}
+                          onChange={(e) => handleClientOrderInputChange(index, 'totalFaluche', e.target.value)}
+                          className="h-8 text-center"
+                          placeholder="0"
+                        />
+                      </TableCell>
+                      <TableCell className="p-1 text-center">
+                        <Button variant="destructive" size="icon" onClick={() => handleDeleteClientOrderRow(order.id)} className="h-8 w-8">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
@@ -425,3 +420,5 @@ export default function NumberOfPicnics() {
     </div>
   );
 }
+
+    
