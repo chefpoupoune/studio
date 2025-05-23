@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFoo
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Save, Trash2, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
-import type { PicnicWeekData, DailyCounts, PicnicRowKey, DisplayRowConfig, ClientPicnicOrder, BreadChoice, DailyClientPicnicData, DayOfWeekKey } from '../types';
+import type { PicnicWeekData, PicnicRowKey, DisplayRowConfig, ClientPicnicOrder, BreadChoice, DailyClientPicnicData, DayOfWeekKey, PicnicRowData } from '../types';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -40,23 +40,23 @@ const DAY_LABELS: Record<DayOfWeekKey, string> = {
 const PICNIC_DATA_STORAGE_KEY_PREFIX = "picnic_nb_pn_data_v1_";
 const PICNIC_CLIENT_ORDERS_KEY_PREFIX = "picnic_client_orders_data_v3_"; 
 
-const initialRowData = (): DailyCounts => ({
-  lundi: '', mardi: '', mercredi: '', jeudi: '', vendredi: ''
+const initialRowDayValues = (): PicnicRowData => ({ // Updated to return PicnicRowData
+  lundi: '', mardi: '', mercredi: '', jeudi: '', vendredi: '', weeklyObservation: ''
 });
 
 const createInitialPicnicWeekData = (): PicnicWeekData => ({
-  gatien: initialRowData(),
-  cedric: initialRowData(),
-  dominique: initialRowData(),
-  maxime_l: initialRowData(),
-  nicolas: initialRowData(),
-  maxime_h: initialRowData(),
-  philipe: initialRowData(),
-  plus: initialRowData(),
-  autre: initialRowData(),
-  nb_bagette: initialRowData(), 
-  nb_faluche: initialRowData(), 
-  total_glaciere: initialRowData(),
+  gatien: initialRowDayValues(),
+  cedric: initialRowDayValues(),
+  dominique: initialRowDayValues(),
+  maxime_l: initialRowDayValues(),
+  nicolas: initialRowDayValues(),
+  maxime_h: initialRowDayValues(),
+  philipe: initialRowDayValues(),
+  plus: initialRowDayValues(),
+  autre: initialRowDayValues(),
+  nb_bagette: initialRowDayValues(), 
+  nb_faluche: initialRowDayValues(), 
+  total_glaciere: initialRowDayValues(),
 });
 
 const createInitialDailyClientPicnicData = (): DailyClientPicnicData => ({
@@ -123,7 +123,7 @@ export default function NumberOfPicnics() {
         const initialKeys = Object.keys(createInitialPicnicWeekData()) as PicnicRowKey[];
         const completeData: Partial<PicnicWeekData> = {};
         initialKeys.forEach(key => {
-          completeData[key] = parsedData[key] || initialRowData();
+          completeData[key] = { ...(initialRowDayValues()), ...parsedData[key] }; // Ensure weeklyObservation is initialized
         });
         setPicnicData(completeData as PicnicWeekData);
       } else {
@@ -186,7 +186,7 @@ export default function NumberOfPicnics() {
     toast({ title: "Données commandes clients effacées", variant: "destructive"});
   };
 
-  const handleInputChange = (rowId: PicnicRowKey, day: DayOfWeekKey, value: string) => {
+  const handleDailyValueChange = (rowId: PicnicRowKey, day: DayOfWeekKey, value: string) => {
     const numericValue = value === '' ? '' : parseInt(value, 10);
     if (value === '' || (!isNaN(numericValue) && numericValue >= 0)) {
       setPicnicData(prevData => ({
@@ -198,6 +198,17 @@ export default function NumberOfPicnics() {
       }));
     }
   };
+  
+  const handleObservationChange = (rowId: PicnicRowKey, value: string) => {
+    setPicnicData(prevData => ({
+        ...prevData,
+        [rowId]: {
+            ...prevData[rowId],
+            weeklyObservation: value,
+        }
+    }));
+  };
+
 
   const handleClientOrderClientNameChange = (index: number, value: string) => {
     setClientOrders(prevOrders => {
@@ -298,7 +309,7 @@ export default function NumberOfPicnics() {
       const nbPn = Number(dayData.nbPn);
       if (!isNaN(nbPn) && nbPn > 0) {
         if (dayData.breadChoice === 'baguette') {
-          baguettes += Math.round(nbPn / 2); // Apply /2 here for daily recap too
+          baguettes += Math.round(nbPn / 2);
         } else if (dayData.breadChoice === 'faluche') {
           faluches += nbPn;
         }
@@ -404,12 +415,12 @@ export default function NumberOfPicnics() {
         <CardHeader>
           <CardTitle>Nombre de Pique-Niques (NB PN) pour la Semaine</CardTitle>
           <CardDescription>
-            Saisissez le nombre de pique-niques prévus pour chaque catégorie et chaque jour. Les totaux sont calculés automatiquement.
+            Saisissez le nombre de pique-niques prévus pour chaque catégorie et chaque jour, ainsi que les observations hebdomadaires.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto border rounded-md">
-            <Table className="min-w-[800px]">
+            <Table className="min-w-[950px]"> {/* Increased min-width for observation column */}
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[180px] min-w-[180px] sticky left-0 z-10 bg-card">Catégorie</TableHead>
@@ -418,6 +429,7 @@ export default function NumberOfPicnics() {
                       {DAY_LABELS[day]}
                     </TableHead>
                   ))}
+                  <TableHead className="text-center min-w-[200px]">Observation (Semaine)</TableHead> {/* New Header */}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -434,7 +446,7 @@ export default function NumberOfPicnics() {
                             type="number"
                             min="0"
                             value={picnicData[rowConfig.id as PicnicRowKey]?.[day] ?? ''}
-                            onChange={(e) => handleInputChange(rowConfig.id as PicnicRowKey, day, e.target.value)}
+                            onChange={(e) => handleDailyValueChange(rowConfig.id as PicnicRowKey, day, e.target.value)}
                             className={cn(
                               "h-8 text-center tabular-nums bg-transparent border-transparent focus:border-current focus:ring-1",
                               rowConfig.textColor.includes('white') ? "text-white placeholder:text-gray-300 focus:ring-white/50" : "text-black placeholder:text-gray-500 focus:ring-black/50"
@@ -459,6 +471,23 @@ export default function NumberOfPicnics() {
                         </TableCell>
                       );
                     })}
+                    {/* Observation Cell */}
+                    <TableCell className={cn("p-1", rowConfig.bgColor)}>
+                      {rowConfig.isInputRow ? (
+                        <Input
+                          type="text"
+                          value={picnicData[rowConfig.id as PicnicRowKey]?.weeklyObservation ?? ''}
+                          onChange={(e) => handleObservationChange(rowConfig.id as PicnicRowKey, e.target.value)}
+                          className={cn(
+                            "h-8 text-sm bg-transparent border-transparent focus:border-current focus:ring-1",
+                            rowConfig.textColor.includes('white') ? "text-white placeholder:text-gray-300 focus:ring-white/50" : "text-black placeholder:text-gray-500 focus:ring-black/50"
+                          )}
+                          placeholder="Notes..."
+                        />
+                      ) : (
+                        <span className={cn("block py-1.5", rowConfig.textColor)}>-</span>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -591,11 +620,11 @@ export default function NumberOfPicnics() {
               </TableBody>
               <TableFooter>
                 <TableRow className="bg-amber-100 dark:bg-amber-800/50">
-                    <TableCell colSpan={2} className="text-right font-semibold text-black dark:text-white">
-                        TOTAUX PAINS POUR {DAY_LABELS[selectedClientOrderDay].toUpperCase()} :
+                    <TableCell colSpan={1} className="text-right font-semibold text-black dark:text-white">
+                        TOTAUX PAINS ({DAY_LABELS[selectedClientOrderDay].toUpperCase()}) :
                     </TableCell>
-                    <TableCell className="text-center font-bold text-black dark:text-white">
-                        B: {clientBreadTotalsForSelectedDay.baguettes}, F: {clientBreadTotalsForSelectedDay.faluches}
+                    <TableCell colSpan={2} className="text-left font-bold text-black dark:text-white">
+                       Baguette: {clientBreadTotalsForSelectedDay.baguettes}, Faluche: {clientBreadTotalsForSelectedDay.faluches}
                     </TableCell>
                     <TableCell colSpan={2}></TableCell>
                 </TableRow>

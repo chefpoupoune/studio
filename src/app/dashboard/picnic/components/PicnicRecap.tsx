@@ -5,8 +5,10 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Button } from '@/components/ui/button';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Info } from 'lucide-react';
-import type { PicnicWeekData, DailyCounts, PicnicRowKey, DisplayRowConfig, ClientPicnicOrder, DailyClientPicnicData, DayOfWeekKey, BreadChoice } from '../types';
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Info, Save } from 'lucide-react';
+import type { PicnicWeekData, DailyCounts, PicnicRowKey, DisplayRowConfig, ClientPicnicOrder, DailyClientPicnicData, DayOfWeekKey, BreadChoice, PicnicRowData } from '../types';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
@@ -14,7 +16,6 @@ import { Calendar } from '@/components/ui/calendar';
 import { format, startOfWeek, endOfWeek, addDays, subDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-// Constants (can be moved to types.ts or a shared util if used elsewhere similarly)
 const DAYS_OF_WEEK_KEYS: DayOfWeekKey[] = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'];
 const DAY_LABELS: Record<DayOfWeekKey, string> = {
   lundi: 'Lundi',
@@ -27,23 +28,23 @@ const DAY_LABELS: Record<DayOfWeekKey, string> = {
 const PICNIC_DATA_STORAGE_KEY_PREFIX = "picnic_nb_pn_data_v1_";
 const PICNIC_CLIENT_ORDERS_KEY_PREFIX = "picnic_client_orders_data_v3_";
 
-const initialRowData = (): DailyCounts => ({
-  lundi: '', mardi: '', mercredi: '', jeudi: '', vendredi: ''
+const initialRowDayValues = (): PicnicRowData => ({
+  lundi: '', mardi: '', mercredi: '', jeudi: '', vendredi: '', weeklyObservation: ''
 });
 
 const createInitialPicnicWeekData = (): PicnicWeekData => ({
-  gatien: initialRowData(),
-  cedric: initialRowData(),
-  dominique: initialRowData(),
-  maxime_l: initialRowData(),
-  nicolas: initialRowData(),
-  maxime_h: initialRowData(),
-  philipe: initialRowData(),
-  plus: initialRowData(),
-  autre: initialRowData(),
-  nb_bagette: initialRowData(),
-  nb_faluche: initialRowData(),
-  total_glaciere: initialRowData(),
+  gatien: initialRowDayValues(),
+  cedric: initialRowDayValues(),
+  dominique: initialRowDayValues(),
+  maxime_l: initialRowDayValues(),
+  nicolas: initialRowDayValues(),
+  maxime_h: initialRowDayValues(),
+  philipe: initialRowDayValues(),
+  plus: initialRowDayValues(),
+  autre: initialRowDayValues(),
+  nb_bagette: initialRowDayValues(),
+  nb_faluche: initialRowDayValues(),
+  total_glaciere: initialRowDayValues(),
 });
 
 const createInitialDailyClientPicnicData = (): DailyClientPicnicData => ({
@@ -98,7 +99,7 @@ export default function PicnicRecap() {
         const initialKeys = Object.keys(createInitialPicnicWeekData()) as PicnicRowKey[];
         const completeData: Partial<PicnicWeekData> = {};
         initialKeys.forEach(key => {
-          completeData[key] = parsedData[key] || initialRowData();
+          completeData[key] = { ...(initialRowDayValues()), ...parsedData[key] };
         });
         setPicnicData(completeData as PicnicWeekData);
       } else {
@@ -130,6 +131,27 @@ export default function PicnicRecap() {
     }
     setIsLoading(false);
   }, [getPicnicDataStorageKey, getClientOrdersStorageKey, toast, weekIdentifier]);
+
+  const handleRecapObservationChange = (rowId: PicnicRowKey, value: string) => {
+    setPicnicData(prevData => ({
+        ...prevData,
+        [rowId]: {
+            ...prevData[rowId],
+            weeklyObservation: value,
+        }
+    }));
+  };
+
+  const saveRecapObservations = useCallback(() => {
+    try {
+      localStorage.setItem(getPicnicDataStorageKey(), JSON.stringify(picnicData));
+      toast({ title: "Observations du Récapitulatif Sauvegardées", description: "Les observations ont été enregistrées." });
+    } catch (e) {
+      console.error("Failed to save picnic recap observations to localStorage", e);
+      toast({ title: "Erreur de sauvegarde des observations", variant: "destructive" });
+    }
+  }, [picnicData, toast, getPicnicDataStorageKey]);
+
 
   const calculateDailyTotal = useCallback((day: DayOfWeekKey): number => {
     let sum = 0;
@@ -197,6 +219,7 @@ export default function PicnicRecap() {
           clientName: order.clientName,
           baguetteCounts: baguetteCounts,
           falucheCounts: falucheCounts,
+          observation: order.observation // Keep weekly observation for client recap
         };
     });
   }, [clientOrders]);
@@ -256,9 +279,9 @@ export default function PicnicRecap() {
 
       <Card className="shadow-md">
         <CardHeader>
-          <CardTitle>Récapitulatif Hebdomadaire NB PN</CardTitle>
+          <CardTitle>Récapitulatif Hebdomadaire NB PN (Pique-Niques Semaine)</CardTitle>
           <CardDescription>
-            Visualisation des nombres de pique-niques prévus pour la semaine sélectionnée.
+            Visualisation des nombres de pique-niques et observations pour la semaine sélectionnée.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -272,7 +295,7 @@ export default function PicnicRecap() {
                       {DAY_LABELS[day]}
                     </TableHead>
                   ))}
-                  <TableHead className="text-center min-w-[150px]">Observation</TableHead>
+                  <TableHead className="text-center min-w-[200px]">Observation (Semaine)</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -293,7 +316,7 @@ export default function PicnicRecap() {
                         cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{value}</span>;
                       } else if (rowConfig.id === 'total_glaciere') {
                         cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{dailyGlaciereTotals[day]}</span>;
-                      } else {
+                      } else { // This means it's an input row for daily counts
                         cellContent = <span className={cn("block py-1.5", rowConfig.textColor)}>{picnicData[rowConfig.id as PicnicRowKey]?.[day] ?? '0'}</span>;
                       }
                       return (
@@ -302,11 +325,33 @@ export default function PicnicRecap() {
                         </TableCell>
                       );
                     })}
-                    <TableCell className={cn("p-1 text-center", rowConfig.bgColor, rowConfig.textColor)}>-</TableCell>
+                    {/* Editable Observation Cell in Recap */}
+                    <TableCell className={cn("p-1", rowConfig.bgColor)}>
+                      {rowConfig.isInputRow ? (
+                        <Input
+                          type="text"
+                          value={picnicData[rowConfig.id as PicnicRowKey]?.weeklyObservation ?? ''}
+                          onChange={(e) => handleRecapObservationChange(rowConfig.id as PicnicRowKey, e.target.value)}
+                          className={cn(
+                            "h-8 text-sm bg-transparent border-transparent focus:border-current focus:ring-1",
+                            rowConfig.textColor.includes('white') ? "text-white placeholder:text-gray-300 focus:ring-white/50" : "text-black placeholder:text-gray-500 focus:ring-black/50"
+                          )}
+                          placeholder="Notes..."
+                        />
+                      ) : (
+                        <span className={cn("block py-1.5", rowConfig.textColor)}>-</span>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button onClick={saveRecapObservations} size="sm">
+              <Save className="mr-2 h-4 w-4" />
+              Sauvegarder Observations
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -331,6 +376,7 @@ export default function PicnicRecap() {
                     {DAYS_OF_WEEK_KEYS.map(day => (
                         <TableHead key={day} className="text-center text-black dark:text-white min-w-[80px] capitalize">{DAY_LABELS[day]}</TableHead>
                     ))}
+                     <TableHead className="text-black dark:text-white min-w-[150px]">Observation (Hebdo)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="text-xs">
@@ -361,6 +407,21 @@ export default function PicnicRecap() {
                                 {recap.baguetteCounts[day] > 0 ? recap.baguetteCounts[day] : '-'}
                               </TableCell>
                             ))}
+                            {!clientCellRendered && rowSpanForClientName === 1 && ( // Observation for single bread type
+                                <TableCell rowSpan={1} className="align-middle text-muted-foreground italic">
+                                    {recap.observation || '-'}
+                                </TableCell>
+                            )}
+                            {clientCellRendered && clientHasFaluches === false && ( // Observation if only baguette
+                                <TableCell rowSpan={1} className="align-middle text-muted-foreground italic">
+                                    {recap.observation || '-'}
+                                </TableCell>
+                            )}
+                             {clientCellRendered && clientHasFaluches && index === 0 && ( // Observation for first row when both breads
+                                <TableCell rowSpan={2} className="align-middle text-muted-foreground italic">
+                                    {recap.observation || '-'}
+                                </TableCell>
+                            )}
                           </TableRow>
                         )}
                         {clientHasFaluches && (
@@ -376,6 +437,11 @@ export default function PicnicRecap() {
                                 {recap.falucheCounts[day] > 0 ? recap.falucheCounts[day] : '-'}
                               </TableCell>
                             ))}
+                            {clientHasBaguettes === false && ( // Observation if only faluche
+                                <TableCell rowSpan={1} className="align-middle text-muted-foreground italic">
+                                    {recap.observation || '-'}
+                                </TableCell>
+                            )}
                           </TableRow>
                         )}
                       </React.Fragment>
@@ -390,6 +456,7 @@ export default function PicnicRecap() {
                             {weeklyRecapFooterTotals.baguette[day] > 0 ? weeklyRecapFooterTotals.baguette[day] : '-'}
                           </TableCell>
                         ))}
+                        <TableCell className="text-center font-bold text-black dark:text-white"></TableCell> 
                     </TableRow>
                     <TableRow className="bg-orange-100 dark:bg-orange-800/50">
                         <TableCell colSpan={2} className="text-right font-bold text-black dark:text-white sticky left-0 z-10 bg-orange-100 dark:bg-orange-800/50">Total Faluche</TableCell>
@@ -398,6 +465,7 @@ export default function PicnicRecap() {
                             {weeklyRecapFooterTotals.faluche[day] > 0 ? weeklyRecapFooterTotals.faluche[day] : '-'}
                           </TableCell>
                         ))}
+                         <TableCell className="text-center font-bold text-black dark:text-white"></TableCell> 
                     </TableRow>
                 </TableFooter>
               </Table>
@@ -408,5 +476,4 @@ export default function PicnicRecap() {
     </div>
   );
 }
-
     
