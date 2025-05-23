@@ -36,9 +36,9 @@ const createInitialPicnicWeekData = (): PicnicWeekData => ({
   philipe: initialRowData(),
   plus: initialRowData(),
   autre: initialRowData(),
-  nb_bagette: initialRowData(),
-  nb_faluche: initialRowData(),
-  total_glaciere: initialRowData(),
+  nb_bagette: initialRowData(), // This will be calculated, but keep structure
+  nb_faluche: initialRowData(), // This will be calculated, but keep structure
+  total_glaciere: initialRowData(), // This will be calculated
 });
 
 const DISPLAY_ROWS_CONFIG: DisplayRowConfig[] = [
@@ -53,8 +53,8 @@ const DISPLAY_ROWS_CONFIG: DisplayRowConfig[] = [
   { id: 'autre', label: 'autre', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: true, isTotalContributor: true },
   { id: 'total_global', label: 'TOTAL', bgColor: 'bg-orange-300', textColor: 'text-black', isInputRow: false },
   { id: 'nb_bagette', label: 'NB de bagette', bgColor: 'bg-gray-300', textColor: 'text-black', isInputRow: false },
-  { id: 'nb_faluche', label: 'NB de Faluche', bgColor: 'bg-gray-300', textColor: 'text-black', isInputRow: false, isTotalContributor: false },
-  { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: true },
+  { id: 'nb_faluche', label: 'NB de Faluche', bgColor: 'bg-gray-300', textColor: 'text-black', isInputRow: false },
+  { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: false }, // Changed to not be an input row
 ];
 
 
@@ -132,6 +132,25 @@ export default function NumberOfPicnics() {
     }, {} as Record<keyof DailyCounts, number>);
   }, [calculateDailyTotal]);
 
+  const dailyGlaciereTotals = useMemo(() => {
+    return DAYS_OF_WEEK.reduce((acc, day) => {
+      let count = 0;
+      const contributorRows: PicnicRowKey[] = DISPLAY_ROWS_CONFIG
+        .filter(config => config.isInputRow && config.isTotalContributor)
+        .map(config => config.id as PicnicRowKey);
+
+      for (const rowId of contributorRows) {
+        const value = picnicData[rowId]?.[day];
+        if (value !== '' && Number(value) > 0) {
+          count++;
+        }
+      }
+      acc[day] = count;
+      return acc;
+    }, {} as Record<keyof DailyCounts, number>);
+  }, [picnicData]);
+
+
   return (
     <Card className="shadow-lg">
       <CardHeader>
@@ -160,7 +179,7 @@ export default function NumberOfPicnics() {
                     {rowConfig.label}
                   </TableCell>
                   {DAYS_OF_WEEK.map(day => (
-                    <TableCell key={`${rowConfig.id}-${day}`} className={cn("p-1 text-center tabular-nums", rowConfig.bgColor, rowConfig.textColor)}>
+                    <TableCell key={`${rowConfig.id}-${day}`} className={cn("p-1 text-center tabular-nums", rowConfig.bgColor)}>
                       {rowConfig.isInputRow ? (
                         <Input
                           type="number"
@@ -168,22 +187,23 @@ export default function NumberOfPicnics() {
                           value={picnicData[rowConfig.id as PicnicRowKey]?.[day] ?? ''}
                           onChange={(e) => handleInputChange(rowConfig.id as PicnicRowKey, day, e.target.value)}
                           className={cn(
-                            "h-8 text-center tabular-nums bg-transparent", // Removed individual text color here
-                            rowConfig.textColor === 'text-white' ? "placeholder:text-gray-300" : "placeholder:text-gray-500"
+                            "h-8 text-center tabular-nums bg-transparent",
+                            rowConfig.textColor === 'text-white' ? "text-white placeholder:text-gray-300" : "text-black placeholder:text-gray-500"
                           )}
-                          style={{ color: rowConfig.textColor === 'text-white' ? 'white' : 'black' }} // Ensure text color is explicitly set
                           placeholder="0"
                         />
                       ) : rowConfig.id === 'total_global' ? ( 
-                        <span className="font-semibold">{dailyGlobalTotals[day]}</span>
+                        <span className={cn("font-semibold", rowConfig.textColor)}>{dailyGlobalTotals[day]}</span>
                       ) : rowConfig.id === 'nb_bagette' ? (
-                         <span className="font-semibold">
+                         <span className={cn("font-semibold", rowConfig.textColor)}>
                           {day === 'lundi' ? Math.round(dailyGlobalTotals[day] / 2) : '0'}
                         </span>
                       ) : rowConfig.id === 'nb_faluche' ? (
-                        <span className="font-semibold">
+                        <span className={cn("font-semibold", rowConfig.textColor)}>
                            {day === 'mercredi' ? dailyGlobalTotals[day] : day === 'vendredi' ? dailyGlobalTotals[day] : '0'}
                         </span>
+                      ) : rowConfig.id === 'total_glaciere' ? (
+                        <span className={cn("font-semibold", rowConfig.textColor)}>{dailyGlaciereTotals[day]}</span>
                       ) : null}
                     </TableCell>
                   ))}
