@@ -95,34 +95,32 @@ export default function PicnicRecap() {
     setIsLoading(true);
     setInitialDataLoaded(false); 
     try {
-      // Load picnic data
       const storedPicnicDataRaw = localStorage.getItem(getPicnicDataStorageKey());
       if (storedPicnicDataRaw) {
         const parsedData = JSON.parse(storedPicnicDataRaw);
-        setPicnicData(prevData => {
-            const completeData: Partial<PicnicWeekData> = {};
-            (Object.keys(createInitialPicnicWeekData()) as PicnicRowKey[]).forEach(key => {
-                completeData[key] = { 
+        setPicnicData(currentData => {
+            const freshData = createInitialPicnicWeekData();
+            (Object.keys(freshData) as PicnicRowKey[]).forEach(key => {
+                freshData[key] = { 
                     ...(initialRowData()), 
                     ...(parsedData[key] || {}), 
-                    weeklyObservation: parsedData[key]?.weeklyObservation || prevData[key]?.weeklyObservation || '' 
+                    weeklyObservation: parsedData[key]?.weeklyObservation || currentData[key]?.weeklyObservation || '' 
                 };
             });
-            return completeData as PicnicWeekData;
+            return freshData;
         });
       } else {
-        setPicnicData(currentDataForPreviousWeek => {
-            const freshDataForNewWeek = createInitialPicnicWeekData();
-             (Object.keys(freshDataForNewWeek) as PicnicRowKey[]).forEach(key => {
-                if (currentDataForPreviousWeek && currentDataForPreviousWeek[key]?.weeklyObservation) {
-                    freshDataForNewWeek[key].weeklyObservation = currentDataForPreviousWeek[key].weeklyObservation;
+        setPicnicData(currentData => {
+            const freshData = createInitialPicnicWeekData();
+             (Object.keys(freshData) as PicnicRowKey[]).forEach(key => {
+                if (currentData && currentData[key]?.weeklyObservation) {
+                    freshData[key].weeklyObservation = currentData[key].weeklyObservation;
                 }
             });
-            return freshDataForNewWeek;
+            return freshData;
         });
       }
 
-      // Load client orders
       const storedClientOrders = localStorage.getItem(getClientOrdersStorageKey());
       if (storedClientOrders) {
          const parsedClientOrders: ClientPicnicOrder[] = JSON.parse(storedClientOrders);
@@ -141,7 +139,6 @@ export default function PicnicRecap() {
         setClientOrders([]);
       }
 
-      // Load base bread number
       const storedBaseBread = localStorage.getItem(getBaseBreadStorageKey());
       setBaseBreadNumber(storedBaseBread || '');
 
@@ -514,11 +511,19 @@ export default function PicnicRecap() {
               <TableBody className="text-sm">
                 <TableRow>
                   <TableCell className="font-semibold bg-yellow-200 dark:bg-yellow-700/50 text-black">Pain (Total)</TableCell>
-                  {DAYS_OF_WEEK_KEYS.map(day => (
-                    <TableCell key={`total-pain-${day}`} className="text-center bg-yellow-100 dark:bg-yellow-800/40">
-                      {(Number(baseBreadNumber) || 0) + (weeklyRecapFooterTotals.baguette[day] || 0) + (weeklyRecapFooterTotals.faluche[day] || 0)}
-                    </TableCell>
-                  ))}
+                  {DAYS_OF_WEEK_KEYS.map(day => {
+                    let dailyPainTotal = (Number(baseBreadNumber) || 0) + 
+                                         (weeklyRecapFooterTotals.baguette[day] || 0) + 
+                                         (weeklyRecapFooterTotals.faluche[day] || 0);
+                    if (day === 'mardi' || day === 'jeudi') {
+                        dailyPainTotal += (dailyGlaciereTotals[day] || 0);
+                    }
+                    return (
+                        <TableCell key={`total-pain-${day}`} className="text-center bg-yellow-100 dark:bg-yellow-800/40">
+                            {dailyPainTotal}
+                        </TableCell>
+                    );
+                  })}
                 </TableRow>
                 <TableRow>
                   <TableCell className="font-semibold bg-orange-300 dark:bg-orange-800/50 text-black">Baguette</TableCell>
@@ -544,6 +549,8 @@ export default function PicnicRecap() {
     </div>
   );
 }
+    
+
     
 
     
