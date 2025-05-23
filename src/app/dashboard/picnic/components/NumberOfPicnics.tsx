@@ -107,7 +107,6 @@ export default function NumberOfPicnics() {
 
   const weekDisplayString = useMemo(() => {
     const monday = startOfWeek(selectedDate, { weekStartsOn: 1 });
-    const sunday = endOfWeek(selectedDate, { weekStartsOn: 1 }); // Friday actually, for display purposes
     return `Semaine du : ${format(monday, 'dd MMMM', { locale: fr })} au ${format(addDays(monday, 4), 'dd MMMM yyyy', { locale: fr })}`;
   }, [selectedDate]);
 
@@ -304,10 +303,38 @@ export default function NumberOfPicnics() {
       }
     });
     return {
-      baguettes: Math.round(baguettes / 2), // Baguettes are still /2
+      baguettes: Math.round(baguettes / 2),
       faluches: faluches,
     };
   }, [clientOrders, selectedClientOrderDay]);
+
+  const weeklyClientRecapData = useMemo(() => {
+    return clientOrders.map(order => {
+      let totalWeeklyNbPn = 0;
+      let tempWeeklyBaguettes = 0;
+      let totalWeeklyFaluches = 0;
+
+      DAYS_OF_WEEK_KEYS.forEach(day => {
+        const dayData = order.days[day];
+        const nbPn = Number(dayData.nbPn) || 0;
+        totalWeeklyNbPn += nbPn;
+        if (dayData.breadChoice === 'baguette') {
+          tempWeeklyBaguettes += nbPn;
+        } else if (dayData.breadChoice === 'faluche') {
+          totalWeeklyFaluches += nbPn;
+        }
+      });
+      return {
+        id: order.id,
+        clientName: order.clientName,
+        observation: order.observation,
+        totalWeeklyNbPn,
+        totalWeeklyBaguettes: Math.round(tempWeeklyBaguettes / 2),
+        totalWeeklyFaluches,
+      };
+    }).filter(recap => recap.clientName.trim() !== '' || recap.totalWeeklyNbPn > 0); // Filter out completely empty recap lines
+  }, [clientOrders]);
+
 
   const handlePreviousWeek = () => {
     setSelectedDate(prevDate => subDays(prevDate, 7));
@@ -397,7 +424,7 @@ export default function NumberOfPicnics() {
                         const value = Math.round(dailyGlobalTotals[day] / 2);
                         cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{value}</span>;
                       } else if (rowConfig.id === 'nb_faluche') {
-                        const value = (day === 'mercredi' || day === 'vendredi') ? dailyGlobalTotals[day] : '0';
+                         const value = (day === 'mercredi' || day === 'vendredi') ? dailyGlobalTotals[day] : '0';
                         cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{value}</span>;
                       } else if (rowConfig.id === 'total_glaciere') {
                         cellContent = <span className={cn("font-semibold block py-1.5", rowConfig.textColor)}>{dailyGlaciereTotals[day]}</span>;
@@ -540,11 +567,14 @@ export default function NumberOfPicnics() {
               </TableBody>
               <TableFooter>
                 <TableRow className="bg-amber-100 dark:bg-amber-800/50">
-                    <TableCell colSpan={2} className="text-right font-semibold text-black dark:text-white">
+                    <TableCell className="text-right font-semibold text-black dark:text-white">
                         TOTAUX PAINS POUR {DAY_LABELS[selectedClientOrderDay].toUpperCase()} :
                     </TableCell>
                     <TableCell className="text-center font-bold text-black dark:text-white">
-                        B: {clientBreadTotalsForSelectedDay.baguettes} / F: {clientBreadTotalsForSelectedDay.faluches}
+                        B: {clientBreadTotalsForSelectedDay.baguettes}
+                    </TableCell>
+                    <TableCell className="text-center font-bold text-black dark:text-white">
+                        F: {clientBreadTotalsForSelectedDay.faluches}
                     </TableCell>
                     <TableCell colSpan={2}></TableCell>
                 </TableRow>
@@ -586,6 +616,62 @@ export default function NumberOfPicnics() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Weekly Client Recap Table */}
+      <Card className="shadow-lg mt-8">
+        <CardHeader>
+          <CardTitle>Récapitulatif Hebdomadaire des Commandes Clients</CardTitle>
+          <CardDescription>
+            Totaux des commandes clients pour la semaine sélectionnée : {weekDisplayString}.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {weeklyClientRecapData.length === 0 ? (
+            <p className="text-muted-foreground text-center py-4">Aucune commande client avec des quantités pour cette semaine.</p>
+          ) : (
+            <div className="overflow-x-auto border rounded-md">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-sky-100 dark:bg-sky-800/50">
+                    <TableHead className="text-black dark:text-white">Client</TableHead>
+                    <TableHead className="text-center text-black dark:text-white">Total NB PN (Semaine)</TableHead>
+                    <TableHead className="text-center text-black dark:text-white">Total Baguettes (Semaine)</TableHead>
+                    <TableHead className="text-center text-black dark:text-white">Total Faluches (Semaine)</TableHead>
+                    <TableHead className="text-black dark:text-white">Observation</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {weeklyClientRecapData.map((recap) => (
+                    <TableRow key={recap.id}>
+                      <TableCell className="font-medium">{recap.clientName || <span className="italic text-muted-foreground">Client non nommé</span>}</TableCell>
+                      <TableCell className="text-center">{recap.totalWeeklyNbPn}</TableCell>
+                      <TableCell className="text-center">{recap.totalWeeklyBaguettes}</TableCell>
+                      <TableCell className="text-center">{recap.totalWeeklyFaluches}</TableCell>
+                      <TableCell>{recap.observation}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+                 <TableFooter>
+                    <TableRow className="bg-sky-200 dark:bg-sky-700/60">
+                        <TableCell className="text-right font-bold text-black dark:text-white">TOTAUX GÉNÉRAUX SEMAINE:</TableCell>
+                        <TableCell className="text-center font-bold text-black dark:text-white">
+                            {weeklyClientRecapData.reduce((sum, r) => sum + r.totalWeeklyNbPn, 0)}
+                        </TableCell>
+                        <TableCell className="text-center font-bold text-black dark:text-white">
+                            {weeklyClientRecapData.reduce((sum, r) => sum + r.totalWeeklyBaguettes, 0)}
+                        </TableCell>
+                        <TableCell className="text-center font-bold text-black dark:text-white">
+                            {weeklyClientRecapData.reduce((sum, r) => sum + r.totalWeeklyFaluches, 0)}
+                        </TableCell>
+                        <TableCell></TableCell>
+                    </TableRow>
+                </TableFooter>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
     </div>
   );
 }
