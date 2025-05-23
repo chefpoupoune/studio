@@ -11,16 +11,16 @@ export interface DailyCounts {
 export type PicnicRowKey = 
   | 'gatien' | 'cedric' | 'dominique' | 'maxime_l' | 'nicolas' 
   | 'maxime_h' | 'philipe' | 'plus' | 'autre' 
-  | 'nb_bagette' /* Removed nb_bagette_esat */ | 'total_glaciere';
+  | 'nb_bagette' | 'nb_faluche' | 'total_glaciere';
 
 export type PicnicWeekData = Record<PicnicRowKey, DailyCounts>;
 
 export interface DisplayRowConfig {
-  id: PicnicRowKey | 'total_global'; // Removed 'total_esat'. Include calculated rows for display mapping
+  id: PicnicRowKey | 'total_global'; 
   label: string;
   bgColor: string;
   textColor: string;
-  isInputRow: boolean; // True if this row takes direct input
-  isESATContributor?: boolean; // True if this row's values contribute to "total ESAT" (conceptually, even if row not displayed)
-  isTotalContributor?: boolean; // True if this row's values contribute to "TOTAL" (global total)
+  isInputRow: boolean; 
+  isTotalContributor?: boolean; 
 }
+

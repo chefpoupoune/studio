@@ -36,7 +36,8 @@ const createInitialPicnicWeekData = (): PicnicWeekData => ({
   philipe: initialRowData(),
   plus: initialRowData(),
   autre: initialRowData(),
-  nb_bagette: initialRowData(), // This will be calculated, but keep structure for type safety
+  nb_bagette: initialRowData(),
+  nb_faluche: initialRowData(), // Nouvelle ligne
   total_glaciere: initialRowData(),
 });
 
@@ -52,6 +53,7 @@ const DISPLAY_ROWS_CONFIG: DisplayRowConfig[] = [
   { id: 'autre', label: 'autre', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: true, isTotalContributor: true },
   { id: 'total_global', label: 'TOTAL', bgColor: 'bg-orange-300', textColor: 'text-black', isInputRow: false },
   { id: 'nb_bagette', label: 'NB de bagette', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: false },
+  { id: 'nb_faluche', label: 'NB de Faluche', bgColor: 'bg-yellow-200', textColor: 'text-black', isInputRow: true, isTotalContributor: false }, // Nouvelle ligne
   { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: true },
 ];
 
@@ -65,7 +67,6 @@ export default function NumberOfPicnics() {
       const storedData = localStorage.getItem(PICNIC_DATA_STORAGE_KEY);
       if (storedData) {
         const parsedData = JSON.parse(storedData);
-        // Ensure all keys from createInitialPicnicWeekData are present
         const initialKeys = Object.keys(createInitialPicnicWeekData()) as PicnicRowKey[];
         const completeData: Partial<PicnicWeekData> = {};
         initialKeys.forEach(key => {
@@ -117,7 +118,7 @@ export default function NumberOfPicnics() {
   const calculateDailyTotal = useCallback((day: keyof DailyCounts, type: 'global'): number => {
     let sum = 0;
     for (const rowConfig of DISPLAY_ROWS_CONFIG) {
-      if (rowConfig.isInputRow) { // Sum only input rows
+      if (rowConfig.isInputRow) { 
         if (type === 'global' && rowConfig.isTotalContributor) {
           sum += Number(picnicData[rowConfig.id as PicnicRowKey]?.[day]) || 0;
         }
@@ -168,7 +169,13 @@ export default function NumberOfPicnics() {
                           min="0"
                           value={picnicData[rowConfig.id as PicnicRowKey]?.[day] ?? ''}
                           onChange={(e) => handleInputChange(rowConfig.id as PicnicRowKey, day, e.target.value)}
-                          className={cn("h-8 text-center tabular-nums", "placeholder:text-gray-500")}
+                          className={cn(
+                            "h-8 text-center tabular-nums",
+                            // Apply text color from config to input placeholder and text for better visibility
+                            rowConfig.textColor.startsWith('text-white') ? "text-white placeholder:text-gray-300" : "text-black placeholder:text-gray-500",
+                            rowConfig.bgColor // Keep the background color of the input transparent or match cell for inputs
+                          )}
+                          style={{ backgroundColor: 'transparent' }} // Ensure input background is transparent to show cell color
                           placeholder="0"
                         />
                       ) : rowConfig.id === 'total_global' ? ( 
