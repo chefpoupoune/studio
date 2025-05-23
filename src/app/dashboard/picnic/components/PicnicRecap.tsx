@@ -27,6 +27,8 @@ const DAY_LABELS: Record<DayOfWeekKey, string> = {
 
 const PICNIC_DATA_STORAGE_KEY_PREFIX = "picnic_nb_pn_data_v1_";
 const PICNIC_CLIENT_ORDERS_KEY_PREFIX = "picnic_client_orders_data_v3_";
+const PICNIC_BASE_BREAD_KEY_PREFIX = "picnic_base_bread_v1_"; 
+
 
 const initialRowData = (): PicnicRowData => ({
   lundi: '', mardi: '', mercredi: '', jeudi: '', vendredi: '', weeklyObservation: ''
@@ -45,11 +47,6 @@ const createInitialPicnicWeekData = (): PicnicWeekData => ({
   nb_bagette: initialRowData(),
   nb_faluche: initialRowData(),
   total_glaciere: initialRowData(),
-});
-
-const createInitialDailyClientPicnicData = (): DailyClientPicnicData => ({
-  nbPn: '',
-  breadChoice: 'none',
 });
 
 const DISPLAY_ROWS_CONFIG_NB_PN: DisplayRowConfig[] = [
@@ -73,7 +70,9 @@ export default function PicnicRecap() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [picnicData, setPicnicData] = useState<PicnicWeekData>(createInitialPicnicWeekData());
   const [clientOrders, setClientOrders] = useState<ClientPicnicOrder[]>([]);
+  const [baseBreadNumber, setBaseBreadNumber] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
+  const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const { toast } = useToast();
 
   const weekIdentifier = useMemo(() => {
@@ -89,10 +88,14 @@ export default function PicnicRecap() {
 
   const getPicnicDataStorageKey = useCallback(() => `${PICNIC_DATA_STORAGE_KEY_PREFIX}${weekIdentifier}`, [weekIdentifier]);
   const getClientOrdersStorageKey = useCallback(() => `${PICNIC_CLIENT_ORDERS_KEY_PREFIX}${weekIdentifier}`, [weekIdentifier]);
+  const getBaseBreadStorageKey = useCallback(() => `${PICNIC_BASE_BREAD_KEY_PREFIX}${weekIdentifier}`, [weekIdentifier]);
+
 
   useEffect(() => {
     setIsLoading(true);
+    setInitialDataLoaded(false); 
     try {
+      // Load picnic data
       const storedPicnicDataRaw = localStorage.getItem(getPicnicDataStorageKey());
       if (storedPicnicDataRaw) {
         const parsedData = JSON.parse(storedPicnicDataRaw);
@@ -100,9 +103,9 @@ export default function PicnicRecap() {
             const completeData: Partial<PicnicWeekData> = {};
             (Object.keys(createInitialPicnicWeekData()) as PicnicRowKey[]).forEach(key => {
                 completeData[key] = { 
-                    ...(initialRowData()), // Ensure all daily keys exist
-                    ...(parsedData[key] || {}), // Spread stored data for the row
-                    weeklyObservation: parsedData[key]?.weeklyObservation || prevData[key]?.weeklyObservation || '' // Persist observation
+                    ...(initialRowData()), 
+                    ...(parsedData[key] || {}), 
+                    weeklyObservation: parsedData[key]?.weeklyObservation || prevData[key]?.weeklyObservation || '' 
                 };
             });
             return completeData as PicnicWeekData;
@@ -119,33 +122,45 @@ export default function PicnicRecap() {
         });
       }
 
+      // Load client orders
       const storedClientOrders = localStorage.getItem(getClientOrdersStorageKey());
       if (storedClientOrders) {
          const parsedClientOrders: ClientPicnicOrder[] = JSON.parse(storedClientOrders);
          setClientOrders(parsedClientOrders.map(order => ({
-          ...createInitialDailyClientPicnicData(), // This line was incorrect, should be createInitialClientOrder()
           ...order, 
           id: order.id || `client_order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, 
           days: { 
-            lundi: { ...createInitialDailyClientPicnicData(), ...(order.days?.lundi || {}) },
-            mardi: { ...createInitialDailyClientPicnicData(), ...(order.days?.mardi || {}) },
-            mercredi: { ...createInitialDailyClientPicnicData(), ...(order.days?.mercredi || {}) },
-            jeudi: { ...createInitialDailyClientPicnicData(), ...(order.days?.jeudi || {}) },
-            vendredi: { ...createInitialDailyClientPicnicData(), ...(order.days?.vendredi || {}) },
+            lundi: { nbPn: order.days?.lundi?.nbPn || '', breadChoice: order.days?.lundi?.breadChoice || 'none' },
+            mardi: { nbPn: order.days?.mardi?.nbPn || '', breadChoice: order.days?.mardi?.breadChoice || 'none' },
+            mercredi: { nbPn: order.days?.mercredi?.nbPn || '', breadChoice: order.days?.mercredi?.breadChoice || 'none' },
+            jeudi: { nbPn: order.days?.jeudi?.nbPn || '', breadChoice: order.days?.jeudi?.breadChoice || 'none' },
+            vendredi: { nbPn: order.days?.vendredi?.nbPn || '', breadChoice: order.days?.vendredi?.breadChoice || 'none' },
           }
         })));
       } else {
         setClientOrders([]);
       }
+
+      // Load base bread number
+      const storedBaseBread = localStorage.getItem(getBaseBreadStorageKey());
+      setBaseBreadNumber(storedBaseBread || '');
+
     } catch (e) {
       console.error("Failed to load picnic recap data from localStorage for week " + weekIdentifier, e);
       toast({ title: "Erreur de chargement", description: "Données de récapitulatif pique-nique corrompues.", variant: "destructive" });
       setPicnicData(createInitialPicnicWeekData());
       setClientOrders([]);
+      setBaseBreadNumber('');
     }
     setIsLoading(false);
-  }, [getPicnicDataStorageKey, getClientOrdersStorageKey, toast, weekIdentifier]);
+    setInitialDataLoaded(true);
+  }, [getPicnicDataStorageKey, getClientOrdersStorageKey, getBaseBreadStorageKey, toast, weekIdentifier]);
 
+  useEffect(() => {
+    if (!isLoading && initialDataLoaded) {
+      localStorage.setItem(getBaseBreadStorageKey(), baseBreadNumber);
+    }
+  }, [baseBreadNumber, isLoading, initialDataLoaded, getBaseBreadStorageKey]);
 
   const handleRecapObservationChange = (rowId: PicnicRowKey, value: string) => {
     setPicnicData(prevData => ({
@@ -256,7 +271,7 @@ export default function PicnicRecap() {
   const handlePreviousWeek = () => setSelectedDate(prevDate => subDays(prevDate, 7));
   const handleNextWeek = () => setSelectedDate(prevDate => addDays(prevDate, 7));
 
-  if (isLoading) {
+  if (isLoading && !initialDataLoaded) {
     return <div className="flex justify-center items-center p-10"><Info className="mr-2 h-5 w-5"/>Chargement du récapitulatif...</div>;
   }
 
@@ -315,7 +330,6 @@ export default function PicnicRecap() {
               </TableHeader>
               <TableBody>
                 {DISPLAY_ROWS_CONFIG_NB_PN.map(rowConfig => {
-                  const isCalculatedRow = !rowConfig.isInputRow;
                   return (
                   <TableRow key={rowConfig.id}>
                     <TableCell className={cn("font-medium sticky left-0 z-10", rowConfig.bgColor, rowConfig.textColor)}>
@@ -399,17 +413,19 @@ export default function PicnicRecap() {
                       return null; 
                     }
                     
+                    let clientCellRendered = false;
                     const rowSpanForClientName = (clientHasBaguettes && clientHasFaluches) ? 2 : 1;
 
                     return (
                       <React.Fragment key={recap.id}>
                         {clientHasBaguettes && (
                           <TableRow>
-                            {rowSpanForClientName === 2 || (rowSpanForClientName === 1 && clientHasBaguettes) ? (
+                            {!clientCellRendered && (
                               <TableCell rowSpan={rowSpanForClientName} className="font-medium sticky left-0 z-10 bg-card group-hover:bg-muted/50 w-[150px] align-middle">
                                 {recap.clientName || <span className="italic text-muted-foreground">Client non nommé</span>}
                               </TableCell>
-                            ) : null}
+                            )}
+                            {clientCellRendered = true}
                             <TableCell className="font-semibold">Baguette</TableCell>
                             {DAYS_OF_WEEK_KEYS.map(day => (
                               <TableCell key={`${recap.id}-baguette-${day}`} className="text-center">
@@ -420,11 +436,11 @@ export default function PicnicRecap() {
                         )}
                         {clientHasFaluches && (
                           <TableRow>
-                             {rowSpanForClientName === 1 && clientHasFaluches && !clientHasBaguettes ? ( 
+                            {!clientCellRendered && (
                               <TableCell rowSpan={1} className="font-medium sticky left-0 z-10 bg-card group-hover:bg-muted/50 w-[150px] align-middle">
                                 {recap.clientName || <span className="italic text-muted-foreground">Client non nommé</span>}
                               </TableCell>
-                            ) : null}
+                            )}
                             <TableCell className="font-semibold">Faluche</TableCell>
                             {DAYS_OF_WEEK_KEYS.map(day => (
                               <TableCell key={`${recap.id}-faluche-${day}`} className="text-center">
@@ -461,15 +477,28 @@ export default function PicnicRecap() {
         </CardContent>
       </Card>
 
-      {/* New Daily Bread Summary Table */}
       <Card className="shadow-md mt-8">
         <CardHeader>
           <CardTitle>Récapitulatif Journalier des Pains Nécessaires (Commandes Clients)</CardTitle>
           <CardDescription>
             Total des pains (tous types), baguettes et faluches nécessaires chaque jour pour les commandes clients de la semaine sélectionnée.
+            <br />
+            <span className="text-xs italic">Le nombre de pains de base s'ajoute au total "pain".</span>
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 max-w-xs">
+            <Label htmlFor="base-bread-input">Nombre de Pains de Base pour la Semaine :</Label>
+            <Input
+              id="base-bread-input"
+              type="number"
+              min="0"
+              value={baseBreadNumber}
+              onChange={(e) => setBaseBreadNumber(e.target.value)}
+              className="mt-1 h-8"
+              placeholder="Ex: 10"
+            />
+          </div>
           <div className="overflow-x-auto border rounded-md">
             <Table className="min-w-[600px]">
               <TableHeader>
@@ -487,7 +516,7 @@ export default function PicnicRecap() {
                   <TableCell className="font-semibold bg-yellow-200 dark:bg-yellow-700/50 text-black">Pain (Total)</TableCell>
                   {DAYS_OF_WEEK_KEYS.map(day => (
                     <TableCell key={`total-pain-${day}`} className="text-center bg-yellow-100 dark:bg-yellow-800/40">
-                      {(weeklyRecapFooterTotals.baguette[day] || 0) + (weeklyRecapFooterTotals.faluche[day] || 0)}
+                      {(Number(baseBreadNumber) || 0) + (weeklyRecapFooterTotals.baguette[day] || 0) + (weeklyRecapFooterTotals.faluche[day] || 0)}
                     </TableCell>
                   ))}
                 </TableRow>
@@ -512,11 +541,11 @@ export default function PicnicRecap() {
           </div>
         </CardContent>
       </Card>
-
-
     </div>
   );
 }
+    
+
     
 
     
