@@ -43,7 +43,7 @@ const createInitialPicnicWeekData = (): PicnicWeekData => ({
 const DISPLAY_ROWS_CONFIG: DisplayRowConfig[] = [
   { id: 'gatien', label: 'Gatien', bgColor: 'bg-yellow-300', textColor: 'text-black', isInputRow: true, isESATContributor: true, isTotalContributor: true },
   { id: 'cedric', label: 'Cedric', bgColor: 'bg-green-500', textColor: 'text-white', isInputRow: true, isESATContributor: true, isTotalContributor: true },
-  { id: 'dominique', label: 'Dominique', bgColor: 'bg-orange-200', textColor: 'text-black', isInputRow: true, isESATContributor: true, isTotalContributor: true },
+  { id: 'dominique', label: 'Dominique', bgColor: 'bg-white', textColor: 'text-black', isInputRow: true, isESATContributor: true, isTotalContributor: true },
   { id: 'maxime_l', label: 'Maxime L', bgColor: 'bg-red-500', textColor: 'text-white', isInputRow: true, isESATContributor: true, isTotalContributor: true },
   { id: 'nicolas', label: 'Nicolas', bgColor: 'bg-black', textColor: 'text-white', isInputRow: true, isESATContributor: true, isTotalContributor: true },
   { id: 'maxime_h', label: 'Maxime H', bgColor: 'bg-blue-500', textColor: 'text-white', isInputRow: true, isESATContributor: true, isTotalContributor: true },
