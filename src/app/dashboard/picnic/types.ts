@@ -64,14 +64,19 @@ export const PICNIC_MENU_DAY_KEYS = Object.keys(PICNIC_MENU_DAYS_LABELS) as DayO
 
 export const NUM_PICNIC_ITEM_SLOTS = 14; // Number of item rows per day in the table
 
-export interface PicnicMenuWeek {
-  id: string; // Unique ID, e.g., "YYYY-MM-weekIndex"
+// Represents the content of one of the 5 master weekly menu templates
+export interface StoredPicnicMenuTemplate {
+  days: Record<DayOfWeekKey, string[]>; // Menu items for each day (Lundi-Vendredi)
+  weeklyNote?: string; // A general note for this weekly template
+}
+
+// This interface will be used in the component for display, combining StoredPicnicMenuTemplate with dynamic date info
+export interface DisplayedPicnicMenuWeek extends StoredPicnicMenuTemplate {
+  // Date-specific properties, calculated dynamically
+  id: string; // Unique ID for the displayed week instance, e.g., "YYYY-MM-weekIndex"
   year: number;
-  monthIndex: number; // 0-11 for Date object, but we use 2-10 for Mars-Nov
-  weekInMonth: number; // 1 to 5 (conceptual week in month)
+  monthIndex: number;
+  weekInMonth: number;
   startDate: string; // ISO string for Monday of the week
   dateRangeDisplay: string; // e.g., "04/03 au 08/03"
-  // For each day (lundi-vendredi), store an array of menu items (strings)
-  days: Record<DayOfWeekKey, string[]>; 
-  weeklyNote?: string;
 }
