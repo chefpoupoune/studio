@@ -13,7 +13,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Save, CalendarDays, Trash2 } from 'lucide-react';
 import type { PicnicMenuWeek, PicnicMenuDayKey } from '../types';
 import { PICNIC_MENU_MONTHS, PICNIC_MENU_DAY_KEYS, NUM_PICNIC_ITEM_SLOTS, PICNIC_MENU_DAYS_LABELS } from '../types';
-import { format, getYear, getMonth, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addWeeks, addDays, isSameMonth, eachWeekOfInterval, getISOWeek } from 'date-fns';
+import { format, getYear, getMonth, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addWeeks, addDays, isSameMonth, eachWeekOfInterval, getISOWeek, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -38,7 +38,7 @@ const createEmptyDailyItems = (): string[] => Array(NUM_PICNIC_ITEM_SLOTS).fill(
 const createEmptyPicnicMenuWeek = (year: number, monthIndex: number, weekInMonth: number, startDate: Date): PicnicMenuWeek => {
   const endDate = endOfWeek(startDate, { weekStartsOn: 1 });
   return {
-    id: `${year}-${monthIndex}-${weekInMonth}`,
+    id: `${year}-${monthIndex}-${weekInMonth}`, // monthIndex here is 0-11
     year,
     monthIndex,
     weekInMonth,
@@ -54,33 +54,43 @@ const createEmptyPicnicMenuWeek = (year: number, monthIndex: number, weekInMonth
 
 export default function PicnicMenu() {
   const [selectedYear, setSelectedYear] = useState<number>(currentSystemYear);
-  const [selectedMonthTab, setSelectedMonthTab] = useState<string>(PICNIC_MENU_MONTHS[0].value.toString()); // Mars by default
+  const [selectedMonthTab, setSelectedMonthTab] = useState<string>(PICNIC_MENU_MONTHS[0].value.toString()); // Mars by default (value: 2)
   const [allPicnicMenuWeeks, setAllPicnicMenuWeeks] = useState<PicnicMenuWeek[]>([]);
   const { toast } = useToast();
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isClient) return;
     try {
       const storedData = localStorage.getItem(PICNIC_WEEKLY_MENUS_STORAGE_KEY);
       if (storedData) {
         const parsedData: PicnicMenuWeek[] = JSON.parse(storedData);
-        // Ensure days object has all keys and correct number of slots
         const validatedData = parsedData.map(week => ({
           ...week,
+          startDate: week.startDate || startOfWeek(new Date(week.year, week.monthIndex, (week.weekInMonth -1) * 7 + 1), {weekStartsOn: 1}).toISOString(),
           days: PICNIC_MENU_DAY_KEYS.reduce((acc, dayKey) => {
-            const items = week.days[dayKey] || []; // Fallback for potentially missing day
+            const items = week.days[dayKey] || [];
             acc[dayKey] = Array.from({ length: NUM_PICNIC_ITEM_SLOTS }, (_, i) => items[i] || '');
             return acc;
           }, {} as Record<PicnicMenuDayKey, string[]>),
         }));
         setAllPicnicMenuWeeks(validatedData);
+      } else {
+        setAllPicnicMenuWeeks([]); // Initialize as empty if nothing in localStorage
       }
     } catch (e) {
       console.error("Failed to load picnic menu data:", e);
+      setAllPicnicMenuWeeks([]);
       toast({ title: "Erreur de chargement des menus Pique Nique", variant: "destructive" });
     }
-  }, [toast]);
+  }, [toast, isClient]);
 
   const handleSaveMenus = () => {
+    if (!isClient) return;
     try {
       localStorage.setItem(PICNIC_WEEKLY_MENUS_STORAGE_KEY, JSON.stringify(allPicnicMenuWeeks));
       toast({ title: "Menus Pique Nique Enregistrés", description: "Vos modifications ont été sauvegardées." });
@@ -89,107 +99,148 @@ export default function PicnicMenu() {
       toast({ title: "Erreur de sauvegarde", variant: "destructive" });
     }
   };
-
+  
   const weeksForSelectedMonth = useMemo(() => {
-    const monthIndex = parseInt(selectedMonthTab, 10); // This is already 0-indexed for Date needs if from PICNIC_MENU_MONTHS.value
+    if (!isClient) return [];
+    const monthIndex = parseInt(selectedMonthTab, 10); // This is 0-indexed for Date needs
     const monthStartDate = startOfMonth(new Date(selectedYear, monthIndex));
     const monthEndDate = endOfMonth(monthStartDate);
     
-    let currentWeekStartDate = startOfWeek(monthStartDate, { weekStartsOn: 1 });
     const weeks: Array<{ weekInMonth: number; dateRangeDisplay: string; startDate: Date; id: string }> = [];
+    let currentWeekIterStartDate = startOfWeek(monthStartDate, { weekStartsOn: 1 });
     let weekCounter = 1;
 
-    while (currentWeekStartDate <= monthEndDate && weeks.length < 5) {
-        // Ensure the week starts within the selected month, or at least overlaps with it
-        const actualWeekStartForDisplay = currentWeekStartDate < monthStartDate ? monthStartDate : currentWeekStartDate;
-        let actualWeekEndForDisplay = endOfWeek(currentWeekStartDate, { weekStartsOn: 1 });
-        actualWeekEndForDisplay = actualWeekEndForDisplay > monthEndDate ? monthEndDate : actualWeekEndForDisplay;
+    while (currentWeekIterStartDate <= monthEndDate && weeks.length < 5) {
+        const actualDisplayStartDate = currentWeekIterStartDate < monthStartDate ? monthStartDate : currentWeekIterStartDate;
+        let actualDisplayEndDate = endOfWeek(currentWeekIterStartDate, { weekStartsOn: 1 });
+        actualDisplayEndDate = actualDisplayEndDate > monthEndDate ? monthEndDate : actualDisplayEndDate;
 
-        if (actualWeekStartForDisplay <= monthEndDate) { // Only add if the week has days in the current month
+        if (actualDisplayStartDate <= monthEndDate) {
              weeks.push({
                 weekInMonth: weekCounter,
-                startDate: currentWeekStartDate, // Use the true Monday for ID generation
-                dateRangeDisplay: `${format(actualWeekStartForDisplay, 'dd/MM')} au ${format(actualWeekEndForDisplay, 'dd/MM')}`,
+                startDate: currentWeekIterStartDate, // The true Monday of that week
+                dateRangeDisplay: `${format(actualDisplayStartDate, 'dd/MM')} au ${format(actualDisplayEndDate, 'dd/MM')}`,
                 id: `${selectedYear}-${monthIndex}-${weekCounter}`,
             });
             weekCounter++;
         }
-        currentWeekStartDate = addDays(currentWeekStartDate, 7); // Move to the next Monday
+        currentWeekIterStartDate = addDays(currentWeekIterStartDate, 7);
     }
-    // Ensure we always have 5 conceptual weeks for consistent UI, even if some are partially outside month
      while (weeks.length < 5) {
-        const lastWeekStartDate = weeks.length > 0 ? weeks[weeks.length - 1].startDate : startOfWeek(monthStartDate, { weekStartsOn: 1 });
-        const nextWeekStartDate = addDays(lastWeekStartDate, (weeks.length > 0 ? 7 : (weekCounter-1)*7) ); // Ensure next week starts after last
+        const lastGeneratedWeekStartDate = weeks.length > 0 ? weeks[weeks.length - 1].startDate : startOfWeek(monthStartDate, { weekStartsOn: 1 });
+        const nextWeekStartDateCalc = addDays(lastGeneratedWeekStartDate, (weeks.length > 0 ? 7 : (weekCounter-1)*7) );
         
         weeks.push({
             weekInMonth: weekCounter,
-            startDate: nextWeekStartDate,
-            dateRangeDisplay: `${format(nextWeekStartDate, 'dd/MM')} au ${format(endOfWeek(nextWeekStartDate, { weekStartsOn: 1 }), 'dd/MM')}`,
+            startDate: nextWeekStartDateCalc,
+            dateRangeDisplay: `${format(nextWeekStartDateCalc, 'dd/MM')} au ${format(endOfWeek(nextWeekStartDateCalc, { weekStartsOn: 1 }), 'dd/MM')}`,
             id: `${selectedYear}-${monthIndex}-${weekCounter}`,
         });
         weekCounter++;
     }
-    return weeks.slice(0, 5); // Ensure only 5 weeks
-  }, [selectedYear, selectedMonthTab]);
+    return weeks.slice(0, 5);
+  }, [selectedYear, selectedMonthTab, isClient]);
 
   const displayedWeeklyMenus = useMemo(() => {
+    if (!isClient) return [];
     const monthIndex = parseInt(selectedMonthTab, 10);
     return weeksForSelectedMonth.map(weekMeta => {
       const existingMenu = allPicnicMenuWeeks.find(
-        menu => menu.year === selectedYear && menu.monthIndex === monthIndex && menu.weekInMonth === weekMeta.weekInMonth
+        menu => menu.id === weekMeta.id
       );
       if (existingMenu) {
-        // Ensure dateRangeDisplay is up-to-date if year/month changes for an existing ID structure
         return { ...existingMenu, dateRangeDisplay: weekMeta.dateRangeDisplay };
       }
       return createEmptyPicnicMenuWeek(selectedYear, monthIndex, weekMeta.weekInMonth, weekMeta.startDate);
     });
-  }, [weeksForSelectedMonth, allPicnicMenuWeeks, selectedYear, selectedMonthTab]);
+  }, [weeksForSelectedMonth, allPicnicMenuWeeks, selectedYear, selectedMonthTab, isClient]);
 
   const handleItemChange = (weekId: string, day: PicnicMenuDayKey, itemIndex: number, value: string) => {
-    setAllPicnicMenuWeeks(prevMenus =>
-      prevMenus.map(weekMenu => {
-        if (weekMenu.id === weekId) {
-          // Ensure weekMenu.days and weekMenu.days[day] are initialized
-          const currentDayItems = weekMenu.days[day] || createEmptyDailyItems();
-          const updatedDayItems = [...currentDayItems];
-          updatedDayItems[itemIndex] = value;
-          return { 
-            ...weekMenu, 
-            days: { 
-              ...weekMenu.days, 
-              [day]: updatedDayItems 
-            } 
-          };
+    setAllPicnicMenuWeeks(prevMenus => {
+      const menuIndex = prevMenus.findIndex(menu => menu.id === weekId);
+      let newMenus = [...prevMenus];
+  
+      if (menuIndex !== -1) { // Week exists, update it
+        const weekToUpdate = { ...newMenus[menuIndex] };
+        // Ensure days and specific day array are initialized
+        weekToUpdate.days = { ...weekToUpdate.days };
+        const dayItems = [...(weekToUpdate.days[day] || createEmptyDailyItems())];
+        
+        dayItems[itemIndex] = value;
+        weekToUpdate.days[day] = dayItems;
+        newMenus[menuIndex] = weekToUpdate;
+      } else { // Week doesn't exist, create and add it
+        const weekMeta = weeksForSelectedMonth.find(wm => wm.id === weekId);
+        if (weekMeta) {
+          const newWeek = createEmptyPicnicMenuWeek(
+            selectedYear,
+            parseInt(selectedMonthTab, 10), // This is 0-indexed as expected by createEmptyPicnicMenuWeek
+            weekMeta.weekInMonth,
+            weekMeta.startDate // Use the actual Date object
+          );
+          
+          // Now update the specific item in this new week
+          const dayItems = [...(newWeek.days[day] || createEmptyDailyItems())]; // Should be empty from createEmptyDailyItems
+          dayItems[itemIndex] = value;
+          newWeek.days[day] = dayItems;
+          newMenus.push(newWeek);
+        } else {
+          console.error(`PicnicMenu: Could not find weekMeta for new week ID: ${weekId} during creation.`);
+          return prevMenus; // Important: return previous state if creation fails
         }
-        return weekMenu;
-      })
-    );
+      }
+      return newMenus;
+    });
   };
 
   const handleWeeklyNoteChange = (weekId: string, value: string) => {
-     setAllPicnicMenuWeeks(prevMenus =>
-      prevMenus.map(weekMenu =>
-        weekMenu.id === weekId ? { ...weekMenu, weeklyNote: value } : weekMenu
-      )
-    );
+     setAllPicnicMenuWeeks(prevMenus => {
+        const menuIndex = prevMenus.findIndex(menu => menu.id === weekId);
+        let newMenus = [...prevMenus];
+
+        if (menuIndex !== -1) { // Week exists
+            newMenus[menuIndex] = { ...newMenus[menuIndex], weeklyNote: value };
+        } else { // Week doesn't exist, create it
+            const weekMeta = weeksForSelectedMonth.find(wm => wm.id === weekId);
+            if (weekMeta) {
+                const newWeek = createEmptyPicnicMenuWeek(
+                    selectedYear,
+                    parseInt(selectedMonthTab, 10),
+                    weekMeta.weekInMonth,
+                    weekMeta.startDate
+                );
+                newWeek.weeklyNote = value;
+                newMenus.push(newWeek);
+            } else {
+                console.error(`PicnicMenu: Could not find weekMeta for new week ID: ${weekId} during note change.`);
+                return prevMenus;
+            }
+        }
+        return newMenus;
+     });
   };
   
   const handleClearAllMenusForMonth = () => {
-    const monthIndex = parseInt(selectedMonthTab, 10);
+    if (!isClient) return;
+    const monthIndexToClear = parseInt(selectedMonthTab, 10);
+    const monthLabel = PICNIC_MENU_MONTHS.find(m => m.value === monthIndexToClear)?.label || `Mois ${monthIndexToClear + 1}`;
+    
     setAllPicnicMenuWeeks(prevMenus => 
-      prevMenus.filter(menu => !(menu.year === selectedYear && menu.monthIndex === monthIndex))
+      prevMenus.filter(menu => !(menu.year === selectedYear && menu.monthIndex === monthIndexToClear))
     );
-    toast({ title: `Tous les menus de ${PICNIC_MENU_MONTHS.find(m => m.value.toString() === selectedMonthTab)?.label} ${selectedYear} ont été effacés.`, variant: "destructive" });
+    toast({ title: `Tous les menus de ${monthLabel} ${selectedYear} ont été effacés.`, description:"N'oubliez pas de sauvegarder pour que ce soit permanent.", variant: "destructive" });
   };
 
+  if (!isClient) {
+    return <div className="flex justify-center items-center p-8"><Loader2 className="h-6 w-6 animate-spin text-primary"/> Chargement des menus...</div>;
+  }
 
   return (
     <Card className="shadow-lg">
       <CardHeader>
         <CardTitle>Planification des Menus Pique Nique</CardTitle>
         <CardDescription>
-          Définissez les menus pour chaque semaine des mois de Mars à Novembre.
+          Définissez les menus pour chaque semaine des mois de Mars à Novembre. Les données sont sauvegardées automatiquement à chaque modification, mais utilisez le bouton "Sauvegarder" pour une sauvegarde explicite.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -209,7 +260,7 @@ export default function PicnicMenu() {
         </div>
 
         <Tabs value={selectedMonthTab} onValueChange={setSelectedMonthTab} className="w-full">
-          <ScrollArea className="whitespace-nowrap">
+          <ScrollArea className="whitespace-nowrap pb-2">
             <TabsList>
               {PICNIC_MENU_MONTHS.map(month => (
                 <TabsTrigger key={month.value} value={month.value.toString()}>{month.label}</TabsTrigger>
@@ -230,7 +281,7 @@ export default function PicnicMenu() {
                     <AlertDialogHeader>
                       <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Êtes-vous sûr de vouloir effacer tous les menus pour {monthConfig.label} {selectedYear} ? Cette action est irréversible.
+                        Êtes-vous sûr de vouloir effacer tous les menus pour {monthConfig.label} {selectedYear} ? Les données seront réinitialisées pour ce mois.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -240,11 +291,12 @@ export default function PicnicMenu() {
                   </AlertDialogContent>
                 </AlertDialog>
               </div>
-              {displayedWeeklyMenus.filter(wm => wm.monthIndex === monthConfig.value).map((weeklyMenu, weekIdx) => (
+              {displayedWeeklyMenus.filter(wm => wm.monthIndex === monthConfig.value).map((weeklyMenu) => (
                 <Card key={weeklyMenu.id} className="overflow-hidden">
                   <CardHeader className="bg-muted/30 py-3 px-4">
-                    <CardTitle className="text-md">
-                      Semaine {weeklyMenu.weekInMonth} - {weeklyMenu.dateRangeDisplay}
+                    <CardTitle className="text-md flex items-center gap-2">
+                      <CalendarDays className="w-4 h-4 text-muted-foreground"/>
+                      Semaine {weeklyMenu.weekInMonth} - {weeklyMenu.dateRangeDisplay} ({selectedYear})
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-2">
@@ -278,14 +330,14 @@ export default function PicnicMenu() {
                       </Table>
                     </div>
                     <div className="mt-2">
-                      <Label htmlFor={`weekly-note-${weeklyMenu.id}`} className="text-xs">Note pour la semaine (Ex: Plage de dates si spécifique)</Label>
+                      <Label htmlFor={`weekly-note-${weeklyMenu.id}`} className="text-xs">Note pour la semaine</Label>
                       <Input
                         id={`weekly-note-${weeklyMenu.id}`}
                         type="text"
                         value={weeklyMenu.weeklyNote || ''}
                         onChange={(e) => handleWeeklyNoteChange(weeklyMenu.id, e.target.value)}
                         className="h-8 text-xs mt-1"
-                        placeholder="Ex: 19/05 au 23/05"
+                        placeholder="Ex: Précisions pour cette semaine"
                       />
                     </div>
                   </CardContent>
@@ -298,3 +350,5 @@ export default function PicnicMenu() {
     </Card>
   );
 }
+
+    
