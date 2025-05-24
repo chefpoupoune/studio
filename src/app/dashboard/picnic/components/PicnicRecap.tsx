@@ -18,7 +18,7 @@ import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
-import { PICNIC_MENU_DAY_KEYS, PICNIC_MENU_DAYS_LABELS, NUM_PICNIC_ITEM_SLOTS } from '../types'; // For menu display
+import { PICNIC_MENU_DAY_KEYS, PICNIC_MENU_DAYS_LABELS, NUM_PICNIC_ITEM_SLOTS } from '../types'; 
 
 const DAYS_OF_WEEK_KEYS: DayOfWeekKey[] = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'];
 const DAY_LABELS: Record<DayOfWeekKey, string> = {
@@ -32,8 +32,8 @@ const DAY_LABELS: Record<DayOfWeekKey, string> = {
 const PICNIC_DATA_STORAGE_KEY_PREFIX = "picnic_nb_pn_data_v1_";
 const PICNIC_CLIENT_ORDERS_KEY_PREFIX = "picnic_client_orders_data_v3_";
 const PICNIC_BASE_BREAD_KEY_PREFIX = "picnic_base_bread_v1_"; 
-const PICNIC_MONTHLY_MENU_TEMPLATES_KEY = "picnic_monthly_menu_templates_v1"; // To load menu templates
-const PICNIC_SELECTED_TEMPLATE_INDEX_KEY = "picnic_selected_template_index_v1"; // To load selected template index
+const PICNIC_MONTHLY_MENU_TEMPLATES_KEY = "picnic_monthly_menu_templates_v1";
+const PICNIC_SELECTED_TEMPLATE_INDEX_KEY = "picnic_selected_template_index_v1";
 
 const initialRowDataForRecap = (): PicnicRowData => ({
   lundi: '', mardi: '', mercredi: '', jeudi: '', vendredi: '', weeklyObservation: ''
@@ -55,19 +55,19 @@ const createInitialPicnicWeekDataForRecap = (): PicnicWeekData => ({
 });
 
 const DISPLAY_ROWS_CONFIG_NB_PN_RECAP: Array<DisplayRowConfig & { pdfBgColor?: [number,number,number]}> = [
-  { id: 'gatien', label: 'Gatien', bgColor: 'bg-yellow-300', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: [253, 224, 71] }, 
-  { id: 'cedric', label: 'Cedric', bgColor: 'bg-green-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [34, 197, 94] },   
-  { id: 'dominique', label: 'Dominique', bgColor: 'bg-white', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: [255, 255, 255] }, 
-  { id: 'maxime_l', label: 'Maxime L', bgColor: 'bg-red-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [239, 68, 68] },   
-  { id: 'nicolas', label: 'Nicolas', bgColor: 'bg-black', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [0,0,0] },     
-  { id: 'maxime_h', label: 'Maxime H', bgColor: 'bg-blue-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [59, 130, 246] },  
-  { id: 'philipe', label: 'Philipe', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: [249, 115, 22]}, 
-  { id: 'plus', label: 'PLUS', bgColor: 'bg-pink-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [236, 72, 153] },     
-  { id: 'autre', label: 'autre', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [147, 51, 234] }, 
-  { id: 'total_global', label: 'TOTAL', bgColor: 'bg-orange-300', textColor: 'text-black', isInputRow: false, pdfBgColor: [253, 186, 116] },
-  { id: 'nb_bagette', label: 'NB de bagette', bgColor: 'bg-gray-300', textColor: 'text-black', isInputRow: false, pdfBgColor: [209, 213, 219] }, 
-  { id: 'nb_faluche', label: 'NB de Faluche', bgColor: 'bg-gray-300', textColor: 'text-black', isInputRow: false, pdfBgColor: [209, 213, 219] }, 
-  { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: false, pdfBgColor: [249, 115, 22] }, 
+  { id: 'gatien', label: 'Gatien', bgColor: 'bg-yellow-300', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: [253, 224, 71] }, // Jaune
+  { id: 'cedric', label: 'Cedric', bgColor: 'bg-green-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [34, 197, 94] },   // Vert
+  { id: 'dominique', label: 'Dominique', bgColor: 'bg-white', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: [255, 255, 255] }, // Blanc
+  { id: 'maxime_l', label: 'Maxime L', bgColor: 'bg-red-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [239, 68, 68] },   // Rouge
+  { id: 'nicolas', label: 'Nicolas', bgColor: 'bg-black', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [0,0,0] },     // Noir
+  { id: 'maxime_h', label: 'Maxime H', bgColor: 'bg-blue-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [59, 130, 246] },  // Bleu
+  { id: 'philipe', label: 'Philipe', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: [249, 115, 22]}, // Orange
+  { id: 'plus', label: 'PLUS', bgColor: 'bg-pink-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [236, 72, 153] },     // Rose
+  { id: 'autre', label: 'autre', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [147, 51, 234] }, // Violet
+  { id: 'total_global', label: 'TOTAL', bgColor: 'bg-orange-300', textColor: 'text-black', isInputRow: false, pdfBgColor: [253, 186, 116] }, // Orange clair
+  { id: 'nb_bagette', label: 'NB de bagette', bgColor: 'bg-gray-300', textColor: 'text-black', isInputRow: false, pdfBgColor: [209, 213, 219] }, // Gris
+  { id: 'nb_faluche', label: 'NB de Faluche', bgColor: 'bg-gray-300', textColor: 'text-black', isInputRow: false, pdfBgColor: [209, 213, 219] }, // Gris
+  { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: false, pdfBgColor: [249, 115, 22] }, // Orange
 ];
 
 interface jsPDFWithAutoTable extends jsPDF {
@@ -105,7 +105,6 @@ export default function PicnicRecap() {
     setInitialDataLoaded(false); 
     console.log(`[Recap LOAD] Attempting to load data for week: ${weekIdentifier}`);
     try {
-      // Load Selected Template Info
       const storedSelectedIndicesRaw = localStorage.getItem(PICNIC_SELECTED_TEMPLATE_INDEX_KEY);
       const selectedTemplateIndices: Record<string, number | null> = storedSelectedIndicesRaw ? JSON.parse(storedSelectedIndicesRaw) : {};
       
@@ -117,38 +116,33 @@ export default function PicnicRecap() {
       
       if (templateIndexForMonth !== null && templateIndexForMonth !== undefined && allMonthlyTemplates[currentMonthIndex]?.[templateIndexForMonth]) {
         setActiveMenuTemplateForRecap(allMonthlyTemplates[currentMonthIndex][templateIndexForMonth]);
-        console.log(`[Recap LOAD] Active menu template for month ${currentMonthIndex}, template index ${templateIndexForMonth} loaded.`);
       } else {
         setActiveMenuTemplateForRecap(null);
-        console.log(`[Recap LOAD] No active menu template found for month ${currentMonthIndex}, template index ${templateIndexForMonth}.`);
       }
 
-      // Load picnic data (NB PN table)
       const storedPicnicDataRaw = localStorage.getItem(getPicnicDataStorageKey());
-      setPicnicData(currentData => {
-        const freshData = createInitialPicnicWeekDataForRecap();
-        const parsedStoredData = storedPicnicDataRaw ? JSON.parse(storedPicnicDataRaw) : {};
-        
-        (Object.keys(freshData) as PicnicRowKey[]).forEach(key => {
-            let observationToUse = parsedStoredData[key]?.weeklyObservation;
-            // If this is an initialization for a new week and no specific picnicData exists,
-            // and an activeMenuTemplate has a weeklyNote, use that note for input rows.
-            if (!storedPicnicDataRaw && activeMenuTemplateForRecap?.weeklyNote && DISPLAY_ROWS_CONFIG_NB_PN_RECAP.find(rc => rc.id === key)?.isInputRow) {
-                observationToUse = activeMenuTemplateForRecap.weeklyNote;
-            } else if (parsedStoredData[key]?.weeklyObservation === undefined) {
-                 // If observation is undefined in stored data, try to retain from previous week's state or active template
-                 observationToUse = currentData[key]?.weeklyObservation || (activeMenuTemplateForRecap?.weeklyNote && DISPLAY_ROWS_CONFIG_NB_PN_RECAP.find(rc => rc.id === key)?.isInputRow ? activeMenuTemplateForRecap.weeklyNote : '');
-            }
+        setPicnicData(currentData => {
+            const freshData = createInitialPicnicWeekDataForRecap();
+            const parsedStoredData = storedPicnicDataRaw ? JSON.parse(storedPicnicDataRaw) : {};
+            
+            (Object.keys(freshData) as PicnicRowKey[]).forEach(key => {
+                const config = DISPLAY_ROWS_CONFIG_NB_PN_RECAP.find(rc => rc.id === key);
+                let observationToUse = parsedStoredData[key]?.weeklyObservation;
+                
+                if (!storedPicnicDataRaw && activeMenuTemplateForRecap?.weeklyNote && config?.isInputRow) {
+                    observationToUse = activeMenuTemplateForRecap.weeklyNote;
+                } else if (parsedStoredData[key]?.weeklyObservation === undefined) {
+                     observationToUse = currentData[key]?.weeklyObservation || (activeMenuTemplateForRecap?.weeklyNote && config?.isInputRow ? activeMenuTemplateForRecap.weeklyNote : '');
+                }
 
-            freshData[key] = { 
-                ...(initialRowDataForRecap()), 
-                ...(parsedStoredData[key] || {}), 
-                weeklyObservation: observationToUse || '' 
-            };
+                freshData[key] = { 
+                    ...(initialRowDataForRecap()), 
+                    ...(parsedStoredData[key] || {}), 
+                    weeklyObservation: observationToUse || '' 
+                };
+            });
+            return freshData;
         });
-        console.log("[Recap LOAD] Picnic data (NB PN table) processed.");
-        return freshData;
-      });
 
 
       const storedClientOrders = localStorage.getItem(getClientOrdersStorageKey());
@@ -165,15 +159,12 @@ export default function PicnicRecap() {
             vendredi: { nbPn: order.days?.vendredi?.nbPn || '', breadChoice: order.days?.vendredi?.breadChoice || 'none' },
           }
         })));
-        console.log("[Recap LOAD] Client orders loaded.");
       } else {
         setClientOrders([]); 
-        console.log("[Recap LOAD] No client orders found for this week.");
       }
 
       const storedBaseBread = localStorage.getItem(getBaseBreadStorageKey());
       setBaseBreadNumber(storedBaseBread || '');
-      console.log("[Recap LOAD] Base bread number loaded.");
 
     } catch (e) {
       console.error("Failed to load picnic recap data from localStorage for week " + weekIdentifier, e);
@@ -185,11 +176,10 @@ export default function PicnicRecap() {
     }
     setIsLoading(false);
     setInitialDataLoaded(true);
-    console.log("[Recap LOAD] All data loading finished.");
-  }, [getPicnicDataStorageKey, getClientOrdersStorageKey, getBaseBreadStorageKey, toast, weekIdentifier, selectedDate]); // Added selectedDate
+  }, [getPicnicDataStorageKey, getClientOrdersStorageKey, getBaseBreadStorageKey, toast, weekIdentifier, selectedDate, activeMenuTemplateForRecap]); 
 
   useEffect(() => {
-    if (!isLoading && initialDataLoaded) { // Only save if initial data load is complete
+    if (!isLoading && initialDataLoaded) { 
       localStorage.setItem(getBaseBreadStorageKey(), baseBreadNumber);
     }
   }, [baseBreadNumber, isLoading, initialDataLoaded, getBaseBreadStorageKey]);
@@ -323,6 +313,7 @@ export default function PicnicRecap() {
         
         const whiteTextForPdf: [number, number, number] = [255, 255, 255];
         const blackTextForPdf: [number, number, number] = [0, 0, 0];
+        const whiteColor: [number,number,number] = [255,255,255];
 
         const tableBaseStyles = { fontSize: pdfSettings.tableBodyFontSize || 7, cellPadding: 1.5, font: pdfSettings.fontFamily || 'helvetica', lineColor: [180,180,180], lineWidth: 0.5 };
         let tableHeadBaseStyles: any = { fontSize: (pdfSettings.tableHeaderFontSize || 8), fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1.5, font: pdfSettings.fontFamily || 'helvetica' };
@@ -332,10 +323,10 @@ export default function PicnicRecap() {
             if (rgb) {
                 tableHeadBaseStyles.fillColor = rgb;
                 const brightness = (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000;
-                tableHeadBaseStyles.textColor = brightness > 125 ? blackTextForPdf : whiteTextForPdf;
+                tableHeadBaseStyles.textColor = brightness > 130 ? blackTextForPdf : whiteTextForPdf;
             }
         } else {
-            tableHeadBaseStyles.fillColor = [220,220,220];
+            tableHeadBaseStyles.fillColor = [220,220,220]; // Default grey if no primary
             tableHeadBaseStyles.textColor = blackTextForPdf;
         }
         
@@ -356,51 +347,6 @@ export default function PicnicRecap() {
             }
         };
         
-        const cellHookHandler = (data: any) => {
-            if (data.section === 'head') {
-                const isDayHeaderNbPn = (data.table.id === 'nbPnTable' && data.column.index > 0 && data.column.index <= DAYS_OF_WEEK_KEYS.length);
-                const isDayHeaderClientRecap = (data.table.id === 'clientRecapTable' && data.column.index >=2 && data.column.index < 2 + DAYS_OF_WEEK_KEYS.length);
-                const isDayHeaderBreadNeeds = (data.table.id === 'breadNeedsTable' && data.column.index > 0 && data.column.index <= DAYS_OF_WEEK_KEYS.length);
-                 const isDayHeaderMenu = (data.table.id === 'selectedMenuTable' && data.column.index >=0); // All headers for menu table
-
-                if (isDayHeaderNbPn || isDayHeaderClientRecap || isDayHeaderBreadNeeds || isDayHeaderMenu) {
-                     data.cell.styles.fillColor = orangeHeaderStyle.fillColor;
-                     data.cell.styles.textColor = orangeHeaderStyle.textColor;
-                } else { 
-                    data.cell.styles.fillColor = tableHeadBaseStyles.fillColor;
-                    data.cell.styles.textColor = tableHeadBaseStyles.textColor;
-                }
-            }
-        
-            if (data.table.id === 'nbPnTable' && data.section === 'body' && data.row.index < DISPLAY_ROWS_CONFIG_NB_PN_RECAP.length) {
-                const rowConfig = DISPLAY_ROWS_CONFIG_NB_PN_RECAP[data.row.index];
-                if (rowConfig && rowConfig.pdfBgColor) {
-                    let textColorToApply = blackTextForPdf; 
-                    if (rowConfig.textColor === 'text-white') {
-                        textColorToApply = whiteTextForPdf;
-                    } else { 
-                        const brightness = (rowConfig.pdfBgColor[0] * 299 + rowConfig.pdfBgColor[1] * 587 + rowConfig.pdfBgColor[2] * 114) / 1000;
-                        textColorToApply = brightness > 130 ? blackTextForPdf : whiteTextForPdf;
-                    }
-                    data.cell.styles.fillColor = rowConfig.pdfBgColor;
-                    data.cell.styles.textColor = textColorToApply;
-                }
-            }
-            if (data.table.id === 'breadNeedsTable' && data.section === 'body') {
-                const firstCellText = String(data.row.cells[0]?.content || '').toLowerCase();
-                let rowBgColorToApply: [number,number,number] | undefined = undefined;
-                if (firstCellText.includes('pain (total)')) { rowBgColorToApply = yellowRowBgColorForPdf; }
-                else if (firstCellText.includes('baguette') || firstCellText.includes('faluche')) { rowBgColorToApply = lightOrangeRowBgColorForPdf; }
-                
-                if (rowBgColorToApply) {
-                    Object.values(data.row.cells).forEach((cell: any) => {
-                        cell.styles.fillColor = rowBgColorToApply;
-                        cell.styles.textColor = blackTextForPdf;
-                    });
-                }
-            }
-        };
-
         // Header
         if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
             try {
@@ -438,32 +384,75 @@ export default function PicnicRecap() {
         
         const nbPnTableBody = DISPLAY_ROWS_CONFIG_NB_PN_RECAP.map(rowConfig => {
             const rowData = picnicData[rowConfig.id as PicnicRowKey];
-            const dailyValuesContent = DAYS_OF_WEEK_KEYS.map(day => {
+            
+            const currentPdfBgColor = rowConfig.pdfBgColor || whiteColor;
+            let currentRowTextColor = blackTextForPdf; 
+
+            if (rowConfig.pdfBgColor) {
+                 if (rowConfig.textColor === 'text-white') {
+                    currentRowTextColor = whiteTextForPdf;
+                } else if (rowConfig.textColor === 'text-black') {
+                    currentRowTextColor = blackTextForPdf;
+                } else { 
+                    const brightness = (currentPdfBgColor[0] * 299 + currentPdfBgColor[1] * 587 + currentPdfBgColor[2] * 114) / 1000;
+                    currentRowTextColor = brightness > 130 ? blackTextForPdf : whiteTextForPdf;
+                }
+            }
+
+            const dailyValuesCells = DAYS_OF_WEEK_KEYS.map(day => {
                 let displayValue: string;
-                if (rowConfig.id === 'total_global') displayValue = dailyGlobalTotals[day]?.toString() || '0';
+                 if (rowConfig.id === 'total_global') displayValue = dailyGlobalTotals[day]?.toString() || '0';
                 else if (rowConfig.id === 'nb_bagette') displayValue = (day === 'lundi' ? Math.round(dailyGlobalTotals[day] / 2) : 0).toString();
                 else if (rowConfig.id === 'nb_faluche') displayValue = ((day === 'mercredi' || day === 'vendredi') ? (dailyGlobalTotals[day] || 0) : 0).toString();
                 else if (rowConfig.id === 'total_glaciere') displayValue = dailyGlaciereTotals[day]?.toString() || '0';
                 else displayValue = String(rowData?.[day] ?? (rowConfig.isInputRow ? '0' : '-'));
-                return displayValue;
+                
+                return { 
+                    content: displayValue, 
+                    styles: { 
+                        halign: 'center', 
+                        fillColor: currentPdfBgColor,
+                        textColor: currentRowTextColor
+                    } 
+                };
             });
+
+            const observationCell = { 
+                content: picnicData[rowConfig.id as PicnicRowKey]?.weeklyObservation || '-', 
+                styles: { 
+                    halign: 'left', 
+                    fillColor: currentPdfBgColor,
+                    textColor: currentRowTextColor
+                } 
+            };
+            
             return [
-                rowConfig.label,
-                ...dailyValuesContent,
-                picnicData[rowConfig.id as PicnicRowKey]?.weeklyObservation || '-'
+                { 
+                    content: rowConfig.label, 
+                    styles: { 
+                        fontStyle: 'bold', 
+                        halign: 'left', 
+                        fillColor: currentPdfBgColor, 
+                        textColor: currentRowTextColor
+                    } 
+                },
+                ...dailyValuesCells,
+                observationCell
             ];
         });
         
         const nbPnColumnStyles: any = { 0: { cellWidth: 120, fontStyle: 'bold', halign: 'left' } }; 
-        DAYS_OF_WEEK_KEYS.forEach((_, index) => { nbPnColumnStyles[index + 1] = { cellWidth: 60, halign: 'center' }; }); 
+        DAYS_OF_WEEK_KEYS.forEach((_, index) => { nbPnColumnStyles[index + 1] = { cellWidth: 60, halign: 'center', styles: {fillColor: orangeHeaderStyle.fillColor, textColor: orangeHeaderStyle.textColor} }; }); 
         nbPnColumnStyles[DAYS_OF_WEEK_KEYS.length + 1] = { cellWidth: 'auto', halign: 'left' };
 
         doc.autoTable({
             head: nbPnTableHead, body: nbPnTableBody, startY: currentY, theme: 'grid',
-            styles: tableBaseStyles, headStyles: tableHeadBaseStyles, columnStyles: nbPnColumnStyles,
+            styles: tableBaseStyles, 
+            headStyles: { ...tableHeadBaseStyles, fillColor: pdfSettings.primaryColor ? (hexToRgb(pdfSettings.primaryColor) || [220,220,220]) : [220,220,220]}, // Main header color
+            columnStyles: nbPnColumnStyles,
             margin: { left: pageLeftMargin, right: pageRightMargin },
             tableId: 'nbPnTable',
-            willDrawCell: cellHookHandler, 
+            // willDrawCell: cellHookHandler,  // Replaced by direct cell styling for body
             didDrawPage: pageFooterHandler,
         });
         currentY = (doc as any).lastAutoTable.finalY + 15;
@@ -498,10 +487,10 @@ export default function PicnicRecap() {
                 }
                 falucheRow.push('Faluche');
                 falucheRow.push(...DAYS_OF_WEEK_KEYS.map(day => recap.falucheCounts[day] > 0 ? recap.falucheCounts[day].toString() : '-'));
-                 if (!clientHasBaguettes && !recap.observation) { 
-                    // Handled by rowSpan logic
-                 } else if (!clientHasBaguettes) {
+                 if (!clientHasBaguettes && recap.observation) { 
                     falucheRow.push({ content: recap.observation || '-', rowSpan: rowSpan, styles: { valign: 'middle' } });
+                 } else if (!clientHasBaguettes && !recap.observation) {
+                    // If only faluches and no observation, need to ensure observation cell is still spanned or added
                  }
                 clientRecapBody.push(falucheRow);
             }
@@ -520,7 +509,7 @@ export default function PicnicRecap() {
         ];
         
         const clientRecapColumnStyles : any = { 0: { cellWidth: 100 }, 1: {cellWidth: 60} };
-        DAYS_OF_WEEK_KEYS.forEach((_, index) => { clientRecapColumnStyles[index + 2] = { cellWidth: 60, halign: 'center' }; }); 
+        DAYS_OF_WEEK_KEYS.forEach((_, index) => { clientRecapColumnStyles[index + 2] = { cellWidth: 60, halign: 'center', headStyles: {fillColor: orangeHeaderStyle.fillColor, textColor: orangeHeaderStyle.textColor} }; }); 
         clientRecapColumnStyles[DAYS_OF_WEEK_KEYS.length + 2] = { cellWidth: 'auto', halign: 'left' };
 
         doc.autoTable({
@@ -529,7 +518,6 @@ export default function PicnicRecap() {
             margin: { left: pageLeftMargin, right: pageRightMargin },
             footStyles: {fillColor: clientRecapFooterColor, textColor: blackTextForPdf, fontStyle:'bold'},
             tableId: 'clientRecapTable',
-            willDrawCell: cellHookHandler, 
             didDrawPage: pageFooterHandler,
         });
         currentY = (doc as any).lastAutoTable.finalY + 15;
@@ -544,38 +532,37 @@ export default function PicnicRecap() {
         const breadNeedsHead = [['Type de Pain', ...DAYS_OF_WEEK_KEYS.map(day => DAY_LABELS[day])]];
         const breadNeedsBodyPDF = [
             [
-                'Pain (Total)',
+                {content: 'Pain (Total)', styles: {fillColor: yellowRowBgColorForPdf, textColor: blackTextForPdf, fontStyle: 'bold'}},
                 ...DAYS_OF_WEEK_KEYS.map(day => {
                     let dailyPainTotal = baseBreadNumValue;
                     if (day === 'mardi' || day === 'jeudi') dailyPainTotal += (dailyGlaciereTotals[day] || 0);
-                    return (dailyPainTotal > 0 || (baseBreadNumValue > 0 && (day !== 'mardi' && day !== 'jeudi')) ? dailyPainTotal.toString() : '-');
+                    return {content: (dailyPainTotal > 0 || (baseBreadNumValue > 0 && (day !== 'mardi' && day !== 'jeudi')) ? dailyPainTotal.toString() : '-'), styles: {fillColor: yellowRowBgColorForPdf, textColor: blackTextForPdf}};
                 })
             ],
             [
-                'Baguette',
+                {content: 'Baguette', styles: {fillColor: lightOrangeRowBgColorForPdf, textColor: blackTextForPdf, fontStyle: 'bold'}},
                 ...DAYS_OF_WEEK_KEYS.map(day => {
                     const totalBaguettesForDay = (weeklyRecapFooterTotals.baguette[day] || 0) + (day === 'lundi' ? Math.round(dailyGlobalTotals[day] / 2) : 0);
-                    return (totalBaguettesForDay > 0 ? totalBaguettesForDay.toString() : '-');
+                    return {content: (totalBaguettesForDay > 0 ? totalBaguettesForDay.toString() : '-'), styles: {fillColor: lightOrangeRowBgColorForPdf, textColor: blackTextForPdf}};
                 })
             ],
             [
-                'Faluche',
+                {content: 'Faluche', styles: {fillColor: lightOrangeRowBgColorForPdf, textColor: blackTextForPdf, fontStyle: 'bold'}},
                 ...DAYS_OF_WEEK_KEYS.map(day => {
                     const totalFaluchesForDay = (weeklyRecapFooterTotals.faluche[day] || 0) + ((day === 'mercredi' || day === 'vendredi') ? (dailyGlobalTotals[day] || 0) : 0);
-                    return (totalFaluchesForDay > 0 ? totalFaluchesForDay.toString() : '-');
+                    return {content: (totalFaluchesForDay > 0 ? totalFaluchesForDay.toString() : '-'), styles: {fillColor: lightOrangeRowBgColorForPdf, textColor: blackTextForPdf}};
                 })
             ],
         ];
 
         const breadNeedsColumnStyles : any = { 0: { fontStyle: 'bold', cellWidth: 120, halign: 'left' } }; 
-         DAYS_OF_WEEK_KEYS.forEach((_, index) => { breadNeedsColumnStyles[index + 1] = { cellWidth: 60, halign: 'center' }; }); 
+         DAYS_OF_WEEK_KEYS.forEach((_, index) => { breadNeedsColumnStyles[index + 1] = { cellWidth: 60, halign: 'center', headStyles: {fillColor: orangeHeaderStyle.fillColor, textColor: orangeHeaderStyle.textColor} }; }); 
 
         doc.autoTable({
             head: breadNeedsHead, body: breadNeedsBodyPDF, startY: currentY, theme: 'grid',
             styles: tableBaseStyles, headStyles: tableHeadBaseStyles, columnStyles: breadNeedsColumnStyles,
             margin: { left: pageLeftMargin, right: pageRightMargin },
             tableId: 'breadNeedsTable',
-            willDrawCell: cellHookHandler,
             didDrawPage: pageFooterHandler,
         });
         currentY = (doc as any).lastAutoTable.finalY + 15;
@@ -587,7 +574,7 @@ export default function PicnicRecap() {
             doc.text(`Menu Pique Nique Sélectionné pour la Semaine du ${format(startOfWeek(selectedDate, { weekStartsOn: 1 }), "dd/MM")} au ${format(endOfWeek(selectedDate, { weekStartsOn: 1 }), "dd/MM/yyyy")}`, pageLeftMargin, currentY);
             currentY += ((pdfSettings.defaultFontSize || 10) + 1) * 0.7 + 4;
 
-            const menuTableHead = [PICNIC_MENU_DAY_KEYS.map(dayKey => PICNIC_MENU_DAYS_LABELS[dayKey])];
+            const menuTableHead = [PICNIC_MENU_DAY_KEYS.map(dayKey => ({content: PICNIC_MENU_DAYS_LABELS[dayKey], styles: orangeHeaderStyle }))];
             const menuTableBody: string[][] = [];
             for (let i = 0; i < NUM_PICNIC_ITEM_SLOTS; i++) {
                 menuTableBody.push(PICNIC_MENU_DAY_KEYS.map(dayKey => activeMenuTemplateForRecap.days[dayKey]?.[i] || '-'));
@@ -598,10 +585,9 @@ export default function PicnicRecap() {
 
             doc.autoTable({
                 head: menuTableHead, body: menuTableBody, startY: currentY, theme: 'grid',
-                styles: {...tableBaseStyles, cellPadding: 2}, headStyles: tableHeadBaseStyles,
+                styles: {...tableBaseStyles, cellPadding: 2}, headStyles: tableHeadBaseStyles, // This headStyles is for the main header, day columns are styled within menuTableHead
                 margin: { left: pageLeftMargin, right: pageRightMargin },
                 tableId: 'selectedMenuTable',
-                willDrawCell: cellHookHandler,
                 didDrawPage: pageFooterHandler,
             });
         }
@@ -676,7 +662,7 @@ export default function PicnicRecap() {
                       {DAY_LABELS[day]}
                     </TableHead>
                   ))}
-                  <TableHead className="text-center min-w-[200px]">Observation (Semaine)</TableHead>
+                  <TableHead className="text-center min-w-[200px] bg-card">Observation (Semaine)</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -933,7 +919,7 @@ export default function PicnicRecap() {
                 <TableRow>
                   <TableCell className="font-semibold bg-orange-300 dark:bg-orange-800/50 text-black">Baguette</TableCell>
                   {DAYS_OF_WEEK_KEYS.map(day => {
-                    const totalBaguettesForDay = (weeklyRecapFooterTotals.baguette[day] || 0) + (Math.round(dailyGlobalTotals[day] / 2));
+                    const totalBaguettesForDay = (weeklyRecapFooterTotals.baguette[day] || 0) + (day === 'lundi' ? Math.round(dailyGlobalTotals[day] / 2) : 0);
                     return (
                       <TableCell key={`total-baguette-${day}`} className="text-center bg-orange-100 dark:bg-orange-700/40">
                         {totalBaguettesForDay > 0 ? totalBaguettesForDay : '-'}
@@ -958,7 +944,6 @@ export default function PicnicRecap() {
         </CardContent>
       </Card>
 
-      {/* New Table for Selected Menu Items */}
       {activeMenuTemplateForRecap && (
         <Card className="shadow-md mt-8">
           <CardHeader>
@@ -1011,5 +996,7 @@ export default function PicnicRecap() {
     </div>
   );
 }
+
+    
 
     
