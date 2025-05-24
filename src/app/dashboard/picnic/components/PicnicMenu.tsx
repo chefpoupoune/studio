@@ -13,7 +13,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Save, CalendarDays, Trash2, Loader2 } from 'lucide-react';
 import type { StoredPicnicMenuTemplate, DisplayedPicnicMenuWeek, PicnicMenuDayKey } from '../types';
 import { PICNIC_MENU_MONTHS, PICNIC_MENU_DAY_KEYS, NUM_PICNIC_ITEM_SLOTS, PICNIC_MENU_DAYS_LABELS } from '../types';
-import { format, getYear, getMonth, startOfMonth, endOfMonth, startOfWeek, addDays, eachWeekOfInterval } from 'date-fns';
+import { format, getYear, getMonth, startOfMonth, endOfMonth, startOfWeek, addDays, eachWeekOfInterval, endOfWeek } from 'date-fns'; // Added endOfWeek
 import { fr } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -50,7 +50,6 @@ const createInitialMasterTemplates = (): StoredPicnicMenuTemplate[] => {
 export default function PicnicMenu() {
   const [selectedYear, setSelectedYear] = useState<number>(currentSystemYear);
   const [selectedMonthTab, setSelectedMonthTab] = useState<string>(PICNIC_MENU_MONTHS[0].value.toString());
-  // This state now holds the 5 master templates for menu content
   const [storedMenuTemplates, setStoredMenuTemplates] = useState<StoredPicnicMenuTemplate[]>(createInitialMasterTemplates());
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
@@ -63,12 +62,12 @@ export default function PicnicMenu() {
   useEffect(() => {
     if (!isClient) return;
     console.log("[PicnicMenu LOAD Master Templates] Attempting to load from localStorage...");
+    setDataLoaded(false); // Reset before loading
     try {
       const storedData = localStorage.getItem(PICNIC_MASTER_TEMPLATES_STORAGE_KEY);
       if (storedData) {
         const parsedData: StoredPicnicMenuTemplate[] = JSON.parse(storedData);
         if (Array.isArray(parsedData) && parsedData.length === 5) {
-          // Ensure each template has the correct structure
           const validatedTemplates = parsedData.map(template => ({
             days: PICNIC_MENU_DAY_KEYS.reduce((acc, dayKey) => {
               const items = template.days?.[dayKey] || [];
@@ -80,7 +79,6 @@ export default function PicnicMenu() {
           setStoredMenuTemplates(validatedTemplates);
           console.log(`[PicnicMenu LOAD Master Templates] Loaded ${validatedTemplates.length} master templates from localStorage.`);
         } else {
-          // Data is malformed or not an array of 5 templates, initialize
           setStoredMenuTemplates(createInitialMasterTemplates());
           console.log("[PicnicMenu LOAD Master Templates] Malformed data, initialized to 5 empty master templates.");
         }
@@ -98,7 +96,6 @@ export default function PicnicMenu() {
     }
   }, [isClient, toast]);
 
-
   useEffect(() => {
     if (!isClient || !dataLoaded) {
       console.log(`[PicnicMenu SAVE Master Templates SKIPPED] isClient: ${isClient}, dataLoaded: ${dataLoaded}`);
@@ -107,10 +104,9 @@ export default function PicnicMenu() {
     console.log(`[PicnicMenu SAVE Master Templates] Saving ${storedMenuTemplates.length} master templates to localStorage.`);
     localStorage.setItem(PICNIC_MASTER_TEMPLATES_STORAGE_KEY, JSON.stringify(storedMenuTemplates));
   }, [storedMenuTemplates, isClient, dataLoaded]);
-
   
   const handleSaveMenus = () => {
-    if (!isClient) return;
+    if (!isClient || !dataLoaded) return;
     try {
       console.log(`[PicnicMenu Manual SAVE] Saving ${storedMenuTemplates.length} master templates to localStorage.`);
       localStorage.setItem(PICNIC_MASTER_TEMPLATES_STORAGE_KEY, JSON.stringify(storedMenuTemplates));
@@ -121,7 +117,6 @@ export default function PicnicMenu() {
     }
   };
   
-  // Calculates date metadata for the 5 weeks of the selected month/year
   const weeksForSelectedMonth = useMemo(() => {
     if (!isClient) return [];
     const monthIndex = parseInt(selectedMonthTab, 10);
@@ -142,7 +137,7 @@ export default function PicnicMenu() {
                 weekInMonth: weekCounter,
                 startDate: currentWeekIterStartDate, 
                 dateRangeDisplay: `${format(actualDisplayStartDate, 'dd/MM')} au ${format(actualDisplayEndDate, 'dd/MM')}`,
-                id: `${selectedYear}-${monthIndex}-${weekCounter}`, // ID for display keying
+                id: `${selectedYear}-${monthIndex}-${weekCounter}`,
             });
             weekCounter++;
         }
@@ -163,13 +158,12 @@ export default function PicnicMenu() {
     return weeks.slice(0, 5);
   }, [selectedYear, selectedMonthTab, isClient]);
 
-  // Combines dynamic date metadata with persistent master template content
   const displayedWeeklyMenus: DisplayedPicnicMenuWeek[] = useMemo(() => {
     if (!isClient || storedMenuTemplates.length !== 5) return [];
     return weeksForSelectedMonth.map((weekMeta, index) => {
       const templateContent = storedMenuTemplates[index] || createEmptyStoredTemplate();
       return {
-        id: weekMeta.id, // For React key
+        id: weekMeta.id, 
         year: selectedYear,
         monthIndex: parseInt(selectedMonthTab, 10),
         weekInMonth: weekMeta.weekInMonth,
@@ -181,19 +175,17 @@ export default function PicnicMenu() {
     });
   }, [weeksForSelectedMonth, storedMenuTemplates, selectedYear, selectedMonthTab, isClient]);
 
-
   const handleItemChange = (templateIndex: number, day: PicnicMenuDayKey, itemIndex: number, value: string) => {
-    console.log(`[PicnicMenu handleItemChange] Called for templateIndex: ${templateIndex}, day: ${day}, itemIndex: ${itemIndex}, value: "${value}"`);
+    if (!isClient || !dataLoaded) return;
     if (templateIndex < 0 || templateIndex >= storedMenuTemplates.length) {
         console.error(`[PicnicMenu handleItemChange] Invalid templateIndex: ${templateIndex}`);
         return;
     }
     setStoredMenuTemplates(prevTemplates => {
-      console.log(`[PicnicMenu handleItemChange] Inside setState. prevTemplates length: ${prevTemplates.length}`);
       return prevTemplates.map((template, index) => {
         if (index === templateIndex) {
           const updatedDays = { ...template.days };
-          const dayItems = [...(updatedDays[day] || createEmptyDailyItems())]; // Ensure day array exists
+          const dayItems = [...(updatedDays[day] || createEmptyDailyItems())];
           dayItems[itemIndex] = value;
           updatedDays[day] = dayItems;
           return { ...template, days: updatedDays };
@@ -204,13 +196,12 @@ export default function PicnicMenu() {
   };
 
   const handleWeeklyNoteChange = (templateIndex: number, value: string) => {
-    console.log(`[PicnicMenu handleWeeklyNoteChange] Called for templateIndex: ${templateIndex}, value: "${value}"`);
+    if (!isClient || !dataLoaded) return;
     if (templateIndex < 0 || templateIndex >= storedMenuTemplates.length) {
         console.error(`[PicnicMenu handleWeeklyNoteChange] Invalid templateIndex: ${templateIndex}`);
         return;
     }
     setStoredMenuTemplates(prevTemplates => {
-       console.log(`[PicnicMenu handleWeeklyNoteChange] Inside setState. prevTemplates length: ${prevTemplates.length}`);
        return prevTemplates.map((template, index) => 
          index === templateIndex ? { ...template, weeklyNote: value } : template
        );
@@ -219,12 +210,11 @@ export default function PicnicMenu() {
   
   const handleResetAllMasterTemplates = () => {
     if (!isClient) return;
-    console.log(`[PicnicMenu ResetMasterTemplates] Resetting all 5 master templates.`);
     setStoredMenuTemplates(createInitialMasterTemplates());
     toast({ title: `Tous les modèles hebdomadaires ont été réinitialisés.`, description:"N'oubliez pas de sauvegarder pour que ce soit permanent.", variant: "destructive" });
   };
 
-  if (!isClient || !dataLoaded) {
+  if (!isClient || !dataLoaded) { // Use dataLoaded for the loading state
     return <div className="flex justify-center items-center p-8"><Loader2 className="h-6 w-6 animate-spin text-primary"/> Chargement des modèles de menus...</div>;
   }
 
@@ -284,7 +274,6 @@ export default function PicnicMenu() {
                   </AlertDialogContent>
                 </AlertDialog>
               </div>
-              {/* Display 5 weekly cards, using content from storedMenuTemplates and date context from displayedWeeklyMenus */}
               {displayedWeeklyMenus.filter(dm => dm.monthIndex === monthConfig.value).map((weeklyMenu, templateIdx) => (
                 <Card key={weeklyMenu.id} className="overflow-hidden">
                   <CardHeader className="bg-muted/30 py-3 px-4">
