@@ -41,6 +41,7 @@ const pdfTypes = [
   { value: 'annual_cost', label: 'Récapitulatif Annuel Coût de Revient' },
   { value: 'picnic_cost', label: 'Coût Repas Pique-Nique/Salade' },
   { value: 'occasional_meal_cost', label: 'Coût Repas Occasionnel' },
+  { value: 'picnic_recap_weekly', label: 'Récapitulatif Pique Nique (Hebdomadaire)' },
   { value: 'inventory_report', label: 'Rapport d\'Inventaire' },
   { value: 'purchase_order', label: 'Bon de Commande Produit Cuisine' },
   { value: 'time_tracking_summary', label: 'Relevé d\'Heures Individuel' },
@@ -84,9 +85,8 @@ export default function PdfLayoutManager() {
   const [selectedPdfType, setSelectedPdfType] = useState<string>(GENERAL_CONFIG_KEY);
   const [pdfConfigs, setPdfConfigs] = useState<Record<string, Partial<PdfLayoutSettings>>>({});
   
-  // logoUrlInput will now store the data URL of the uploaded logo, or an empty string, or an old HTTP URL if previously set
   const [logoUrlInput, setLogoUrlInput] = useState<string>(''); 
-  const [uploadedLogoPreview, setUploadedLogoPreview] = useState<string | null>(null); // For immediate preview of a newly uploaded file
+  const [uploadedLogoPreview, setUploadedLogoPreview] = useState<string | null>(null);
 
   const [primaryColorInput, setPrimaryColorInput] = useState<string>(DEFAULT_APP_PRIMARY_COLOR);
   const [headerTextInput, setHeaderTextInput] = useState<string>('');
@@ -156,11 +156,11 @@ export default function PdfLayoutManager() {
   useEffect(() => {
     const effectiveSettings = fetchPdfSettings(selectedPdfType || GENERAL_CONFIG_KEY, pdfConfigs);
     
-    setLogoUrlInput(effectiveSettings.logoUrl || ''); // Ensure it's a string
+    setLogoUrlInput(effectiveSettings.logoUrl || ''); 
     if (effectiveSettings.logoUrl && effectiveSettings.logoUrl.startsWith('data:image')) {
         setUploadedLogoPreview(effectiveSettings.logoUrl);
     } else {
-        setUploadedLogoPreview(null); // Clear preview if it's not a data URL (or not present)
+        setUploadedLogoPreview(null); 
     }
 
     setPrimaryColorInput(effectiveSettings.primaryColor);
@@ -263,7 +263,6 @@ export default function PdfLayoutManager() {
   };
 
   const handleSaveLogo = () => {
-    // logoUrlInput now contains the dataURL or an empty string or an old http URL
     saveConfig({ logoUrl: logoUrlInput || undefined }, "Le logo");
   };
 
@@ -336,8 +335,8 @@ export default function PdfLayoutManager() {
                       <Image 
                         src={logoToDisplay} 
                         alt="Aperçu logo" 
-                        width={32} // Adjust as needed for preview
-                        height={16} // Adjust as needed for preview
+                        width={32} 
+                        height={16} 
                         className="object-contain"
                         unoptimized
                       />
@@ -387,7 +386,7 @@ export default function PdfLayoutManager() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={GENERAL_CONFIG_KEY}>{GENERAL_CONFIG_DISPLAY_LABEL}</SelectItem>
-                {pdfTypes.map(pdf => (
+                {pdfTypes.sort((a,b) => a.label.localeCompare(b.label)).map(pdf => (
                   <SelectItem key={pdf.value} value={pdf.value}>{pdf.label}</SelectItem>
                 ))}
               </SelectContent>
@@ -545,8 +544,8 @@ export default function PdfLayoutManager() {
                         className="mt-1"
                         rows={3}
                     />
-                    {previewSettingsForDisplay.headerText && <div className="text-xs text-muted-foreground mt-1">Effectif : <pre className="whitespace-pre-wrap text-xs bg-muted/50 p-1 rounded">{previewSettingsForDisplay.headerText}</pre></div>}
-                    {!previewSettingsForDisplay.headerText && <p className="text-xs text-muted-foreground mt-1">Aucun texte d'en-tête défini.</p>}
+                    {currentEffectiveSettings.headerText && <div><span className="text-xs text-muted-foreground mt-1">Effectif : </span><pre className="whitespace-pre-wrap text-xs bg-muted/50 p-1 rounded inline-block">{currentEffectiveSettings.headerText}</pre></div>}
+                    {!currentEffectiveSettings.headerText && <p className="text-xs text-muted-foreground mt-1">Aucun texte d'en-tête défini.</p>}
                 </div>
                 <Button onClick={handleSaveHeaderText}>
                     <Save className="mr-2 h-4 w-4"/> Enregistrer En-tête
@@ -562,7 +561,7 @@ export default function PdfLayoutManager() {
                         rows={2}
                     />
                     <p className="text-xs text-muted-foreground mt-1">Utilisez &#123;date&#125;, &#123;pageNumber&#125;, &#123;totalPages&#125; comme placeholders.</p>
-                    {previewSettingsForDisplay.footerText && <p className="text-xs text-muted-foreground mt-1">Effectif : {previewSettingsForDisplay.footerText}</p>}
+                    {currentEffectiveSettings.footerText && <p className="text-xs text-muted-foreground mt-1">Effectif : {currentEffectiveSettings.footerText}</p>}
                 </div>
                  <Button onClick={handleSaveFooterText}>
                     <Save className="mr-2 h-4 w-4"/> Enregistrer Pied de Page
@@ -668,4 +667,5 @@ export default function PdfLayoutManager() {
     </div>
   );
 }
+
     
