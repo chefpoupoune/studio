@@ -67,7 +67,7 @@ export default function PicnicMenu() {
         const validatedData = parsedData.map(week => ({
           ...week,
           days: PICNIC_MENU_DAY_KEYS.reduce((acc, dayKey) => {
-            const items = week.days[dayKey] || [];
+            const items = week.days[dayKey] || []; // Fallback for potentially missing day
             acc[dayKey] = Array.from({ length: NUM_PICNIC_ITEM_SLOTS }, (_, i) => items[i] || '');
             return acc;
           }, {} as Record<PicnicMenuDayKey, string[]>),
@@ -150,9 +150,17 @@ export default function PicnicMenu() {
     setAllPicnicMenuWeeks(prevMenus =>
       prevMenus.map(weekMenu => {
         if (weekMenu.id === weekId) {
-          const updatedDayItems = [...weekMenu.days[day]];
+          // Ensure weekMenu.days and weekMenu.days[day] are initialized
+          const currentDayItems = weekMenu.days[day] || createEmptyDailyItems();
+          const updatedDayItems = [...currentDayItems];
           updatedDayItems[itemIndex] = value;
-          return { ...weekMenu, days: { ...weekMenu.days, [day]: updatedDayItems } };
+          return { 
+            ...weekMenu, 
+            days: { 
+              ...weekMenu.days, 
+              [day]: updatedDayItems 
+            } 
+          };
         }
         return weekMenu;
       })
@@ -258,7 +266,7 @@ export default function PicnicMenu() {
                                 <TableCell key={`${dayKey}-${itemIndex}`} className="p-1">
                                   <Input
                                     type="text"
-                                    value={weeklyMenu.days[dayKey][itemIndex]}
+                                    value={weeklyMenu.days[dayKey]?.[itemIndex] || ''}
                                     onChange={(e) => handleItemChange(weeklyMenu.id, dayKey, itemIndex, e.target.value)}
                                     className="h-8 text-xs"
                                   />
