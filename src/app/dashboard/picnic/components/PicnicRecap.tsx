@@ -67,11 +67,9 @@ const DISPLAY_ROWS_CONFIG_NB_PN_RECAP: Array<DisplayRowConfig & { pdfBgColor?: [
   { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: false, pdfBgColor: [249, 115, 22] }, 
 ];
 
-
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
 }
-
 
 export default function PicnicRecap() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -344,12 +342,12 @@ export default function PicnicRecap() {
         };
         
         const cellHookHandler = (data: any) => {
-            // Header coloring for days of the week (orange)
             if (data.section === 'head') {
-                const isDayHeader = (data.table.id === 'nbPnTable' && data.column.index > 0 && data.column.index <= DAYS_OF_WEEK_KEYS.length) ||
-                                    (data.table.id === 'clientRecapTable' && data.column.index >=2 && data.column.index < 2 + DAYS_OF_WEEK_KEYS.length) ||
-                                    (data.table.id === 'breadNeedsTable' && data.column.index > 0);
-                if (isDayHeader) {
+                const isDayHeaderNbPn = (data.table.id === 'nbPnTable' && data.column.index > 0 && data.column.index <= DAYS_OF_WEEK_KEYS.length);
+                const isDayHeaderClientRecap = (data.table.id === 'clientRecapTable' && data.column.index >=2 && data.column.index < 2 + DAYS_OF_WEEK_KEYS.length);
+                const isDayHeaderBreadNeeds = (data.table.id === 'breadNeedsTable' && data.column.index > 0);
+
+                if (isDayHeaderNbPn || isDayHeaderClientRecap || isDayHeaderBreadNeeds) {
                      data.cell.styles.fillColor = orangeHeaderStyle.fillColor;
                      data.cell.styles.textColor = orangeHeaderStyle.textColor;
                 } else { 
@@ -357,24 +355,7 @@ export default function PicnicRecap() {
                     data.cell.styles.textColor = tableHeadBaseStyles.textColor;
                 }
             }
-
-            // Table 1: NB PN Table - Body Row Coloring
-            if (data.table.id === 'nbPnTable' && data.section === 'body' && data.row.index < DISPLAY_ROWS_CONFIG_NB_PN_RECAP.length) {
-                const rowConfig = DISPLAY_ROWS_CONFIG_NB_PN_RECAP[data.row.index];
-                if (rowConfig && rowConfig.pdfBgColor) {
-                    let textColorToApply = blackTextForPdf; 
-                    if (rowConfig.textColor === 'text-white') {
-                        textColorToApply = whiteTextForPdf;
-                    } else { 
-                        const brightness = (rowConfig.pdfBgColor[0] * 299 + rowConfig.pdfBgColor[1] * 587 + rowConfig.pdfBgColor[2] * 114) / 1000;
-                        textColorToApply = brightness > 130 ? blackTextForPdf : whiteTextForPdf;
-                    }
-                    data.cell.styles.fillColor = rowConfig.pdfBgColor;
-                    data.cell.styles.textColor = textColorToApply;
-                }
-            }
         
-            // Table 3: Bread Needs Table - Body Row Coloring
             if (data.table.id === 'breadNeedsTable' && data.section === 'body') {
                 const firstCellText = String(data.row.cells[0]?.content || '').toLowerCase();
                 let rowBgColorToApply: [number,number,number] | undefined = undefined;
@@ -390,26 +371,69 @@ export default function PicnicRecap() {
             }
         };
 
-
         // Table 1: Nombre de Pique-Niques (NB PN) pour la Semaine
         doc.setFontSize((pdfSettings.defaultFontSize || 10) + 1);
         doc.text("Nombre de Pique-Niques (NB PN) pour la Semaine", pageLeftMargin, currentY);
         currentY += ((pdfSettings.defaultFontSize || 10) + 1) * 0.7 + 4;
 
         const nbPnTableHead = [['Catégorie', ...DAYS_OF_WEEK_KEYS.map(day => DAY_LABELS[day]), 'Observation (Semaine)']];
+        
         const nbPnTableBody = DISPLAY_ROWS_CONFIG_NB_PN_RECAP.map(rowConfig => {
             const rowData = picnicData[rowConfig.id as PicnicRowKey];
-            const dailyValues = DAYS_OF_WEEK_KEYS.map(day => {
-                if (rowConfig.id === 'total_global') return dailyGlobalTotals[day]?.toString() || '0';
-                if (rowConfig.id === 'nb_bagette') return (day === 'lundi' ? Math.round(dailyGlobalTotals[day] / 2) : 0).toString();
-                if (rowConfig.id === 'nb_faluche') return ((day === 'mercredi' || day === 'vendredi') ? (dailyGlobalTotals[day] || 0) : 0).toString();
-                if (rowConfig.id === 'total_glaciere') return dailyGlaciereTotals[day]?.toString() || '0';
-                return String(rowData?.[day] ?? (rowConfig.isInputRow ? '0' : '-'));
+            const dailyValuesContent = DAYS_OF_WEEK_KEYS.map(day => {
+                let displayValue: string;
+                if (rowConfig.id === 'total_global') displayValue = dailyGlobalTotals[day]?.toString() || '0';
+                else if (rowConfig.id === 'nb_bagette') displayValue = (day === 'lundi' ? Math.round(dailyGlobalTotals[day] / 2) : 0).toString();
+                else if (rowConfig.id === 'nb_faluche') displayValue = ((day === 'mercredi' || day === 'vendredi') ? (dailyGlobalTotals[day] || 0) : 0).toString();
+                else if (rowConfig.id === 'total_glaciere') displayValue = dailyGlaciereTotals[day]?.toString() || '0';
+                else displayValue = String(rowData?.[day] ?? (rowConfig.isInputRow ? '0' : '-'));
+                
+                let cellStyles: any = { halign: 'center' };
+                if (rowConfig.pdfBgColor) {
+                    cellStyles.fillColor = rowConfig.pdfBgColor;
+                    let textColor = blackTextForPdf;
+                    if (rowConfig.textColor === 'text-white') textColor = whiteTextForPdf;
+                    else {
+                        const brightness = (rowConfig.pdfBgColor[0] * 299 + rowConfig.pdfBgColor[1] * 587 + rowConfig.pdfBgColor[2] * 114) / 1000;
+                        textColor = brightness > 130 ? blackTextForPdf : whiteTextForPdf;
+                    }
+                    cellStyles.textColor = textColor;
+                }
+                return { content: displayValue, styles: cellStyles };
             });
-            return [rowConfig.label, ...dailyValues, rowData?.weeklyObservation || '-'];
+
+            let categoryCellStyles: any = { fontStyle: 'bold', halign: 'left' };
+            if (rowConfig.pdfBgColor) {
+                categoryCellStyles.fillColor = rowConfig.pdfBgColor;
+                let textColor = blackTextForPdf;
+                if (rowConfig.textColor === 'text-white') textColor = whiteTextForPdf;
+                else {
+                    const brightness = (rowConfig.pdfBgColor[0] * 299 + rowConfig.pdfBgColor[1] * 587 + rowConfig.pdfBgColor[2] * 114) / 1000;
+                    textColor = brightness > 130 ? blackTextForPdf : whiteTextForPdf;
+                }
+                categoryCellStyles.textColor = textColor;
+            }
+
+            let observationCellStyles: any = { halign: 'left' };
+            if (rowConfig.pdfBgColor) {
+                observationCellStyles.fillColor = rowConfig.pdfBgColor;
+                 let textColor = blackTextForPdf;
+                if (rowConfig.textColor === 'text-white') textColor = whiteTextForPdf;
+                else {
+                    const brightness = (rowConfig.pdfBgColor[0] * 299 + rowConfig.pdfBgColor[1] * 587 + rowConfig.pdfBgColor[2] * 114) / 1000;
+                    textColor = brightness > 130 ? blackTextForPdf : whiteTextForPdf;
+                }
+                observationCellStyles.textColor = textColor;
+            }
+            
+            return [
+                { content: rowConfig.label, styles: categoryCellStyles },
+                ...dailyValuesContent,
+                { content: picnicData[rowConfig.id as PicnicRowKey]?.weeklyObservation || '-', styles: observationCellStyles }
+            ];
         });
         
-        const nbPnColumnStyles: any = { 0: { fontStyle: 'bold', cellWidth: 120, halign: 'left' } }; 
+        const nbPnColumnStyles: any = { 0: { cellWidth: 120 } }; 
         DAYS_OF_WEEK_KEYS.forEach((_, index) => { nbPnColumnStyles[index + 1] = { cellWidth: 50, halign: 'center' }; }); 
         nbPnColumnStyles[DAYS_OF_WEEK_KEYS.length + 1] = { cellWidth: 'auto', halign: 'left' };
 
@@ -418,7 +442,7 @@ export default function PicnicRecap() {
             styles: tableBaseStyles, columnStyles: nbPnColumnStyles,
             margin: { left: pageLeftMargin, right: pageRightMargin },
             tableId: 'nbPnTable',
-            willDrawCell: cellHookHandler, // Changed from didDrawCell
+            willDrawCell: cellHookHandler, 
             didDrawPage: pageFooterHandler,
         });
         currentY = (doc as any).lastAutoTable.finalY + 15;
@@ -453,12 +477,15 @@ export default function PicnicRecap() {
                 }
                 falucheRow.push('Faluche');
                 falucheRow.push(...DAYS_OF_WEEK_KEYS.map(day => recap.falucheCounts[day] > 0 ? recap.falucheCounts[day].toString() : '-'));
-                 if (!clientHasBaguettes) {
+                 if (!clientHasBaguettes && !recap.observation) { 
+                    // If only faluches and no observation for this client, add an empty cell for observation
+                    // but this case is complex to handle correctly with rowspan when observation is only for the client (not per bread type)
+                 } else if (!clientHasBaguettes) {
                     falucheRow.push({ content: recap.observation || '-', rowSpan: rowSpan, styles: { valign: 'middle' } });
-                }
+                 }
                 clientRecapBody.push(falucheRow);
             }
-             if (!clientHasBaguettes && !clientHasFaluches && recap.observation) { // Client with only observation
+             if (!clientHasBaguettes && !clientHasFaluches && recap.observation) { 
                  clientRecapBody.push([
                     { content: recap.clientName || 'Client non nommé', rowSpan: 1, styles: { valign: 'middle', fontStyle: 'bold' } },
                     '-', 
@@ -472,7 +499,7 @@ export default function PicnicRecap() {
             [{content: 'Total Faluche', colSpan: 2, styles:{fontStyle:'bold', halign:'right'}}, ...DAYS_OF_WEEK_KEYS.map(day => weeklyRecapFooterTotals.faluche[day] > 0 ? weeklyRecapFooterTotals.faluche[day].toString() : '-'), '']
         ];
         
-        const clientRecapColumnStyles : any = { 0: { fontStyle: 'bold', cellWidth: 100, halign: 'left' }, 1: {cellWidth: 50, halign: 'left'} };
+        const clientRecapColumnStyles : any = { 0: { cellWidth: 100 }, 1: {cellWidth: 50} };
         DAYS_OF_WEEK_KEYS.forEach((_, index) => { clientRecapColumnStyles[index + 2] = { cellWidth: 50, halign: 'center' }; }); 
         clientRecapColumnStyles[DAYS_OF_WEEK_KEYS.length + 2] = { cellWidth: 'auto', halign: 'left' };
 
@@ -501,7 +528,6 @@ export default function PicnicRecap() {
                 ...DAYS_OF_WEEK_KEYS.map(day => {
                     let dailyPainTotal = baseBreadNumValue;
                     if (day === 'mardi' || day === 'jeudi') dailyPainTotal += (dailyGlaciereTotals[day] || 0);
-                    // No longer adding client bread totals here as per last request
                     return (dailyPainTotal > 0 || (baseBreadNumValue > 0 && (day !== 'mardi' && day !== 'jeudi')) ? dailyPainTotal.toString() : '-');
                 })
             ],
@@ -756,7 +782,7 @@ export default function PicnicRecap() {
                         rowsToRender.push(<TableRow key={`${recap.id}-faluche-row`}>{cells}</TableRow>);
                     }
                     
-                    if (!clientHasBaguettes && !clientHasFaluches && recap.observation) { // Client with only observation
+                    if (!clientHasBaguettes && !clientHasFaluches && recap.observation) { 
                         const cells = [];
                         if (!clientCellRendered) {
                              cells.push(
@@ -887,12 +913,4 @@ export default function PicnicRecap() {
     </div>
   );
 }
-    
-
-    
-
-    
-
-    
-
     
