@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ShoppingCart, AlertCircle, Loader2 } from "lucide-react";
-import type { PurchaseOrder } from '@/app/dashboard/inventory/types';
+import type { PurchaseOrder, PurchaseOrderItem } from '@/app/dashboard/inventory/types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -31,6 +31,7 @@ export default function PendingPurchaseOrdersSummary() {
             ...order,
             date: new Date(order.date),
             status: order.status || 'pending', 
+            items: Array.isArray(order.items) ? order.items : [], // Ensure items is an array
           }));
           const filteredPending = allOrders.filter(order => order.status === 'pending');
           setPendingOrders(filteredPending.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
@@ -85,25 +86,41 @@ export default function PendingPurchaseOrdersSummary() {
       </CardHeader>
       <CardContent className="flex-grow pt-2">
         {pendingOrders.length > 0 ? (
-          <ScrollArea className="h-[200px] sm:h-[220px] pr-3">
-            <ul className="space-y-2 text-sm">
-              {pendingOrders.slice(0, 5).map((order) => ( 
-                <li key={order.id} className="p-2 border rounded-md bg-card/60 hover:bg-muted/30">
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium truncate pr-2" title={order.orderNumber}>
+          <ScrollArea className="h-[220px] sm:h-[240px] pr-3"> {/* Slightly increased height */}
+            <ul className="space-y-3 text-sm"> {/* Increased space-y for better separation */}
+              {pendingOrders.map((order) => ( 
+                <li key={order.id} className="p-2.5 border rounded-md bg-card/60 hover:bg-muted/30">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="font-medium truncate pr-2 text-foreground" title={order.orderNumber}>
                       N°: {order.orderNumber}
                     </span>
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">
-                      {format(new Date(order.date), "dd/MM/yy", { locale: fr })}
-                    </span>
+                    <Badge variant="secondary" className="text-xs whitespace-nowrap">En attente</Badge>
                   </div>
-                   <div className="text-xs text-muted-foreground mt-0.5 flex justify-between items-center">
-                      <span>{order.items.length} article{order.items.length > 1 ? 's' : ''}</span>
-                       <Badge variant="secondary" className="text-xs">En attente</Badge>
-                  </div>
+                  <p className="text-xs text-muted-foreground mb-1.5">
+                    Date: {format(new Date(order.date), "dd/MM/yy", { locale: fr })}
+                  </p>
+                   
+                  {order.items && order.items.length > 0 && (
+                    <div className="mt-1.5 text-xs">
+                      <p className="font-semibold text-foreground/90 mb-0.5">Aperçu articles :</p>
+                      <ul className="list-disc list-inside pl-3 space-y-0.5 text-muted-foreground">
+                        {order.items.slice(0, 2).map(item => ( // Show first 2 items
+                          <li key={item.productId} className="text-xs">
+                            {item.productName} - {item.quantity} {item.unit}
+                          </li>
+                        ))}
+                        {order.items.length > 2 && (
+                          <li className="text-xs italic">... et {order.items.length - 2} autre(s)</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                   {(!order.items || order.items.length === 0) && (
+                     <p className="text-xs italic text-muted-foreground/70 mt-1.5">Aucun article spécifié.</p>
+                   )}
                 </li>
               ))}
-              {pendingOrders.length > 5 && <li className="text-xs text-muted-foreground text-center pt-1">... et {pendingOrders.length - 5} autre(s).</li>}
+              {/* Removed the "et X autres" from the main list level as it's now per order */}
             </ul>
           </ScrollArea>
         ) : (
