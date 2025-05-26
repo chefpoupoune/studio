@@ -1,25 +1,27 @@
 
 "use client";
 
-import React from 'react';
+import React, { useEffect } from 'react'; // Added useEffect
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { useForm, useFieldArray, Controller } from 'react-hook-form';
+import { useForm, useFieldArray, Controller, useWatch } from 'react-hook-form'; // Added useWatch
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { OvertimeRequestStub, OvertimeDayDetail } from '../types';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { CalendarIcon, PlusCircle, Trash2 } from 'lucide-react';
+import { CalendarIcon as LucideCalendarIcon, PlusCircle, Trash2 } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { timeToMinutes, calculateDurationInMinutes, minutesToDecimalHoursString } from '@/app/dashboard/time-tracking/utils'; // Corrected import path
 
 const overtimeDetailSchema = z.object({
+  id: z.string().optional(), // Keep id for existing entries if needed for keys
   date: z.date({ required_error: "Date requise." }),
   startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Format HH:MM requis.").optional().or(z.literal('')),
   endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Format HH:MM requis.").optional().or(z.literal('')),
@@ -32,14 +34,11 @@ const formSchema = z.object({
   totalOvertimeHours: z.string().max(50, "Total heures max 50 caractères.").optional(),
 });
 
-// FormData will have Date objects for overtimeDetails dates
 type FormDataType = z.infer<typeof formSchema>;
 
-// This type is what we'll pass to the onSubmitRequest prop (dates as ISO strings)
 type SubmitDataType = Omit<FormDataType, 'overtimeDetails'> & {
-  overtimeDetails?: OvertimeDayDetail[]; // Dates as ISO strings
+  overtimeDetails?: OvertimeDayDetail[];
 };
-
 
 interface OvertimeRequestDialogProps {
   isOpen: boolean;
@@ -62,7 +61,7 @@ export default function OvertimeRequestDialog({
       reasonStub: '',
       position: '',
       overtimeDetails: [],
-      totalOvertimeHours: '',
+      totalOvertimeHours: '0.00',
     },
   });
 
@@ -71,26 +70,63 @@ export default function OvertimeRequestDialog({
     name: "overtimeDetails"
   });
 
-  React.useEffect(() => {
+  const overtimeDetailsWatched = useWatch({
+    control: form.control,
+    name: "overtimeDetails",
+  });
+
+  useEffect(() => {
+    if (overtimeDetailsWatched) {
+      let totalMinutes = 0;
+      overtimeDetailsWatched.forEach(detail => {
+        if (detail.startTime && detail.endTime) {
+          totalMinutes += calculateDurationInMinutes(detail.startTime, detail.endTime);
+        }
+      });
+      form.setValue('totalOvertimeHours', minutesToDecimalHoursString(totalMinutes) + " heures");
+    }
+  }, [overtimeDetailsWatched, form]);
+
+  useEffect(() => {
     if (isOpen) {
+      let initialPosition = '';
       if (editingRequest) {
-        form.reset({
-          reasonStub: editingRequest.reasonStub || '',
-          position: editingRequest.position || (editingRequest.employeeName === currentUser?.name ? currentUser?.role : '') || '',
-          overtimeDetails: editingRequest.overtimeDetails?.map(detail => ({
-            ...detail,
-            date: detail.date ? parseISO(detail.date) : new Date(),
-          })) || [],
-          totalOvertimeHours: editingRequest.totalOvertimeHours || '',
-        });
-      } else { // New request
-        form.reset({
-          reasonStub: '',
-          position: currentUser?.role || '',
-          overtimeDetails: [{ date: new Date(), startTime: '', endTime: '' }], // Start with one entry
-          totalOvertimeHours: '',
-        });
+        initialPosition = editingRequest.position || '';
+      } else if (currentUser?.role) {
+        initialPosition = currentUser.role;
       }
+
+      let initialOvertimeDetails = [];
+      if (editingRequest?.overtimeDetails && editingRequest.overtimeDetails.length > 0) {
+        initialOvertimeDetails = editingRequest.overtimeDetails.map(detail => ({
+          ...detail,
+          id: detail.id || Math.random().toString(36).substring(2, 9),
+          date: detail.date ? parseISO(detail.date) : new Date(),
+          startTime: detail.startTime || '',
+          endTime: detail.endTime || '',
+        }));
+      } else if (!editingRequest) {
+        initialOvertimeDetails = [{ id: Math.random().toString(36).substring(2, 9), date: new Date(), startTime: '', endTime: '' }];
+      }
+      
+      form.reset({
+        reasonStub: editingRequest?.reasonStub || '',
+        position: initialPosition,
+        overtimeDetails: initialOvertimeDetails,
+        totalOvertimeHours: editingRequest?.totalOvertimeHours || '0.00 heures',
+      });
+      
+      // Trigger manual recalculation for existing entries after reset
+      if (editingRequest?.overtimeDetails) {
+        let totalMinutes = 0;
+        editingRequest.overtimeDetails.forEach(detail => {
+          if (detail.startTime && detail.endTime) {
+            totalMinutes += calculateDurationInMinutes(detail.startTime, detail.endTime);
+          }
+        });
+        form.setValue('totalOvertimeHours', minutesToDecimalHoursString(totalMinutes) + " heures");
+      }
+
     }
   }, [isOpen, editingRequest, currentUser, form]);
 
@@ -98,9 +134,8 @@ export default function OvertimeRequestDialog({
     const submitData: SubmitDataType = {
       ...data,
       overtimeDetails: data.overtimeDetails?.map(detail => ({
-        // id generation for new entries or use existing if we had one
-        id: (detail as any).id || Math.random().toString(36).substring(2, 9), 
-        date: format(detail.date, 'yyyy-MM-dd'), // Convert Date to ISO string
+        id: detail.id || Math.random().toString(36).substring(2, 9), 
+        date: format(detail.date, 'yyyy-MM-dd'),
         startTime: detail.startTime,
         endTime: detail.endTime,
       }))
@@ -122,7 +157,10 @@ export default function OvertimeRequestDialog({
                 <FormItem>
                   <FormLabel>Nom et prénom du salarié</FormLabel>
                   <FormControl>
-                    <Input value={editingRequest?.employeeName || currentUser?.name || "Non identifié"} disabled className="bg-muted/50" />
+                    <Input 
+                      value={editingRequest?.employeeName || currentUser?.name || "Non identifié"} 
+                      disabled 
+                      className="bg-muted/50" />
                   </FormControl>
                 </FormItem>
 
@@ -136,8 +174,8 @@ export default function OvertimeRequestDialog({
                         <Input
                           placeholder="Ex: Éducateur spécialisé"
                           {...field}
-                          disabled={!editingRequest && !!currentUser?.role && (!editingRequest || editingRequest?.employeeName === currentUser?.name)}
-                          className={(!editingRequest && !!currentUser?.role && (!editingRequest || editingRequest?.employeeName === currentUser?.name)) ? "bg-muted/50" : ""}
+                          disabled={!editingRequest && !!currentUser?.role}
+                          className={(!editingRequest && !!currentUser?.role) ? "bg-muted/50" : ""}
                         />
                       </FormControl>
                       <FormMessage />
@@ -150,7 +188,6 @@ export default function OvertimeRequestDialog({
                   <FormControl>
                     <Input value="Logistique" disabled className="bg-muted/50" />
                   </FormControl>
-                  <p className="text-xs text-muted-foreground">Ce champ est fixé à "Logistique".</p>
                 </FormItem>
 
                 <FormField
@@ -169,7 +206,7 @@ export default function OvertimeRequestDialog({
 
                 <div>
                   <FormLabel>Détail des heures supplémentaires</FormLabel>
-                  {fields.map((fieldItem, index) => ( // Changed 'field' to 'fieldItem' to avoid conflict
+                  {fields.map((fieldItem, index) => (
                     <div key={fieldItem.id} className="flex items-end gap-2 p-2 border rounded-md mb-2">
                       <Controller
                         control={form.control}
@@ -192,7 +229,7 @@ export default function OvertimeRequestDialog({
                                     ) : (
                                       <span>Choisir date</span>
                                     )}
-                                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                    <LucideCalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                                   </Button>
                                 </FormControl>
                               </PopoverTrigger>
@@ -241,7 +278,7 @@ export default function OvertimeRequestDialog({
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => append({ date: new Date(), startTime: '', endTime: '' })}
+                    onClick={() => append({ id: Math.random().toString(36).substring(2, 9), date: new Date(), startTime: '', endTime: '' })}
                     className="mt-2"
                   >
                     <PlusCircle className="mr-2 h-4 w-4" /> Ajouter une date/plage horaire
@@ -255,7 +292,7 @@ export default function OvertimeRequestDialog({
                     <FormItem>
                       <FormLabel>Total des heures en plus de l'horaire prévu</FormLabel>
                       <FormControl>
-                        <Input placeholder="Ex: 3.5 heures (calcul auto à venir)" {...field} />
+                        <Input placeholder="Calculé automatiquement" {...field} disabled className="bg-muted/50" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -279,3 +316,4 @@ export default function OvertimeRequestDialog({
     </Dialog>
   );
 }
+
