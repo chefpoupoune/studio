@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CalendarDays, Timer } from 'lucide-react'; 
+import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CalendarDays, Timer, CheckSquare, ListFilter } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
@@ -27,10 +27,23 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { BrigadeMember } from '@/app/dashboard/time-tracking/types'; 
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
 
 const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v4'; 
 const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
+
+interface DeclarationHeureTab {
+  value: string;
+  label: string;
+  Icon: React.ElementType;
+  component: React.ReactNode;
+  isChefOnly?: boolean;
+}
 
 export default function DeclarationHeurePage() {
   const [isClient, setIsClient] = useState(false);
@@ -39,7 +52,11 @@ export default function DeclarationHeurePage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
   const [editingRequest, setEditingRequest] = useState<OvertimeRequest | null>(null);
+  const [isApproverViewActive, setIsApproverViewActive] = useState(false);
   const { toast } = useToast();
+  const isMobile = useIsMobile();
+  
+  const isChef = useMemo(() => loggedInUsername?.toLowerCase() === 'chef', [loggedInUsername]);
 
   useEffect(() => {
     setIsClient(true);
@@ -58,8 +75,9 @@ export default function DeclarationHeurePage() {
             overtimeDetails: Array.isArray(req.overtimeDetails) 
               ? req.overtimeDetails.map((d:any) => ({...d, date: d.date || new Date().toISOString() })) 
               : [],
-            status: req.approvalStatus || req.status || 'en_attente', // Prioritize new status field
+            approvalStatus: req.approvalStatus || req.status || 'pending',
             prestationTypes: Array.isArray(req.prestationTypes) ? req.prestationTypes : [],
+            compensationType: req.compensationType || null, // Ensure null if not set
           })).sort((a: OvertimeRequest, b: OvertimeRequest) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime()));
         }
         const storedBrigadeMembers = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
@@ -87,27 +105,26 @@ export default function DeclarationHeurePage() {
   }, [loggedInUsername, brigadeMembers]);
 
   const handleAddOrUpdateOvertimeRequest = useCallback((
-    data: Partial<OvertimeRequest> // Data from form might be partial
+    data: Partial<OvertimeRequest>
   ) => {
-    if (!loggedInUsername) {
+    if (!loggedInUsername && !isApproverViewActive) { // If not approver, must be logged in
       toast({ title: "Utilisateur non identifié", description: "Impossible de soumettre la demande.", variant: "destructive" });
       return;
     }
     
-    const employeeNameToUse = editingRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername;
+    const employeeNameToUse = editingRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername || "Système";
     const positionToUse = data.position || (editingRequest ? editingRequest.position : (currentBrigadeMember?.role || ''));
-
 
     if (editingRequest) {
       setOvertimeRequests(prev => prev.map(req => 
         req.id === editingRequest.id 
         ? { 
             ...req, 
-            ...data, // Apply all updates from form
-            employeeName: employeeNameToUse, // Ensure employeeName is correct
+            ...data,
+            employeeName: employeeNameToUse,
             position: positionToUse,
-            requestDate: req.requestDate, // Keep original requestDate
-            status: data.approvalStatus || req.status || 'en_attente', // Update status for display
+            requestDate: req.requestDate,
+            approvalStatus: data.approvalStatus || req.approvalStatus || 'pending',
           } as OvertimeRequest
         : req
       ).sort((a,b) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime()));
@@ -118,51 +135,178 @@ export default function DeclarationHeurePage() {
         id: `or_${Date.now()}`,
         employeeName: employeeNameToUse,
         requestDate: new Date().toISOString(),
-        status: data.approvalStatus || 'en_attente', // Use new status field
-        ...data, // Spread all form data
+        approvalStatus: data.approvalStatus || 'pending',
+        ...data,
         position: positionToUse,
-      } as OvertimeRequest; // Cast to ensure all fields are present
+        overtimeDetails: data.overtimeDetails || [],
+        prestationTypes: data.prestationTypes || [],
+      } as OvertimeRequest; 
       setOvertimeRequests(prev => [newRequest, ...prev].sort((a,b) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime()));
       toast({ title: "Demande Soumise", description: "Votre demande de dépassement d'horaire a été enregistrée." });
     }
-  }, [loggedInUsername, currentBrigadeMember, toast, editingRequest]);
+  }, [loggedInUsername, currentBrigadeMember, toast, editingRequest, isApproverViewActive]);
   
   const handleDeleteRequest = (requestId: string) => {
     setOvertimeRequests(prev => prev.filter(req => req.id !== requestId));
     toast({ title: "Demande Supprimée", variant: "destructive" });
   };
 
-  const handleOpenForm = (request?: OvertimeRequest) => {
+  const handleOpenForm = (request?: OvertimeRequest, approverMode: boolean = false) => {
     setEditingRequest(request || null);
+    setIsApproverViewActive(approverMode);
     setIsFormOpen(true);
   };
 
-  const getStatusBadgeVariant = (status?: OvertimeRequestStatus | OvertimeRequest['approvalStatus']) => {
+  const getStatusBadgeVariant = (status?: OvertimeRequest['approvalStatus']) => {
     switch (status) {
-      case 'accepted':
-      case 'approuvee': 
-        return 'success';
-      case 'rejected':
-      case 'refusee': 
-        return 'destructive';
-      case 'pending':
-      case 'en_attente':
-      default: return 'secondary';
+      case 'accepted': return 'success';
+      case 'rejected': return 'destructive';
+      case 'pending': default: return 'secondary';
     }
   };
-   const getStatusLabel = (status?: OvertimeRequestStatus | OvertimeRequest['approvalStatus']) => {
+   const getStatusLabel = (status?: OvertimeRequest['approvalStatus']) => {
     switch (status) {
-      case 'accepted':
-      case 'approuvee': 
-        return 'Approuvée';
-      case 'rejected':
-      case 'refusee': 
-        return 'Refusée';
-      case 'pending':
-      case 'en_attente':
-      default: return 'En attente';
+      case 'accepted': return 'Acceptée';
+      case 'rejected': return 'Refusée';
+      case 'pending': default: return 'En attente';
     }
   };
+
+  const renderRequestList = (requestsToList: OvertimeRequest[], approverMode: boolean) => (
+    requestsToList.length === 0 ? (
+      <p className="text-muted-foreground text-center py-6">Aucune demande à afficher.</p>
+    ) : (
+      <ScrollArea className="h-[calc(100vh-26rem)] sm:h-[calc(100vh-24rem)]"> 
+        <div className="space-y-3 pr-3">
+          {requestsToList.map(req => (
+            <Card key={req.id} className="bg-card/60">
+              <CardHeader className="pb-2 pt-3 px-4">
+                <div className="flex justify-between items-start">
+                  <CardTitle className="text-md">
+                    Demande du {format(parseISO(req.requestDate), "dd/MM/yyyy HH:mm", {locale: fr})}
+                  </CardTitle>
+                  <Badge variant={getStatusBadgeVariant(req.approvalStatus)}>
+                    {getStatusLabel(req.approvalStatus)}
+                  </Badge>
+                </div>
+                <CardDescription className="text-xs">
+                  Par: {req.employeeName} {req.position && `(${req.position})`}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="px-4 pb-3 space-y-1 text-xs">
+                <p className="text-muted-foreground"><span className="font-medium text-foreground/80">Motif:</span> {req.reasonStub}</p>
+                  {req.prestationTypes && req.prestationTypes.length > 0 && (
+                    <p className="text-muted-foreground">
+                      <span className="font-medium text-foreground/80">Prestations:</span>{' '}
+                      {req.prestationTypes.map(pt => PRESTATION_TYPE_LABELS[pt as PrestationType] || pt).join(', ')}
+                      {req.prestationTypes.includes('autres') && req.prestationTypeAutresDetail && ` (${req.prestationTypeAutresDetail})`}
+                    </p>
+                  )}
+                
+                {req.overtimeDetails && req.overtimeDetails.length > 0 && (
+                  <div className="mt-1">
+                    <span className="font-medium text-foreground/80 flex items-center gap-1 mb-0.5"><CalendarDays className="h-3 w-3"/>Détail H.Supp:</span>
+                    <ul className="list-none pl-2 text-muted-foreground space-y-0.5">
+                      {req.overtimeDetails.map((detail, index) => (
+                        <li key={index} className="flex items-center gap-1.5">
+                          <Timer className="h-3 w-3 text-primary/70"/>
+                          {detail.date && isValid(parseISO(detail.date)) ? format(parseISO(detail.date), "dd/MM/yy", {locale: fr}) : 'Date invalide'}
+                          {detail.startTime && detail.endTime ? `: de ${detail.startTime} à ${detail.endTime}` : 
+                            detail.startTime ? `: à partir de ${detail.startTime}` : 
+                            detail.endTime ? `: jusqu'à ${detail.endTime}` : ' (horaires non spécifiés)'}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {req.totalOvertimeHours && <p className="text-muted-foreground mt-1"><span className="font-medium text-foreground/80">Total H.Supp:</span> {req.totalOvertimeHours}</p>}
+                
+                {req.approvalStatus && req.approvalStatus !== 'pending' && (
+                  <div className="border-t mt-2 pt-1">
+                    <p className="font-medium text-foreground/80">Décision Direction:</p>
+                    {req.approvalStatus === 'rejected' && req.rejectionReason && <p>Motif refus: {req.rejectionReason}</p>}
+                    {req.compensationType && <p>Compensation: {req.compensationType === 'recovery' ? 'Récupération' : 'Paiement'}</p>}
+                    {req.decisionDate && isValid(parseISO(req.decisionDate)) && <p>Date Décision: {format(parseISO(req.decisionDate), "dd/MM/yyyy", {locale:fr})}</p>}
+                  </div>
+                )}
+
+                <div className="mt-2 flex justify-end space-x-2 pt-1">
+                    <Button variant="outline" size="sm" className="text-xs" onClick={() => handleOpenForm(req, approverMode)}>
+                      <Edit2 className="mr-1 h-3.5 w-3.5"/> {approverMode ? "Traiter" : "Modifier"}
+                    </Button>
+                    {(req.approvalStatus === 'pending') && !approverMode && ( 
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="destructive" size="sm" className="text-xs">
+                            <Trash2 className="mr-1 h-3.5 w-3.5"/> Annuler/Suppr.
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader><AlertDialogTitle>Annuler la demande ?</AlertDialogTitle><AlertDialogDescription>Cette action est irréversible.</AlertDialogDescription></AlertDialogHeader>
+                          <AlertDialogFooter><AlertDialogCancel>Non</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteRequest(req.id)}>Oui, annuler</AlertDialogAction></AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </ScrollArea>
+    )
+  );
+
+  const employeeRequests = useMemo(() => {
+    if (!isClient || !loggedInUsername) return [];
+    return overtimeRequests.filter(req => req.employeeName.toLowerCase() === loggedInUsername.toLowerCase());
+  }, [isClient, loggedInUsername, overtimeRequests]);
+
+  const declarationHeureTabsConfig: DeclarationHeureTab[] = [
+    { value: "my-requests", label: "Mes Demandes", Icon: History, component: (
+      <Card className="shadow-xl">
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+          <div>
+            <CardTitle>Mes Demandes de Dépassement d'Horaire</CardTitle>
+            <CardDescription>Soumettez et suivez vos demandes.</CardDescription>
+          </div>
+          <Button onClick={() => handleOpenForm(undefined, false)}>
+            <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande
+          </Button>
+        </CardHeader>
+        <CardContent>{renderRequestList(isChef ? overtimeRequests : employeeRequests, false)}</CardContent>
+      </Card>
+    )},
+    { value: "approval-requests", label: "Approbation Demandes", Icon: CheckSquare, component: (
+      <Card className="shadow-xl">
+        <CardHeader>
+          <CardTitle>Approbation des Demandes de Dépassement</CardTitle>
+          <CardDescription>Traitez les demandes soumises par les employés.</CardDescription>
+        </CardHeader>
+        <CardContent>{renderRequestList(overtimeRequests, true)}</CardContent>
+      </Card>
+    ), isChefOnly: true},
+    { value: "absence-requests", label: "Demandes d'Absence (À Venir)", Icon: ListFilter, component: (
+      <Card className="shadow-xl opacity-50 cursor-not-allowed">
+        <CardHeader><CardTitle>Demandes d'Absence</CardTitle><CardDescription>Soumettez et suivez vos demandes d'absence.</CardDescription></CardHeader>
+        <CardContent><p className="text-muted-foreground text-center py-6">Le module de demande d'absence sera développé prochainement.</p></CardContent>
+      </Card>
+    )},
+  ];
+
+  const visibleTabs = useMemo(() => {
+    return declarationHeureTabsConfig.filter(tab => !tab.isChefOnly || isChef);
+  }, [isChef]);
+
+  const [activeTab, setActiveTab] = useState(visibleTabs.length > 0 ? visibleTabs[0].value : "");
+  
+  useEffect(() => {
+    if (visibleTabs.length > 0 && !visibleTabs.find(tab => tab.value === activeTab)) {
+      setActiveTab(visibleTabs[0].value);
+    } else if (visibleTabs.length === 0) {
+      setActiveTab("");
+    }
+  }, [visibleTabs, activeTab]);
+
 
   if (!isClient) {
     return (
@@ -186,113 +330,46 @@ export default function DeclarationHeurePage() {
         <CurrentDate />
       </div>
       
-      <Card className="shadow-xl mb-6">
-        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-          <div>
-            <CardTitle>Demandes de Dépassement d'Horaire</CardTitle>
-            <CardDescription>
-              Soumettez et suivez vos demandes de dépassement d'horaire.
-            </CardDescription>
-          </div>
-          <Button onClick={() => handleOpenForm()}>
-            <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {overtimeRequests.length === 0 ? (
-            <p className="text-muted-foreground text-center py-6">Aucune demande de dépassement soumise.</p>
-          ) : (
-            <ScrollArea className="h-[calc(100vh-26rem)] sm:h-[calc(100vh-24rem)]"> 
-              <div className="space-y-3 pr-3">
-                {overtimeRequests.map(req => (
-                  <Card key={req.id} className="bg-card/60">
-                    <CardHeader className="pb-2 pt-3 px-4">
-                      <div className="flex justify-between items-start">
-                        <CardTitle className="text-md">
-                          Demande du {format(parseISO(req.requestDate), "dd/MM/yyyy HH:mm", {locale: fr})}
-                        </CardTitle>
-                        <Badge variant={getStatusBadgeVariant(req.approvalStatus || req.status)}>
-                          {getStatusLabel(req.approvalStatus || req.status)}
-                        </Badge>
-                      </div>
-                      <CardDescription className="text-xs">
-                        Par: {req.employeeName} {req.position && `(${req.position})`}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="px-4 pb-3 space-y-1 text-xs">
-                      <p className="text-muted-foreground"><span className="font-medium text-foreground/80">Motif:</span> {req.reasonStub}</p>
-                       {req.prestationTypes && req.prestationTypes.length > 0 && (
-                         <p className="text-muted-foreground">
-                           <span className="font-medium text-foreground/80">Prestations:</span>{' '}
-                           {req.prestationTypes.map(pt => PRESTATION_TYPE_LABELS[pt as PrestationType] || pt).join(', ')}
-                           {req.prestationTypes.includes('autres') && req.prestationTypeAutresDetail && ` (${req.prestationTypeAutresDetail})`}
-                         </p>
-                       )}
-                      
-                      {req.overtimeDetails && req.overtimeDetails.length > 0 && (
-                        <div className="mt-1">
-                          <span className="font-medium text-foreground/80 flex items-center gap-1 mb-0.5"><CalendarDays className="h-3 w-3"/>Détail H.Supp:</span>
-                          <ul className="list-none pl-2 text-muted-foreground space-y-0.5">
-                            {req.overtimeDetails.map((detail, index) => (
-                              <li key={index} className="flex items-center gap-1.5">
-                                <Timer className="h-3 w-3 text-primary/70"/>
-                                {detail.date && isValid(parseISO(detail.date)) ? format(parseISO(detail.date), "dd/MM/yy", {locale: fr}) : 'Date invalide'}
-                                {detail.startTime && detail.endTime ? `: de ${detail.startTime} à ${detail.endTime}` : 
-                                 detail.startTime ? `: à partir de ${detail.startTime}` : 
-                                 detail.endTime ? `: jusqu'à ${detail.endTime}` : ' (horaires non spécifiés)'}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      {req.totalOvertimeHours && <p className="text-muted-foreground mt-1"><span className="font-medium text-foreground/80">Total H.Supp:</span> {req.totalOvertimeHours}</p>}
-                      
-                      {req.approvalStatus && req.approvalStatus !== 'pending' && (
-                        <div className="border-t mt-2 pt-1">
-                          <p className="font-medium text-foreground/80">Décision Direction:</p>
-                          <p>Statut: <Badge variant={getStatusBadgeVariant(req.approvalStatus)} size="sm">{getStatusLabel(req.approvalStatus)}</Badge></p>
-                          {req.approvalStatus === 'rejected' && req.rejectionReason && <p>Motif refus: {req.rejectionReason}</p>}
-                          {req.compensationType && <p>Compensation: {req.compensationType === 'recovery' ? 'Récupération' : 'Paiement'}</p>}
-                          {req.decisionDate && isValid(parseISO(req.decisionDate)) && <p>Date Décision: {format(parseISO(req.decisionDate), "dd/MM/yyyy", {locale:fr})}</p>}
-                        </div>
-                      )}
-
-                      <div className="mt-2 flex justify-end space-x-2 pt-1">
-                          <Button variant="outline" size="sm" className="text-xs" onClick={() => handleOpenForm(req)}>
-                            <Edit2 className="mr-1 h-3.5 w-3.5"/> Modifier
-                          </Button>
-                          {(req.approvalStatus === 'pending' || req.status === 'en_attente') && ( 
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="destructive" size="sm" className="text-xs">
-                                  <Trash2 className="mr-1 h-3.5 w-3.5"/> Annuler/Suppr.
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Annuler la demande ?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Cette action est irréversible.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Non</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handleDeleteRequest(req.id)}>
-                                    Oui, annuler
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          )}
-                      </div>
-                    </CardContent>
-                  </Card>
+       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        {isMobile ? (
+          <div className="mb-4">
+            <Label htmlFor="mobile-declaration-nav-select" className="text-sm font-medium">Naviguer vers :</Label>
+            <Select value={activeTab} onValueChange={setActiveTab}>
+              <SelectTrigger id="mobile-declaration-nav-select" className="w-full mt-1">
+                <SelectValue placeholder="Choisir une section..." />
+              </SelectTrigger>
+              <SelectContent>
+                {visibleTabs.map(tab => (
+                  <SelectItem key={tab.value} value={tab.value} className="text-sm">
+                    <span className="flex items-center">
+                      <tab.Icon className="mr-2 h-4 w-4" />
+                      {tab.label}
+                    </span>
+                  </SelectItem>
                 ))}
-              </div>
-            </ScrollArea>
-          )}
-        </CardContent>
-      </Card>
+              </SelectContent>
+            </Select>
+          </div>
+        ) : (
+          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-1 mb-6 bg-card p-1 rounded-lg">
+            {visibleTabs.map(tab => (
+              <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
+                <tab.Icon className="mr-1 sm:mr-2 h-4 w-4" /> {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        )}
+
+        {visibleTabs.map(tab => (
+          <TabsContent key={tab.value} value={tab.value}>
+            {tab.component}
+          </TabsContent>
+        ))}
+         {visibleTabs.length === 0 && (
+           <TabsContent value=""><p className="text-muted-foreground text-center py-6">Aucune section accessible.</p></TabsContent>
+         )}
+      </Tabs>
+
 
       <OvertimeRequestDialog
         isOpen={isFormOpen}
@@ -301,22 +378,8 @@ export default function DeclarationHeurePage() {
         editingRequest={editingRequest}
         currentUser={currentBrigadeMember ? { name: currentBrigadeMember.name, role: currentBrigadeMember.role } : 
                      loggedInUsername ? {name: loggedInUsername, role: ''} : null}
+        isApproverView={isApproverViewActive}
       />
-
-      <Card className="shadow-xl opacity-50 cursor-not-allowed mt-6">
-        <CardHeader>
-          <CardTitle>Demandes d'Absence</CardTitle>
-          <CardDescription>
-            Soumettez et suivez vos demandes d'absence (fonctionnalité à venir).
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground text-center py-6">
-            Le module de demande d'absence sera développé prochainement.
-          </p>
-        </CardContent>
-      </Card>
-
     </div>
   );
 }
