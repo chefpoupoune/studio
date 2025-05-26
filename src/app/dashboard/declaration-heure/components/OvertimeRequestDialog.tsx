@@ -16,9 +16,9 @@ import { ScrollArea } from '@/components/ui/scroll-area'; // Added ScrollArea
 const formSchema = z.object({
   reasonStub: z.string().min(5, "Veuillez fournir un bref motif (min. 5 caractères).").max(500, "Le motif ne peut excéder 500 caractères."),
   position: z.string().optional(),
-  prestationTypeNotes: z.string().optional().max(200, "Notes prestation max 200 caractères."),
-  overtimeDetailsNotes: z.string().optional().max(500, "Détails heures supp max 500 caractères."),
-  totalOvertimeHours: z.string().optional().max(50, "Total heures max 50 caractères."),
+  prestationTypeNotes: z.string().max(200, "Notes prestation max 200 caractères.").optional(),
+  overtimeDetailsNotes: z.string().max(500, "Détails heures supp max 500 caractères.").optional(),
+  totalOvertimeHours: z.string().max(50, "Total heures max 50 caractères.").optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -34,7 +34,7 @@ export default function OvertimeRequestDialog({
   isOpen,
   onOpenChange,
   onSubmitRequest,
-  editingRequest, // For future edit functionality, not used yet
+  editingRequest, 
 }: OvertimeRequestDialogProps) {
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -61,7 +61,6 @@ export default function OvertimeRequestDialog({
 
   const handleSubmit = (data: FormData) => {
     onSubmitRequest(data);
-    // form.reset(); // Reset happens in useEffect or when opening
     onOpenChange(false);
   };
 
