@@ -19,53 +19,28 @@ export interface OvertimeDayDetail {
   endTime?: string; // HH:mm
 }
 
-// This interface will be used for the detailed form and storage
 export interface OvertimeRequest {
   id: string;
   employeeName: string;
   requestDate: string; // ISO string for creation date
+  updatedAt?: string; // ISO string for last update
   
-  // Employee section
   position?: string; 
   
-  // Prestation correspondante
   prestationTypes?: PrestationType[]; 
   prestationTypeAutresDetail?: string;
 
-  // Motif
-  reasonStub: string; // Main reason
+  reasonStub: string; 
 
-  // Hours detail
   overtimeDetails?: OvertimeDayDetail[];
-  totalOvertimeHours?: string; // "X heures en plus de l'horaire prévu"
-
-  // Signatures (placeholders for now)
-  employeeSignatureDate?: string; // ISO string
-  directManagerSignatureDate?: string; // ISO string
-  directorSignatureDate?: string; // ISO string
-
-  // Cadre réservé à la Direction
-  approvalStatus?: 'pending' | 'accepted' | 'rejected'; // More specific status
-  rejectionReason?: string;
-  compensationType?: 'recovery' | 'payment';
-  decisionDate?: string; // ISO string
-
-  // Fallback for simple list display if approvalStatus is not set
-  status?: OvertimeRequestStatus;
-}
-
-// Simplified stub for initial list display, can be derived from OvertimeRequest
-export interface OvertimeRequestStub {
-  id: string;
-  employeeName: string;
-  requestDate: string; // ISO String
-  status: OvertimeRequestStatus; // 'en_attente', 'approuvee', 'refusee' (can map from approvalStatus)
-  reasonStub: string;
-  position?: string;
-  // These were specific to the old structure, may not be needed if listing only uses approvalStatus
-  prestationTypeNotes?: string; 
-  overtimeDetailsNotes?: string;
   totalOvertimeHours?: string; 
-  overtimeDetails?: OvertimeDayDetail[]; 
-  approvalStatus?: 'pending' | 'accepted' | 'rejected';
+
+  employeeSignatureDate?: string; 
+  directManagerSignatureDate?: string; 
+  directorSignatureDate?: string; 
+
+  approvalStatus?: 'pending' | 'accepted' | 'rejected'; 
+  rejectionReason?: string;
+  compensationType?: 'recovery' | 'payment' | null; // Allow null
+  decisionDate?: string; 
 }
