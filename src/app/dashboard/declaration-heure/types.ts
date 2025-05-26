@@ -7,18 +7,17 @@ export interface OvertimeRequest {
   requestDate: string; // ISO string
   status: OvertimeRequestStatus;
   // --- Fields from the form ---
-  position: string; // Poste occupé à l'IME
-  prestationTypes: PrestationType[]; // Entourer la prestation correspondante
-  reason: string; // Motif de la demande
+  position?: string; // Poste occupé à l'IME
+  prestationTypes?: PrestationType[]; // Entourer la prestation correspondante
+  reason?: string; // Motif de la demande (renamed from reasonStub)
 
-  // For overtime details (can be an array if multiple days)
-  overtimeDetails: OvertimeDayDetail[];
-  totalOvertimeHours: string; // "X heures en plus de l'horaire prévu"
+  // For overtime details
+  overtimeDetails?: OvertimeDayDetail[];
+  totalOvertimeHours?: string; // "X heures en plus de l'horaire prévu"
 
   // Approval details
   submittedLocation?: string; // Fait à
   submittedOnDate?: string; // Le: (date of submission/signature)
-  // Signatures would be complex to handle digitally without a proper system
   managerNotes?: string; // For approval/refusal comments
 }
 
@@ -42,11 +41,15 @@ export interface OvertimeDayDetail {
   // totalHoursForDay will be calculated
 }
 
-// Initial stub, will be expanded
+// Summary type for display, to be expanded as form grows
 export interface OvertimeRequestStub {
   id: string;
   employeeName: string;
   requestDate: string; // ISO String
   status: OvertimeRequestStatus;
-  reasonStub: string; // Placeholder for the detailed form
+  reasonStub: string; 
+  position?: string;
+  prestationTypeNotes?: string; // Placeholder for "Prestation correspondante"
+  overtimeDetailsNotes?: string; // Placeholder for "Détail des heures supplémentaires"
+  totalOvertimeHours?: string; // Placeholder for "X heures en plus..."
 }

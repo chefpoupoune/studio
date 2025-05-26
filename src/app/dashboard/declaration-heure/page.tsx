@@ -24,15 +24,18 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 
-const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v1';
+const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v2'; // Versioned key
 
 export default function DeclarationHeurePage() {
   const [isClient, setIsClient] = useState(false);
   const [overtimeRequests, setOvertimeRequests] = useState<OvertimeRequestStub[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
+  // No editing for now, so editingRequest state can be removed if not used.
+  // const [editingRequest, setEditingRequest] = useState<OvertimeRequestStub | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -61,7 +64,7 @@ export default function DeclarationHeurePage() {
     }
   }, [overtimeRequests, isClient]);
 
-  const handleAddOvertimeRequest = useCallback((data: { reasonStub: string }) => {
+  const handleAddOvertimeRequest = useCallback((data: Partial<OvertimeRequestStub>) => {
     if (!loggedInUsername) {
       toast({ title: "Utilisateur non identifié", description: "Impossible de soumettre la demande.", variant: "destructive" });
       return;
@@ -71,7 +74,11 @@ export default function DeclarationHeurePage() {
       employeeName: loggedInUsername,
       requestDate: new Date().toISOString(),
       status: 'en_attente',
-      reasonStub: data.reasonStub,
+      reasonStub: data.reasonStub || "Motif non spécifié", // Ensure reasonStub is always a string
+      position: data.position,
+      prestationTypeNotes: data.prestationTypeNotes,
+      overtimeDetailsNotes: data.overtimeDetailsNotes,
+      totalOvertimeHours: data.totalOvertimeHours,
     };
     setOvertimeRequests(prev => [newRequest, ...prev].sort((a,b) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime()));
     toast({ title: "Demande Soumise", description: "Votre demande de dépassement d'horaire a été enregistrée." });
@@ -123,7 +130,7 @@ export default function DeclarationHeurePage() {
       </div>
       
       <Card className="shadow-xl mb-6">
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <div>
             <CardTitle>Demandes de Dépassement d'Horaire</CardTitle>
             <CardDescription>
@@ -138,55 +145,58 @@ export default function DeclarationHeurePage() {
           {overtimeRequests.length === 0 ? (
             <p className="text-muted-foreground text-center py-6">Aucune demande de dépassement soumise.</p>
           ) : (
-            <div className="space-y-3">
-              {overtimeRequests.map(req => (
-                <Card key={req.id} className="bg-card/60">
-                  <CardHeader className="pb-2 pt-3 px-4">
-                    <div className="flex justify-between items-start">
-                      <CardTitle className="text-md">
-                        Demande du {format(parseISO(req.requestDate), "dd/MM/yyyy HH:mm", {locale: fr})}
-                      </CardTitle>
-                       <Badge variant={getStatusBadgeVariant(req.status)}>
-                        {getStatusLabel(req.status)}
-                      </Badge>
-                    </div>
-                    <CardDescription className="text-xs">Par: {req.employeeName}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="px-4 pb-3">
-                    <p className="text-sm text-muted-foreground truncate">Motif (simplifié): {req.reasonStub}</p>
-                     <div className="mt-2 flex justify-end space-x-2">
-                       {/* Placeholder for future "View" button */}
-                       {/* <Button variant="outline" size="sm" className="text-xs"><Eye className="mr-1 h-3.5 w-3.5"/> Voir</Button> */}
-                       {/* Placeholder for future "Edit" button - only if status is 'en_attente' */}
-                       {/* {req.status === 'en_attente' && <Button variant="outline" size="sm" className="text-xs"><Edit2 className="mr-1 h-3.5 w-3.5"/> Modifier</Button>} */}
-                        {req.status === 'en_attente' && (
-                           <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="destructive" size="sm" className="text-xs">
-                                <Trash2 className="mr-1 h-3.5 w-3.5"/> Annuler/Suppr.
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Annuler la demande ?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Cette action est irréversible.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Non</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDeleteRequest(req.id)}>
-                                  Oui, annuler
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        )}
-                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+            <ScrollArea className="h-[calc(100vh-26rem)] sm:h-[calc(100vh-24rem)]"> 
+              <div className="space-y-3 pr-3">
+                {overtimeRequests.map(req => (
+                  <Card key={req.id} className="bg-card/60">
+                    <CardHeader className="pb-2 pt-3 px-4">
+                      <div className="flex justify-between items-start">
+                        <CardTitle className="text-md">
+                          Demande du {format(parseISO(req.requestDate), "dd/MM/yyyy HH:mm", {locale: fr})}
+                        </CardTitle>
+                        <Badge variant={getStatusBadgeVariant(req.status)}>
+                          {getStatusLabel(req.status)}
+                        </Badge>
+                      </div>
+                      <CardDescription className="text-xs">
+                        Par: {req.employeeName} {req.position && `(${req.position})`}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-3 space-y-1">
+                      <p className="text-sm text-muted-foreground"><span className="font-medium text-foreground/80">Motif:</span> {req.reasonStub}</p>
+                      {req.prestationTypeNotes && <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground/80">Prestation:</span> {req.prestationTypeNotes}</p>}
+                      {req.overtimeDetailsNotes && <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground/80">Détail H.Supp:</span> {req.overtimeDetailsNotes}</p>}
+                      {req.totalOvertimeHours && <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground/80">Total H.Supp:</span> {req.totalOvertimeHours}</p>}
+                      <div className="mt-2 flex justify-end space-x-2 pt-1">
+                          {req.status === 'en_attente' && (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="destructive" size="sm" className="text-xs">
+                                  <Trash2 className="mr-1 h-3.5 w-3.5"/> Annuler/Suppr.
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Annuler la demande ?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Cette action est irréversible.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Non</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleDeleteRequest(req.id)}>
+                                    Oui, annuler
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </ScrollArea>
           )}
         </CardContent>
       </Card>
@@ -195,9 +205,9 @@ export default function DeclarationHeurePage() {
         isOpen={isFormOpen}
         onOpenChange={setIsFormOpen}
         onSubmitRequest={handleAddOvertimeRequest}
+        // editingRequest={editingRequest} // Pass editingRequest for future edit functionality
       />
 
-      {/* Placeholder for Absence Requests section */}
       <Card className="shadow-xl opacity-50 cursor-not-allowed">
         <CardHeader>
           <CardTitle>Demandes d'Absence</CardTitle>
