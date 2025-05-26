@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from "react";
@@ -31,7 +32,8 @@ import {
   PanelLeft,
   LogOut,
   Clock,
-  ShoppingBasket // Ajouté pour Pique Nique
+  ShoppingBasket,
+  FileClock // Nouvelle icône pour Déclaration d'Heure
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -48,7 +50,7 @@ interface NavItem {
   href: string;
   icon: React.ElementType;
   label: string;
-  rubricId: RubricId | 'timeTracking_parent' | 'picnic'; // Ajout de 'picnic'
+  rubricId: RubricId | 'timeTracking_parent' | 'picnic' | 'declarationHeure'; // Ajout de 'declarationHeure'
 }
 
 const allNavItems: NavItem[] = [
@@ -56,10 +58,11 @@ const allNavItems: NavItem[] = [
   { href: "/dashboard/inventory", icon: Archive, label: "Gestion Stocks", rubricId: "inventory" },
   { href: "/dashboard/benefits", icon: FileSpreadsheet, label: "Avantages Nature", rubricId: "benefits" },
   { href: "/dashboard/time-tracking", icon: Clock, label: "Suivi Heures", rubricId: "timeTracking_parent" },
+  { href: "/dashboard/declaration-heure", icon: FileClock, label: "Déclaration d'Heures", rubricId: "declarationHeure" },
   { href: "/dashboard/task-management", icon: ClipboardList, label: "Gestion Tâches", rubricId: "taskManagement" },
   { href: "/dashboard/cost-management", icon: DollarSign, label: "Gestion Coûts", rubricId: "costManagement" },
   { href: "/dashboard/menu-planning", icon: BookOpenText, label: "Planification Menus", rubricId: "menuPlanning" },
-  { href: "/dashboard/picnic", icon: ShoppingBasket, label: "Pique Nique", rubricId: "picnic" }, // Nouvelle rubrique
+  { href: "/dashboard/picnic", icon: ShoppingBasket, label: "Pique Nique", rubricId: "picnic" },
   { href: "/dashboard/pms", icon: ShieldCheck, label: "PMS", rubricId: "pms" },
   { href: "/dashboard/settings", icon: Settings, label: "Paramètres", rubricId: "settings" },
 ];
@@ -104,7 +107,8 @@ function AppSidebar() {
 
   React.useEffect(() => {
     if (openMobile) {
-      setOpenMobile(false);
+      // This effect was potentially causing issues, ensure it doesn't interfere with opening.
+      // If its purpose was to close on navigation, pathname should be its sole dependency.
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]); 
@@ -265,6 +269,10 @@ export default function DashboardLayout({
 
       if (pathname === '/dashboard' || pathname === '/dashboard/') {
         if (!userPermissions.dashboard && username?.toLowerCase() !== 'chef') {
+            // If user does not have specific dashboard access and is not chef,
+            // this might be a place to redirect to a minimal allowed page or show error.
+            // For now, if they land here without the 'dashboard' permission,
+            // the sidebar will be empty, but content area is not explicitly blocked.
         }
         return;
       }
@@ -286,7 +294,11 @@ export default function DashboardLayout({
             router.replace('/dashboard');
           }
         } else {
+           // Path doesn't match any known navItem, could be a 404 or a deeper route.
+           // For simplicity, if it's not a recognized top-level nav item, we don't redirect.
+           // A more robust system might check against a sitemap or more granular route permissions.
            if (currentTopLevelPath) {
+             // console.log(`[DashboardLayout] Accessing potentially non-sidebar path: /dashboard/${currentTopLevelPath}`);
            }
         }
       }
@@ -324,5 +336,3 @@ export default function DashboardLayout({
     </SidebarProvider>
   );
 }
-
-    

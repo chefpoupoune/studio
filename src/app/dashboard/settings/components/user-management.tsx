@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -8,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Users, AlertTriangle, PlusCircle, Edit2, Trash2, KeyRound, Eye, CalendarClock } from 'lucide-react';
+import { Users, AlertTriangle, PlusCircle, Edit2, Trash2, KeyRound, Eye, CalendarClock, FileClock } from 'lucide-react'; // Ajout de FileClock
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -38,10 +39,11 @@ export const RUBRICS = [
   { id: 'inventory', label: 'Gestion Stocks' },
   { id: 'benefits', label: 'Avantages Nature' },
   // timeTracking is now handled by sub-rubrics
+  { id: 'declarationHeure', label: "Déclaration d'Heures" }, // Nouvelle rubrique
   { id: 'taskManagement', label: 'Gestion Tâches' },
   { id: 'costManagement', label: 'Gestion Coûts' },
   { id: 'menuPlanning', label: 'Planification Menus' },
-  { id: 'picnic', label: 'Pique Nique' }, // Nouvelle rubrique Pique Nique
+  { id: 'picnic', label: 'Pique Nique' },
   { id: 'pms', label: 'PMS' },
   { id: 'settings', label: 'Paramètres' },
 ] as const;
@@ -123,7 +125,7 @@ export default function UserManagement() {
   const [isUserFormOpen, setIsUserFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
   const [isClient, setIsClient] = useState(false);
-  const [dataLoaded, setDataLoaded] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false); // New state
   const { toast } = useToast();
 
   const form = useForm<UserFormData>({
@@ -146,62 +148,69 @@ export default function UserManagement() {
     setIsClient(true);
   }, []);
 
+  // Effect for initial data loading
   useEffect(() => {
-    if (isClient) {
-      console.log("UserManagement: Load initial data from localStorage.");
-      let loadedUsers: AppUser[] = [];
-      let loadedMembers: BrigadeMember[] = [];
-      try {
-        const storedUsersRaw = localStorage.getItem(APP_USERS_STORAGE_KEY);
-        if (storedUsersRaw) {
-          loadedUsers = JSON.parse(storedUsersRaw);
-          console.log("UserManagement: Loaded users:", loadedUsers.length);
-        } else {
-          console.log("UserManagement: No users found in localStorage.");
-        }
-        setAppUsers(loadedUsers);
-
-        const storedBrigadeMembersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
-        if (storedBrigadeMembersRaw) {
-          loadedMembers = JSON.parse(storedBrigadeMembersRaw);
-          console.log("UserManagement: Loaded brigade members:", loadedMembers.length);
-        } else {
-          console.log("UserManagement: No brigade members found in localStorage.");
-        }
-        setBrigadeMembers(loadedMembers);
-
-      } catch (error) {
-        console.error("UserManagement: Error loading data:", error);
-        toast({ title: "Erreur de chargement des données utilisateurs/brigade", variant: "destructive" });
-        setAppUsers([]);
-        setBrigadeMembers([]);
-      } finally {
-        setDataLoaded(true);
-        console.log("UserManagement: Initial data load finished. dataLoaded set to true.");
+    if (!isClient) return;
+    console.log("UserManagement [EFFECT LOAD]: Attempting to load initial data from localStorage.");
+    let loadedUsers: AppUser[] = [];
+    let loadedMembers: BrigadeMember[] = [];
+    try {
+      const storedUsersRaw = localStorage.getItem(APP_USERS_STORAGE_KEY);
+      if (storedUsersRaw) {
+        loadedUsers = JSON.parse(storedUsersRaw);
+        console.log(`UserManagement [EFFECT LOAD]: Loaded ${loadedUsers.length} users from localStorage.`);
+      } else {
+        console.log("UserManagement [EFFECT LOAD]: No users found in localStorage.");
+        loadedUsers = []; // Ensure it's an empty array if nothing is found
       }
+      setAppUsers(loadedUsers);
+
+      const storedBrigadeMembersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
+      if (storedBrigadeMembersRaw) {
+        loadedMembers = JSON.parse(storedBrigadeMembersRaw);
+        console.log(`UserManagement [EFFECT LOAD]: Loaded ${loadedMembers.length} brigade members from localStorage.`);
+      } else {
+        console.log("UserManagement [EFFECT LOAD]: No brigade members found in localStorage.");
+        loadedMembers = [];
+      }
+      setBrigadeMembers(loadedMembers);
+
+    } catch (error) {
+      console.error("UserManagement [EFFECT LOAD]: Error loading data:", error);
+      toast({ title: "Erreur de chargement des données utilisateurs/brigade", variant: "destructive" });
+      setAppUsers([]); // Reset to empty on error
+      setBrigadeMembers([]);
+    } finally {
+      setDataLoaded(true); // Signal that initial load attempt is complete
+      console.log("UserManagement [EFFECT LOAD]: Initial data load process finished. dataLoaded set to true.");
     }
   }, [isClient, toast]);
 
+
+  // Effect for saving appUsers to localStorage
   useEffect(() => {
-    if (isClient && dataLoaded) {
-      console.log(`UserManagement: Attempting to save ${appUsers.length} appUsers to localStorage. dataLoaded: ${dataLoaded}`);
+    if (isClient && dataLoaded) { // Only save if client and initial data load is complete
+      console.log(`UserManagement [EFFECT SAVE Users]: Attempting to save ${appUsers.length} appUsers to localStorage.`);
       try {
         localStorage.setItem(APP_USERS_STORAGE_KEY, JSON.stringify(appUsers));
-        console.log("UserManagement: appUsers successfully saved to localStorage.");
+        console.log("UserManagement [EFFECT SAVE Users]: appUsers successfully saved to localStorage.");
       } catch (error) {
-        console.error("UserManagement: Error saving appUsers to localStorage:", error);
+        console.error("UserManagement [EFFECT SAVE Users]: Error saving appUsers to localStorage:", error);
         toast({ title: "Erreur de sauvegarde des utilisateurs", variant: "destructive" });
       }
     } else {
-        console.log(`UserManagement: Save skipped. isClient: ${isClient}, dataLoaded: ${dataLoaded}`);
+      console.log(`UserManagement [EFFECT SAVE Users]: Save skipped. isClient: ${isClient}, dataLoaded: ${dataLoaded}`);
     }
   }, [appUsers, isClient, dataLoaded, toast]);
 
+
+  // Effect for updating availableBrigadeMembers
   useEffect(() => {
-    if (isClient && dataLoaded) {
+    if (isClient && dataLoaded) { // Ensure data has been loaded before calculating
       const linkedMemberIds = appUsers.map(user => user.brigadeMemberId).filter(id => !!id);
       const updatedAvailableMembers = brigadeMembers.filter(member => !linkedMemberIds.includes(member.id));
       setAvailableBrigadeMembers(updatedAvailableMembers);
+      console.log("UserManagement [EFFECT Available Members]: Updated available brigade members list.", updatedAvailableMembers.length);
     }
   }, [appUsers, brigadeMembers, isClient, dataLoaded]);
 
@@ -254,13 +263,17 @@ export default function UserManagement() {
       passwordRequired: data.passwordRequired,
       permissions: data.permissions,
       viewableHourSummaryConfig: summaryConfig,
-      simulatedStoredPassword: passwordToStore,
+      simulatedStoredPassword: passwordToStore, // Will be undefined if no new password
     };
 
     if (editingUser) {
-      const updatedSimulatedPassword = (data.passwordRequired && passwordToStore) 
-        ? passwordToStore 
-        : (data.passwordRequired ? editingUser.simulatedStoredPassword : undefined); 
+      // Preserve existing password if not changed, or if password requirement is turned off
+      const updatedSimulatedPassword = 
+        (data.passwordRequired && passwordToStore) // New password set
+          ? passwordToStore 
+          : data.passwordRequired // Password still required, but not changed
+            ? editingUser.simulatedStoredPassword 
+            : undefined; // Password no longer required
 
       setAppUsers(prev => prev.map(u => u.id === editingUser.id ? { 
           ...editingUser, 
@@ -305,10 +318,23 @@ export default function UserManagement() {
   const currentSelectedSummaryType = form.watch('viewableHourSummary_type');
   
   const hasSomeTimeTrackingPermission = Object.keys(form.watch('permissions') || {})
-  .filter(key => key.startsWith('timeTracking_'))
+  .filter(key => TIME_TRACKING_SUB_RUBRICS.some(sr => sr.id === key)) // Check against actual sub-rubric IDs
   .some(key => (form.watch('permissions') as any)[key] === true);
 
   const isEditingChef = editingUser?.username.toLowerCase() === 'chef';
+
+  if (!isClient || !dataLoaded) {
+    return (
+      <Card className="shadow-lg">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Users className="w-6 h-6 text-primary"/>Gestion des Utilisateurs</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground text-center py-6">Chargement des données utilisateurs...</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
 
   return (
@@ -319,7 +345,7 @@ export default function UserManagement() {
           Gestion des Utilisateurs
         </CardTitle>
         <CardDescription>
-          Définissez des utilisateurs en les liant aux membres de la brigade, leurs mots de passe (simulés) et leurs permissions.
+          Définissez des utilisateurs en les liant aux membres de la brigade, leurs mots de passe (simulés) et leurs permissions d'accès aux différentes sections de l'application.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -328,13 +354,17 @@ export default function UserManagement() {
           <AlertTitle className="text-destructive font-semibold">Avertissement de Sécurité</AlertTitle>
           <AlertDescription className="text-destructive/90">
             Ce système est pour la démonstration. Les mots de passe ne sont pas stockés de manière sécurisée (simulation).
-            L'utilisateur 'Chef' est le compte administrateur avec tous les accès et un mot de passe initial de '000' s'il n'est pas redéfini.
+            L'utilisateur 'Chef' est le compte administrateur avec tous les accès et un mot de passe initial de '000' (s'il n'est pas redéfini dans la page de connexion).
           </AlertDescription>
         </Alert>
 
-        <Button onClick={() => handleOpenUserForm()} disabled={!dataLoaded}>
+        <Button onClick={() => handleOpenUserForm()} disabled={availableBrigadeMembers.length === 0 && appUsers.some(u => u.username.toLowerCase() === 'chef' && u.brigadeMemberId !== undefined)}>
           <PlusCircle className="mr-2 h-4 w-4" /> Créer un Nouvel Utilisateur
         </Button>
+        {availableBrigadeMembers.length === 0 && !appUsers.some(u => u.username.toLowerCase() === 'chef' && u.brigadeMemberId !== undefined) && (
+             <p className="text-sm text-muted-foreground">Veuillez d'abord ajouter des membres à la brigade dans "Suivi des Heures &gt; Gestion Personnel" pour pouvoir créer de nouveaux utilisateurs.</p>
+        )}
+
 
         <Dialog open={isUserFormOpen} onOpenChange={setIsUserFormOpen}>
           <DialogContent className="sm:max-w-lg md:max-w-2xl">
@@ -383,7 +413,7 @@ export default function UserManagement() {
                         <div className="space-y-0.5">
                           <FormLabel>Mot de passe requis ?</FormLabel>
                           <FormDescription className="text-xs">
-                            Si coché, un mot de passe sera nécessaire.
+                            Si coché, un mot de passe sera nécessaire pour se connecter.
                           </FormDescription>
                         </div>
                         <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={isEditingChef} /></FormControl>
@@ -475,7 +505,7 @@ export default function UserManagement() {
                                     <SelectItem value="specific">Données d'un employé spécifique</SelectItem>
                                 </SelectContent>
                                 </Select>
-                                {!hasSomeTimeTrackingPermission && <FormDescription className="text-xs text-orange-600">Nécessite au moins une permission "Suivi des Heures".</FormDescription>}
+                                {!hasSomeTimeTrackingPermission && <FormDescription className="text-xs text-orange-600">Nécessite au moins une permission "Suivi des Heures" (détaillée ci-dessus).</FormDescription>}
                                 <FormMessage />
                             </FormItem>
                             )}
@@ -597,5 +627,3 @@ export default function UserManagement() {
     </Card>
   );
 }
-
-    
