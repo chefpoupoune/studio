@@ -44,12 +44,12 @@ export interface OvertimeDayDetail {
 // Summary type for display, to be expanded as form grows
 export interface OvertimeRequestStub {
   id: string;
-  employeeName: string; // Made non-optional
+  employeeName: string;
   requestDate: string; // ISO String
   status: OvertimeRequestStatus;
   reasonStub: string; 
   position?: string;
-  prestationTypeNotes?: string; // Placeholder for "Prestation correspondante"
+  prestationTypeNotes: string; // Now non-optional, will always be "logistique"
   overtimeDetailsNotes?: string; // Placeholder for "Détail des heures supplémentaires"
   totalOvertimeHours?: string; // Placeholder for "X heures en plus..."
 }

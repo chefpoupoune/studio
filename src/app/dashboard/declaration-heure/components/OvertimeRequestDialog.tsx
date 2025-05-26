@@ -16,17 +16,19 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 const formSchema = z.object({
   reasonStub: z.string().min(5, "Veuillez fournir un bref motif (min. 5 caractères).").max(500, "Le motif ne peut excéder 500 caractères."),
   position: z.string().optional(),
-  prestationTypeNotes: z.string().max(200, "Notes prestation max 200 caractères.").optional(),
+  // prestationTypeNotes is removed from schema as it's fixed
   overtimeDetailsNotes: z.string().max(500, "Détails heures supp max 500 caractères.").optional(),
   totalOvertimeHours: z.string().max(50, "Total heures max 50 caractères.").optional(),
 });
 
-type FormData = z.infer<typeof formSchema>;
+// FormData no longer includes prestationTypeNotes
+type FormData = Omit<z.infer<typeof formSchema>, 'prestationTypeNotes'>;
 
 interface OvertimeRequestDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onSubmitRequest: (data: Omit<FormData, 'employeeName'>) => void;
+  // onSubmitRequest prop type updated
+  onSubmitRequest: (data: FormData) => void;
   editingRequest?: OvertimeRequestStub | null;
   currentUser?: { name: string; role: string } | null;
 }
@@ -43,7 +45,6 @@ export default function OvertimeRequestDialog({
     defaultValues: {
       reasonStub: '',
       position: '',
-      prestationTypeNotes: '',
       overtimeDetailsNotes: '',
       totalOvertimeHours: '',
     },
@@ -54,16 +55,16 @@ export default function OvertimeRequestDialog({
       if (editingRequest) {
         form.reset({
           reasonStub: editingRequest.reasonStub || '',
-          position: editingRequest.position || '', // For editing, always load from the request
-          prestationTypeNotes: editingRequest.prestationTypeNotes || '',
+          position: editingRequest.position || (currentUser?.role || ''),
+          // prestationTypeNotes is no longer part of form state
           overtimeDetailsNotes: editingRequest.overtimeDetailsNotes || '',
           totalOvertimeHours: editingRequest.totalOvertimeHours || '',
         });
       } else { // New request
         form.reset({
           reasonStub: '',
-          position: currentUser?.role || '', // Pre-fill with current user's role
-          prestationTypeNotes: 'logistique', // Default to 'logistique'
+          position: currentUser?.role || '',
+          // prestationTypeNotes is no longer part of form state
           overtimeDetailsNotes: '',
           totalOvertimeHours: '',
         });
@@ -72,7 +73,7 @@ export default function OvertimeRequestDialog({
   }, [isOpen, editingRequest, currentUser, form]);
 
   const handleSubmit = (data: FormData) => {
-    onSubmitRequest(data);
+    onSubmitRequest(data); // Data passed no longer contains prestationTypeNotes
     onOpenChange(false);
   };
 
@@ -89,7 +90,7 @@ export default function OvertimeRequestDialog({
                 <FormItem>
                   <FormLabel>Nom et prénom du salarié</FormLabel>
                   <FormControl>
-                    <Input value={currentUser?.name || editingRequest?.employeeName || "Non identifié"} disabled className="bg-muted/50" />
+                    <Input value={editingRequest?.employeeName || currentUser?.name || "Non identifié"} disabled className="bg-muted/50" />
                   </FormControl>
                 </FormItem>
 
@@ -103,8 +104,6 @@ export default function OvertimeRequestDialog({
                         <Input
                           placeholder="Ex: Éducateur spécialisé"
                           {...field}
-                          // Disable only for new requests if currentUser.role is available.
-                          // Allows editing the position if it was previously set, even if the current user has a different role.
                           disabled={!editingRequest && !!currentUser?.role}
                           className={(!editingRequest && !!currentUser?.role) ? "bg-muted/50" : ""}
                         />
@@ -113,21 +112,15 @@ export default function OvertimeRequestDialog({
                     </FormItem>
                   )}
                 />
+                
+                <FormItem>
+                  <FormLabel>Prestation correspondante</FormLabel>
+                  <FormControl>
+                    <Input value="Logistique" disabled className="bg-muted/50" />
+                  </FormControl>
+                  <p className="text-xs text-muted-foreground">Sera remplacé par des cases à cocher ultérieurement.</p>
+                </FormItem>
 
-                <FormField
-                  control={form.control}
-                  name="prestationTypeNotes"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Prestation correspondante (notes)</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="Ex: Accompagnement sortie, Remplacement imprévu..." {...field} rows={2} />
-                      </FormControl>
-                      <FormMessage />
-                      <p className="text-xs text-muted-foreground">Sera remplacé par des cases à cocher ultérieurement.</p>
-                    </FormItem>
-                  )}
-                />
 
                 <FormField
                   control={form.control}

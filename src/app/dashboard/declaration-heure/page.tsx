@@ -53,7 +53,8 @@ export default function DeclarationHeurePage() {
         if (storedRequests) {
           setOvertimeRequests(JSON.parse(storedRequests).map((req: any) => ({
             ...req,
-            requestDate: req.requestDate || new Date().toISOString(), // Ensure requestDate exists
+            requestDate: req.requestDate || new Date().toISOString(), 
+            prestationTypeNotes: req.prestationTypeNotes || "logistique", // Ensure default if missing
           })));
         }
         const storedBrigadeMembers = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
@@ -81,16 +82,16 @@ export default function DeclarationHeurePage() {
   }, [loggedInUsername, brigadeMembers]);
 
   const handleAddOrUpdateOvertimeRequest = useCallback((
-    data: Omit<OvertimeRequestStub, 'id' | 'employeeName' | 'requestDate' | 'status'>
+    // prestationTypeNotes is no longer part of the data from the dialog
+    data: Omit<OvertimeRequestStub, 'id' | 'employeeName' | 'requestDate' | 'status' | 'prestationTypeNotes'>
   ) => {
     if (!loggedInUsername) {
       toast({ title: "Utilisateur non identifié", description: "Impossible de soumettre la demande.", variant: "destructive" });
       return;
     }
     
-    const employeeNameToUse = currentBrigadeMember?.name || loggedInUsername;
-    // If form provides a position and it's different from currentBrigadeMember.role, use form's. Otherwise, use currentBrigadeMember.role.
-    const positionToUse = data.position || currentBrigadeMember?.role;
+    const employeeNameToUse = editingRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername;
+    const positionToUse = data.position || currentBrigadeMember?.role || editingRequest?.position || '';
 
 
     if (editingRequest) {
@@ -99,8 +100,9 @@ export default function DeclarationHeurePage() {
         ? { 
             ...editingRequest, 
             ...data,
-            position: positionToUse, // Ensure position is updated if changed, or keeps prefill
-            employeeName: employeeNameToUse, // Keep original employeeName if editing, though it should match
+            position: positionToUse, 
+            employeeName: employeeNameToUse, 
+            prestationTypeNotes: "logistique", // Always set to logistique
           }
         : req
       ).sort((a,b) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime()));
@@ -114,7 +116,7 @@ export default function DeclarationHeurePage() {
         status: 'en_attente',
         reasonStub: data.reasonStub,
         position: positionToUse,
-        prestationTypeNotes: data.prestationTypeNotes,
+        prestationTypeNotes: "logistique", // Always set to logistique
         overtimeDetailsNotes: data.overtimeDetailsNotes,
         totalOvertimeHours: data.totalOvertimeHours,
       };
@@ -207,14 +209,14 @@ export default function DeclarationHeurePage() {
                     </CardHeader>
                     <CardContent className="px-4 pb-3 space-y-1">
                       <p className="text-sm text-muted-foreground"><span className="font-medium text-foreground/80">Motif:</span> {req.reasonStub}</p>
-                      {req.prestationTypeNotes && <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground/80">Prestation:</span> {req.prestationTypeNotes}</p>}
+                      <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground/80">Prestation:</span> {req.prestationTypeNotes}</p>
                       {req.overtimeDetailsNotes && <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground/80">Détail H.Supp:</span> {req.overtimeDetailsNotes}</p>}
                       {req.totalOvertimeHours && <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground/80">Total H.Supp:</span> {req.totalOvertimeHours}</p>}
                       <div className="mt-2 flex justify-end space-x-2 pt-1">
                           <Button variant="outline" size="sm" className="text-xs" onClick={() => handleOpenForm(req)}>
                             <Edit2 className="mr-1 h-3.5 w-3.5"/> Modifier
                           </Button>
-                          {req.status === 'en_attente' && ( // Allow deletion only if pending
+                          {req.status === 'en_attente' && ( 
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button variant="destructive" size="sm" className="text-xs">
