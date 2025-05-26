@@ -22,6 +22,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger, // Added this import
 } from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -65,8 +66,6 @@ export default function DeclarationHeurePage() {
   useEffect(() => {
     if (!isClient) return;
     console.log("[DeclarationHeurePage LOAD] Attempting to load data...");
-    setDataLoaded(false); // Reset before loading
-
     let loadedRequests: OvertimeRequest[] = [];
     let loadedBrigadeMembers: BrigadeMember[] = [];
     let usernameFromStorage: string | null = null;
@@ -77,7 +76,7 @@ export default function DeclarationHeurePage() {
         console.log("[DeclarationHeurePage LOAD] Found stored requests.");
         loadedRequests = JSON.parse(storedRequestsRaw).map((req: any) => ({
           ...req,
-          id: req.id || `or_${Date.now()}_${Math.random().toString(36).substring(2,9)}`,
+          id: req.id || `or_${Date.now()}_${Math.random().toString(36).substring(2,9)}`, // Ensure ID
           requestDate: req.requestDate || new Date().toISOString(),
           updatedAt: req.updatedAt || new Date().toISOString(),
           overtimeDetails: Array.isArray(req.overtimeDetails) 
@@ -85,7 +84,7 @@ export default function DeclarationHeurePage() {
             : [],
           approvalStatus: req.approvalStatus || req.status || 'pending',
           prestationTypes: Array.isArray(req.prestationTypes) ? req.prestationTypes : [],
-          compensationType: req.compensationType === undefined ? null : req.compensationType,
+          compensationType: req.compensationType === undefined ? null : req.compensationType, // Ensure null if undefined
         }));
       } else {
         console.log("[DeclarationHeurePage LOAD] No stored requests found, defaulting to empty array.");
@@ -146,6 +145,7 @@ export default function DeclarationHeurePage() {
     }
 
     const employeeNameToUse = editingRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername || "Système";
+    // Position should be taken from form data if it exists, otherwise default or existing
     const positionToUse = data.position || (editingRequest ? editingRequest.position : (currentBrigadeMember?.role || ''));
 
     let updatedRequestsList;
@@ -156,8 +156,8 @@ export default function DeclarationHeurePage() {
         ? { 
             ...req, 
             ...data,
-            employeeName: employeeNameToUse,
-            position: positionToUse,
+            employeeName: employeeNameToUse, // Ensure employeeName is consistent
+            position: positionToUse,         // Ensure position is updated correctly
             updatedAt: new Date().toISOString(),
             approvalStatus: data.approvalStatus || req.approvalStatus || 'pending',
           } as OvertimeRequest
@@ -176,14 +176,16 @@ export default function DeclarationHeurePage() {
         position: positionToUse,
         overtimeDetails: data.overtimeDetails || [],
         prestationTypes: data.prestationTypes || [],
+        prestationTypeAutresDetail: data.prestationTypeAutresDetail || '', // ensure string default
       } as OvertimeRequest; 
       updatedRequestsList = [newRequest, ...overtimeRequests];
       toast({ title: "Demande Soumise", description: "Votre demande de dépassement d'horaire a été enregistrée." });
     }
     
+    // Ensure sorting before setting state
     updatedRequestsList.sort((a,b) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime());
     setOvertimeRequests(updatedRequestsList);
-    setEditingRequest(null);
+    setEditingRequest(null); // Clear editing state
   }, [overtimeRequests, editingRequest, loggedInUsername, currentBrigadeMember, toast, dataLoaded]);
   
   const handleDeleteRequest = (requestId: string) => {
@@ -431,3 +433,4 @@ export default function DeclarationHeurePage() {
     </div>
   );
 }
+
