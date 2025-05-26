@@ -30,21 +30,20 @@ const overtimeDetailSchema = z.object({
   endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Format HH:MM requis.").optional().or(z.literal('')),
 });
 
-const prestationTypesSchema = z.array(z.string()).optional().default([]);
+const prestationTypesSchema = z.array(z.custom<PrestationType>()).optional().default([]);
 
 const formSchema = z.object({
   reasonStub: z.string().min(5, "Veuillez fournir un bref motif (min. 5 caractères).").max(500, "Le motif ne peut excéder 500 caractères."),
   position: z.string().optional(),
   prestationTypes: prestationTypesSchema,
-  prestationTypeAutresDetail: z.string().optional(),
+  prestationTypeAutresDetail: z.string().max(100, "Détail max 100 caractères.").optional(),
   overtimeDetails: z.array(overtimeDetailSchema).optional().default([]),
   totalOvertimeHours: z.string().max(50, "Total heures max 50 caractères.").optional(),
   employeeSignatureDate: z.date().optional().nullable(),
   directManagerSignatureDate: z.date().optional().nullable(),
   directorSignatureDate: z.date().optional().nullable(),
   approvalStatus: z.enum(['pending', 'accepted', 'rejected']).default('pending'),
-  rejectionReason: z.string().optional(),
-  // compensationType: z.enum(['recovery', 'payment']).optional().nullable(), // Removed
+  rejectionReason: z.string().max(500, "Motif refus max 500 caractères.").optional(),
   decisionDate: z.date().optional().nullable(),
 }).refine(data => {
   if (data.prestationTypes?.includes('autres') && (!data.prestationTypeAutresDetail || data.prestationTypeAutresDetail.trim() === '')) {
@@ -97,7 +96,6 @@ export default function OvertimeRequestDialog({
       directorSignatureDate: null,
       approvalStatus: 'pending',
       rejectionReason: '',
-      // compensationType: null, // Removed
       decisionDate: null,
     },
   });
@@ -149,25 +147,41 @@ export default function OvertimeRequestDialog({
         initialOvertimeDetails = [{ id: Math.random().toString(36).substring(2, 9), date: new Date(), startTime: '', endTime: '' }];
       }
       
+      let empSigDate = editingRequest?.employeeSignatureDate ? parseISO(editingRequest.employeeSignatureDate) : null;
+      let managerSigDate = editingRequest?.directManagerSignatureDate ? parseISO(editingRequest.directManagerSignatureDate) : null;
+      let directorSigDate = editingRequest?.directorSignatureDate ? parseISO(editingRequest.directorSignatureDate) : null;
+
+      if (!editingRequest) { // New request
+        empSigDate = new Date();
+      } else { // Editing existing request
+        if (!isApproverView && !empSigDate) { // Employee view, employee hasn't signed
+            empSigDate = new Date();
+        }
+        if (isApproverView) {
+            if (!managerSigDate) managerSigDate = new Date();
+            if (!directorSigDate) directorSigDate = new Date();
+        }
+      }
+
       form.reset({
         reasonStub: editingRequest?.reasonStub || '',
-        position: editingRequest ? (editingRequest.position || '') : (currentUser?.role || ''),
+        position: initialPosition,
         prestationTypes: editingRequest?.prestationTypes || [],
         prestationTypeAutresDetail: editingRequest?.prestationTypeAutresDetail || '',
         overtimeDetails: initialOvertimeDetails,
         totalOvertimeHours: editingRequest?.totalOvertimeHours || '0.00 heures',
-        employeeSignatureDate: editingRequest?.employeeSignatureDate ? parseISO(editingRequest.employeeSignatureDate) : null,
-        directManagerSignatureDate: editingRequest?.directManagerSignatureDate ? parseISO(editingRequest.directManagerSignatureDate) : null,
-        directorSignatureDate: editingRequest?.directorSignatureDate ? parseISO(editingRequest.directorSignatureDate) : null,
+        employeeSignatureDate: empSigDate,
+        directManagerSignatureDate: managerSigDate,
+        directorSignatureDate: directorSigDate,
         approvalStatus: editingRequest?.approvalStatus || 'pending',
         rejectionReason: editingRequest?.rejectionReason || '',
-        // compensationType: editingRequest?.compensationType || null, // Removed
         decisionDate: editingRequest?.decisionDate ? parseISO(editingRequest.decisionDate) : null,
       });
       
+      // Recalculate total hours if editing
       if (editingRequest?.overtimeDetails) {
         let totalMinutes = 0;
-        editingRequest.overtimeDetails.forEach(detail => {
+        initialOvertimeDetails.forEach(detail => { // Use initialOvertimeDetails as it has Date objects
           if (detail.startTime && detail.endTime) {
             totalMinutes += calculateDurationInMinutes(detail.startTime, detail.endTime);
           }
@@ -175,7 +189,7 @@ export default function OvertimeRequestDialog({
         form.setValue('totalOvertimeHours', minutesToDecimalHoursString(totalMinutes) + " heures");
       }
     }
-  }, [isOpen, editingRequest, currentUser, form]);
+  }, [isOpen, editingRequest, currentUser, form, isApproverView]);
 
   const handleSubmit = (data: FormDataType) => {
     const submitData: Partial<Omit<OvertimeRequest, 'compensationType'>> = {
@@ -190,7 +204,6 @@ export default function OvertimeRequestDialog({
         startTime: detail.startTime,
         endTime: detail.endTime,
       })),
-      // compensationType removed
     };
     onSubmitRequest(submitData);
     onOpenChange(false);
@@ -226,8 +239,12 @@ export default function OvertimeRequestDialog({
     />
   );
 
-  const employeeFieldsDisabled = isApproverView && !!editingRequest;
-  const directionFieldsDisabled = !isApproverView;
+  const employeeFieldsDisabled = isApproverView && !!editingRequest; 
+  // For approver view when editing: disable employee fields.
+  // For new request by approver: enable.
+  // For employee view: enable employee fields.
+
+  const directionFieldsDisabled = !isApproverView; // Direction fields only enabled for approver
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -261,7 +278,7 @@ export default function OvertimeRequestDialog({
                               {...field}
                               value={field.value || ''}
                               disabled={employeeFieldsDisabled || (!editingRequest && !!currentUser?.role)}
-                              className={(employeeFieldsDisabled || (!editingRequest && !!currentUser?.role)) ? "bg-muted/50" : ""}
+                              className={ (employeeFieldsDisabled || (!editingRequest && !!currentUser?.role)) ? "bg-muted/50" : ""}
                             />
                           </FormControl>
                           <FormMessage />
@@ -414,7 +431,7 @@ export default function OvertimeRequestDialog({
                  <div className="space-y-2 border-t pt-3">
                     <h3 className="text-md font-semibold">Signatures</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {renderDateField('employeeSignatureDate', "Date signature Salarié(e)", employeeFieldsDisabled)}
+                        {renderDateField('employeeSignatureDate', "Date signature Salarié(e)", employeeFieldsDisabled || (isApproverView && !!editingRequest))}
                         {renderDateField('directManagerSignatureDate', "Date signature Responsable Direct", directionFieldsDisabled)}
                         {renderDateField('directorSignatureDate', "Date signature Directeur", directionFieldsDisabled)}
                     </div>
@@ -444,8 +461,7 @@ export default function OvertimeRequestDialog({
                       <FormItem><FormLabel>Si refusée, motif :</FormLabel><FormControl><Textarea placeholder="Motif du refus..." {...field} value={field.value || ''} rows={2} disabled={directionFieldsDisabled}/></FormControl><FormMessage /></FormItem>
                     )} />
                   )}
-                  {/* Compensation Type Removed */}
-                   {renderDateField('decisionDate', "Date de la Décision", directionFieldsDisabled)}
+                  {renderDateField('decisionDate', "Date de la Décision", directionFieldsDisabled)}
                 </div>
               </div>
             </ScrollArea>
@@ -461,3 +477,5 @@ export default function OvertimeRequestDialog({
     </Dialog>
   );
 }
+
+    
