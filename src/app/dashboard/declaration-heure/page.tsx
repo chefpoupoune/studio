@@ -2,15 +2,16 @@
 "use client";
 
 import Link from 'next/link';
-import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CalendarDays, Timer } from 'lucide-react'; // Added CalendarDays, Timer
+import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CalendarDays, Timer } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import type { OvertimeRequestStub, OvertimeRequestStatus, OvertimeDayDetail } from './types'; // Added OvertimeDayDetail
+import type { OvertimeRequest, OvertimeRequestStatus, OvertimeDayDetail, PrestationType } from './types';
+import { PRESTATION_TYPE_LABELS } from './types';
 import OvertimeRequestDialog from './components/OvertimeRequestDialog';
 import { useToast } from '@/hooks/use-toast';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   AlertDialog,
@@ -27,23 +28,17 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { BrigadeMember } from '@/app/dashboard/time-tracking/types'; 
 
-const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v3'; // Version up
+const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v4'; 
 const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
-// For the OvertimeRequestDialog prop
-type SubmitDataTypeFromDialog = Omit<OvertimeRequestStub, 'id' | 'employeeName' | 'requestDate' | 'status' | 'prestationTypeNotes' | 'overtimeDetailsNotes'> & {
-  overtimeDetails?: OvertimeDayDetail[]; 
-};
-
-
 export default function DeclarationHeurePage() {
   const [isClient, setIsClient] = useState(false);
-  const [overtimeRequests, setOvertimeRequests] = useState<OvertimeRequestStub[]>([]);
+  const [overtimeRequests, setOvertimeRequests] = useState<OvertimeRequest[]>([]);
   const [brigadeMembers, setBrigadeMembers] = useState<BrigadeMember[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
-  const [editingRequest, setEditingRequest] = useState<OvertimeRequestStub | null>(null);
+  const [editingRequest, setEditingRequest] = useState<OvertimeRequest | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -60,9 +55,12 @@ export default function DeclarationHeurePage() {
           setOvertimeRequests(JSON.parse(storedRequests).map((req: any) => ({
             ...req,
             requestDate: req.requestDate || new Date().toISOString(), 
-            prestationTypeNotes: "logistique", 
-            overtimeDetails: Array.isArray(req.overtimeDetails) ? req.overtimeDetails.map((d:any) => ({...d, date: d.date || new Date().toISOString() })) : [], 
-          })));
+            overtimeDetails: Array.isArray(req.overtimeDetails) 
+              ? req.overtimeDetails.map((d:any) => ({...d, date: d.date || new Date().toISOString() })) 
+              : [],
+            status: req.approvalStatus || req.status || 'en_attente', // Prioritize new status field
+            prestationTypes: Array.isArray(req.prestationTypes) ? req.prestationTypes : [],
+          })).sort((a: OvertimeRequest, b: OvertimeRequest) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime()));
         }
         const storedBrigadeMembers = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
         if (storedBrigadeMembers) {
@@ -89,7 +87,7 @@ export default function DeclarationHeurePage() {
   }, [loggedInUsername, brigadeMembers]);
 
   const handleAddOrUpdateOvertimeRequest = useCallback((
-    data: SubmitDataTypeFromDialog
+    data: Partial<OvertimeRequest> // Data from form might be partial
   ) => {
     if (!loggedInUsername) {
       toast({ title: "Utilisateur non identifié", description: "Impossible de soumettre la demande.", variant: "destructive" });
@@ -97,38 +95,33 @@ export default function DeclarationHeurePage() {
     }
     
     const employeeNameToUse = editingRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername;
-    const positionToUse = data.position || (editingRequest?.employeeName === employeeNameToUse && currentUser?.role ? currentUser.role : editingRequest?.position) || '';
+    const positionToUse = data.position || (editingRequest ? editingRequest.position : (currentBrigadeMember?.role || ''));
 
 
     if (editingRequest) {
       setOvertimeRequests(prev => prev.map(req => 
         req.id === editingRequest.id 
         ? { 
-            ...editingRequest, 
-            reasonStub: data.reasonStub,
-            position: positionToUse, 
-            employeeName: employeeNameToUse, 
-            prestationTypeNotes: "logistique",
-            overtimeDetails: data.overtimeDetails || [],
-            totalOvertimeHours: data.totalOvertimeHours,
-            updatedAt: new Date().toISOString(), // Assuming OvertimeRequestStub might have an updatedAt
-          } as OvertimeRequestStub // Cast to ensure type compatibility
+            ...req, 
+            ...data, // Apply all updates from form
+            employeeName: employeeNameToUse, // Ensure employeeName is correct
+            position: positionToUse,
+            requestDate: req.requestDate, // Keep original requestDate
+            status: data.approvalStatus || req.status || 'en_attente', // Update status for display
+          } as OvertimeRequest
         : req
       ).sort((a,b) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime()));
       toast({ title: "Demande Modifiée", description: "Votre demande de dépassement d'horaire a été mise à jour." });
       setEditingRequest(null);
     } else {
-      const newRequest: OvertimeRequestStub = {
+      const newRequest: OvertimeRequest = {
         id: `or_${Date.now()}`,
         employeeName: employeeNameToUse,
         requestDate: new Date().toISOString(),
-        status: 'en_attente',
-        reasonStub: data.reasonStub,
+        status: data.approvalStatus || 'en_attente', // Use new status field
+        ...data, // Spread all form data
         position: positionToUse,
-        prestationTypeNotes: "logistique",
-        overtimeDetails: data.overtimeDetails || [],
-        totalOvertimeHours: data.totalOvertimeHours,
-      };
+      } as OvertimeRequest; // Cast to ensure all fields are present
       setOvertimeRequests(prev => [newRequest, ...prev].sort((a,b) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime()));
       toast({ title: "Demande Soumise", description: "Votre demande de dépassement d'horaire a été enregistrée." });
     }
@@ -139,23 +132,33 @@ export default function DeclarationHeurePage() {
     toast({ title: "Demande Supprimée", variant: "destructive" });
   };
 
-  const handleOpenForm = (request?: OvertimeRequestStub) => {
+  const handleOpenForm = (request?: OvertimeRequest) => {
     setEditingRequest(request || null);
     setIsFormOpen(true);
   };
 
-  const getStatusBadgeVariant = (status: OvertimeRequestStatus) => {
+  const getStatusBadgeVariant = (status?: OvertimeRequestStatus | OvertimeRequest['approvalStatus']) => {
     switch (status) {
-      case 'approuvee': return 'success';
-      case 'refusee': return 'destructive';
+      case 'accepted':
+      case 'approuvee': 
+        return 'success';
+      case 'rejected':
+      case 'refusee': 
+        return 'destructive';
+      case 'pending':
       case 'en_attente':
       default: return 'secondary';
     }
   };
-   const getStatusLabel = (status: OvertimeRequestStatus) => {
+   const getStatusLabel = (status?: OvertimeRequestStatus | OvertimeRequest['approvalStatus']) => {
     switch (status) {
-      case 'approuvee': return 'Approuvée';
-      case 'refusee': return 'Refusée';
+      case 'accepted':
+      case 'approuvee': 
+        return 'Approuvée';
+      case 'rejected':
+      case 'refusee': 
+        return 'Refusée';
+      case 'pending':
       case 'en_attente':
       default: return 'En attente';
     }
@@ -208,26 +211,32 @@ export default function DeclarationHeurePage() {
                         <CardTitle className="text-md">
                           Demande du {format(parseISO(req.requestDate), "dd/MM/yyyy HH:mm", {locale: fr})}
                         </CardTitle>
-                        <Badge variant={getStatusBadgeVariant(req.status)}>
-                          {getStatusLabel(req.status)}
+                        <Badge variant={getStatusBadgeVariant(req.approvalStatus || req.status)}>
+                          {getStatusLabel(req.approvalStatus || req.status)}
                         </Badge>
                       </div>
                       <CardDescription className="text-xs">
                         Par: {req.employeeName} {req.position && `(${req.position})`}
                       </CardDescription>
                     </CardHeader>
-                    <CardContent className="px-4 pb-3 space-y-1">
-                      <p className="text-sm text-muted-foreground"><span className="font-medium text-foreground/80">Motif:</span> {req.reasonStub}</p>
-                      <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground/80">Prestation:</span> {req.prestationTypeNotes}</p>
+                    <CardContent className="px-4 pb-3 space-y-1 text-xs">
+                      <p className="text-muted-foreground"><span className="font-medium text-foreground/80">Motif:</span> {req.reasonStub}</p>
+                       {req.prestationTypes && req.prestationTypes.length > 0 && (
+                         <p className="text-muted-foreground">
+                           <span className="font-medium text-foreground/80">Prestations:</span>{' '}
+                           {req.prestationTypes.map(pt => PRESTATION_TYPE_LABELS[pt as PrestationType] || pt).join(', ')}
+                           {req.prestationTypes.includes('autres') && req.prestationTypeAutresDetail && ` (${req.prestationTypeAutresDetail})`}
+                         </p>
+                       )}
                       
                       {req.overtimeDetails && req.overtimeDetails.length > 0 && (
-                        <div className="text-xs mt-1">
+                        <div className="mt-1">
                           <span className="font-medium text-foreground/80 flex items-center gap-1 mb-0.5"><CalendarDays className="h-3 w-3"/>Détail H.Supp:</span>
                           <ul className="list-none pl-2 text-muted-foreground space-y-0.5">
                             {req.overtimeDetails.map((detail, index) => (
                               <li key={index} className="flex items-center gap-1.5">
                                 <Timer className="h-3 w-3 text-primary/70"/>
-                                {format(parseISO(detail.date), "dd/MM/yy", {locale: fr})}
+                                {detail.date && isValid(parseISO(detail.date)) ? format(parseISO(detail.date), "dd/MM/yy", {locale: fr}) : 'Date invalide'}
                                 {detail.startTime && detail.endTime ? `: de ${detail.startTime} à ${detail.endTime}` : 
                                  detail.startTime ? `: à partir de ${detail.startTime}` : 
                                  detail.endTime ? `: jusqu'à ${detail.endTime}` : ' (horaires non spécifiés)'}
@@ -236,12 +245,23 @@ export default function DeclarationHeurePage() {
                           </ul>
                         </div>
                       )}
-                      {req.totalOvertimeHours && <p className="text-xs text-muted-foreground mt-1"><span className="font-medium text-foreground/80">Total H.Supp:</span> {req.totalOvertimeHours}</p>}
+                      {req.totalOvertimeHours && <p className="text-muted-foreground mt-1"><span className="font-medium text-foreground/80">Total H.Supp:</span> {req.totalOvertimeHours}</p>}
+                      
+                      {req.approvalStatus && req.approvalStatus !== 'pending' && (
+                        <div className="border-t mt-2 pt-1">
+                          <p className="font-medium text-foreground/80">Décision Direction:</p>
+                          <p>Statut: <Badge variant={getStatusBadgeVariant(req.approvalStatus)} size="sm">{getStatusLabel(req.approvalStatus)}</Badge></p>
+                          {req.approvalStatus === 'rejected' && req.rejectionReason && <p>Motif refus: {req.rejectionReason}</p>}
+                          {req.compensationType && <p>Compensation: {req.compensationType === 'recovery' ? 'Récupération' : 'Paiement'}</p>}
+                          {req.decisionDate && isValid(parseISO(req.decisionDate)) && <p>Date Décision: {format(parseISO(req.decisionDate), "dd/MM/yyyy", {locale:fr})}</p>}
+                        </div>
+                      )}
+
                       <div className="mt-2 flex justify-end space-x-2 pt-1">
                           <Button variant="outline" size="sm" className="text-xs" onClick={() => handleOpenForm(req)}>
                             <Edit2 className="mr-1 h-3.5 w-3.5"/> Modifier
                           </Button>
-                          {req.status === 'en_attente' && ( 
+                          {(req.approvalStatus === 'pending' || req.status === 'en_attente') && ( 
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button variant="destructive" size="sm" className="text-xs">
@@ -283,7 +303,7 @@ export default function DeclarationHeurePage() {
                      loggedInUsername ? {name: loggedInUsername, role: ''} : null}
       />
 
-      <Card className="shadow-xl opacity-50 cursor-not-allowed">
+      <Card className="shadow-xl opacity-50 cursor-not-allowed mt-6">
         <CardHeader>
           <CardTitle>Demandes d'Absence</CardTitle>
           <CardDescription>

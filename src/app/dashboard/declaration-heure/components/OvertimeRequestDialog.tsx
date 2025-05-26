@@ -1,50 +1,76 @@
 
 "use client";
 
-import React, { useEffect } from 'react'; // Added useEffect
+import React, { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { useForm, useFieldArray, Controller, useWatch } from 'react-hook-form'; // Added useWatch
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
+import { useForm, useFieldArray, Controller, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { OvertimeRequestStub, OvertimeDayDetail } from '../types';
+import type { OvertimeRequest, OvertimeDayDetail, PrestationType } from '../types';
+import { PRESTATION_TYPE_LABELS } from '../types';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { CalendarIcon as LucideCalendarIcon, PlusCircle, Trash2 } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { timeToMinutes, calculateDurationInMinutes, minutesToDecimalHoursString } from '@/app/dashboard/time-tracking/utils'; // Corrected import path
+import { timeToMinutes, calculateDurationInMinutes, minutesToDecimalHoursString } from '@/app/dashboard/time-tracking/utils';
 
 const overtimeDetailSchema = z.object({
-  id: z.string().optional(), // Keep id for existing entries if needed for keys
+  id: z.string().optional(),
   date: z.date({ required_error: "Date requise." }),
   startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Format HH:MM requis.").optional().or(z.literal('')),
   endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Format HH:MM requis.").optional().or(z.literal('')),
 });
 
+const prestationTypesSchema = z.array(z.string()).optional().default([]);
+
 const formSchema = z.object({
   reasonStub: z.string().min(5, "Veuillez fournir un bref motif (min. 5 caractères).").max(500, "Le motif ne peut excéder 500 caractères."),
   position: z.string().optional(),
+  prestationTypes: prestationTypesSchema,
+  prestationTypeAutresDetail: z.string().optional(),
   overtimeDetails: z.array(overtimeDetailSchema).optional().default([]),
   totalOvertimeHours: z.string().max(50, "Total heures max 50 caractères.").optional(),
+  employeeSignatureDate: z.date().optional().nullable(),
+  directManagerSignatureDate: z.date().optional().nullable(),
+  directorSignatureDate: z.date().optional().nullable(),
+  approvalStatus: z.enum(['pending', 'accepted', 'rejected']).default('pending'),
+  rejectionReason: z.string().optional(),
+  compensationType: z.enum(['recovery', 'payment']).optional(),
+  decisionDate: z.date().optional().nullable(),
+}).refine(data => {
+  if (data.prestationTypes?.includes('autres') && (!data.prestationTypeAutresDetail || data.prestationTypeAutresDetail.trim() === '')) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Veuillez préciser le type de prestation pour 'Autres'.",
+  path: ['prestationTypeAutresDetail'],
+}).refine(data => {
+  if (data.approvalStatus === 'rejected' && (!data.rejectionReason || data.rejectionReason.trim() === '')) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Le motif de refus est requis si la demande est refusée.",
+  path: ['rejectionReason'],
 });
 
 type FormDataType = z.infer<typeof formSchema>;
 
-type SubmitDataType = Omit<FormDataType, 'overtimeDetails'> & {
-  overtimeDetails?: OvertimeDayDetail[];
-};
-
-interface OvertimeRequestDialogProps {
+export interface OvertimeRequestDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onSubmitRequest: (data: SubmitDataType) => void;
-  editingRequest?: OvertimeRequestStub | null;
+  onSubmitRequest: (data: Partial<OvertimeRequest>) => void; // Data will be partial as some fields are auto-set
+  editingRequest?: OvertimeRequest | null;
   currentUser?: { name: string; role: string } | null;
 }
 
@@ -60,8 +86,17 @@ export default function OvertimeRequestDialog({
     defaultValues: {
       reasonStub: '',
       position: '',
+      prestationTypes: [],
+      prestationTypeAutresDetail: '',
       overtimeDetails: [],
-      totalOvertimeHours: '0.00',
+      totalOvertimeHours: '0.00 heures',
+      employeeSignatureDate: null,
+      directManagerSignatureDate: null,
+      directorSignatureDate: null,
+      approvalStatus: 'pending',
+      rejectionReason: '',
+      compensationType: undefined,
+      decisionDate: null,
     },
   });
 
@@ -75,16 +110,19 @@ export default function OvertimeRequestDialog({
     name: "overtimeDetails",
   });
 
+  const approvalStatusWatched = useWatch({ control: form.control, name: "approvalStatus" });
+  const prestationTypesWatched = useWatch({ control: form.control, name: "prestationTypes" });
+
   useEffect(() => {
+    let totalMinutes = 0;
     if (overtimeDetailsWatched) {
-      let totalMinutes = 0;
       overtimeDetailsWatched.forEach(detail => {
         if (detail.startTime && detail.endTime) {
           totalMinutes += calculateDurationInMinutes(detail.startTime, detail.endTime);
         }
       });
-      form.setValue('totalOvertimeHours', minutesToDecimalHoursString(totalMinutes) + " heures");
     }
+    form.setValue('totalOvertimeHours', minutesToDecimalHoursString(totalMinutes) + " heures");
   }, [overtimeDetailsWatched, form]);
 
   useEffect(() => {
@@ -96,12 +134,12 @@ export default function OvertimeRequestDialog({
         initialPosition = currentUser.role;
       }
 
-      let initialOvertimeDetails = [];
+      let initialOvertimeDetails: any[] = [];
       if (editingRequest?.overtimeDetails && editingRequest.overtimeDetails.length > 0) {
         initialOvertimeDetails = editingRequest.overtimeDetails.map(detail => ({
           ...detail,
           id: detail.id || Math.random().toString(36).substring(2, 9),
-          date: detail.date ? parseISO(detail.date) : new Date(),
+          date: detail.date && isValid(parseISO(detail.date)) ? parseISO(detail.date) : new Date(),
           startTime: detail.startTime || '',
           endTime: detail.endTime || '',
         }));
@@ -111,12 +149,20 @@ export default function OvertimeRequestDialog({
       
       form.reset({
         reasonStub: editingRequest?.reasonStub || '',
-        position: initialPosition,
+        position: editingRequest ? (editingRequest.position || '') : (currentUser?.role || ''),
+        prestationTypes: editingRequest?.prestationTypes || [],
+        prestationTypeAutresDetail: editingRequest?.prestationTypeAutresDetail || '',
         overtimeDetails: initialOvertimeDetails,
         totalOvertimeHours: editingRequest?.totalOvertimeHours || '0.00 heures',
+        employeeSignatureDate: editingRequest?.employeeSignatureDate ? parseISO(editingRequest.employeeSignatureDate) : null,
+        directManagerSignatureDate: editingRequest?.directManagerSignatureDate ? parseISO(editingRequest.directManagerSignatureDate) : null,
+        directorSignatureDate: editingRequest?.directorSignatureDate ? parseISO(editingRequest.directorSignatureDate) : null,
+        approvalStatus: editingRequest?.approvalStatus || 'pending',
+        rejectionReason: editingRequest?.rejectionReason || '',
+        compensationType: editingRequest?.compensationType || undefined,
+        decisionDate: editingRequest?.decisionDate ? parseISO(editingRequest.decisionDate) : null,
       });
       
-      // Trigger manual recalculation for existing entries after reset
       if (editingRequest?.overtimeDetails) {
         let totalMinutes = 0;
         editingRequest.overtimeDetails.forEach(detail => {
@@ -126,16 +172,19 @@ export default function OvertimeRequestDialog({
         });
         form.setValue('totalOvertimeHours', minutesToDecimalHoursString(totalMinutes) + " heures");
       }
-
     }
   }, [isOpen, editingRequest, currentUser, form]);
 
   const handleSubmit = (data: FormDataType) => {
-    const submitData: SubmitDataType = {
+    const submitData: Partial<OvertimeRequest> = { // Use Partial<OvertimeRequest>
       ...data,
+      employeeSignatureDate: data.employeeSignatureDate ? data.employeeSignatureDate.toISOString() : undefined,
+      directManagerSignatureDate: data.directManagerSignatureDate ? data.directManagerSignatureDate.toISOString() : undefined,
+      directorSignatureDate: data.directorSignatureDate ? data.directorSignatureDate.toISOString() : undefined,
+      decisionDate: data.decisionDate ? data.decisionDate.toISOString() : undefined,
       overtimeDetails: data.overtimeDetails?.map(detail => ({
         id: detail.id || Math.random().toString(36).substring(2, 9), 
-        date: format(detail.date, 'yyyy-MM-dd'),
+        date: format(detail.date, 'yyyy-MM-dd'), // Ensure date is yyyy-MM-dd string
         startTime: detail.startTime,
         endTime: detail.endTime,
       }))
@@ -144,51 +193,123 @@ export default function OvertimeRequestDialog({
     onOpenChange(false);
   };
 
+  const renderDateField = (name: keyof FormDataType, label: string) => (
+    <FormField
+      control={form.control}
+      name={name as any} // Cast to any to bypass strict type checking for date fields
+      render={({ field }) => (
+        <FormItem className="flex flex-col">
+          <FormLabel>{label}</FormLabel>
+          <Popover>
+            <PopoverTrigger asChild>
+              <FormControl>
+                <Button
+                  variant={"outline"}
+                  className={cn("w-full pl-3 text-left font-normal h-9", !field.value && "text-muted-foreground")}
+                >
+                  {field.value ? format(field.value as Date, "dd/MM/yyyy", { locale: fr }) : <span>Choisir date</span>}
+                  <LucideCalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                </Button>
+              </FormControl>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar mode="single" selected={field.value as Date | undefined} onSelect={field.onChange} initialFocus locale={fr} />
+            </PopoverContent>
+          </Popover>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
+  );
+
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg md:max-w-xl">
+      <DialogContent className="sm:max-w-2xl md:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{editingRequest ? "Modifier la" : "Nouvelle"} Demande de Dépassement d'Horaire</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 py-4">
-            <ScrollArea className="h-[65vh] pr-5">
+            <ScrollArea className="h-[70vh] pr-5">
               <div className="space-y-4">
-                <FormItem>
-                  <FormLabel>Nom et prénom du salarié</FormLabel>
-                  <FormControl>
-                    <Input 
-                      value={editingRequest?.employeeName || currentUser?.name || "Non identifié"} 
-                      disabled 
-                      className="bg-muted/50" />
-                  </FormControl>
-                </FormItem>
-
-                <FormField
-                  control={form.control}
-                  name="position"
-                  render={({ field }) => (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormItem>
-                      <FormLabel>Poste occupé à l'IME</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Ex: Éducateur spécialisé"
-                          {...field}
-                          disabled={!editingRequest && !!currentUser?.role}
-                          className={(!editingRequest && !!currentUser?.role) ? "bg-muted/50" : ""}
-                        />
-                      </FormControl>
-                      <FormMessage />
+                    <FormLabel>Nom et prénom du salarié</FormLabel>
+                    <FormControl>
+                        <Input 
+                        value={editingRequest?.employeeName || currentUser?.name || "Non identifié"} 
+                        disabled 
+                        className="bg-muted/50" />
+                    </FormControl>
                     </FormItem>
-                  )}
-                />
+                    <FormField
+                      control={form.control}
+                      name="position"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Poste occupé à l'IME</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="Ex: Éducateur spécialisé"
+                              {...field}
+                              value={field.value || ''}
+                              disabled={!editingRequest && !!currentUser?.role}
+                              className={(!editingRequest && !!currentUser?.role) ? "bg-muted/50" : ""}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                </div>
                 
                 <FormItem>
                   <FormLabel>Prestation correspondante</FormLabel>
-                  <FormControl>
-                    <Input value="Logistique" disabled className="bg-muted/50" />
-                  </FormControl>
+                  <div className="space-y-2 rounded-md border p-3">
+                    {(Object.keys(PRESTATION_TYPE_LABELS) as PrestationType[]).map((typeKey) => (
+                      <FormField
+                        key={typeKey}
+                        control={form.control}
+                        name="prestationTypes"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value?.includes(typeKey)}
+                                onCheckedChange={(checked) => {
+                                  return checked
+                                    ? field.onChange([...(field.value || []), typeKey])
+                                    : field.onChange(
+                                        (field.value || []).filter(
+                                          (value) => value !== typeKey
+                                        )
+                                      )
+                                }}
+                              />
+                            </FormControl>
+                            <FormLabel className="font-normal text-sm">
+                              {PRESTATION_TYPE_LABELS[typeKey]}
+                            </FormLabel>
+                          </FormItem>
+                        )}
+                      />
+                    ))}
+                    {prestationTypesWatched?.includes('autres') && (
+                        <FormField
+                            control={form.control}
+                            name="prestationTypeAutresDetail"
+                            render={({ field }) => (
+                            <FormItem className="ml-7 mt-1">
+                                <FormControl><Input placeholder="Précisez..." {...field} value={field.value || ''} className="h-8 text-sm" /></FormControl>
+                                <FormMessage />
+                            </FormItem>
+                            )}
+                        />
+                    )}
+                  </div>
                 </FormItem>
+
 
                 <FormField
                   control={form.control}
@@ -211,7 +332,7 @@ export default function OvertimeRequestDialog({
                       <Controller
                         control={form.control}
                         name={`overtimeDetails.${index}.date`}
-                        render={({ field: dateField }) => (
+                        render={({ field: dateField, fieldState: dateFieldState }) => (
                           <FormItem className="flex-grow">
                             <FormLabel className="text-xs">Date</FormLabel>
                             <Popover>
@@ -221,7 +342,8 @@ export default function OvertimeRequestDialog({
                                     variant={"outline"}
                                     className={cn(
                                       "w-full pl-3 text-left font-normal h-9",
-                                      !dateField.value && "text-muted-foreground"
+                                      !dateField.value && "text-muted-foreground",
+                                      dateFieldState.error && "border-destructive"
                                     )}
                                   >
                                     {dateField.value ? (
@@ -243,7 +365,7 @@ export default function OvertimeRequestDialog({
                                 />
                               </PopoverContent>
                             </Popover>
-                            <FormMessage />
+                            <FormMessage className="text-xs"/>
                           </FormItem>
                         )}
                       />
@@ -253,8 +375,8 @@ export default function OvertimeRequestDialog({
                         render={({ field: timeField }) => (
                           <FormItem className="w-28">
                             <FormLabel className="text-xs">Début</FormLabel>
-                            <FormControl><Input type="time" {...timeField} className="h-9" /></FormControl>
-                            <FormMessage />
+                            <FormControl><Input type="time" {...timeField} value={timeField.value || ''} className="h-9" /></FormControl>
+                            <FormMessage className="text-xs"/>
                           </FormItem>
                         )}
                       />
@@ -264,8 +386,8 @@ export default function OvertimeRequestDialog({
                         render={({ field: timeField }) => (
                           <FormItem className="w-28">
                             <FormLabel className="text-xs">Fin</FormLabel>
-                            <FormControl><Input type="time" {...timeField} className="h-9"/></FormControl>
-                            <FormMessage />
+                            <FormControl><Input type="time" {...timeField} value={timeField.value || ''} className="h-9"/></FormControl>
+                            <FormMessage className="text-xs"/>
                           </FormItem>
                         )}
                       />
@@ -292,23 +414,71 @@ export default function OvertimeRequestDialog({
                     <FormItem>
                       <FormLabel>Total des heures en plus de l'horaire prévu</FormLabel>
                       <FormControl>
-                        <Input placeholder="Calculé automatiquement" {...field} disabled className="bg-muted/50" />
+                        <Input placeholder="Calculé automatiquement" {...field} value={field.value || ''} disabled className="bg-muted/50" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
                 
-                <p className="text-xs text-muted-foreground pt-2">
-                  D'autres champs (Signatures, dates spécifiques, etc.) seront ajoutés pour correspondre au document officiel.
-                </p>
+                 <div className="space-y-2 border-t pt-3">
+                    <h3 className="text-md font-semibold">Signatures</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {renderDateField('employeeSignatureDate', "Date signature Salarié(e)")}
+                        {renderDateField('directManagerSignatureDate', "Date signature Responsable Direct")}
+                        {renderDateField('directorSignatureDate', "Date signature Directeur")}
+                    </div>
+                </div>
+
+                <div className="space-y-2 border-t pt-3">
+                  <h3 className="text-md font-semibold">Cadre réservé à la Direction</h3>
+                  <FormField
+                    control={form.control}
+                    name="approvalStatus"
+                    render={({ field }) => (
+                      <FormItem className="space-y-1.5">
+                        <FormLabel>Décision</FormLabel>
+                        <FormControl>
+                          <RadioGroup onValueChange={field.onChange} value={field.value} className="flex space-x-4">
+                            <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="accepted" /></FormControl><FormLabel className="font-normal text-sm">Acceptée</FormLabel></FormItem>
+                            <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="rejected" /></FormControl><FormLabel className="font-normal text-sm">Refusée</FormLabel></FormItem>
+                             <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="pending" /></FormControl><FormLabel className="font-normal text-sm">En attente</FormLabel></FormItem>
+                          </RadioGroup>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {approvalStatusWatched === 'rejected' && (
+                    <FormField control={form.control} name="rejectionReason" render={({ field }) => (
+                      <FormItem><FormLabel>Si refusée, motif :</FormLabel><FormControl><Textarea placeholder="Motif du refus..." {...field} value={field.value || ''} rows={2}/></FormControl><FormMessage /></FormItem>
+                    )} />
+                  )}
+                  <FormField
+                    control={form.control}
+                    name="compensationType"
+                    render={({ field }) => (
+                      <FormItem className="space-y-1.5">
+                        <FormLabel>Compensation</FormLabel>
+                        <FormControl>
+                          <RadioGroup onValueChange={field.onChange} value={field.value} className="flex space-x-4">
+                            <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="recovery" /></FormControl><FormLabel className="font-normal text-sm">Récupération</FormLabel></FormItem>
+                            <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="payment" /></FormControl><FormLabel className="font-normal text-sm">Paiement</FormLabel></FormItem>
+                          </RadioGroup>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                   {renderDateField('decisionDate', "Date de la Décision")}
+                </div>
               </div>
             </ScrollArea>
             <DialogFooter className="pt-4">
               <DialogClose asChild>
                 <Button type="button" variant="outline">Annuler</Button>
               </DialogClose>
-              <Button type="submit">{editingRequest ? "Enregistrer" : "Soumettre la Demande"}</Button>
+              <Button type="submit">{editingRequest ? "Enregistrer les Modifications" : "Soumettre la Demande"}</Button>
             </DialogFooter>
           </form>
         </Form>
@@ -316,4 +486,3 @@ export default function OvertimeRequestDialog({
     </Dialog>
   );
 }
-
