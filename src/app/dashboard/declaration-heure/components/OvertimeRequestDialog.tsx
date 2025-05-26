@@ -13,7 +13,6 @@ import * as z from 'zod';
 import type { OvertimeRequestStub } from '../types';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-// employeeName is removed from schema, will be handled by parent
 const formSchema = z.object({
   reasonStub: z.string().min(5, "Veuillez fournir un bref motif (min. 5 caractères).").max(500, "Le motif ne peut excéder 500 caractères."),
   position: z.string().optional(),
@@ -27,7 +26,7 @@ type FormData = z.infer<typeof formSchema>;
 interface OvertimeRequestDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onSubmitRequest: (data: Omit<FormData, 'employeeName'>) => void; // employeeName is no longer part of this form's direct data
+  onSubmitRequest: (data: Omit<FormData, 'employeeName'>) => void;
   editingRequest?: OvertimeRequestStub | null;
   currentUser?: { name: string; role: string } | null;
 }
@@ -55,16 +54,16 @@ export default function OvertimeRequestDialog({
       if (editingRequest) {
         form.reset({
           reasonStub: editingRequest.reasonStub || '',
-          position: editingRequest.position || currentUser?.role || '', // Pre-fill with current user role if editing and no position stored
+          position: editingRequest.position || '', // For editing, always load from the request
           prestationTypeNotes: editingRequest.prestationTypeNotes || '',
           overtimeDetailsNotes: editingRequest.overtimeDetailsNotes || '',
           totalOvertimeHours: editingRequest.totalOvertimeHours || '',
         });
-      } else {
+      } else { // New request
         form.reset({
           reasonStub: '',
-          position: currentUser?.role || '', // Pre-fill for new request
-          prestationTypeNotes: '',
+          position: currentUser?.role || '', // Pre-fill with current user's role
+          prestationTypeNotes: 'logistique', // Default to 'logistique'
           overtimeDetailsNotes: '',
           totalOvertimeHours: '',
         });
@@ -104,8 +103,10 @@ export default function OvertimeRequestDialog({
                         <Input
                           placeholder="Ex: Éducateur spécialisé"
                           {...field}
-                          disabled={!!currentUser?.role} // Disable if pre-filled from current user
-                          className={currentUser?.role ? "bg-muted/50" : ""}
+                          // Disable only for new requests if currentUser.role is available.
+                          // Allows editing the position if it was previously set, even if the current user has a different role.
+                          disabled={!editingRequest && !!currentUser?.role}
+                          className={(!editingRequest && !!currentUser?.role) ? "bg-muted/50" : ""}
                         />
                       </FormControl>
                       <FormMessage />
