@@ -2,13 +2,112 @@
 "use client";
 
 import Link from 'next/link';
-import { FileClock } from 'lucide-react'; // Ou une autre icône pertinente
+import { FileClock, PlusCircle, History, Eye, Trash2, Edit2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import type { OvertimeRequestStub, OvertimeRequestStatus } from './types';
+import OvertimeRequestDialog from './components/OvertimeRequestDialog';
+import { useToast } from '@/hooks/use-toast';
+import { format, parseISO } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Badge } from '@/components/ui/badge';
+
+
+const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v1';
 
 export default function DeclarationHeurePage() {
+  const [isClient, setIsClient] = useState(false);
+  const [overtimeRequests, setOvertimeRequests] = useState<OvertimeRequestStub[]>([]);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    setIsClient(true);
+    const username = localStorage.getItem('loggedInUsername');
+    setLoggedInUsername(username);
+  }, []);
+
+  useEffect(() => {
+    if (isClient) {
+      try {
+        const storedRequests = localStorage.getItem(OVERTIME_REQUESTS_STORAGE_KEY);
+        if (storedRequests) {
+          setOvertimeRequests(JSON.parse(storedRequests));
+        }
+      } catch (e) {
+        console.error("Error loading overtime requests from localStorage", e);
+        toast({ title: "Erreur de chargement des demandes", variant: "destructive" });
+      }
+    }
+  }, [isClient, toast]);
+
+  useEffect(() => {
+    if (isClient) {
+      localStorage.setItem(OVERTIME_REQUESTS_STORAGE_KEY, JSON.stringify(overtimeRequests));
+    }
+  }, [overtimeRequests, isClient]);
+
+  const handleAddOvertimeRequest = useCallback((data: { reasonStub: string }) => {
+    if (!loggedInUsername) {
+      toast({ title: "Utilisateur non identifié", description: "Impossible de soumettre la demande.", variant: "destructive" });
+      return;
+    }
+    const newRequest: OvertimeRequestStub = {
+      id: `or_${Date.now()}`,
+      employeeName: loggedInUsername,
+      requestDate: new Date().toISOString(),
+      status: 'en_attente',
+      reasonStub: data.reasonStub,
+    };
+    setOvertimeRequests(prev => [newRequest, ...prev].sort((a,b) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime()));
+    toast({ title: "Demande Soumise", description: "Votre demande de dépassement d'horaire a été enregistrée." });
+  }, [loggedInUsername, toast]);
+  
+  const handleDeleteRequest = (requestId: string) => {
+    setOvertimeRequests(prev => prev.filter(req => req.id !== requestId));
+    toast({ title: "Demande Supprimée", variant: "destructive" });
+  };
+
+  const getStatusBadgeVariant = (status: OvertimeRequestStatus) => {
+    switch (status) {
+      case 'approuvee': return 'success';
+      case 'refusee': return 'destructive';
+      case 'en_attente':
+      default: return 'secondary';
+    }
+  };
+   const getStatusLabel = (status: OvertimeRequestStatus) => {
+    switch (status) {
+      case 'approuvee': return 'Approuvée';
+      case 'refusee': return 'Refusée';
+      case 'en_attente':
+      default: return 'En attente';
+    }
+  };
+
+
+  if (!isClient) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p className="text-lg text-muted-foreground">Chargement de la déclaration d'heures...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto p-4 md:p-6 lg:p-8 min-h-screen">
       <div className="flex flex-col sm:flex-row items-center justify-between mb-6 gap-4">
@@ -23,25 +122,96 @@ export default function DeclarationHeurePage() {
         <CurrentDate />
       </div>
       
-      <Card className="shadow-xl">
+      <Card className="shadow-xl mb-6">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Demandes de Dépassement d'Horaire</CardTitle>
+            <CardDescription>
+              Soumettez et suivez vos demandes de dépassement d'horaire.
+            </CardDescription>
+          </div>
+          <Button onClick={() => setIsFormOpen(true)}>
+            <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {overtimeRequests.length === 0 ? (
+            <p className="text-muted-foreground text-center py-6">Aucune demande de dépassement soumise.</p>
+          ) : (
+            <div className="space-y-3">
+              {overtimeRequests.map(req => (
+                <Card key={req.id} className="bg-card/60">
+                  <CardHeader className="pb-2 pt-3 px-4">
+                    <div className="flex justify-between items-start">
+                      <CardTitle className="text-md">
+                        Demande du {format(parseISO(req.requestDate), "dd/MM/yyyy HH:mm", {locale: fr})}
+                      </CardTitle>
+                       <Badge variant={getStatusBadgeVariant(req.status)}>
+                        {getStatusLabel(req.status)}
+                      </Badge>
+                    </div>
+                    <CardDescription className="text-xs">Par: {req.employeeName}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-3">
+                    <p className="text-sm text-muted-foreground truncate">Motif (simplifié): {req.reasonStub}</p>
+                     <div className="mt-2 flex justify-end space-x-2">
+                       {/* Placeholder for future "View" button */}
+                       {/* <Button variant="outline" size="sm" className="text-xs"><Eye className="mr-1 h-3.5 w-3.5"/> Voir</Button> */}
+                       {/* Placeholder for future "Edit" button - only if status is 'en_attente' */}
+                       {/* {req.status === 'en_attente' && <Button variant="outline" size="sm" className="text-xs"><Edit2 className="mr-1 h-3.5 w-3.5"/> Modifier</Button>} */}
+                        {req.status === 'en_attente' && (
+                           <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="destructive" size="sm" className="text-xs">
+                                <Trash2 className="mr-1 h-3.5 w-3.5"/> Annuler/Suppr.
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Annuler la demande ?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Cette action est irréversible.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Non</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeleteRequest(req.id)}>
+                                  Oui, annuler
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
+                     </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <OvertimeRequestDialog
+        isOpen={isFormOpen}
+        onOpenChange={setIsFormOpen}
+        onSubmitRequest={handleAddOvertimeRequest}
+      />
+
+      {/* Placeholder for Absence Requests section */}
+      <Card className="shadow-xl opacity-50 cursor-not-allowed">
         <CardHeader>
-          <CardTitle>Module de Déclaration d'Heures</CardTitle>
+          <CardTitle>Demandes d'Absence</CardTitle>
           <CardDescription>
-            Cette section permettra aux employés de déclarer leurs heures travaillées.
+            Soumettez et suivez vos demandes d'absence (fonctionnalité à venir).
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col items-center justify-center text-center p-10 border-2 border-dashed border-muted-foreground/20 rounded-lg bg-card/50 min-h-[200px]">
-            <FileClock className="w-16 h-16 text-muted-foreground mb-4" />
-            <p className="text-lg font-medium text-muted-foreground">
-              Fonctionnalité en cours de développement.
-            </p>
-            <p className="text-sm text-muted-foreground/80 mt-2">
-              Revenez bientôt pour pouvoir déclarer vos heures ici.
-            </p>
-          </div>
+          <p className="text-muted-foreground text-center py-6">
+            Le module de demande d'absence sera développé prochainement.
+          </p>
         </CardContent>
       </Card>
+
     </div>
   );
 }
