@@ -56,7 +56,8 @@ const pdfTypes = [
   { value: 'pms_defrosting_monitoring', label: 'PMS - Suivi Décongélation' },
   { value: 'pms_cooldown_monitoring', label: 'PMS - Liaison Froide (Baisse Temp.)' },
   { value: 'pms_delivery_monitoring', label: 'PMS - Liaison Froide (Livraison)' },
-];
+  { value: 'overtime_request_form', label: "Formulaire Demande Dépassement Horaire" },
+].sort((a, b) => a.label.localeCompare(b.label));
 
 const GENERAL_CONFIG_DISPLAY_LABEL = "Configuration Générale / Par Défaut";
 
@@ -386,7 +387,7 @@ export default function PdfLayoutManager() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={GENERAL_CONFIG_KEY}>{GENERAL_CONFIG_DISPLAY_LABEL}</SelectItem>
-                {pdfTypes.sort((a,b) => a.label.localeCompare(b.label)).map(pdf => (
+                {pdfTypes.map(pdf => (
                   <SelectItem key={pdf.value} value={pdf.value}>{pdf.label}</SelectItem>
                 ))}
               </SelectContent>
@@ -544,7 +545,9 @@ export default function PdfLayoutManager() {
                         className="mt-1"
                         rows={3}
                     />
-                    {currentEffectiveSettings.headerText && <div><span className="text-xs text-muted-foreground mt-1">Effectif : </span><pre className="whitespace-pre-wrap text-xs bg-muted/50 p-1 rounded inline-block">{currentEffectiveSettings.headerText}</pre></div>}
+                    {currentEffectiveSettings.headerText && 
+                      <div className="text-xs text-muted-foreground mt-1">Effectif : <pre className="whitespace-pre-wrap text-xs bg-muted/50 p-1 rounded inline-block">{currentEffectiveSettings.headerText}</pre></div>
+                    }
                     {!currentEffectiveSettings.headerText && <p className="text-xs text-muted-foreground mt-1">Aucun texte d'en-tête défini.</p>}
                 </div>
                 <Button onClick={handleSaveHeaderText}>
@@ -668,4 +671,3 @@ export default function PdfLayoutManager() {
   );
 }
 
-    
