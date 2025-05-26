@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CheckSquare, ListFilter } from 'lucide-react'; 
+import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CheckSquare, ListFilter, CalendarClock, Clock } from 'lucide-react'; // Added CalendarClock, Clock
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
@@ -22,17 +22,17 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"; // Removed AlertDialogTrigger as it's used via asChild
+} from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import type { BrigadeMember } from '@/app/dashboard/time-tracking/types'; 
+import type { BrigadeMember } from '@/app/dashboard/time-tracking/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 
-const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v4'; 
+const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v4';
 const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
@@ -63,57 +63,65 @@ export default function DeclarationHeurePage() {
   }, []);
 
   useEffect(() => {
-    if (isClient) {
-      console.log("[DeclarationHeurePage LOAD] Attempting to load data...");
-      setDataLoaded(false);
-      try {
-        const storedRequests = localStorage.getItem(OVERTIME_REQUESTS_STORAGE_KEY);
-        if (storedRequests) {
-          console.log("[DeclarationHeurePage LOAD] Found stored requests.");
-          setOvertimeRequests(JSON.parse(storedRequests).map((req: any) => ({
-            ...req,
-            id: req.id || `or_${Date.now()}_${Math.random().toString(36).substring(2,9)}`, // Ensure ID exists
-            requestDate: req.requestDate || new Date().toISOString(), 
-            overtimeDetails: Array.isArray(req.overtimeDetails) 
-              ? req.overtimeDetails.map((d:any) => ({...d, date: d.date || new Date().toISOString() })) 
-              : [],
-            approvalStatus: req.approvalStatus || req.status || 'pending',
-            prestationTypes: Array.isArray(req.prestationTypes) ? req.prestationTypes : [],
-            compensationType: req.compensationType === undefined ? null : req.compensationType, // Ensure null if undefined
-          })).sort((a: OvertimeRequest, b: OvertimeRequest) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime()));
-        } else {
-          console.log("[DeclarationHeurePage LOAD] No stored requests found, defaulting to empty array.");
-          setOvertimeRequests([]);
-        }
+    if (!isClient) return;
+    console.log("[DeclarationHeurePage LOAD] Attempting to load data...");
+    setDataLoaded(false); // Reset before loading
 
-        const storedBrigadeMembers = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
-        if (storedBrigadeMembers) {
-          console.log("[DeclarationHeurePage LOAD] Found stored brigade members.");
-          setBrigadeMembers(JSON.parse(storedBrigadeMembers));
-        } else {
-          console.log("[DeclarationHeurePage LOAD] No stored brigade members found.");
-          setBrigadeMembers([]);
-        }
+    let loadedRequests: OvertimeRequest[] = [];
+    let loadedBrigadeMembers: BrigadeMember[] = [];
+    let usernameFromStorage: string | null = null;
 
-        const username = localStorage.getItem(LOGGED_IN_USERNAME_KEY);
-        setLoggedInUsername(username);
-        console.log("[DeclarationHeurePage LOAD] Logged in username:", username);
-
-      } catch (e) {
-        console.error("[DeclarationHeurePage LOAD] Error loading data from localStorage", e);
-        localStorage.removeItem(OVERTIME_REQUESTS_STORAGE_KEY);
-        setOvertimeRequests([]);
-        setBrigadeMembers([]);
-        toast({ title: "Erreur de chargement des données", variant: "destructive" });
-      } finally {
-        setDataLoaded(true);
-        console.log("[DeclarationHeurePage LOAD] Data loading complete, dataLoaded set to true.");
+    try {
+      const storedRequestsRaw = localStorage.getItem(OVERTIME_REQUESTS_STORAGE_KEY);
+      if (storedRequestsRaw) {
+        console.log("[DeclarationHeurePage LOAD] Found stored requests.");
+        loadedRequests = JSON.parse(storedRequestsRaw).map((req: any) => ({
+          ...req,
+          id: req.id || `or_${Date.now()}_${Math.random().toString(36).substring(2,9)}`,
+          requestDate: req.requestDate || new Date().toISOString(),
+          updatedAt: req.updatedAt || new Date().toISOString(),
+          overtimeDetails: Array.isArray(req.overtimeDetails) 
+            ? req.overtimeDetails.map((d:any) => ({...d, date: d.date || new Date().toISOString() })) 
+            : [],
+          approvalStatus: req.approvalStatus || req.status || 'pending',
+          prestationTypes: Array.isArray(req.prestationTypes) ? req.prestationTypes : [],
+          compensationType: req.compensationType === undefined ? null : req.compensationType,
+        }));
+      } else {
+        console.log("[DeclarationHeurePage LOAD] No stored requests found, defaulting to empty array.");
+        loadedRequests = [];
       }
+
+      const storedBrigadeMembersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
+      if (storedBrigadeMembersRaw) {
+        console.log("[DeclarationHeurePage LOAD] Found stored brigade members.");
+        loadedBrigadeMembers = JSON.parse(storedBrigadeMembersRaw);
+      } else {
+        console.log("[DeclarationHeurePage LOAD] No stored brigade members found.");
+        loadedBrigadeMembers = [];
+      }
+
+      usernameFromStorage = localStorage.getItem(LOGGED_IN_USERNAME_KEY);
+      console.log("[DeclarationHeurePage LOAD] Logged in username from storage:", usernameFromStorage);
+
+    } catch (e) {
+      console.error("[DeclarationHeurePage LOAD] Error loading data from localStorage", e);
+      localStorage.removeItem(OVERTIME_REQUESTS_STORAGE_KEY); // Clear potentially corrupted data
+      loadedRequests = [];
+      loadedBrigadeMembers = [];
+      usernameFromStorage = null;
+      toast({ title: "Erreur de chargement des données", description: "Les données de déclaration d'heure ont été réinitialisées.", variant: "destructive" });
+    } finally {
+      setOvertimeRequests(loadedRequests.sort((a: OvertimeRequest, b: OvertimeRequest) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime()));
+      setBrigadeMembers(loadedBrigadeMembers);
+      setLoggedInUsername(usernameFromStorage);
+      setDataLoaded(true);
+      console.log("[DeclarationHeurePage LOAD] Data loading complete. dataLoaded set to true.");
     }
   }, [isClient, toast]);
 
   useEffect(() => {
-    if (isClient && dataLoaded) {
+    if (isClient && dataLoaded) { // Only save if client and initial data has been loaded/attempted
       console.log(`[DeclarationHeurePage SAVE] Attempting to save ${overtimeRequests.length} requests to localStorage.`);
       localStorage.setItem(OVERTIME_REQUESTS_STORAGE_KEY, JSON.stringify(overtimeRequests));
       console.log("[DeclarationHeurePage SAVE] Requests saved.");
@@ -158,12 +166,12 @@ export default function DeclarationHeurePage() {
       toast({ title: "Demande Modifiée", description: "Votre demande de dépassement d'horaire a été mise à jour." });
     } else {
       const newRequest: OvertimeRequest = {
-        id: `or_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`, // More unique ID
+        id: `or_${Date.now()}_${Math.random().toString(36).substring(2,9)}`,
         employeeName: employeeNameToUse,
         requestDate: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         approvalStatus: data.approvalStatus || 'pending',
-        reasonStub: data.reasonStub || "Non spécifié", // Ensure reasonStub has a default
+        reasonStub: data.reasonStub || "Non spécifié",
         ...data,
         position: positionToUse,
         overtimeDetails: data.overtimeDetails || [],
@@ -334,7 +342,7 @@ export default function DeclarationHeurePage() {
 
   const visibleTabs = useMemo(() => {
     return declarationHeureTabsConfig.filter(tab => !tab.isChefOnly || isChef);
-  }, [isChef, declarationHeureTabsConfig]); // Added declarationHeureTabsConfig
+  }, [isChef, declarationHeureTabsConfig]);
 
   const [activeTab, setActiveTab] = useState(visibleTabs.length > 0 ? visibleTabs[0].value : "");
   
@@ -347,7 +355,7 @@ export default function DeclarationHeurePage() {
   }, [visibleTabs, activeTab]);
 
 
-  if (!isClient || !dataLoaded) { // Show loading until client is ready AND initial data load attempted
+  if (!isClient || !dataLoaded) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p className="text-lg text-muted-foreground">Chargement de la déclaration d'heures...</p>
