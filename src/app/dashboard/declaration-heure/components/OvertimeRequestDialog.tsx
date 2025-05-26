@@ -155,13 +155,15 @@ export default function OvertimeRequestDialog({
       if (!editingRequest) { // New request
         empSigDate = new Date();
       } else { // Editing existing request
-        if (!isApproverView && !empSigDate) {
+        if (!isApproverView && !empSigDate && (!editingRequest.employeeSignatureDate || !isValid(parseISO(editingRequest.employeeSignatureDate)))) {
+             // Only fill if it's truly empty or invalid
             empSigDate = new Date();
         }
         if (isApproverView) {
+            // For approver view, pre-fill decision date and their own signature dates if empty
+            if (!decDate && editingRequest.approvalStatus && editingRequest.approvalStatus !== 'pending') decDate = new Date();
             if (!managerSigDate) managerSigDate = new Date();
             if (!directorSigDate) directorSigDate = new Date();
-            if (!decDate) decDate = new Date(); // Auto-fill decision date if approver is opening to decide
         }
       }
 
@@ -198,8 +200,17 @@ export default function OvertimeRequestDialog({
       if (!form.getValues('decisionDate')) {
         form.setValue('decisionDate', new Date());
       }
+      // If the current user is "Chef", auto-fill their signature dates if empty
+      if (currentUser?.name === 'Chef') {
+        if (!form.getValues('directManagerSignatureDate')) {
+          form.setValue('directManagerSignatureDate', new Date());
+        }
+        if (!form.getValues('directorSignatureDate')) {
+          form.setValue('directorSignatureDate', new Date());
+        }
+      }
     }
-  }, [approvalStatusWatched, isApproverView, form]);
+  }, [approvalStatusWatched, isApproverView, form, currentUser]);
 
 
   const handleSubmit = (data: FormDataType) => {
@@ -439,8 +450,8 @@ export default function OvertimeRequestDialog({
                     <h3 className="text-md font-semibold">Signatures</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {renderDateField('employeeSignatureDate', "Date signature Salarié(e)", employeeFieldsDisabled || (isApproverView && !!editingRequest?.employeeSignatureDate))}
-                        {renderDateField('directManagerSignatureDate', "Date signature Responsable Direct", directionFieldsDisabled)}
-                        {renderDateField('directorSignatureDate', "Date signature Directeur", directionFieldsDisabled)}
+                        {renderDateField('directManagerSignatureDate', "Date signature Responsable Direct", directionFieldsDisabled || !isApproverView)}
+                        {renderDateField('directorSignatureDate', "Date signature Directeur", directionFieldsDisabled || !isApproverView)}
                     </div>
                 </div>
 
