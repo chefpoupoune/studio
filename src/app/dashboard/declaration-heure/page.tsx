@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CheckSquare, ListFilter, CalendarClock } from 'lucide-react'; 
+import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CheckSquare, ListFilter, CalendarClock, Clock } from 'lucide-react'; // Added Clock
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
@@ -33,7 +33,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 
-const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v5'; // Incremented version
+const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v5';
 const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
@@ -64,6 +64,7 @@ export default function DeclarationHeurePage() {
 
   useEffect(() => {
     if (!isClient) return;
+    console.log("[DeclarationHeurePage LOAD] Attempting to load initial data from localStorage.");
     setDataLoaded(false);
     let loadedRequests: OvertimeRequest[] = [];
     let loadedBrigadeMembers: BrigadeMember[] = [];
@@ -82,19 +83,23 @@ export default function DeclarationHeurePage() {
             : [],
           approvalStatus: req.approvalStatus || 'pending',
           prestationTypes: Array.isArray(req.prestationTypes) ? req.prestationTypes : [],
-          // compensationType: req.compensationType === undefined ? null : req.compensationType, // Removed
         }));
+        console.log(`[DeclarationHeurePage LOAD] Loaded ${loadedRequests.length} overtime requests.`);
       } else {
         loadedRequests = [];
+        console.log("[DeclarationHeurePage LOAD] No overtime requests found in localStorage.");
       }
 
       const storedBrigadeMembersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
       if (storedBrigadeMembersRaw) {
         loadedBrigadeMembers = JSON.parse(storedBrigadeMembersRaw);
+        console.log(`[DeclarationHeurePage LOAD] Loaded ${loadedBrigadeMembers.length} brigade members.`);
       } else {
         loadedBrigadeMembers = [];
+        console.log("[DeclarationHeurePage LOAD] No brigade members found in localStorage.");
       }
       usernameFromStorage = localStorage.getItem(LOGGED_IN_USERNAME_KEY);
+      console.log(`[DeclarationHeurePage LOAD] Logged in username: ${usernameFromStorage}`);
     } catch (e) {
       console.error("[DeclarationHeurePage LOAD] Error loading data from localStorage", e);
       localStorage.removeItem(OVERTIME_REQUESTS_STORAGE_KEY); 
@@ -107,12 +112,15 @@ export default function DeclarationHeurePage() {
       setBrigadeMembers(loadedBrigadeMembers);
       setLoggedInUsername(usernameFromStorage);
       setDataLoaded(true);
+      console.log("[DeclarationHeurePage LOAD] Data loading complete, dataLoaded set to true.");
     }
   }, [isClient, toast]);
 
   useEffect(() => {
     if (isClient && dataLoaded) { 
+      console.log("[DeclarationHeurePage SAVE] Attempting to save overtimeRequests to localStorage. Count:", overtimeRequests.length);
       localStorage.setItem(OVERTIME_REQUESTS_STORAGE_KEY, JSON.stringify(overtimeRequests));
+      console.log("[DeclarationHeurePage SAVE] Overtime requests saved.");
     }
   }, [overtimeRequests, isClient, dataLoaded]);
 
@@ -146,6 +154,7 @@ export default function DeclarationHeurePage() {
             employeeName: employeeNameToUse,
             position: positionToUse,
             updatedAt: nowISO,
+            reasonStub: data.reasonStub || req.reasonStub || "Non spécifié",
             approvalStatus: data.approvalStatus || req.approvalStatus || 'pending',
           } as OvertimeRequest
         : req
@@ -153,7 +162,7 @@ export default function DeclarationHeurePage() {
       toast({ title: "Demande Modifiée", description: "Votre demande de dépassement d'horaire a été mise à jour." });
     } else {
       const newRequest: OvertimeRequest = {
-        id: `or_${Date.now()}_${Math.random().toString(36).substring(2,9)}`,
+        id: `or_${Date.now()}_${Math.random().toString(36).substring(2,9)}`, // More unique ID
         employeeName: employeeNameToUse,
         requestDate: nowISO,
         updatedAt: nowISO,
@@ -255,7 +264,6 @@ export default function DeclarationHeurePage() {
                   <div className="border-t mt-2 pt-1">
                     <p className="font-medium text-foreground/80">Décision Direction:</p>
                     {req.approvalStatus === 'rejected' && req.rejectionReason && <p>Motif refus: {req.rejectionReason}</p>}
-                    {/* Compensation Type display removed */}
                     {req.decisionDate && isValid(parseISO(req.decisionDate)) && <p>Date Décision: {format(parseISO(req.decisionDate), "dd/MM/yyyy", {locale:fr})}</p>}
                   </div>
                 )}
@@ -304,7 +312,7 @@ export default function DeclarationHeurePage() {
 
   const visibleTabs = useMemo(() => {
     return declarationHeureTabsConfig.filter(tab => !tab.isChefOnly || isChef);
-  }, [isChef, declarationHeureTabsConfig]);
+  }, [isChef]); // Removed declarationHeureTabsConfig from dependency array as it's constant
 
   const [activeTab, setActiveTab] = useState(visibleTabs.length > 0 ? visibleTabs[0].value : "");
   
@@ -325,8 +333,8 @@ export default function DeclarationHeurePage() {
     );
   }
   
-  const getTabContent = () => {
-    switch (activeTab) {
+  const getTabContent = (tabValue: string) => {
+    switch (tabValue) {
       case "my-requests":
         return (
           <Card className="shadow-xl">
@@ -411,7 +419,7 @@ export default function DeclarationHeurePage() {
         {visibleTabs.length > 0 ? (
             visibleTabs.map(tab => (
             <TabsContent key={tab.value} value={tab.value}>
-                {getTabContent()}
+                {getTabContent(tab.value)}
             </TabsContent>
             ))
         ) : (
@@ -432,3 +440,4 @@ export default function DeclarationHeurePage() {
     </div>
   );
 }
+
