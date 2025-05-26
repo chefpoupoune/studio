@@ -57,6 +57,7 @@ const pdfTypes = [
   { value: 'pms_cooldown_monitoring', label: 'PMS - Liaison Froide (Baisse Temp.)' },
   { value: 'pms_delivery_monitoring', label: 'PMS - Liaison Froide (Livraison)' },
   { value: 'overtime_request_form', label: "Formulaire Demande Dépassement Horaire" },
+  { value: 'absence_request_form', label: "Formulaire Demande d'Absence" },
 ].sort((a, b) => a.label.localeCompare(b.label));
 
 const GENERAL_CONFIG_DISPLAY_LABEL = "Configuration Générale / Par Défaut";
@@ -545,9 +546,7 @@ export default function PdfLayoutManager() {
                         className="mt-1"
                         rows={3}
                     />
-                    {currentEffectiveSettings.headerText && 
-                      <div className="text-xs text-muted-foreground mt-1">Effectif : <pre className="whitespace-pre-wrap text-xs bg-muted/50 p-1 rounded inline-block">{currentEffectiveSettings.headerText}</pre></div>
-                    }
+                    {currentEffectiveSettings.headerText && <div className="text-xs text-muted-foreground mt-1">Effectif : <pre className="whitespace-pre-wrap text-xs bg-muted/50 p-1 rounded inline-block">{currentEffectiveSettings.headerText}</pre></div>}
                     {!currentEffectiveSettings.headerText && <p className="text-xs text-muted-foreground mt-1">Aucun texte d'en-tête défini.</p>}
                 </div>
                 <Button onClick={handleSaveHeaderText}>
@@ -670,4 +669,3 @@ export default function PdfLayoutManager() {
     </div>
   );
 }
-
