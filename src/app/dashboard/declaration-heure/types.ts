@@ -1,9 +1,16 @@
 
 export type OvertimeRequestStatus = 'en_attente' | 'approuvee' | 'refusee';
 
+export interface OvertimeDayDetail {
+  id: string; // For react-hook-form useFieldArray key
+  date: string; // ISO string for storage
+  startTime?: string; // HH:mm
+  endTime?: string; // HH:mm
+}
+
 export interface OvertimeRequest {
   id: string;
-  employeeName: string; 
+  employeeName: string;
   requestDate: string; // ISO string
   status: OvertimeRequestStatus;
   // --- Fields from the form ---
@@ -12,7 +19,7 @@ export interface OvertimeRequest {
   reason?: string; // Motif de la demande (renamed from reasonStub)
 
   // For overtime details
-  overtimeDetails?: OvertimeDayDetail[];
+  overtimeDetails?: OvertimeDayDetail[]; // Changed from overtimeDetailsNotes
   totalOvertimeHours?: string; // "X heures en plus de l'horaire prévu"
 
   // Approval details
@@ -31,15 +38,6 @@ export const PRESTATION_TYPE_LABELS: Record<PrestationType, string> = {
   medico_psycho_sociale: "Médico-psycho-sociale",
 };
 
-export interface OvertimeDayDetail {
-  id: string; // For list key
-  date: string; // ISO string for the day of overtime
-  morningStartTime?: string; // HH:mm
-  morningEndTime?: string; // HH:mm
-  afternoonStartTime?: string; // HH:mm
-  afternoonEndTime?: string; // HH:mm
-  // totalHoursForDay will be calculated
-}
 
 // Summary type for display, to be expanded as form grows
 export interface OvertimeRequestStub {
@@ -47,9 +45,9 @@ export interface OvertimeRequestStub {
   employeeName: string;
   requestDate: string; // ISO String
   status: OvertimeRequestStatus;
-  reasonStub: string; 
+  reasonStub: string;
   position?: string;
-  prestationTypeNotes: string; // Now non-optional, will always be "logistique"
-  overtimeDetailsNotes?: string; // Placeholder for "Détail des heures supplémentaires"
+  prestationTypeNotes: string; // Always "logistique"
+  overtimeDetails?: OvertimeDayDetail[]; // Changed from overtimeDetailsNotes
   totalOvertimeHours?: string; // Placeholder for "X heures en plus..."
 }

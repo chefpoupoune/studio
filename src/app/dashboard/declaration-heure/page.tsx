@@ -2,12 +2,12 @@
 "use client";
 
 import Link from 'next/link';
-import { FileClock, PlusCircle, History, Eye, Trash2, Edit2 } from 'lucide-react';
+import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CalendarDays, Timer } from 'lucide-react'; // Added CalendarDays, Timer
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import type { OvertimeRequestStub, OvertimeRequestStatus } from './types';
+import type { OvertimeRequestStub, OvertimeRequestStatus, OvertimeDayDetail } from './types'; // Added OvertimeDayDetail
 import OvertimeRequestDialog from './components/OvertimeRequestDialog';
 import { useToast } from '@/hooks/use-toast';
 import { format, parseISO } from 'date-fns';
@@ -25,11 +25,17 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import type { BrigadeMember } from '@/app/dashboard/time-tracking/types'; // Import BrigadeMember
+import type { BrigadeMember } from '@/app/dashboard/time-tracking/types'; 
 
-const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v2';
+const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v3'; // Version up
 const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
+
+// For the OvertimeRequestDialog prop
+type SubmitDataTypeFromDialog = Omit<OvertimeRequestStub, 'id' | 'employeeName' | 'requestDate' | 'status' | 'prestationTypeNotes' | 'overtimeDetailsNotes'> & {
+  overtimeDetails?: OvertimeDayDetail[]; 
+};
+
 
 export default function DeclarationHeurePage() {
   const [isClient, setIsClient] = useState(false);
@@ -54,7 +60,8 @@ export default function DeclarationHeurePage() {
           setOvertimeRequests(JSON.parse(storedRequests).map((req: any) => ({
             ...req,
             requestDate: req.requestDate || new Date().toISOString(), 
-            prestationTypeNotes: req.prestationTypeNotes || "logistique", // Ensure default if missing
+            prestationTypeNotes: "logistique", 
+            overtimeDetails: Array.isArray(req.overtimeDetails) ? req.overtimeDetails.map((d:any) => ({...d, date: d.date || new Date().toISOString() })) : [], 
           })));
         }
         const storedBrigadeMembers = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
@@ -82,8 +89,7 @@ export default function DeclarationHeurePage() {
   }, [loggedInUsername, brigadeMembers]);
 
   const handleAddOrUpdateOvertimeRequest = useCallback((
-    // prestationTypeNotes is no longer part of the data from the dialog
-    data: Omit<OvertimeRequestStub, 'id' | 'employeeName' | 'requestDate' | 'status' | 'prestationTypeNotes'>
+    data: SubmitDataTypeFromDialog
   ) => {
     if (!loggedInUsername) {
       toast({ title: "Utilisateur non identifié", description: "Impossible de soumettre la demande.", variant: "destructive" });
@@ -91,7 +97,7 @@ export default function DeclarationHeurePage() {
     }
     
     const employeeNameToUse = editingRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername;
-    const positionToUse = data.position || currentBrigadeMember?.role || editingRequest?.position || '';
+    const positionToUse = data.position || (editingRequest?.employeeName === employeeNameToUse && currentUser?.role ? currentUser.role : editingRequest?.position) || '';
 
 
     if (editingRequest) {
@@ -99,11 +105,14 @@ export default function DeclarationHeurePage() {
         req.id === editingRequest.id 
         ? { 
             ...editingRequest, 
-            ...data,
+            reasonStub: data.reasonStub,
             position: positionToUse, 
             employeeName: employeeNameToUse, 
-            prestationTypeNotes: "logistique", // Always set to logistique
-          }
+            prestationTypeNotes: "logistique",
+            overtimeDetails: data.overtimeDetails || [],
+            totalOvertimeHours: data.totalOvertimeHours,
+            updatedAt: new Date().toISOString(), // Assuming OvertimeRequestStub might have an updatedAt
+          } as OvertimeRequestStub // Cast to ensure type compatibility
         : req
       ).sort((a,b) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime()));
       toast({ title: "Demande Modifiée", description: "Votre demande de dépassement d'horaire a été mise à jour." });
@@ -116,8 +125,8 @@ export default function DeclarationHeurePage() {
         status: 'en_attente',
         reasonStub: data.reasonStub,
         position: positionToUse,
-        prestationTypeNotes: "logistique", // Always set to logistique
-        overtimeDetailsNotes: data.overtimeDetailsNotes,
+        prestationTypeNotes: "logistique",
+        overtimeDetails: data.overtimeDetails || [],
         totalOvertimeHours: data.totalOvertimeHours,
       };
       setOvertimeRequests(prev => [newRequest, ...prev].sort((a,b) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime()));
@@ -210,8 +219,24 @@ export default function DeclarationHeurePage() {
                     <CardContent className="px-4 pb-3 space-y-1">
                       <p className="text-sm text-muted-foreground"><span className="font-medium text-foreground/80">Motif:</span> {req.reasonStub}</p>
                       <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground/80">Prestation:</span> {req.prestationTypeNotes}</p>
-                      {req.overtimeDetailsNotes && <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground/80">Détail H.Supp:</span> {req.overtimeDetailsNotes}</p>}
-                      {req.totalOvertimeHours && <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground/80">Total H.Supp:</span> {req.totalOvertimeHours}</p>}
+                      
+                      {req.overtimeDetails && req.overtimeDetails.length > 0 && (
+                        <div className="text-xs mt-1">
+                          <span className="font-medium text-foreground/80 flex items-center gap-1 mb-0.5"><CalendarDays className="h-3 w-3"/>Détail H.Supp:</span>
+                          <ul className="list-none pl-2 text-muted-foreground space-y-0.5">
+                            {req.overtimeDetails.map((detail, index) => (
+                              <li key={index} className="flex items-center gap-1.5">
+                                <Timer className="h-3 w-3 text-primary/70"/>
+                                {format(parseISO(detail.date), "dd/MM/yy", {locale: fr})}
+                                {detail.startTime && detail.endTime ? `: de ${detail.startTime} à ${detail.endTime}` : 
+                                 detail.startTime ? `: à partir de ${detail.startTime}` : 
+                                 detail.endTime ? `: jusqu'à ${detail.endTime}` : ' (horaires non spécifiés)'}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {req.totalOvertimeHours && <p className="text-xs text-muted-foreground mt-1"><span className="font-medium text-foreground/80">Total H.Supp:</span> {req.totalOvertimeHours}</p>}
                       <div className="mt-2 flex justify-end space-x-2 pt-1">
                           <Button variant="outline" size="sm" className="text-xs" onClick={() => handleOpenForm(req)}>
                             <Edit2 className="mr-1 h-3.5 w-3.5"/> Modifier
