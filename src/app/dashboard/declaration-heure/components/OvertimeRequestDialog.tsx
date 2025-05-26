@@ -150,16 +150,18 @@ export default function OvertimeRequestDialog({
       let empSigDate = editingRequest?.employeeSignatureDate ? parseISO(editingRequest.employeeSignatureDate) : null;
       let managerSigDate = editingRequest?.directManagerSignatureDate ? parseISO(editingRequest.directManagerSignatureDate) : null;
       let directorSigDate = editingRequest?.directorSignatureDate ? parseISO(editingRequest.directorSignatureDate) : null;
+      let decDate = editingRequest?.decisionDate ? parseISO(editingRequest.decisionDate) : null;
 
       if (!editingRequest) { // New request
         empSigDate = new Date();
       } else { // Editing existing request
-        if (!isApproverView && !empSigDate) { // Employee view, employee hasn't signed
+        if (!isApproverView && !empSigDate) {
             empSigDate = new Date();
         }
         if (isApproverView) {
             if (!managerSigDate) managerSigDate = new Date();
             if (!directorSigDate) directorSigDate = new Date();
+            if (!decDate) decDate = new Date(); // Auto-fill decision date if approver is opening to decide
         }
       }
 
@@ -175,13 +177,13 @@ export default function OvertimeRequestDialog({
         directorSignatureDate: directorSigDate,
         approvalStatus: editingRequest?.approvalStatus || 'pending',
         rejectionReason: editingRequest?.rejectionReason || '',
-        decisionDate: editingRequest?.decisionDate ? parseISO(editingRequest.decisionDate) : null,
+        decisionDate: decDate,
       });
       
       // Recalculate total hours if editing
       if (editingRequest?.overtimeDetails) {
         let totalMinutes = 0;
-        initialOvertimeDetails.forEach(detail => { // Use initialOvertimeDetails as it has Date objects
+        initialOvertimeDetails.forEach(detail => { 
           if (detail.startTime && detail.endTime) {
             totalMinutes += calculateDurationInMinutes(detail.startTime, detail.endTime);
           }
@@ -190,6 +192,15 @@ export default function OvertimeRequestDialog({
       }
     }
   }, [isOpen, editingRequest, currentUser, form, isApproverView]);
+
+  useEffect(() => {
+    if (isApproverView && (approvalStatusWatched === 'accepted' || approvalStatusWatched === 'rejected')) {
+      if (!form.getValues('decisionDate')) {
+        form.setValue('decisionDate', new Date());
+      }
+    }
+  }, [approvalStatusWatched, isApproverView, form]);
+
 
   const handleSubmit = (data: FormDataType) => {
     const submitData: Partial<Omit<OvertimeRequest, 'compensationType'>> = {
@@ -240,11 +251,7 @@ export default function OvertimeRequestDialog({
   );
 
   const employeeFieldsDisabled = isApproverView && !!editingRequest; 
-  // For approver view when editing: disable employee fields.
-  // For new request by approver: enable.
-  // For employee view: enable employee fields.
-
-  const directionFieldsDisabled = !isApproverView; // Direction fields only enabled for approver
+  const directionFieldsDisabled = !isApproverView;
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -431,7 +438,7 @@ export default function OvertimeRequestDialog({
                  <div className="space-y-2 border-t pt-3">
                     <h3 className="text-md font-semibold">Signatures</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {renderDateField('employeeSignatureDate', "Date signature Salarié(e)", employeeFieldsDisabled || (isApproverView && !!editingRequest))}
+                        {renderDateField('employeeSignatureDate', "Date signature Salarié(e)", employeeFieldsDisabled || (isApproverView && !!editingRequest?.employeeSignatureDate))}
                         {renderDateField('directManagerSignatureDate', "Date signature Responsable Direct", directionFieldsDisabled)}
                         {renderDateField('directorSignatureDate', "Date signature Directeur", directionFieldsDisabled)}
                     </div>
