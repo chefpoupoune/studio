@@ -11,8 +11,9 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { OvertimeRequestStub } from '../types';
-import { ScrollArea } from '@/components/ui/scroll-area'; // Added ScrollArea
+import { ScrollArea } from '@/components/ui/scroll-area';
 
+// employeeName is removed from schema, will be handled by parent
 const formSchema = z.object({
   reasonStub: z.string().min(5, "Veuillez fournir un bref motif (min. 5 caractères).").max(500, "Le motif ne peut excéder 500 caractères."),
   position: z.string().optional(),
@@ -26,38 +27,50 @@ type FormData = z.infer<typeof formSchema>;
 interface OvertimeRequestDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onSubmitRequest: (data: FormData) => void;
-  editingRequest?: OvertimeRequestStub | null; 
+  onSubmitRequest: (data: Omit<FormData, 'employeeName'>) => void; // employeeName is no longer part of this form's direct data
+  editingRequest?: OvertimeRequestStub | null;
+  currentUser?: { name: string; role: string } | null;
 }
 
 export default function OvertimeRequestDialog({
   isOpen,
   onOpenChange,
   onSubmitRequest,
-  editingRequest, 
+  editingRequest,
+  currentUser,
 }: OvertimeRequestDialogProps) {
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      reasonStub: editingRequest?.reasonStub || '',
-      position: editingRequest?.position || '',
-      prestationTypeNotes: editingRequest?.prestationTypeNotes || '',
-      overtimeDetailsNotes: editingRequest?.overtimeDetailsNotes || '',
-      totalOvertimeHours: editingRequest?.totalOvertimeHours || '',
+      reasonStub: '',
+      position: '',
+      prestationTypeNotes: '',
+      overtimeDetailsNotes: '',
+      totalOvertimeHours: '',
     },
   });
 
   React.useEffect(() => {
     if (isOpen) {
-      form.reset({
-        reasonStub: editingRequest?.reasonStub || '',
-        position: editingRequest?.position || '',
-        prestationTypeNotes: editingRequest?.prestationTypeNotes || '',
-        overtimeDetailsNotes: editingRequest?.overtimeDetailsNotes || '',
-        totalOvertimeHours: editingRequest?.totalOvertimeHours || '',
-      });
+      if (editingRequest) {
+        form.reset({
+          reasonStub: editingRequest.reasonStub || '',
+          position: editingRequest.position || currentUser?.role || '', // Pre-fill with current user role if editing and no position stored
+          prestationTypeNotes: editingRequest.prestationTypeNotes || '',
+          overtimeDetailsNotes: editingRequest.overtimeDetailsNotes || '',
+          totalOvertimeHours: editingRequest.totalOvertimeHours || '',
+        });
+      } else {
+        form.reset({
+          reasonStub: '',
+          position: currentUser?.role || '', // Pre-fill for new request
+          prestationTypeNotes: '',
+          overtimeDetailsNotes: '',
+          totalOvertimeHours: '',
+        });
+      }
     }
-  }, [isOpen, editingRequest, form]);
+  }, [isOpen, editingRequest, currentUser, form]);
 
   const handleSubmit = (data: FormData) => {
     onSubmitRequest(data);
@@ -74,6 +87,13 @@ export default function OvertimeRequestDialog({
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 py-4">
             <ScrollArea className="h-[60vh] pr-5">
               <div className="space-y-4">
+                <FormItem>
+                  <FormLabel>Nom et prénom du salarié</FormLabel>
+                  <FormControl>
+                    <Input value={currentUser?.name || editingRequest?.employeeName || "Non identifié"} disabled className="bg-muted/50" />
+                  </FormControl>
+                </FormItem>
+
                 <FormField
                   control={form.control}
                   name="position"
@@ -81,7 +101,12 @@ export default function OvertimeRequestDialog({
                     <FormItem>
                       <FormLabel>Poste occupé à l'IME</FormLabel>
                       <FormControl>
-                        <Input placeholder="Ex: Éducateur spécialisé" {...field} />
+                        <Input
+                          placeholder="Ex: Éducateur spécialisé"
+                          {...field}
+                          disabled={!!currentUser?.role} // Disable if pre-filled from current user
+                          className={currentUser?.role ? "bg-muted/50" : ""}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

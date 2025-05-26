@@ -6,7 +6,7 @@ import { FileClock, PlusCircle, History, Eye, Trash2, Edit2 } from 'lucide-react
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { OvertimeRequestStub, OvertimeRequestStatus } from './types';
 import OvertimeRequestDialog from './components/OvertimeRequestDialog';
 import { useToast } from '@/hooks/use-toast';
@@ -25,22 +25,24 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import type { BrigadeMember } from '@/app/dashboard/time-tracking/types'; // Import BrigadeMember
 
-
-const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v2'; // Versioned key
+const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v2';
+const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
+const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
 export default function DeclarationHeurePage() {
   const [isClient, setIsClient] = useState(false);
   const [overtimeRequests, setOvertimeRequests] = useState<OvertimeRequestStub[]>([]);
+  const [brigadeMembers, setBrigadeMembers] = useState<BrigadeMember[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
-  // No editing for now, so editingRequest state can be removed if not used.
-  // const [editingRequest, setEditingRequest] = useState<OvertimeRequestStub | null>(null);
+  const [editingRequest, setEditingRequest] = useState<OvertimeRequestStub | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     setIsClient(true);
-    const username = localStorage.getItem('loggedInUsername');
+    const username = localStorage.getItem(LOGGED_IN_USERNAME_KEY);
     setLoggedInUsername(username);
   }, []);
 
@@ -49,11 +51,18 @@ export default function DeclarationHeurePage() {
       try {
         const storedRequests = localStorage.getItem(OVERTIME_REQUESTS_STORAGE_KEY);
         if (storedRequests) {
-          setOvertimeRequests(JSON.parse(storedRequests));
+          setOvertimeRequests(JSON.parse(storedRequests).map((req: any) => ({
+            ...req,
+            requestDate: req.requestDate || new Date().toISOString(), // Ensure requestDate exists
+          })));
+        }
+        const storedBrigadeMembers = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
+        if (storedBrigadeMembers) {
+          setBrigadeMembers(JSON.parse(storedBrigadeMembers));
         }
       } catch (e) {
-        console.error("Error loading overtime requests from localStorage", e);
-        toast({ title: "Erreur de chargement des demandes", variant: "destructive" });
+        console.error("Error loading data from localStorage", e);
+        toast({ title: "Erreur de chargement des données", variant: "destructive" });
       }
     }
   }, [isClient, toast]);
@@ -64,29 +73,64 @@ export default function DeclarationHeurePage() {
     }
   }, [overtimeRequests, isClient]);
 
-  const handleAddOvertimeRequest = useCallback((data: Partial<OvertimeRequestStub>) => {
+  const currentBrigadeMember = useMemo(() => {
+    if (loggedInUsername && brigadeMembers.length > 0) {
+      return brigadeMembers.find(bm => bm.name.toLowerCase() === loggedInUsername.toLowerCase());
+    }
+    return null;
+  }, [loggedInUsername, brigadeMembers]);
+
+  const handleAddOrUpdateOvertimeRequest = useCallback((
+    data: Omit<OvertimeRequestStub, 'id' | 'employeeName' | 'requestDate' | 'status'>
+  ) => {
     if (!loggedInUsername) {
       toast({ title: "Utilisateur non identifié", description: "Impossible de soumettre la demande.", variant: "destructive" });
       return;
     }
-    const newRequest: OvertimeRequestStub = {
-      id: `or_${Date.now()}`,
-      employeeName: loggedInUsername,
-      requestDate: new Date().toISOString(),
-      status: 'en_attente',
-      reasonStub: data.reasonStub || "Motif non spécifié", // Ensure reasonStub is always a string
-      position: data.position,
-      prestationTypeNotes: data.prestationTypeNotes,
-      overtimeDetailsNotes: data.overtimeDetailsNotes,
-      totalOvertimeHours: data.totalOvertimeHours,
-    };
-    setOvertimeRequests(prev => [newRequest, ...prev].sort((a,b) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime()));
-    toast({ title: "Demande Soumise", description: "Votre demande de dépassement d'horaire a été enregistrée." });
-  }, [loggedInUsername, toast]);
+    
+    const employeeNameToUse = currentBrigadeMember?.name || loggedInUsername;
+    // If form provides a position and it's different from currentBrigadeMember.role, use form's. Otherwise, use currentBrigadeMember.role.
+    const positionToUse = data.position || currentBrigadeMember?.role;
+
+
+    if (editingRequest) {
+      setOvertimeRequests(prev => prev.map(req => 
+        req.id === editingRequest.id 
+        ? { 
+            ...editingRequest, 
+            ...data,
+            position: positionToUse, // Ensure position is updated if changed, or keeps prefill
+            employeeName: employeeNameToUse, // Keep original employeeName if editing, though it should match
+          }
+        : req
+      ).sort((a,b) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime()));
+      toast({ title: "Demande Modifiée", description: "Votre demande de dépassement d'horaire a été mise à jour." });
+      setEditingRequest(null);
+    } else {
+      const newRequest: OvertimeRequestStub = {
+        id: `or_${Date.now()}`,
+        employeeName: employeeNameToUse,
+        requestDate: new Date().toISOString(),
+        status: 'en_attente',
+        reasonStub: data.reasonStub,
+        position: positionToUse,
+        prestationTypeNotes: data.prestationTypeNotes,
+        overtimeDetailsNotes: data.overtimeDetailsNotes,
+        totalOvertimeHours: data.totalOvertimeHours,
+      };
+      setOvertimeRequests(prev => [newRequest, ...prev].sort((a,b) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime()));
+      toast({ title: "Demande Soumise", description: "Votre demande de dépassement d'horaire a été enregistrée." });
+    }
+  }, [loggedInUsername, currentBrigadeMember, toast, editingRequest]);
   
   const handleDeleteRequest = (requestId: string) => {
     setOvertimeRequests(prev => prev.filter(req => req.id !== requestId));
     toast({ title: "Demande Supprimée", variant: "destructive" });
+  };
+
+  const handleOpenForm = (request?: OvertimeRequestStub) => {
+    setEditingRequest(request || null);
+    setIsFormOpen(true);
   };
 
   const getStatusBadgeVariant = (status: OvertimeRequestStatus) => {
@@ -105,7 +149,6 @@ export default function DeclarationHeurePage() {
       default: return 'En attente';
     }
   };
-
 
   if (!isClient) {
     return (
@@ -137,7 +180,7 @@ export default function DeclarationHeurePage() {
               Soumettez et suivez vos demandes de dépassement d'horaire.
             </CardDescription>
           </div>
-          <Button onClick={() => setIsFormOpen(true)}>
+          <Button onClick={() => handleOpenForm()}>
             <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande
           </Button>
         </CardHeader>
@@ -168,7 +211,10 @@ export default function DeclarationHeurePage() {
                       {req.overtimeDetailsNotes && <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground/80">Détail H.Supp:</span> {req.overtimeDetailsNotes}</p>}
                       {req.totalOvertimeHours && <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground/80">Total H.Supp:</span> {req.totalOvertimeHours}</p>}
                       <div className="mt-2 flex justify-end space-x-2 pt-1">
-                          {req.status === 'en_attente' && (
+                          <Button variant="outline" size="sm" className="text-xs" onClick={() => handleOpenForm(req)}>
+                            <Edit2 className="mr-1 h-3.5 w-3.5"/> Modifier
+                          </Button>
+                          {req.status === 'en_attente' && ( // Allow deletion only if pending
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button variant="destructive" size="sm" className="text-xs">
@@ -204,8 +250,10 @@ export default function DeclarationHeurePage() {
       <OvertimeRequestDialog
         isOpen={isFormOpen}
         onOpenChange={setIsFormOpen}
-        onSubmitRequest={handleAddOvertimeRequest}
-        // editingRequest={editingRequest} // Pass editingRequest for future edit functionality
+        onSubmitRequest={handleAddOrUpdateOvertimeRequest}
+        editingRequest={editingRequest}
+        currentUser={currentBrigadeMember ? { name: currentBrigadeMember.name, role: currentBrigadeMember.role } : 
+                     loggedInUsername ? {name: loggedInUsername, role: ''} : null}
       />
 
       <Card className="shadow-xl opacity-50 cursor-not-allowed">

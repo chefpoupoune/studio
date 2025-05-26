@@ -3,7 +3,7 @@ export type OvertimeRequestStatus = 'en_attente' | 'approuvee' | 'refusee';
 
 export interface OvertimeRequest {
   id: string;
-  employeeName: string; // Could be linked to BrigadeMember or logged-in user later
+  employeeName: string; 
   requestDate: string; // ISO string
   status: OvertimeRequestStatus;
   // --- Fields from the form ---
@@ -44,7 +44,7 @@ export interface OvertimeDayDetail {
 // Summary type for display, to be expanded as form grows
 export interface OvertimeRequestStub {
   id: string;
-  employeeName: string;
+  employeeName: string; // Made non-optional
   requestDate: string; // ISO String
   status: OvertimeRequestStatus;
   reasonStub: string; 
