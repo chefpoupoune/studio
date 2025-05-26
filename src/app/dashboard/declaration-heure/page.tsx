@@ -2,12 +2,12 @@
 "use client";
 
 import Link from 'next/link';
-import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CheckSquare, ListFilter, CalendarClock, Clock } from 'lucide-react'; // Added Clock
+import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CheckSquare, ListFilter, CalendarClock, Clock } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import type { OvertimeRequest, PrestationType } from './types'; // Make sure OvertimeRequest is the main type
+import type { OvertimeRequest, PrestationType } from './types'; 
 import { PRESTATION_TYPE_LABELS } from './types';
 import OvertimeRequestDialog from './components/OvertimeRequestDialog';
 import { useToast } from '@/hooks/use-toast';
@@ -79,7 +79,7 @@ export default function DeclarationHeurePage() {
           requestDate: req.requestDate || new Date().toISOString(),
           updatedAt: req.updatedAt || new Date().toISOString(),
           overtimeDetails: Array.isArray(req.overtimeDetails) 
-            ? req.overtimeDetails.map((d:any) => ({...d, date: d.date || new Date().toISOString() })) 
+            ? req.overtimeDetails.map((d:any) => ({...d, date: d.date || new Date().toISOString(), id: d.id || `detail_${Date.now()}_${Math.random().toString(36).substring(2,9)}` })) 
             : [],
           approvalStatus: req.approvalStatus || 'pending',
           prestationTypes: Array.isArray(req.prestationTypes) ? req.prestationTypes : [],
@@ -108,7 +108,7 @@ export default function DeclarationHeurePage() {
       usernameFromStorage = null;
       toast({ title: "Erreur de chargement des données", description: "Les données de déclaration d'heure ont été réinitialisées.", variant: "destructive" });
     } finally {
-      setOvertimeRequests(loadedRequests.sort((a: OvertimeRequest, b: OvertimeRequest) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime()));
+      setOvertimeRequests(loadedRequests.sort((a: OvertimeRequest, b: OvertimeRequest) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()));
       setBrigadeMembers(loadedBrigadeMembers);
       setLoggedInUsername(usernameFromStorage);
       setDataLoaded(true);
@@ -132,14 +132,14 @@ export default function DeclarationHeurePage() {
   }, [loggedInUsername, brigadeMembers]);
 
   const handleAddOrUpdateOvertimeRequest = useCallback((
-    data: Partial<Omit<OvertimeRequest, 'compensationType'>>
+    data: Partial<OvertimeRequest>
   ) => {
     if (!dataLoaded) {
       toast({ title: "Données non prêtes", description: "Veuillez patienter le chargement des données.", variant: "default" });
       return;
     }
 
-    const employeeNameToUse = editingRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername || "Système";
+    const employeeNameToUse = data.employeeName || editingRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername || "Système";
     const positionToUse = data.position || (editingRequest ? editingRequest.position : (currentBrigadeMember?.role || ''));
 
     let updatedRequestsList;
@@ -151,8 +151,8 @@ export default function DeclarationHeurePage() {
         ? { 
             ...req, 
             ...data,
-            employeeName: employeeNameToUse,
-            position: positionToUse,
+            employeeName: employeeNameToUse, // Preserve or update name
+            position: positionToUse, // Preserve or update position
             updatedAt: nowISO,
             reasonStub: data.reasonStub || req.reasonStub || "Non spécifié",
             approvalStatus: data.approvalStatus || req.approvalStatus || 'pending',
@@ -162,7 +162,7 @@ export default function DeclarationHeurePage() {
       toast({ title: "Demande Modifiée", description: "Votre demande de dépassement d'horaire a été mise à jour." });
     } else {
       const newRequest: OvertimeRequest = {
-        id: `or_${Date.now()}_${Math.random().toString(36).substring(2,9)}`, // More unique ID
+        id: `or_${Date.now()}_${Math.random().toString(36).substring(2,9)}`, 
         employeeName: employeeNameToUse,
         requestDate: nowISO,
         updatedAt: nowISO,
@@ -178,7 +178,7 @@ export default function DeclarationHeurePage() {
       toast({ title: "Demande Soumise", description: "Votre demande de dépassement d'horaire a été enregistrée." });
     }
     
-    updatedRequestsList.sort((a,b) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime());
+    updatedRequestsList.sort((a,b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
     setOvertimeRequests(updatedRequestsList);
     setEditingRequest(null); 
   }, [overtimeRequests, editingRequest, loggedInUsername, currentBrigadeMember, toast, dataLoaded]);
@@ -212,7 +212,9 @@ export default function DeclarationHeurePage() {
 
   const renderRequestList = (requestsToList: OvertimeRequest[], approverModeView: boolean) => (
     requestsToList.length === 0 ? (
-      <p className="text-muted-foreground text-center py-6">Aucune demande à afficher.</p>
+      <p className="text-muted-foreground text-center py-6">
+        {approverModeView ? "Aucune demande à approuver." : "Vous n'avez aucune demande de dépassement."}
+      </p>
     ) : (
       <ScrollArea className="h-[calc(100vh-26rem)] sm:h-[calc(100vh-24rem)]"> 
         <div className="space-y-3 pr-3">
@@ -270,7 +272,7 @@ export default function DeclarationHeurePage() {
 
                 <div className="mt-2 flex justify-end space-x-2 pt-1">
                     <Button variant="outline" size="sm" className="text-xs" onClick={() => handleOpenForm(req, approverModeView)}>
-                      <Edit2 className="mr-1 h-3.5 w-3.5"/> {approverModeView ? "Traiter" : "Modifier"}
+                      <Edit2 className="mr-1 h-3.5 w-3.5"/> {approverModeView ? "Traiter / Voir" : (req.approvalStatus === 'accepted' || req.approvalStatus === 'rejected' ? "Voir" : "Modifier")}
                     </Button>
                     {(req.approvalStatus === 'pending' || !req.approvalStatus) && !approverModeView && ( 
                       <AlertDialog>
@@ -312,7 +314,7 @@ export default function DeclarationHeurePage() {
 
   const visibleTabs = useMemo(() => {
     return declarationHeureTabsConfig.filter(tab => !tab.isChefOnly || isChef);
-  }, [isChef]); // Removed declarationHeureTabsConfig from dependency array as it's constant
+  }, [isChef, declarationHeureTabsConfig]); 
 
   const [activeTab, setActiveTab] = useState(visibleTabs.length > 0 ? visibleTabs[0].value : "");
   
@@ -347,7 +349,7 @@ export default function DeclarationHeurePage() {
                 <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande
               </Button>
             </CardHeader>
-            <CardContent>{renderRequestList(isChef ? allRequestsForChef : employeeRequests, false)}</CardContent>
+            <CardContent>{renderRequestList(employeeRequests, false)}</CardContent>
           </Card>
         );
       case "approval-requests":
@@ -441,3 +443,4 @@ export default function DeclarationHeurePage() {
   );
 }
 
+    

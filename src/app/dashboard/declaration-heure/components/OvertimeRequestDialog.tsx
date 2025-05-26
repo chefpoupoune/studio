@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react'; // Added useMemo
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -39,9 +39,11 @@ const formSchema = z.object({
   prestationTypeAutresDetail: z.string().max(100, "Détail max 100 caractères.").optional(),
   overtimeDetails: z.array(overtimeDetailSchema).optional().default([]),
   totalOvertimeHours: z.string().max(50, "Total heures max 50 caractères.").optional(),
+  
   employeeSignatureDate: z.date().optional().nullable(),
   directManagerSignatureDate: z.date().optional().nullable(),
   directorSignatureDate: z.date().optional().nullable(),
+  
   approvalStatus: z.enum(['pending', 'accepted', 'rejected']).default('pending'),
   rejectionReason: z.string().max(500, "Motif refus max 500 caractères.").optional(),
   decisionDate: z.date().optional().nullable(),
@@ -68,7 +70,7 @@ type FormDataType = z.infer<typeof formSchema>;
 export interface OvertimeRequestDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onSubmitRequest: (data: Partial<Omit<OvertimeRequest, 'compensationType'>>) => void;
+  onSubmitRequest: (data: Partial<OvertimeRequest>) => void;
   editingRequest?: OvertimeRequest | null;
   currentUser?: { name: string; role: string } | null;
   isApproverView?: boolean; 
@@ -113,6 +115,19 @@ export default function OvertimeRequestDialog({
   const approvalStatusWatched = useWatch({ control: form.control, name: "approvalStatus" });
   const prestationTypesWatched = useWatch({ control: form.control, name: "prestationTypes" });
 
+  const isFormLockedForEmployee = useMemo(() => {
+    return !isApproverView && editingRequest && (editingRequest.approvalStatus === 'accepted' || editingRequest.approvalStatus === 'rejected');
+  }, [isApproverView, editingRequest]);
+
+  const employeeFieldsActuallyDisabled = useMemo(() => {
+    return (isApproverView && !!editingRequest) || isFormLockedForEmployee;
+  }, [isApproverView, editingRequest, isFormLockedForEmployee]);
+
+  const directionFieldsActuallyDisabled = useMemo(() => {
+    return !isApproverView;
+  }, [isApproverView]);
+
+
   useEffect(() => {
     let totalMinutes = 0;
     if (overtimeDetailsWatched) {
@@ -127,10 +142,8 @@ export default function OvertimeRequestDialog({
 
   useEffect(() => {
     if (isOpen) {
-      let initialPosition = '';
-      if (editingRequest) {
-        initialPosition = editingRequest.position || '';
-      } else if (currentUser?.role) {
+      let initialPosition = editingRequest?.position || '';
+      if (!editingRequest && currentUser?.role) {
         initialPosition = currentUser.role;
       }
 
@@ -155,14 +168,12 @@ export default function OvertimeRequestDialog({
       if (!editingRequest) { // New request
         empSigDate = new Date();
       } else { // Editing existing request
-        if (!isApproverView && !empSigDate && (!editingRequest.employeeSignatureDate || !isValid(parseISO(editingRequest.employeeSignatureDate)))) {
-             // Only fill if it's truly empty or invalid
+        if (!isApproverView && (!empSigDate || !isValid(empSigDate))) {
             empSigDate = new Date();
         }
         if (isApproverView) {
-            // For approver view, pre-fill decision date and their own signature dates if empty
             if (!decDate && editingRequest.approvalStatus && editingRequest.approvalStatus !== 'pending') decDate = new Date();
-            if (!managerSigDate) managerSigDate = new Date();
+             if (!managerSigDate) managerSigDate = new Date();
             if (!directorSigDate) directorSigDate = new Date();
         }
       }
@@ -182,8 +193,7 @@ export default function OvertimeRequestDialog({
         decisionDate: decDate,
       });
       
-      // Recalculate total hours if editing
-      if (editingRequest?.overtimeDetails) {
+      if (editingRequest?.overtimeDetails || (!editingRequest && initialOvertimeDetails.length > 0) ) {
         let totalMinutes = 0;
         initialOvertimeDetails.forEach(detail => { 
           if (detail.startTime && detail.endTime) {
@@ -200,7 +210,6 @@ export default function OvertimeRequestDialog({
       if (!form.getValues('decisionDate')) {
         form.setValue('decisionDate', new Date());
       }
-      // If the current user is "Chef", auto-fill their signature dates if empty
       if (currentUser?.name === 'Chef') {
         if (!form.getValues('directManagerSignatureDate')) {
           form.setValue('directManagerSignatureDate', new Date());
@@ -214,8 +223,9 @@ export default function OvertimeRequestDialog({
 
 
   const handleSubmit = (data: FormDataType) => {
-    const submitData: Partial<Omit<OvertimeRequest, 'compensationType'>> = {
+    const submitData: Partial<OvertimeRequest> = {
       ...data,
+      employeeName: editingRequest?.employeeName || currentUser?.name || "Employé inconnu", // Ensure name is passed through
       employeeSignatureDate: data.employeeSignatureDate ? data.employeeSignatureDate.toISOString() : undefined,
       directManagerSignatureDate: data.directManagerSignatureDate ? data.directManagerSignatureDate.toISOString() : undefined,
       directorSignatureDate: data.directorSignatureDate ? data.directorSignatureDate.toISOString() : undefined,
@@ -261,9 +271,6 @@ export default function OvertimeRequestDialog({
     />
   );
 
-  const employeeFieldsDisabled = isApproverView && !!editingRequest; 
-  const directionFieldsDisabled = !isApproverView;
-
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl md:max-w-3xl">
@@ -274,6 +281,11 @@ export default function OvertimeRequestDialog({
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 py-4">
             <ScrollArea className="h-[70vh] pr-5">
               <div className="space-y-4">
+                {isFormLockedForEmployee && (
+                  <div className="p-3 bg-yellow-100 dark:bg-yellow-800/30 border border-yellow-300 dark:border-yellow-700 rounded-md text-sm text-yellow-700 dark:text-yellow-200">
+                    Cette demande a été traitée par la direction et ne peut plus être modifiée.
+                  </div>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormItem>
                     <FormLabel>Nom et prénom du salarié</FormLabel>
@@ -295,8 +307,8 @@ export default function OvertimeRequestDialog({
                               placeholder="Ex: Éducateur spécialisé"
                               {...field}
                               value={field.value || ''}
-                              disabled={employeeFieldsDisabled || (!editingRequest && !!currentUser?.role)}
-                              className={ (employeeFieldsDisabled || (!editingRequest && !!currentUser?.role)) ? "bg-muted/50" : ""}
+                              disabled={employeeFieldsActuallyDisabled || (!editingRequest && !!currentUser?.role)}
+                              className={ (employeeFieldsActuallyDisabled || (!editingRequest && !!currentUser?.role)) ? "bg-muted/50" : ""}
                             />
                           </FormControl>
                           <FormMessage />
@@ -327,7 +339,7 @@ export default function OvertimeRequestDialog({
                                         )
                                       )
                                 }}
-                                disabled={employeeFieldsDisabled}
+                                disabled={employeeFieldsActuallyDisabled}
                               />
                             </FormControl>
                             <FormLabel className="font-normal text-sm">{PRESTATION_TYPE_LABELS[typeKey]}</FormLabel>
@@ -341,7 +353,7 @@ export default function OvertimeRequestDialog({
                             name="prestationTypeAutresDetail"
                             render={({ field }) => (
                             <FormItem className="ml-7 mt-1">
-                                <FormControl><Input placeholder="Précisez..." {...field} value={field.value || ''} className="h-8 text-sm" disabled={employeeFieldsDisabled} /></FormControl>
+                                <FormControl><Input placeholder="Précisez..." {...field} value={field.value || ''} className="h-8 text-sm" disabled={employeeFieldsActuallyDisabled} /></FormControl>
                                 <FormMessage />
                             </FormItem>
                             )}
@@ -358,7 +370,7 @@ export default function OvertimeRequestDialog({
                     <FormItem>
                       <FormLabel>Motif de la demande</FormLabel>
                       <FormControl>
-                        <Textarea placeholder="Entrez le motif principal de votre demande..." {...field} rows={3} disabled={employeeFieldsDisabled}/>
+                        <Textarea placeholder="Entrez le motif principal de votre demande..." {...field} rows={3} disabled={employeeFieldsActuallyDisabled}/>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -381,7 +393,7 @@ export default function OvertimeRequestDialog({
                                   <Button
                                     variant={"outline"}
                                     className={cn("w-full pl-3 text-left font-normal h-9", !dateField.value && "text-muted-foreground", dateFieldState.error && "border-destructive")}
-                                    disabled={employeeFieldsDisabled}
+                                    disabled={employeeFieldsActuallyDisabled}
                                   >
                                     {dateField.value ? format(dateField.value, "dd/MM/yyyy", { locale: fr }) : <span>Choisir date</span>}
                                     <LucideCalendarIcon className="ml-auto h-4 w-4 opacity-50" />
@@ -389,7 +401,7 @@ export default function OvertimeRequestDialog({
                                 </FormControl>
                               </PopoverTrigger>
                               <PopoverContent className="w-auto p-0" align="start">
-                                <Calendar mode="single" selected={dateField.value} onSelect={dateField.onChange} initialFocus locale={fr} disabled={employeeFieldsDisabled}/>
+                                <Calendar mode="single" selected={dateField.value} onSelect={dateField.onChange} initialFocus locale={fr} disabled={employeeFieldsActuallyDisabled}/>
                               </PopoverContent>
                             </Popover>
                             <FormMessage className="text-xs"/>
@@ -402,7 +414,7 @@ export default function OvertimeRequestDialog({
                         render={({ field: timeField }) => (
                           <FormItem className="w-28">
                             <FormLabel className="text-xs">Début</FormLabel>
-                            <FormControl><Input type="time" {...timeField} value={timeField.value || ''} className="h-9" disabled={employeeFieldsDisabled}/></FormControl>
+                            <FormControl><Input type="time" {...timeField} value={timeField.value || ''} className="h-9" disabled={employeeFieldsActuallyDisabled}/></FormControl>
                             <FormMessage className="text-xs"/>
                           </FormItem>
                         )}
@@ -413,19 +425,19 @@ export default function OvertimeRequestDialog({
                         render={({ field: timeField }) => (
                           <FormItem className="w-28">
                             <FormLabel className="text-xs">Fin</FormLabel>
-                            <FormControl><Input type="time" {...timeField} value={timeField.value || ''} className="h-9" disabled={employeeFieldsDisabled}/></FormControl>
+                            <FormControl><Input type="time" {...timeField} value={timeField.value || ''} className="h-9" disabled={employeeFieldsActuallyDisabled}/></FormControl>
                             <FormMessage className="text-xs"/>
                           </FormItem>
                         )}
                       />
-                      {!employeeFieldsDisabled && (
+                      {!employeeFieldsActuallyDisabled && (
                         <Button type="button" variant="destructive" size="icon" onClick={() => remove(index)} className="h-9 w-9">
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       )}
                     </div>
                   ))}
-                  {!employeeFieldsDisabled && (
+                  {!employeeFieldsActuallyDisabled && (
                     <Button type="button" variant="outline" size="sm" onClick={() => append({ id: Math.random().toString(36).substring(2, 9), date: new Date(), startTime: '', endTime: '' })} className="mt-2" >
                       <PlusCircle className="mr-2 h-4 w-4" /> Ajouter une date/plage horaire
                     </Button>
@@ -449,9 +461,9 @@ export default function OvertimeRequestDialog({
                  <div className="space-y-2 border-t pt-3">
                     <h3 className="text-md font-semibold">Signatures</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {renderDateField('employeeSignatureDate', "Date signature Salarié(e)", employeeFieldsDisabled || (isApproverView && !!editingRequest?.employeeSignatureDate))}
-                        {renderDateField('directManagerSignatureDate', "Date signature Responsable Direct", directionFieldsDisabled || !isApproverView)}
-                        {renderDateField('directorSignatureDate', "Date signature Directeur", directionFieldsDisabled || !isApproverView)}
+                        {renderDateField('employeeSignatureDate', "Date signature Salarié(e)", employeeFieldsActuallyDisabled || (isApproverView && !!editingRequest?.employeeSignatureDate))}
+                        {renderDateField('directManagerSignatureDate', "Date signature Responsable Direct", directionFieldsActuallyDisabled)}
+                        {renderDateField('directorSignatureDate', "Date signature Directeur", directionFieldsActuallyDisabled)}
                     </div>
                 </div>
 
@@ -464,10 +476,10 @@ export default function OvertimeRequestDialog({
                       <FormItem className="space-y-1.5">
                         <FormLabel>Décision</FormLabel>
                         <FormControl>
-                          <RadioGroup onValueChange={field.onChange} value={field.value} className="flex space-x-4" disabled={directionFieldsDisabled}>
-                            <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="accepted" disabled={directionFieldsDisabled} /></FormControl><FormLabel className="font-normal text-sm">Acceptée</FormLabel></FormItem>
-                            <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="rejected" disabled={directionFieldsDisabled} /></FormControl><FormLabel className="font-normal text-sm">Refusée</FormLabel></FormItem>
-                             <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="pending" disabled={directionFieldsDisabled} /></FormControl><FormLabel className="font-normal text-sm">En attente</FormLabel></FormItem>
+                          <RadioGroup onValueChange={field.onChange} value={field.value} className="flex space-x-4" disabled={directionFieldsActuallyDisabled}>
+                            <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="accepted" disabled={directionFieldsActuallyDisabled} /></FormControl><FormLabel className="font-normal text-sm">Acceptée</FormLabel></FormItem>
+                            <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="rejected" disabled={directionFieldsActuallyDisabled} /></FormControl><FormLabel className="font-normal text-sm">Refusée</FormLabel></FormItem>
+                             <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="pending" disabled={directionFieldsActuallyDisabled} /></FormControl><FormLabel className="font-normal text-sm">En attente</FormLabel></FormItem>
                           </RadioGroup>
                         </FormControl>
                         <FormMessage />
@@ -476,10 +488,10 @@ export default function OvertimeRequestDialog({
                   />
                   {approvalStatusWatched === 'rejected' && (
                     <FormField control={form.control} name="rejectionReason" render={({ field }) => (
-                      <FormItem><FormLabel>Si refusée, motif :</FormLabel><FormControl><Textarea placeholder="Motif du refus..." {...field} value={field.value || ''} rows={2} disabled={directionFieldsDisabled}/></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel>Si refusée, motif :</FormLabel><FormControl><Textarea placeholder="Motif du refus..." {...field} value={field.value || ''} rows={2} disabled={directionFieldsActuallyDisabled}/></FormControl><FormMessage /></FormItem>
                     )} />
                   )}
-                  {renderDateField('decisionDate', "Date de la Décision", directionFieldsDisabled)}
+                  {renderDateField('decisionDate', "Date de la Décision", directionFieldsActuallyDisabled)}
                 </div>
               </div>
             </ScrollArea>
@@ -487,7 +499,14 @@ export default function OvertimeRequestDialog({
               <DialogClose asChild>
                 <Button type="button" variant="outline">Annuler</Button>
               </DialogClose>
-              <Button type="submit">{editingRequest ? "Enregistrer les Modifications" : "Soumettre la Demande"}</Button>
+              {!isFormLockedForEmployee && (
+                <Button type="submit">
+                  {editingRequest ? "Enregistrer les Modifications" : "Soumettre la Demande"}
+                </Button>
+              )}
+              {isFormLockedForEmployee && (
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Fermer</Button>
+              )}
             </DialogFooter>
           </form>
         </Form>
