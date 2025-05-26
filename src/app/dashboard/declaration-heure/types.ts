@@ -41,6 +41,20 @@ export interface OvertimeRequest {
 
   approvalStatus?: 'pending' | 'accepted' | 'rejected'; 
   rejectionReason?: string;
-  compensationType?: 'recovery' | 'payment' | null; // Allow null
+  // compensationType?: 'recovery' | 'payment' | null; // Removed field
   decisionDate?: string; 
+}
+
+// Kept for potential compatibility with list display if not immediately updated elsewhere
+export interface OvertimeRequestStub {
+  id: string;
+  employeeName: string;
+  requestDate: string; // ISO string
+  reasonStub: string;
+  position?: string;
+  prestationTypeNotes?: string;
+  overtimeDetailsNotes?: string;
+  totalOvertimeHours?: string;
+  status?: OvertimeRequestStatus; // Simple status for display
+  approvalStatus?: 'pending' | 'accepted' | 'rejected'; // More detailed status
 }

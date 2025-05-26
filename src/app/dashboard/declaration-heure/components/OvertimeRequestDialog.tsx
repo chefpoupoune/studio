@@ -44,7 +44,7 @@ const formSchema = z.object({
   directorSignatureDate: z.date().optional().nullable(),
   approvalStatus: z.enum(['pending', 'accepted', 'rejected']).default('pending'),
   rejectionReason: z.string().optional(),
-  compensationType: z.enum(['recovery', 'payment']).optional().nullable(),
+  // compensationType: z.enum(['recovery', 'payment']).optional().nullable(), // Removed
   decisionDate: z.date().optional().nullable(),
 }).refine(data => {
   if (data.prestationTypes?.includes('autres') && (!data.prestationTypeAutresDetail || data.prestationTypeAutresDetail.trim() === '')) {
@@ -69,10 +69,10 @@ type FormDataType = z.infer<typeof formSchema>;
 export interface OvertimeRequestDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onSubmitRequest: (data: Partial<OvertimeRequest>) => void;
+  onSubmitRequest: (data: Partial<Omit<OvertimeRequest, 'compensationType'>>) => void;
   editingRequest?: OvertimeRequest | null;
   currentUser?: { name: string; role: string } | null;
-  isApproverView?: boolean; // New prop
+  isApproverView?: boolean; 
 }
 
 export default function OvertimeRequestDialog({
@@ -81,7 +81,7 @@ export default function OvertimeRequestDialog({
   onSubmitRequest,
   editingRequest,
   currentUser,
-  isApproverView = false, // Default to false
+  isApproverView = false,
 }: OvertimeRequestDialogProps) {
   const form = useForm<FormDataType>({
     resolver: zodResolver(formSchema),
@@ -97,7 +97,7 @@ export default function OvertimeRequestDialog({
       directorSignatureDate: null,
       approvalStatus: 'pending',
       rejectionReason: '',
-      compensationType: null,
+      // compensationType: null, // Removed
       decisionDate: null,
     },
   });
@@ -161,7 +161,7 @@ export default function OvertimeRequestDialog({
         directorSignatureDate: editingRequest?.directorSignatureDate ? parseISO(editingRequest.directorSignatureDate) : null,
         approvalStatus: editingRequest?.approvalStatus || 'pending',
         rejectionReason: editingRequest?.rejectionReason || '',
-        compensationType: editingRequest?.compensationType || null,
+        // compensationType: editingRequest?.compensationType || null, // Removed
         decisionDate: editingRequest?.decisionDate ? parseISO(editingRequest.decisionDate) : null,
       });
       
@@ -178,7 +178,7 @@ export default function OvertimeRequestDialog({
   }, [isOpen, editingRequest, currentUser, form]);
 
   const handleSubmit = (data: FormDataType) => {
-    const submitData: Partial<OvertimeRequest> = {
+    const submitData: Partial<Omit<OvertimeRequest, 'compensationType'>> = {
       ...data,
       employeeSignatureDate: data.employeeSignatureDate ? data.employeeSignatureDate.toISOString() : undefined,
       directManagerSignatureDate: data.directManagerSignatureDate ? data.directManagerSignatureDate.toISOString() : undefined,
@@ -190,7 +190,7 @@ export default function OvertimeRequestDialog({
         startTime: detail.startTime,
         endTime: detail.endTime,
       })),
-      compensationType: data.compensationType || undefined, // Store undefined if null
+      // compensationType removed
     };
     onSubmitRequest(submitData);
     onOpenChange(false);
@@ -444,22 +444,7 @@ export default function OvertimeRequestDialog({
                       <FormItem><FormLabel>Si refusée, motif :</FormLabel><FormControl><Textarea placeholder="Motif du refus..." {...field} value={field.value || ''} rows={2} disabled={directionFieldsDisabled}/></FormControl><FormMessage /></FormItem>
                     )} />
                   )}
-                  <FormField
-                    control={form.control}
-                    name="compensationType"
-                    render={({ field }) => (
-                      <FormItem className="space-y-1.5">
-                        <FormLabel>Compensation</FormLabel>
-                        <FormControl>
-                          <RadioGroup onValueChange={field.onChange} value={field.value || undefined} className="flex space-x-4" disabled={directionFieldsDisabled}>
-                            <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="recovery" disabled={directionFieldsDisabled}/></FormControl><FormLabel className="font-normal text-sm">Récupération</FormLabel></FormItem>
-                            <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="payment" disabled={directionFieldsDisabled}/></FormControl><FormLabel className="font-normal text-sm">Paiement</FormLabel></FormItem>
-                          </RadioGroup>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {/* Compensation Type Removed */}
                    {renderDateField('decisionDate', "Date de la Décision", directionFieldsDisabled)}
                 </div>
               </div>

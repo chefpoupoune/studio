@@ -2,12 +2,12 @@
 "use client";
 
 import Link from 'next/link';
-import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CheckSquare, ListFilter, CalendarClock, Clock } from 'lucide-react'; // Added CalendarClock, Clock
+import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CheckSquare, ListFilter, CalendarClock } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import type { OvertimeRequest, PrestationType } from './types';
+import type { OvertimeRequest, PrestationType } from './types'; // Make sure OvertimeRequest is the main type
 import { PRESTATION_TYPE_LABELS } from './types';
 import OvertimeRequestDialog from './components/OvertimeRequestDialog';
 import { useToast } from '@/hooks/use-toast';
@@ -22,7 +22,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger, // Added this import
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -33,7 +33,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 
-const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v4';
+const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v5'; // Incremented version
 const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
@@ -41,7 +41,6 @@ interface DeclarationHeureTab {
   value: string;
   label: string;
   Icon: React.ElementType;
-  component: React.ReactNode;
   isChefOnly?: boolean;
 }
 
@@ -65,7 +64,7 @@ export default function DeclarationHeurePage() {
 
   useEffect(() => {
     if (!isClient) return;
-    console.log("[DeclarationHeurePage LOAD] Attempting to load data...");
+    setDataLoaded(false);
     let loadedRequests: OvertimeRequest[] = [];
     let loadedBrigadeMembers: BrigadeMember[] = [];
     let usernameFromStorage: string | null = null;
@@ -73,39 +72,32 @@ export default function DeclarationHeurePage() {
     try {
       const storedRequestsRaw = localStorage.getItem(OVERTIME_REQUESTS_STORAGE_KEY);
       if (storedRequestsRaw) {
-        console.log("[DeclarationHeurePage LOAD] Found stored requests.");
         loadedRequests = JSON.parse(storedRequestsRaw).map((req: any) => ({
           ...req,
-          id: req.id || `or_${Date.now()}_${Math.random().toString(36).substring(2,9)}`, // Ensure ID
+          id: req.id || `or_${Date.now()}_${Math.random().toString(36).substring(2,9)}`, 
           requestDate: req.requestDate || new Date().toISOString(),
           updatedAt: req.updatedAt || new Date().toISOString(),
           overtimeDetails: Array.isArray(req.overtimeDetails) 
             ? req.overtimeDetails.map((d:any) => ({...d, date: d.date || new Date().toISOString() })) 
             : [],
-          approvalStatus: req.approvalStatus || req.status || 'pending',
+          approvalStatus: req.approvalStatus || 'pending',
           prestationTypes: Array.isArray(req.prestationTypes) ? req.prestationTypes : [],
-          compensationType: req.compensationType === undefined ? null : req.compensationType, // Ensure null if undefined
+          // compensationType: req.compensationType === undefined ? null : req.compensationType, // Removed
         }));
       } else {
-        console.log("[DeclarationHeurePage LOAD] No stored requests found, defaulting to empty array.");
         loadedRequests = [];
       }
 
       const storedBrigadeMembersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
       if (storedBrigadeMembersRaw) {
-        console.log("[DeclarationHeurePage LOAD] Found stored brigade members.");
         loadedBrigadeMembers = JSON.parse(storedBrigadeMembersRaw);
       } else {
-        console.log("[DeclarationHeurePage LOAD] No stored brigade members found.");
         loadedBrigadeMembers = [];
       }
-
       usernameFromStorage = localStorage.getItem(LOGGED_IN_USERNAME_KEY);
-      console.log("[DeclarationHeurePage LOAD] Logged in username from storage:", usernameFromStorage);
-
     } catch (e) {
       console.error("[DeclarationHeurePage LOAD] Error loading data from localStorage", e);
-      localStorage.removeItem(OVERTIME_REQUESTS_STORAGE_KEY); // Clear potentially corrupted data
+      localStorage.removeItem(OVERTIME_REQUESTS_STORAGE_KEY); 
       loadedRequests = [];
       loadedBrigadeMembers = [];
       usernameFromStorage = null;
@@ -115,17 +107,12 @@ export default function DeclarationHeurePage() {
       setBrigadeMembers(loadedBrigadeMembers);
       setLoggedInUsername(usernameFromStorage);
       setDataLoaded(true);
-      console.log("[DeclarationHeurePage LOAD] Data loading complete. dataLoaded set to true.");
     }
   }, [isClient, toast]);
 
   useEffect(() => {
-    if (isClient && dataLoaded) { // Only save if client and initial data has been loaded/attempted
-      console.log(`[DeclarationHeurePage SAVE] Attempting to save ${overtimeRequests.length} requests to localStorage.`);
+    if (isClient && dataLoaded) { 
       localStorage.setItem(OVERTIME_REQUESTS_STORAGE_KEY, JSON.stringify(overtimeRequests));
-      console.log("[DeclarationHeurePage SAVE] Requests saved.");
-    } else {
-      console.log(`[DeclarationHeurePage SAVE] Save skipped. isClient: ${isClient}, dataLoaded: ${dataLoaded}`);
     }
   }, [overtimeRequests, isClient, dataLoaded]);
 
@@ -137,7 +124,7 @@ export default function DeclarationHeurePage() {
   }, [loggedInUsername, brigadeMembers]);
 
   const handleAddOrUpdateOvertimeRequest = useCallback((
-    data: Partial<OvertimeRequest>
+    data: Partial<Omit<OvertimeRequest, 'compensationType'>>
   ) => {
     if (!dataLoaded) {
       toast({ title: "Données non prêtes", description: "Veuillez patienter le chargement des données.", variant: "default" });
@@ -145,10 +132,10 @@ export default function DeclarationHeurePage() {
     }
 
     const employeeNameToUse = editingRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername || "Système";
-    // Position should be taken from form data if it exists, otherwise default or existing
     const positionToUse = data.position || (editingRequest ? editingRequest.position : (currentBrigadeMember?.role || ''));
 
     let updatedRequestsList;
+    const nowISO = new Date().toISOString();
 
     if (editingRequest) {
       updatedRequestsList = overtimeRequests.map(req => 
@@ -156,9 +143,9 @@ export default function DeclarationHeurePage() {
         ? { 
             ...req, 
             ...data,
-            employeeName: employeeNameToUse, // Ensure employeeName is consistent
-            position: positionToUse,         // Ensure position is updated correctly
-            updatedAt: new Date().toISOString(),
+            employeeName: employeeNameToUse,
+            position: positionToUse,
+            updatedAt: nowISO,
             approvalStatus: data.approvalStatus || req.approvalStatus || 'pending',
           } as OvertimeRequest
         : req
@@ -168,24 +155,23 @@ export default function DeclarationHeurePage() {
       const newRequest: OvertimeRequest = {
         id: `or_${Date.now()}_${Math.random().toString(36).substring(2,9)}`,
         employeeName: employeeNameToUse,
-        requestDate: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        requestDate: nowISO,
+        updatedAt: nowISO,
         approvalStatus: data.approvalStatus || 'pending',
         reasonStub: data.reasonStub || "Non spécifié",
         ...data,
         position: positionToUse,
         overtimeDetails: data.overtimeDetails || [],
         prestationTypes: data.prestationTypes || [],
-        prestationTypeAutresDetail: data.prestationTypeAutresDetail || '', // ensure string default
+        prestationTypeAutresDetail: data.prestationTypeAutresDetail || '',
       } as OvertimeRequest; 
       updatedRequestsList = [newRequest, ...overtimeRequests];
       toast({ title: "Demande Soumise", description: "Votre demande de dépassement d'horaire a été enregistrée." });
     }
     
-    // Ensure sorting before setting state
     updatedRequestsList.sort((a,b) => parseISO(b.requestDate).getTime() - parseISO(a.requestDate).getTime());
     setOvertimeRequests(updatedRequestsList);
-    setEditingRequest(null); // Clear editing state
+    setEditingRequest(null); 
   }, [overtimeRequests, editingRequest, loggedInUsername, currentBrigadeMember, toast, dataLoaded]);
   
   const handleDeleteRequest = (requestId: string) => {
@@ -269,7 +255,7 @@ export default function DeclarationHeurePage() {
                   <div className="border-t mt-2 pt-1">
                     <p className="font-medium text-foreground/80">Décision Direction:</p>
                     {req.approvalStatus === 'rejected' && req.rejectionReason && <p>Motif refus: {req.rejectionReason}</p>}
-                    {req.compensationType && <p>Compensation: {req.compensationType === 'recovery' ? 'Récupération' : 'Paiement'}</p>}
+                    {/* Compensation Type display removed */}
                     {req.decisionDate && isValid(parseISO(req.decisionDate)) && <p>Date Décision: {format(parseISO(req.decisionDate), "dd/MM/yyyy", {locale:fr})}</p>}
                   </div>
                 )}
@@ -311,35 +297,9 @@ export default function DeclarationHeurePage() {
   }, [isClient, overtimeRequests, dataLoaded]);
 
   const declarationHeureTabsConfig: DeclarationHeureTab[] = [
-    { value: "my-requests", label: "Mes Demandes", Icon: History, component: (
-      <Card className="shadow-xl">
-        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-          <div>
-            <CardTitle>Mes Demandes de Dépassement d'Horaire</CardTitle>
-            <CardDescription>Soumettez et suivez vos demandes.</CardDescription>
-          </div>
-          <Button onClick={() => handleOpenForm(undefined, false)} disabled={!dataLoaded || (!isChef && !currentBrigadeMember)}>
-            <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande
-          </Button>
-        </CardHeader>
-        <CardContent>{renderRequestList(isChef ? allRequestsForChef : employeeRequests, false)}</CardContent>
-      </Card>
-    )},
-    { value: "approval-requests", label: "Approbation Demandes", Icon: CheckSquare, component: (
-      <Card className="shadow-xl">
-        <CardHeader>
-          <CardTitle>Approbation des Demandes de Dépassement</CardTitle>
-          <CardDescription>Traitez les demandes soumises par les employés.</CardDescription>
-        </CardHeader>
-        <CardContent>{renderRequestList(allRequestsForChef, true)}</CardContent>
-      </Card>
-    ), isChefOnly: true},
-    { value: "absence-requests", label: "Demandes d'Absence (À Venir)", Icon: ListFilter, component: (
-      <Card className="shadow-xl opacity-50 cursor-not-allowed">
-        <CardHeader><CardTitle>Demandes d'Absence</CardTitle><CardDescription>Soumettez et suivez vos demandes d'absence.</CardDescription></CardHeader>
-        <CardContent><p className="text-muted-foreground text-center py-6">Le module de demande d'absence sera développé prochainement.</p></CardContent>
-      </Card>
-    )},
+    { value: "my-requests", label: "Mes Demandes", Icon: History },
+    { value: "approval-requests", label: "Approbation Demandes", Icon: CheckSquare, isChefOnly: true },
+    { value: "absence-requests", label: "Demandes d'Absence (À Venir)", Icon: ListFilter },
   ];
 
   const visibleTabs = useMemo(() => {
@@ -364,6 +324,45 @@ export default function DeclarationHeurePage() {
       </div>
     );
   }
+  
+  const getTabContent = () => {
+    switch (activeTab) {
+      case "my-requests":
+        return (
+          <Card className="shadow-xl">
+            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <div>
+                <CardTitle>Mes Demandes de Dépassement d'Horaire</CardTitle>
+                <CardDescription>Soumettez et suivez vos demandes.</CardDescription>
+              </div>
+              <Button onClick={() => handleOpenForm(undefined, false)} disabled={!dataLoaded || (!currentBrigadeMember && !isChef)}>
+                <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande
+              </Button>
+            </CardHeader>
+            <CardContent>{renderRequestList(isChef ? allRequestsForChef : employeeRequests, false)}</CardContent>
+          </Card>
+        );
+      case "approval-requests":
+        return isChef ? (
+          <Card className="shadow-xl">
+            <CardHeader>
+              <CardTitle>Approbation des Demandes de Dépassement</CardTitle>
+              <CardDescription>Traitez les demandes soumises par les employés.</CardDescription>
+            </CardHeader>
+            <CardContent>{renderRequestList(allRequestsForChef, true)}</CardContent>
+          </Card>
+        ) : null;
+      case "absence-requests":
+        return (
+          <Card className="shadow-xl opacity-50 cursor-not-allowed">
+            <CardHeader><CardTitle>Demandes d'Absence</CardTitle><CardDescription>Soumettez et suivez vos demandes d'absence.</CardDescription></CardHeader>
+            <CardContent><p className="text-muted-foreground text-center py-6">Le module de demande d'absence sera développé prochainement.</p></CardContent>
+          </Card>
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
     <div className="container mx-auto p-4 md:p-6 lg:p-8 min-h-screen">
@@ -412,7 +411,7 @@ export default function DeclarationHeurePage() {
         {visibleTabs.length > 0 ? (
             visibleTabs.map(tab => (
             <TabsContent key={tab.value} value={tab.value}>
-                {tab.component}
+                {getTabContent()}
             </TabsContent>
             ))
         ) : (
@@ -433,4 +432,3 @@ export default function DeclarationHeurePage() {
     </div>
   );
 }
-
