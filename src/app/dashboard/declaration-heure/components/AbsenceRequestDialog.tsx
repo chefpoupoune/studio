@@ -8,14 +8,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+// Select related imports are removed as absenceType is removed
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { useForm, Controller, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { AbsenceRequest, AbsenceType } from '../types';
-import { ABSENCE_TYPES, ABSENCE_TYPE_LABELS } from '../types';
+import type { AbsenceRequest } from '../types'; // AbsenceType removed from import
+// ABSENCE_TYPES, ABSENCE_TYPE_LABELS removed
 import { cn } from '@/lib/utils';
 import { format, parseISO, isValid, differenceInCalendarDays, addDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -23,10 +23,11 @@ import { CalendarIcon as LucideCalendarIcon } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 const absenceFormSchema = z.object({
-  absenceType: z.custom<AbsenceType>((val) => ABSENCE_TYPES.includes(val as AbsenceType), "Type d'absence invalide."),
-  absenceTypeAutresDetail: z.string().max(100, "Détail max 100 caractères.").optional(),
+  // absenceType: z.custom<AbsenceType>((val) => ABSENCE_TYPES.includes(val as AbsenceType), "Type d'absence invalide."), // Removed
+  // absenceTypeAutresDetail: z.string().max(100, "Détail max 100 caractères.").optional(), // Removed
   startDate: z.date({ required_error: "Date de début requise." }),
   endDate: z.date({ required_error: "Date de fin requise." }),
+  hoursPerDay: z.coerce.number().min(0.25, "Minimum 0.25 heures.").max(12, "Maximum 12 heures.").optional(), // Added
   reason: z.string().max(500, "Motif max 500 caractères.").optional(),
   position: z.string().optional(), 
 
@@ -39,15 +40,17 @@ const absenceFormSchema = z.object({
   approvalStatus: z.enum(['pending', 'accepted', 'rejected']).default('pending'),
   rejectionReason: z.string().max(500, "Motif refus max 500 caractères.").optional(),
   decisionDate: z.date().optional().nullable(),
-}).refine(data => {
-    if (data.absenceType === 'Autre' && (!data.absenceTypeAutresDetail || data.absenceTypeAutresDetail.trim() === '')) {
-        return false;
-    }
-    return true;
-}, {
-    message: "Veuillez préciser le type d'absence pour 'Autre'.",
-    path: ['absenceTypeAutresDetail'],
-}).refine(data => data.endDate >= data.startDate, {
+})
+// .refine(data => { // Refine for absenceTypeAutresDetail removed
+//     if (data.absenceType === 'Autre' && (!data.absenceTypeAutresDetail || data.absenceTypeAutresDetail.trim() === '')) {
+//         return false;
+//     }
+//     return true;
+// }, {
+//     message: "Veuillez préciser le type d'absence pour 'Autre'.",
+//     path: ['absenceTypeAutresDetail'],
+// })
+.refine(data => data.endDate >= data.startDate, {
     message: "La date de fin ne peut être antérieure à la date de début.",
     path: ['endDate'],
 }).refine(data => {
@@ -83,10 +86,11 @@ export default function AbsenceRequestDialog({
   const form = useForm<AbsenceFormData>({
     resolver: zodResolver(absenceFormSchema),
     defaultValues: {
-      absenceType: 'CP',
-      absenceTypeAutresDetail: '',
+      // absenceType: 'CP', // Removed
+      // absenceTypeAutresDetail: '', // Removed
+      hoursPerDay: undefined, // Added
       startDate: new Date(),
-      endDate: addDays(new Date(),0), // Default to 0 days difference (1 day total)
+      endDate: addDays(new Date(),0), 
       reason: '',
       position: '',
       employeeSignatureDate: null,
@@ -98,7 +102,7 @@ export default function AbsenceRequestDialog({
     },
   });
 
-  const absenceTypeWatched = form.watch('absenceType');
+  // const absenceTypeWatched = form.watch('absenceType'); // Removed
   const approvalStatusWatched = useWatch({ control: form.control, name: "approvalStatus" });
   const formStartDate = form.watch('startDate');
   const formEndDate = form.watch('endDate');
@@ -110,7 +114,6 @@ export default function AbsenceRequestDialog({
         const days = differenceInCalendarDays(formEndDate, formStartDate) + 1;
         setDisplayedNumberOfDays(`${days} jour(s)`);
       } else {
-        // If end date is invalid or before start, consider it as 1 day from start date for display
         setDisplayedNumberOfDays('1 jour(s)');
       }
     } else {
@@ -146,12 +149,9 @@ export default function AbsenceRequestDialog({
       const defaultStartDate = new Date();
       const defaultEndDate = addDays(new Date(), 0);
 
-      if (!editingRequest) { // New request
+      if (!editingRequest) { 
         empSigDate = new Date();
-        if (isApproverView && currentUser?.name.toLowerCase() === 'chef') {
-            // No auto-setting for decisionDate or signatures on new request even for chef
-        }
-      } else { // Editing existing request
+      } else { 
           if (!isApproverView && !empSigDate) {
               empSigDate = new Date();
           }
@@ -165,8 +165,9 @@ export default function AbsenceRequestDialog({
       }
 
       form.reset({
-        absenceType: editingRequest?.absenceType || 'CP',
-        absenceTypeAutresDetail: editingRequest?.absenceTypeAutresDetail || '',
+        // absenceType: editingRequest?.absenceType || 'CP', // Removed
+        // absenceTypeAutresDetail: editingRequest?.absenceTypeAutresDetail || '', // Removed
+        hoursPerDay: editingRequest?.hoursPerDay ?? undefined, // Added
         startDate: editingRequest?.startDate && isValid(parseISO(editingRequest.startDate)) ? parseISO(editingRequest.startDate) : defaultStartDate,
         endDate: editingRequest?.endDate && isValid(parseISO(editingRequest.endDate)) ? parseISO(editingRequest.endDate) : defaultEndDate,
         reason: editingRequest?.reason || '',
@@ -204,6 +205,7 @@ export default function AbsenceRequestDialog({
         startDate: format(data.startDate, 'yyyy-MM-dd'),
         endDate: format(data.endDate, 'yyyy-MM-dd'),
         numberOfDays: calculatedNumberOfDays,
+        hoursPerDay: data.hoursPerDay, // Added
         employeeSignatureDate: data.employeeSignatureDate ? data.employeeSignatureDate.toISOString() : null,
         directManagerSignatureDate: data.directManagerSignatureDate ? data.directManagerSignatureDate.toISOString() : null,
         directorSignatureDate: data.directorSignatureDate ? data.directorSignatureDate.toISOString() : null,
@@ -283,38 +285,31 @@ export default function AbsenceRequestDialog({
                     )} />
                 </div>
 
-                <FormField control={form.control} name="absenceType" render={({ field }) => (
-                    <FormItem>
-                    <FormLabel>Type d'Absence</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value} disabled={employeeFieldsActuallyDisabled}>
-                        <FormControl><SelectTrigger><SelectValue placeholder="Choisir un type..." /></SelectTrigger></FormControl>
-                        <SelectContent>
-                        {ABSENCE_TYPES.map(type => (
-                            <SelectItem key={type} value={type}>{ABSENCE_TYPE_LABELS[type]}</SelectItem>
-                        ))}
-                        </SelectContent>
-                    </Select>
-                    <FormMessage />
-                    </FormItem>
-                )} />
-                {absenceTypeWatched === 'Autre' && (
-                    <FormField control={form.control} name="absenceTypeAutresDetail" render={({ field }) => (
-                        <FormItem><FormLabel>Préciser "Autre"</FormLabel><FormControl><Input placeholder="Précisez le type d'absence..." {...field} value={field.value || ''} disabled={employeeFieldsActuallyDisabled} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                )}
+                {/* Absence Type Select Removed */}
+                {/* Absence Type Autres Detail Removed */}
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {renderDateField("startDate", "Date de Début", employeeFieldsActuallyDisabled)}
                     {renderDateField("endDate", "Date de Fin", employeeFieldsActuallyDisabled)}
                 </div>
-                <FormItem>
-                    <FormLabel>Nombre de jours d'absence</FormLabel>
-                    <Input 
-                        value={displayedNumberOfDays} 
-                        disabled 
-                        className="bg-muted/50" 
-                    />
-                </FormItem>
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <FormItem>
+                        <FormLabel>Nombre de jours d'absence</FormLabel>
+                        <Input 
+                            value={displayedNumberOfDays} 
+                            disabled 
+                            className="bg-muted/50" 
+                        />
+                    </FormItem>
+                    <FormField control={form.control} name="hoursPerDay" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Nombre d'heures par jour d'absence</FormLabel>
+                            <FormControl><Input type="number" step="0.25" placeholder="Ex: 7.5" {...field} value={field.value ?? ''} disabled={employeeFieldsActuallyDisabled} /></FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )} />
+                </div>
+
 
                 <FormField control={form.control} name="reason" render={({ field }) => (
                     <FormItem>
@@ -374,5 +369,3 @@ export default function AbsenceRequestDialog({
     </Dialog>
   );
 }
-
-    

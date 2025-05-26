@@ -2,13 +2,13 @@
 "use client";
 
 import Link from 'next/link';
-import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CheckSquare, ListFilter, Clock, CalendarOff, FileText as PdfFileTextIcon, MailQuestion } from 'lucide-react'; 
+import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CheckSquare, ListFilter, Clock, CalendarOff, FileText as PdfFileTextIcon, MailQuestion, CalendarClock } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import type { OvertimeRequest, PrestationType, AbsenceRequest, AbsenceType } from './types'; 
-import { PRESTATION_TYPE_LABELS, ABSENCE_TYPE_LABELS, ABSENCE_TYPES } from './types';
+import type { OvertimeRequest, PrestationType, AbsenceRequest } from './types'; // AbsenceType removed
+import { PRESTATION_TYPE_LABELS } from './types'; // ABSENCE_TYPE_LABELS, ABSENCE_TYPES removed
 import OvertimeRequestDialog from './components/OvertimeRequestDialog';
 import AbsenceRequestDialog from './components/AbsenceRequestDialog';
 import { useToast } from '@/hooks/use-toast';
@@ -41,7 +41,7 @@ interface jsPDFWithAutoTable extends jsPDF {
 }
 
 const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v5';
-const ABSENCE_REQUESTS_STORAGE_KEY = 'declaration_heure_absence_requests_v2'; // Version up for new fields
+const ABSENCE_REQUESTS_STORAGE_KEY = 'declaration_heure_absence_requests_v3'; // Version up for new fields
 const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
@@ -94,6 +94,7 @@ export default function DeclarationHeurePage() {
           prestationTypeAutresDetail: req.prestationTypeAutresDetail || '', rejectionReason: req.rejectionReason || '',
           decisionDate: req.decisionDate || null, employeeSignatureDate: req.employeeSignatureDate || null,
           directManagerSignatureDate: req.directManagerSignatureDate || null, directorSignatureDate: req.directorSignatureDate || null,
+          // compensationType removed
         }));
         setOvertimeRequests(parsedOvertime.sort((a:OvertimeRequest,b:OvertimeRequest) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()));
       } else { setOvertimeRequests([]); }
@@ -103,10 +104,11 @@ export default function DeclarationHeurePage() {
         const parsedAbsence = JSON.parse(storedAbsenceRaw).map((req: any) => ({
           ...req, id: req.id || `abs_${Date.now()}_${Math.random().toString(36).substring(2,9)}`, requestDate: req.requestDate || new Date().toISOString(), updatedAt: req.updatedAt || new Date().toISOString(),
           startDate: req.startDate || new Date().toISOString(), endDate: req.endDate || new Date(new Date().setDate(new Date().getDate() + 1)).toISOString(),
-          approvalStatus: req.approvalStatus || 'pending', // Map old status if exists, or default
-          // Ensure all new fields have defaults if not present
+          approvalStatus: req.approvalStatus || 'pending', 
           position: req.position || '',
-          absenceTypeAutresDetail: req.absenceTypeAutresDetail || '',
+          // absenceType: req.absenceType || 'CP', // Removed
+          // absenceTypeAutresDetail: req.absenceTypeAutresDetail || '', // Removed
+          hoursPerDay: req.hoursPerDay ?? undefined, // Added
           numberOfDays: req.numberOfDays || (req.startDate && req.endDate && isValid(parseISO(req.startDate)) && isValid(parseISO(req.endDate)) ? differenceInCalendarDays(parseISO(req.endDate), parseISO(req.startDate)) + 1 : 1),
           employeeSignatureDate: req.employeeSignatureDate || null,
           directManagerSignatureDate: req.directManagerSignatureDate || null,
@@ -131,16 +133,18 @@ export default function DeclarationHeurePage() {
     } finally {
       setDataLoaded(true);
     }
-  }, [isClient, toast]);
+  }, [isClient, toast]); // Removed overtimeRequests, absenceRequests, brigadeMembers from deps
 
   useEffect(() => {
     if (isClient && dataLoaded) { 
+      console.log("[DeclarationHeurePage SAVE Overtime] Saving overtimeRequests:", overtimeRequests);
       localStorage.setItem(OVERTIME_REQUESTS_STORAGE_KEY, JSON.stringify(overtimeRequests));
     }
   }, [overtimeRequests, isClient, dataLoaded]);
 
   useEffect(() => {
     if (isClient && dataLoaded) {
+      console.log("[DeclarationHeurePage SAVE Absence] Saving absenceRequests:", absenceRequests);
       localStorage.setItem(ABSENCE_REQUESTS_STORAGE_KEY, JSON.stringify(absenceRequests));
     }
   }, [absenceRequests, isClient, dataLoaded]);
@@ -152,7 +156,6 @@ export default function DeclarationHeurePage() {
     return null;
   }, [loggedInUsername, brigadeMembers]);
 
-  // Overtime Handlers
   const handleAddOrUpdateOvertimeRequest = useCallback((
     data: Partial<Omit<OvertimeRequest, 'id' | 'employeeName' | 'requestDate' | 'updatedAt'>> & {id?: string}
   ) => {
@@ -178,6 +181,7 @@ export default function DeclarationHeurePage() {
         employeeName: employeeNameToUse, requestDate: nowISO, updatedAt: nowISO,
         reasonStub: data.reasonStub || "Non spécifié", approvalStatus: data.approvalStatus || 'pending',
         prestationTypes: data.prestationTypes && data.prestationTypes.length > 0 ? data.prestationTypes : ['logistique'],
+        prestationTypeAutresDetail: "logistique", // Defaulted to logistique
         ...data, position: positionToUse, overtimeDetails: data.overtimeDetails || [],
       } as OvertimeRequest; 
       updatedRequestsList = [newRequest, ...overtimeRequests];
@@ -199,7 +203,6 @@ export default function DeclarationHeurePage() {
     setIsOvertimeFormOpen(true);
   };
 
-  // Absence Handlers
   const handleAddOrUpdateAbsenceRequest = useCallback((
     data: Partial<Omit<AbsenceRequest, 'id' | 'employeeName' | 'requestDate' | 'updatedAt'>> & {id?: string}
   ) => {
@@ -221,8 +224,11 @@ export default function DeclarationHeurePage() {
             id: `abs_${Date.now()}_${Math.random().toString(36).substring(2,9)}`,
             employeeName: employeeNameToUse, position: positionToUse, requestDate: nowISO, updatedAt: nowISO,
             approvalStatus: data.approvalStatus || 'pending',
-            absenceType: data.absenceType!, startDate: data.startDate!, endDate: data.endDate!, 
-            reason: data.reason || '', absenceTypeAutresDetail: data.absenceTypeAutresDetail,
+            // absenceType: data.absenceType!, // Removed
+            // absenceTypeAutresDetail: data.absenceTypeAutresDetail, // Removed
+            hoursPerDay: data.hoursPerDay, // Added
+            startDate: data.startDate!, endDate: data.endDate!, 
+            reason: data.reason || '', 
             numberOfDays: data.numberOfDays, 
             employeeSignatureDate: data.employeeSignatureDate || null,
             directManagerSignatureDate: data.directManagerSignatureDate || null,
@@ -256,41 +262,6 @@ export default function DeclarationHeurePage() {
     switch (status) { case 'accepted': return 'Acceptée'; case 'rejected': return 'Refusée'; case 'pending': default: return 'En attente'; }
   };
 
-  const handleGenerateOvertimeRequestPdf = (request: OvertimeRequest) => {
-    const pdfSettings = getPdfLayoutSettings('overtime_request_form');
-    const doc = new jsPDF({ orientation: pdfSettings.orientation, unit: 'pt', format: pdfSettings.pageSize }) as jsPDFWithAutoTable;
-    doc.setFont(pdfSettings.fontFamily);
-    const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
-    let currentY = pdfSettings.marginTop;
-    if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { try { const imgProps = doc.getImageProperties(pdfSettings.logoUrl); const formatType = imgProps.fileType.toUpperCase(); const desiredHeight = 30; const imgWidth = (imgProps.width * desiredHeight) / imgProps.height; doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight); currentY += desiredHeight + 5; } catch(e){ console.error("Error drawing logo in PDF:", e); }}
-    if (pdfSettings.headerText) { const headerLines = pdfSettings.headerText.split('\n'); doc.setFontSize(pdfSettings.headerFontSize); headerLines.forEach(line => { doc.text(line, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize * 0.7 + 2; }); currentY += 5; }
-    doc.setFontSize(18); doc.text("DEMANDE DE DEPASSEMENT D'HORAIRE", doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' }); currentY += 25;
-    doc.setFontSize(pdfSettings.defaultFontSize); doc.text(`Nom et prénom du salarié : ${request.employeeName || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    doc.text(`Poste occupé à l'IME : ${request.position || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 20;
-    doc.text("Prestation correspondante :", pdfSettings.marginLeft, currentY); currentY += 15;
-    let prestationText = (request.prestationTypes || []).map(pt => PRESTATION_TYPE_LABELS[pt] || pt).join(', ');
-    if (request.prestationTypes?.includes('autres') && request.prestationTypeAutresDetail) { prestationText += ` (Précision : ${request.prestationTypeAutresDetail})`; }
-    doc.text(prestationText || "Logistique", pdfSettings.marginLeft + 10, currentY, { maxWidth: doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - 20 }); currentY += (doc.splitTextToSize(prestationText || "Logistique", doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - 20).length * (pdfSettings.defaultFontSize * 0.7)) + 5;
-    doc.text("Motif de la demande :", pdfSettings.marginLeft, currentY); currentY += 15; doc.text(request.reasonStub || 'N/A', pdfSettings.marginLeft + 10, currentY, { maxWidth: doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - 20 }); currentY += (doc.splitTextToSize(request.reasonStub || 'N/A', doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - 20).length * (pdfSettings.defaultFontSize * 0.7)) + 10;
-    if (request.overtimeDetails && request.overtimeDetails.length > 0) { doc.text("Détail des heures supplémentaires :", pdfSettings.marginLeft, currentY); currentY += 5; doc.autoTable({ startY: currentY, head: [['Date', 'Heure début', 'Heure fin']], body: request.overtimeDetails.map(d => [ d.date && isValid(parseISO(d.date)) ? format(parseISO(d.date), 'dd/MM/yyyy', { locale: fr }) : 'N/A', d.startTime || '-', d.endTime || '-', ]), theme: 'grid', styles: { fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily }, headStyles: { fillColor: hexToRgb(pdfSettings.primaryColor || '#CCCCCC') || [220,220,220], textColor: [0,0,0], fontSize: pdfSettings.tableHeaderFontSize }, margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight }, }); currentY = (doc as any).lastAutoTable.finalY + 10; }
-    doc.text(`Total des heures en plus de l'horaire prévu : ${request.totalOvertimeHours || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 20;
-    const sigDate = (dateStr: string | null | undefined) => dateStr && isValid(parseISO(dateStr)) ? format(parseISO(dateStr), "dd/MM/yyyy", { locale: fr }) : 'Non signé';
-    doc.text(`Salarié(e) le : ${sigDate(request.employeeSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 15; doc.text(`Le Responsable Direct le : ${sigDate(request.directManagerSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 15; doc.text(`Le Directeur le : ${sigDate(request.directorSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 25;
-    doc.setFont(undefined, 'bold'); doc.text("CADRE RESERVE A LA DIRECTION", pdfSettings.marginLeft, currentY); doc.setFont(undefined, 'normal'); currentY += 15; doc.text(`Acceptée / Refusée : ${getStatusLabel(request.approvalStatus)}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    if (request.approvalStatus === 'rejected' && request.rejectionReason) { doc.text(`Si refusée, motif : ${request.rejectionReason}`, pdfSettings.marginLeft, currentY); currentY += 15; }
-    doc.text(`Date : ${sigDate(request.decisionDate)}`, pdfSettings.marginLeft, currentY); currentY += 15; doc.text(`Signature de la Direction : `, pdfSettings.marginLeft, currentY); 
-    const pageCount = doc.internal.getNumberOfPages(); for (let i = 1; i <= pageCount; i++) { doc.setPage(i); if (pdfSettings.footerText) { let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', i.toString()).replace('{totalPages}', pageCount.toString()); doc.setFontSize(pdfSettings.footerFontSize); doc.text(footerStr, pdfSettings.marginLeft, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2)); }}
-    doc.save(`Demande_Depassement_${request.employeeName.replace(/\s+/g, '_')}_${format(parseISO(request.requestDate), "yyyy-MM-dd")}.pdf`);
-    toast({ title: "PDF Généré", description: `Le PDF pour la demande de ${request.employeeName} a été téléchargé.` });
-  };
-  
-  // Placeholder for absence PDF generation
-  const handleGenerateAbsenceRequestPdf = (request: AbsenceRequest) => {
-    // Similar logic to handleGenerateOvertimeRequestPdf will go here
-    toast({ title: "Fonctionnalité PDF Absence", description: "La génération de PDF pour les absences sera bientôt disponible.", variant: "default" });
-  };
-
-
   const renderOvertimeRequestList = (requestsToList: OvertimeRequest[], approverModeView: boolean) => (
     requestsToList.length === 0 ? (
       <p className="text-muted-foreground text-center py-6">
@@ -318,7 +289,7 @@ export default function DeclarationHeurePage() {
                 )}
                 {req.overtimeDetails && req.overtimeDetails.length > 0 && (
                   <div className="mt-1">
-                    <span className="font-medium text-foreground/80 flex items-center gap-1 mb-0.5"><Clock className="h-3 w-3"/>Détail H.Supp:</span>
+                    <span className="font-medium text-foreground/80 flex items-center gap-1 mb-0.5"><CalendarClock className="h-3 w-3"/>Détail H.Supp:</span>
                     <ul className="list-none pl-2 text-muted-foreground space-y-0.5">
                       {req.overtimeDetails.map((detail, index) => (
                         <li key={detail.id || index} className="flex items-center gap-1.5">
@@ -381,8 +352,8 @@ export default function DeclarationHeurePage() {
                 </div>
                 <CardDescription className="text-xs">
                   Demandé par: {req.employeeName} {req.position && `(${req.position})`}
-                  {` | Type: ${ABSENCE_TYPE_LABELS[req.absenceType] || req.absenceType}`}
-                  {req.absenceType === 'Autre' && req.absenceTypeAutresDetail && ` (${req.absenceTypeAutresDetail})`}
+                  {/* Removed AbsenceType display */}
+                  {req.hoursPerDay && ` | ${req.hoursPerDay}h/jour`}
                   {` | Le: ${format(parseISO(req.requestDate), "dd/MM/yy HH:mm", { locale: fr })}`}
                   {req.updatedAt && isValid(parseISO(req.updatedAt)) && ` | Modifié le: ${format(parseISO(req.updatedAt), "dd/MM/yy HH:mm", { locale: fr })}`}
                 </CardDescription>
@@ -442,10 +413,10 @@ export default function DeclarationHeurePage() {
   }, [isClient, absenceRequests, dataLoaded]);
   
   const declarationHeureTabsConfig: DeclarationHeureTab[] = [
-    { value: "my-overtime-requests", label: "Dépassement Horaire", Icon: History },
-    { value: "my-absence-requests", label: "Demandes Absence", Icon: CalendarOff },
+    { value: "my-overtime-requests", label: "Dépassement Horaire", Icon: History, isChefOnly: false },
+    { value: "my-absence-requests", label: "Demandes Absence", Icon: CalendarOff, isChefOnly: false },
     { value: "overtime-approval", label: "Approb. Dépassement", Icon: CheckSquare, isChefOnly: true },
-    { value: "absence-approval", label: "Approb. Absence", Icon: MailQuestion, isChefOnly: true }, // New tab for Chef
+    { value: "absence-approval", label: "Approb. Absence", Icon: MailQuestion, isChefOnly: true },
   ];
 
   const visibleTabs = useMemo(() => {
@@ -465,7 +436,8 @@ export default function DeclarationHeurePage() {
   if (!isClient || !dataLoaded) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p className="text-lg text-muted-foreground">Chargement de la déclaration d'heures...</p>
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="text-lg text-muted-foreground ml-3">Chargement de la déclaration d'heures...</p>
       </div>
     );
   }
@@ -479,7 +451,7 @@ export default function DeclarationHeurePage() {
               <div><CardTitle>Mes Demandes de Dépassement d'Horaire</CardTitle><CardDescription>Soumettez et suivez vos demandes.</CardDescription></div>
               <Button onClick={() => handleOpenOvertimeForm(undefined, false)} disabled={!dataLoaded || (!currentBrigadeMember && !isChef)}><PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande</Button>
             </CardHeader>
-            <CardContent>{renderOvertimeRequestList(employeeOvertimeRequests, false)}</CardContent>
+            <CardContent>{renderOvertimeRequestList(isChef ? allOvertimeRequestsForChef : employeeOvertimeRequests, false)}</CardContent>
           </Card>
         );
       case "my-absence-requests":
@@ -489,7 +461,7 @@ export default function DeclarationHeurePage() {
               <div><CardTitle>Mes Demandes d'Absence</CardTitle><CardDescription>Soumettez et suivez vos demandes.</CardDescription></div>
               <Button onClick={() => handleOpenAbsenceForm(undefined, false)} disabled={!dataLoaded || (!currentBrigadeMember && !isChef)}><PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande</Button>
             </CardHeader>
-            <CardContent>{renderAbsenceRequestList(employeeAbsenceRequests, false)}</CardContent>
+            <CardContent>{renderAbsenceRequestList(isChef ? allAbsenceRequestsForChef : employeeAbsenceRequests, false)}</CardContent>
           </Card>
         );
       case "overtime-approval":
@@ -499,7 +471,7 @@ export default function DeclarationHeurePage() {
             <CardContent>{renderOvertimeRequestList(allOvertimeRequestsForChef, true)}</CardContent>
           </Card>
         ) : null;
-      case "absence-approval": // New case for chef's absence approval view
+      case "absence-approval": 
         return isChef ? (
           <Card className="shadow-xl">
             <CardHeader><CardTitle>Approbation des Demandes d'Absence</CardTitle><CardDescription>Traitez les demandes d'absence soumises.</CardDescription></CardHeader>
@@ -510,6 +482,69 @@ export default function DeclarationHeurePage() {
         return null;
     }
   };
+
+  const handleGenerateOvertimeRequestPdf = (request: OvertimeRequest) => {
+    const pdfSettings = getPdfLayoutSettings('overtime_request_form');
+    const doc = new jsPDF({ orientation: pdfSettings.orientation, unit: 'pt', format: pdfSettings.pageSize }) as jsPDFWithAutoTable;
+    doc.setFont(pdfSettings.fontFamily);
+    const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
+    let currentY = pdfSettings.marginTop;
+    if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { try { const imgProps = doc.getImageProperties(pdfSettings.logoUrl); const formatType = imgProps.fileType.toUpperCase(); const desiredHeight = 30; const imgWidth = (imgProps.width * desiredHeight) / imgProps.height; doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight); currentY += desiredHeight + 5; } catch(e){ console.error("Error drawing logo in PDF:", e); }}
+    if (pdfSettings.headerText) { const headerLines = pdfSettings.headerText.split('\n'); doc.setFontSize(pdfSettings.headerFontSize); headerLines.forEach(line => { doc.text(line, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize * 0.7 + 2; }); currentY += 5; }
+    doc.setFontSize(18); doc.text("DEMANDE DE DEPASSEMENT D'HORAIRE", doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' }); currentY += 25;
+    doc.setFontSize(pdfSettings.defaultFontSize); doc.text(`Nom et prénom du salarié : ${request.employeeName || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
+    doc.text(`Poste occupé à l'IME : ${request.position || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 20;
+    doc.text("Prestation correspondante : Logistique", pdfSettings.marginLeft, currentY); currentY += 15;
+    doc.text("Motif de la demande :", pdfSettings.marginLeft, currentY); currentY += 15; doc.text(request.reasonStub || 'N/A', pdfSettings.marginLeft + 10, currentY, { maxWidth: doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - 20 }); currentY += (doc.splitTextToSize(request.reasonStub || 'N/A', doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - 20).length * (pdfSettings.defaultFontSize * 0.7)) + 10;
+    if (request.overtimeDetails && request.overtimeDetails.length > 0) { doc.text("Détail des heures supplémentaires :", pdfSettings.marginLeft, currentY); currentY += 5; doc.autoTable({ startY: currentY, head: [['Date', 'Heure début', 'Heure fin']], body: request.overtimeDetails.map(d => [ d.date && isValid(parseISO(d.date)) ? format(parseISO(d.date), 'dd/MM/yyyy', { locale: fr }) : 'N/A', d.startTime || '-', d.endTime || '-', ]), theme: 'grid', styles: { fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily }, headStyles: { fillColor: hexToRgb(pdfSettings.primaryColor || '#CCCCCC') || [220,220,220], textColor: [0,0,0], fontSize: pdfSettings.tableHeaderFontSize }, margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight }, }); currentY = (doc as any).lastAutoTable.finalY + 10; }
+    doc.text(`Total des heures en plus de l'horaire prévu : ${request.totalOvertimeHours || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 20;
+    const sigDate = (dateStr: string | null | undefined) => dateStr && isValid(parseISO(dateStr)) ? format(parseISO(dateStr), "dd/MM/yyyy", { locale: fr }) : 'Non signé';
+    doc.text(`Salarié(e) le : ${sigDate(request.employeeSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 15; doc.text(`Le Responsable Direct le : ${sigDate(request.directManagerSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 15; doc.text(`Le Directeur le : ${sigDate(request.directorSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 25;
+    doc.setFont(undefined, 'bold'); doc.text("CADRE RESERVE A LA DIRECTION", pdfSettings.marginLeft, currentY); doc.setFont(undefined, 'normal'); currentY += 15; doc.text(`Acceptée / Refusée : ${getStatusLabel(request.approvalStatus)}`, pdfSettings.marginLeft, currentY); currentY += 15;
+    if (request.approvalStatus === 'rejected' && request.rejectionReason) { doc.text(`Si refusée, motif : ${request.rejectionReason}`, pdfSettings.marginLeft, currentY); currentY += 15; }
+    doc.text(`Date : ${sigDate(request.decisionDate)}`, pdfSettings.marginLeft, currentY); currentY += 15; doc.text(`Signature de la Direction : `, pdfSettings.marginLeft, currentY); 
+    const pageCount = doc.internal.getNumberOfPages(); for (let i = 1; i <= pageCount; i++) { doc.setPage(i); if (pdfSettings.footerText) { let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', i.toString()).replace('{totalPages}', pageCount.toString()); doc.setFontSize(pdfSettings.footerFontSize); doc.text(footerStr, pdfSettings.marginLeft, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2)); }}
+    doc.save(`Demande_Depassement_${request.employeeName.replace(/\s+/g, '_')}_${format(parseISO(request.requestDate), "yyyy-MM-dd")}.pdf`);
+    toast({ title: "PDF Généré", description: `Le PDF pour la demande de ${request.employeeName} a été téléchargé.` });
+  };
+  
+  const handleGenerateAbsenceRequestPdf = (request: AbsenceRequest) => {
+    const pdfSettings = getPdfLayoutSettings('absence_request_form');
+    const doc = new jsPDF({ orientation: pdfSettings.orientation, unit: 'pt', format: pdfSettings.pageSize }) as jsPDFWithAutoTable;
+    doc.setFont(pdfSettings.fontFamily);
+    const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
+    let currentY = pdfSettings.marginTop;
+
+    if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { /* Logo rendering logic */ try { const imgProps = doc.getImageProperties(pdfSettings.logoUrl); const formatType = imgProps.fileType.toUpperCase(); const desiredHeight = 30; const imgWidth = (imgProps.width * desiredHeight) / imgProps.height; doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight); currentY += desiredHeight + 5; } catch(e){ console.error("Error drawing logo in PDF:", e); }}
+    if (pdfSettings.headerText) { /* Header text rendering logic */ const headerLines = pdfSettings.headerText.split('\n'); doc.setFontSize(pdfSettings.headerFontSize); headerLines.forEach(line => { doc.text(line, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize * 0.7 + 2; }); currentY += 5; }
+
+    doc.setFontSize(18); doc.text("DEMANDE D'ABSENCE", doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' }); currentY += 25;
+    doc.setFontSize(pdfSettings.defaultFontSize);
+    doc.text(`Nom et prénom du salarié : ${request.employeeName || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
+    doc.text(`Poste occupé à l'IME : ${request.position || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
+    // Removed AbsenceType
+    doc.text(`Date de début : ${format(parseISO(request.startDate), "dd/MM/yyyy", { locale: fr })}`, pdfSettings.marginLeft, currentY); currentY += 15;
+    doc.text(`Date de fin : ${format(parseISO(request.endDate), "dd/MM/yyyy", { locale: fr })}`, pdfSettings.marginLeft, currentY); currentY += 15;
+    doc.text(`Nombre de jours d'absence : ${request.numberOfDays || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
+    if(request.hoursPerDay) { doc.text(`Nombre d'heures par jour d'absence : ${request.hoursPerDay}h`, pdfSettings.marginLeft, currentY); currentY += 15;}
+    if (request.reason) { doc.text("Motif :", pdfSettings.marginLeft, currentY); currentY += 15; doc.text(request.reason, pdfSettings.marginLeft + 10, currentY, { maxWidth: doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - 20 }); currentY += (doc.splitTextToSize(request.reason, doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - 20).length * (pdfSettings.defaultFontSize * 0.7)) + 10;}
+    
+    const sigDate = (dateStr: string | null | undefined) => dateStr && isValid(parseISO(dateStr)) ? format(parseISO(dateStr), "dd/MM/yyyy", { locale: fr }) : 'Non signé';
+    doc.text(`Salarié(e) le : ${sigDate(request.employeeSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 15;
+    doc.text(`Le Responsable Direct le : ${sigDate(request.directManagerSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 15;
+    doc.text(`Le Directeur le : ${sigDate(request.directorSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 25;
+    
+    doc.setFont(undefined, 'bold'); doc.text("CADRE RESERVE A LA DIRECTION", pdfSettings.marginLeft, currentY); doc.setFont(undefined, 'normal'); currentY += 15;
+    doc.text(`Acceptée / Refusée : ${getStatusLabel(request.approvalStatus)}`, pdfSettings.marginLeft, currentY); currentY += 15;
+    if (request.approvalStatus === 'rejected' && request.rejectionReason) { doc.text(`Si refusée, motif : ${request.rejectionReason}`, pdfSettings.marginLeft, currentY); currentY += 15; }
+    doc.text(`Date : ${sigDate(request.decisionDate)}`, pdfSettings.marginLeft, currentY); currentY += 15;
+    doc.text(`Signature de la Direction : `, pdfSettings.marginLeft, currentY); 
+
+    const pageCount = doc.internal.getNumberOfPages(); for (let i = 1; i <= pageCount; i++) { doc.setPage(i); if (pdfSettings.footerText) { let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', i.toString()).replace('{totalPages}', pageCount.toString()); doc.setFontSize(pdfSettings.footerFontSize); doc.text(footerStr, pdfSettings.marginLeft, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2)); }}
+    doc.save(`Demande_Absence_${request.employeeName.replace(/\s+/g, '_')}_${format(parseISO(request.startDate), "yyyy-MM-dd")}.pdf`);
+    toast({ title: "PDF Généré", description: `Le PDF pour la demande d'absence de ${request.employeeName} a été téléchargé.` });
+  };
+
 
   return (
     <div className="container mx-auto p-4 md:p-6 lg:p-8 min-h-screen">

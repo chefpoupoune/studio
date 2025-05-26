@@ -41,26 +41,11 @@ export interface OvertimeRequest {
 
   approvalStatus?: 'pending' | 'accepted' | 'rejected'; 
   rejectionReason?: string;
-  // compensationType removed
   decisionDate?: string | null; 
 }
 
 // Types for Absence Requests
-export const ABSENCE_TYPES = ['CP', 'RTT', 'Maladie', 'Formation', 'Sans_Solde', 'Autre'] as const;
-export type AbsenceType = typeof ABSENCE_TYPES[number];
-
-export const ABSENCE_TYPE_LABELS: Record<AbsenceType, string> = {
-  CP: "Congé Payé",
-  RTT: "RTT",
-  Maladie: "Maladie / Arrêt de travail",
-  Formation: "Formation",
-  Sans_Solde: "Congé Sans Solde",
-  Autre: "Autre (à préciser)",
-};
-
-// Retaining original AbsenceRequestStatus for simplicity, could be unified with OvertimeRequest's approvalStatus later if needed.
-// For now, AbsenceRequest will also use 'pending', 'accepted', 'rejected' like OvertimeRequest.
-// export type AbsenceRequestStatus = 'pending' | 'accepted' | 'rejected';
+// ABSENCE_TYPES and ABSENCE_TYPE_LABELS are removed as per user request
 
 export interface AbsenceRequest {
   id: string;
@@ -68,25 +53,23 @@ export interface AbsenceRequest {
   requestDate: string; // ISO string for creation date
   updatedAt?: string; // ISO string for last update
 
-  position?: string; // Added
+  position?: string; 
   
-  absenceType: AbsenceType;
-  absenceTypeAutresDetail?: string; // If 'Autre' is selected, Added
-  
+  // absenceType: AbsenceType; // Removed
+  // absenceTypeAutresDetail?: string; // Removed
+  hoursPerDay?: number; // Added
+
   startDate: string; // ISO string yyyy-MM-dd
   endDate: string; // ISO string yyyy-MM-dd
   
-  numberOfDays?: number; // Calculated, Added
+  numberOfDays?: number; // Calculated
   reason?: string;
   
-  employeeSignatureDate?: string | null; // Added
-  directManagerSignatureDate?: string | null; // Added
-  directorSignatureDate?: string | null; // Added
+  employeeSignatureDate?: string | null; 
+  directManagerSignatureDate?: string | null; 
+  directorSignatureDate?: string | null; 
 
-  approvalStatus?: 'pending' | 'accepted' | 'rejected'; // Added, replacing old 'status'
-  rejectionReason?: string; // Added
-  decisionDate?: string | null; // Added
-
-  // Old status field, to be phased out or mapped if needed from old data.
-  // status: AbsenceRequestStatus; 
+  approvalStatus?: 'pending' | 'accepted' | 'rejected'; 
+  rejectionReason?: string; 
+  decisionDate?: string | null; 
 }
