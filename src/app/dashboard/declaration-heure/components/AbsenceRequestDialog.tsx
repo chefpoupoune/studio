@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -28,7 +28,7 @@ const absenceFormSchema = z.object({
   startDate: z.date({ required_error: "Date de début requise." }),
   endDate: z.date({ required_error: "Date de fin requise." }),
   reason: z.string().max(500, "Motif max 500 caractères.").optional(),
-  position: z.string().optional(), // Similar to OvertimeRequest
+  position: z.string().optional(), 
 
   // Signatures
   employeeSignatureDate: z.date().optional().nullable(),
@@ -86,7 +86,7 @@ export default function AbsenceRequestDialog({
       absenceType: 'CP',
       absenceTypeAutresDetail: '',
       startDate: new Date(),
-      endDate: addDays(new Date(),1),
+      endDate: addDays(new Date(),0), // Default to 0 days difference (1 day total)
       reason: '',
       position: '',
       employeeSignatureDate: null,
@@ -100,6 +100,24 @@ export default function AbsenceRequestDialog({
 
   const absenceTypeWatched = form.watch('absenceType');
   const approvalStatusWatched = useWatch({ control: form.control, name: "approvalStatus" });
+  const formStartDate = form.watch('startDate');
+  const formEndDate = form.watch('endDate');
+  const [displayedNumberOfDays, setDisplayedNumberOfDays] = useState<string>('1 jour(s)');
+
+  useEffect(() => {
+    if (formStartDate && isValid(formStartDate)) {
+      if (formEndDate && isValid(formEndDate) && formEndDate >= formStartDate) {
+        const days = differenceInCalendarDays(formEndDate, formStartDate) + 1;
+        setDisplayedNumberOfDays(`${days} jour(s)`);
+      } else {
+        // If end date is invalid or before start, consider it as 1 day from start date for display
+        setDisplayedNumberOfDays('1 jour(s)');
+      }
+    } else {
+      setDisplayedNumberOfDays('N/A');
+    }
+  }, [formStartDate, formEndDate]);
+
 
   const isFormLockedForEmployee = useMemo(() => {
     return !isApproverView && editingRequest && (editingRequest.approvalStatus === 'accepted' || editingRequest.approvalStatus === 'rejected');
@@ -125,29 +143,32 @@ export default function AbsenceRequestDialog({
       let directorSigDate = editingRequest?.directorSignatureDate && isValid(parseISO(editingRequest.directorSignatureDate)) ? parseISO(editingRequest.directorSignatureDate) : null;
       let decDate = editingRequest?.decisionDate && isValid(parseISO(editingRequest.decisionDate)) ? parseISO(editingRequest.decisionDate) : null;
       
+      const defaultStartDate = new Date();
+      const defaultEndDate = addDays(new Date(), 0);
+
       if (!editingRequest) { // New request
         empSigDate = new Date();
         if (isApproverView && currentUser?.name.toLowerCase() === 'chef') {
-            if (!decDate && form.getValues('approvalStatus') !== 'pending') decDate = new Date();
-            if (!managerSigDate) managerSigDate = new Date();
-            if (!directorSigDate) directorSigDate = new Date();
+            // No auto-setting for decisionDate or signatures on new request even for chef
         }
       } else { // Editing existing request
           if (!isApproverView && !empSigDate) {
               empSigDate = new Date();
           }
-           if (isApproverView && currentUser?.name.toLowerCase() === 'chef' && (editingRequest.approvalStatus === 'accepted' || editingRequest.approvalStatus === 'rejected')) {
-              if (!decDate) decDate = new Date();
-              if (!managerSigDate) managerSigDate = new Date();
-              if (!directorSigDate) directorSigDate = new Date();
-          }
+           if (isApproverView && currentUser?.name.toLowerCase() === 'chef') {
+              if (editingRequest.approvalStatus === 'accepted' || editingRequest.approvalStatus === 'rejected') {
+                if (!decDate) decDate = new Date();
+                if (!managerSigDate) managerSigDate = new Date();
+                if (!directorSigDate) directorSigDate = new Date();
+              }
+           }
       }
 
       form.reset({
         absenceType: editingRequest?.absenceType || 'CP',
         absenceTypeAutresDetail: editingRequest?.absenceTypeAutresDetail || '',
-        startDate: editingRequest?.startDate && isValid(parseISO(editingRequest.startDate)) ? parseISO(editingRequest.startDate) : new Date(),
-        endDate: editingRequest?.endDate && isValid(parseISO(editingRequest.endDate)) ? parseISO(editingRequest.endDate) : addDays(new Date(),1),
+        startDate: editingRequest?.startDate && isValid(parseISO(editingRequest.startDate)) ? parseISO(editingRequest.startDate) : defaultStartDate,
+        endDate: editingRequest?.endDate && isValid(parseISO(editingRequest.endDate)) ? parseISO(editingRequest.endDate) : defaultEndDate,
         reason: editingRequest?.reason || '',
         position: initialPosition,
         employeeSignatureDate: empSigDate,
@@ -173,13 +194,16 @@ export default function AbsenceRequestDialog({
   }, [approvalStatusWatched, isApproverView, currentUser, form]);
 
   const handleSubmit = (data: AbsenceFormData) => {
-    const daysDifference = differenceInCalendarDays(data.endDate, data.startDate) + 1;
+    let calculatedNumberOfDays = 1;
+    if (data.startDate && data.endDate && isValid(data.startDate) && isValid(data.endDate) && data.endDate >= data.startDate) {
+        calculatedNumberOfDays = differenceInCalendarDays(data.endDate, data.startDate) + 1;
+    }
     
     const submitData: Partial<Omit<AbsenceRequest, 'id' | 'employeeName' | 'requestDate' | 'updatedAt'>> = {
         ...data,
         startDate: format(data.startDate, 'yyyy-MM-dd'),
         endDate: format(data.endDate, 'yyyy-MM-dd'),
-        numberOfDays: daysDifference > 0 ? daysDifference : 1,
+        numberOfDays: calculatedNumberOfDays,
         employeeSignatureDate: data.employeeSignatureDate ? data.employeeSignatureDate.toISOString() : null,
         directManagerSignatureDate: data.directManagerSignatureDate ? data.directManagerSignatureDate.toISOString() : null,
         directorSignatureDate: data.directorSignatureDate ? data.directorSignatureDate.toISOString() : null,
@@ -251,7 +275,9 @@ export default function AbsenceRequestDialog({
                     <FormField control={form.control} name="position" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Poste occupé à l'IME</FormLabel>
-                          <FormControl><Input placeholder="Ex: Éducateur spécialisé" {...field} value={field.value || ''} disabled={employeeFieldsActuallyDisabled || (!editingRequest && !!currentUser?.role)} className={(employeeFieldsActuallyDisabled || (!editingRequest && !!currentUser?.role)) ? "bg-muted/50" : ""} /></FormControl>
+                          <FormControl><Input placeholder="Ex: Éducateur spécialisé" {...field} value={field.value || ''} 
+                           disabled={employeeFieldsActuallyDisabled || (!editingRequest && !!currentUser?.role)} 
+                           className={(employeeFieldsActuallyDisabled || (!editingRequest && !!currentUser?.role)) ? "bg-muted/50" : ""} /></FormControl>
                           <FormMessage />
                         </FormItem>
                     )} />
@@ -281,11 +307,10 @@ export default function AbsenceRequestDialog({
                     {renderDateField("startDate", "Date de Début", employeeFieldsActuallyDisabled)}
                     {renderDateField("endDate", "Date de Fin", employeeFieldsActuallyDisabled)}
                 </div>
-                {/* Display calculated number of days - read only */}
                 <FormItem>
                     <FormLabel>Nombre de jours d'absence</FormLabel>
                     <Input 
-                        value={`${differenceInCalendarDays(form.getValues('endDate'), form.getValues('startDate')) + 1} jour(s)`} 
+                        value={displayedNumberOfDays} 
                         disabled 
                         className="bg-muted/50" 
                     />
@@ -349,3 +374,5 @@ export default function AbsenceRequestDialog({
     </Dialog>
   );
 }
+
+    
