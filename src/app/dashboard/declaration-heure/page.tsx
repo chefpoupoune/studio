@@ -2,13 +2,13 @@
 "use client";
 
 import Link from 'next/link';
-import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CheckSquare, ListFilter, Clock, CalendarOff, FileText as PdfFileTextIcon, MailQuestion, CalendarClock } from 'lucide-react'; 
+import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CheckSquare, ListFilter, Clock, CalendarOff, FileText as PdfFileTextIcon, MailQuestion, Loader2, User } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import type { OvertimeRequest, PrestationType, AbsenceRequest } from './types'; // AbsenceType removed
-import { PRESTATION_TYPE_LABELS } from './types'; // ABSENCE_TYPE_LABELS, ABSENCE_TYPES removed
+import type { OvertimeRequest, PrestationType, AbsenceRequest } from './types';
+import { PRESTATION_TYPE_LABELS } from './types';
 import OvertimeRequestDialog from './components/OvertimeRequestDialog';
 import AbsenceRequestDialog from './components/AbsenceRequestDialog';
 import { useToast } from '@/hooks/use-toast';
@@ -41,9 +41,10 @@ interface jsPDFWithAutoTable extends jsPDF {
 }
 
 const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v5';
-const ABSENCE_REQUESTS_STORAGE_KEY = 'declaration_heure_absence_requests_v3'; // Version up for new fields
+const ABSENCE_REQUESTS_STORAGE_KEY = 'declaration_heure_absence_requests_v3';
 const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
+
 
 interface DeclarationHeureTab {
   value: string;
@@ -88,27 +89,39 @@ export default function DeclarationHeurePage() {
       const storedOvertimeRaw = localStorage.getItem(OVERTIME_REQUESTS_STORAGE_KEY);
       if (storedOvertimeRaw) {
         const parsedOvertime = JSON.parse(storedOvertimeRaw).map((req: any) => ({
-          ...req, id: req.id || `or_${Date.now()}_${Math.random().toString(36).substring(2,9)}`, requestDate: req.requestDate || new Date().toISOString(), updatedAt: req.updatedAt || new Date().toISOString(),
+          ...req, 
+          id: req.id || `or_${Date.now()}_${Math.random().toString(36).substring(2,9)}`, 
+          requestDate: req.requestDate || new Date().toISOString(), 
+          updatedAt: req.updatedAt || new Date().toISOString(),
           overtimeDetails: Array.isArray(req.overtimeDetails) ? req.overtimeDetails.map((d:any) => ({...d, date: d.date || new Date().toISOString(), id: d.id || `detail_${Date.now()}_${Math.random().toString(36).substring(2,9)}` })) : [],
-          approvalStatus: req.approvalStatus || 'pending', prestationTypes: Array.isArray(req.prestationTypes) ? req.prestationTypes : ['logistique'],
-          prestationTypeAutresDetail: req.prestationTypeAutresDetail || '', rejectionReason: req.rejectionReason || '',
-          decisionDate: req.decisionDate || null, employeeSignatureDate: req.employeeSignatureDate || null,
-          directManagerSignatureDate: req.directManagerSignatureDate || null, directorSignatureDate: req.directorSignatureDate || null,
-          // compensationType removed
+          approvalStatus: req.approvalStatus || 'pending', 
+          prestationTypes: Array.isArray(req.prestationTypes) ? req.prestationTypes : ['logistique'],
+          prestationTypeAutresDetail: req.prestationTypeAutresDetail || '', 
+          rejectionReason: req.rejectionReason || '',
+          decisionDate: req.decisionDate || null, 
+          employeeSignatureDate: req.employeeSignatureDate || null,
+          directManagerSignatureDate: req.directManagerSignatureDate || null, 
+          directorSignatureDate: req.directorSignatureDate || null,
         }));
         setOvertimeRequests(parsedOvertime.sort((a:OvertimeRequest,b:OvertimeRequest) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()));
-      } else { setOvertimeRequests([]); }
+        console.log(`[DeclarationHeurePage LOAD] Overtime requests loaded: ${parsedOvertime.length}`);
+      } else { 
+        setOvertimeRequests([]); 
+        console.log("[DeclarationHeurePage LOAD] No overtime requests found in localStorage.");
+      }
 
       const storedAbsenceRaw = localStorage.getItem(ABSENCE_REQUESTS_STORAGE_KEY);
       if (storedAbsenceRaw) {
         const parsedAbsence = JSON.parse(storedAbsenceRaw).map((req: any) => ({
-          ...req, id: req.id || `abs_${Date.now()}_${Math.random().toString(36).substring(2,9)}`, requestDate: req.requestDate || new Date().toISOString(), updatedAt: req.updatedAt || new Date().toISOString(),
-          startDate: req.startDate || new Date().toISOString(), endDate: req.endDate || new Date(new Date().setDate(new Date().getDate() + 1)).toISOString(),
+          ...req, 
+          id: req.id || `abs_${Date.now()}_${Math.random().toString(36).substring(2,9)}`, 
+          requestDate: req.requestDate || new Date().toISOString(), 
+          updatedAt: req.updatedAt || new Date().toISOString(),
+          startDate: req.startDate || new Date().toISOString(), 
+          endDate: req.endDate || new Date(new Date().setDate(new Date().getDate() + 1)).toISOString(),
           approvalStatus: req.approvalStatus || 'pending', 
           position: req.position || '',
-          // absenceType: req.absenceType || 'CP', // Removed
-          // absenceTypeAutresDetail: req.absenceTypeAutresDetail || '', // Removed
-          hoursPerDay: req.hoursPerDay ?? undefined, // Added
+          hoursPerDay: req.hoursPerDay ?? undefined,
           numberOfDays: req.numberOfDays || (req.startDate && req.endDate && isValid(parseISO(req.startDate)) && isValid(parseISO(req.endDate)) ? differenceInCalendarDays(parseISO(req.endDate), parseISO(req.startDate)) + 1 : 1),
           employeeSignatureDate: req.employeeSignatureDate || null,
           directManagerSignatureDate: req.directManagerSignatureDate || null,
@@ -117,34 +130,45 @@ export default function DeclarationHeurePage() {
           decisionDate: req.decisionDate || null,
         }));
         setAbsenceRequests(parsedAbsence.sort((a:AbsenceRequest,b:AbsenceRequest) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()));
-      } else { setAbsenceRequests([]); }
+        console.log(`[DeclarationHeurePage LOAD] Absence requests loaded: ${parsedAbsence.length}`);
+      } else { 
+        setAbsenceRequests([]); 
+        console.log("[DeclarationHeurePage LOAD] No absence requests found in localStorage.");
+      }
 
       const storedBrigadeMembersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
-      if (storedBrigadeMembersRaw) setBrigadeMembers(JSON.parse(storedBrigadeMembersRaw));
-      else setBrigadeMembers([]);
+      if (storedBrigadeMembersRaw) {
+        setBrigadeMembers(JSON.parse(storedBrigadeMembersRaw));
+        console.log(`[DeclarationHeurePage LOAD] Brigade members loaded: ${JSON.parse(storedBrigadeMembersRaw).length}`);
+      } else {
+        setBrigadeMembers([]);
+        console.log("[DeclarationHeurePage LOAD] No brigade members found in localStorage.");
+      }
       
       usernameFromStorage = localStorage.getItem(LOGGED_IN_USERNAME_KEY);
       setLoggedInUsername(usernameFromStorage);
-      console.log(`[DeclarationHeurePage LOAD] Data loading complete. Overtime: ${overtimeRequests.length}, Absence: ${absenceRequests.length}, Brigade: ${brigadeMembers.length}, User: ${usernameFromStorage}`);
+      console.log(`[DeclarationHeurePage LOAD] Logged in user: ${usernameFromStorage}`);
+
     } catch (e) {
       console.error("[DeclarationHeurePage LOAD] Error loading data from localStorage", e);
       setOvertimeRequests([]); setAbsenceRequests([]); setBrigadeMembers([]); setLoggedInUsername(null);
       toast({ title: "Erreur de chargement des données de déclaration", variant: "destructive" });
     } finally {
       setDataLoaded(true);
+      console.log("[DeclarationHeurePage LOAD] Data loading complete. dataLoaded set to true.");
     }
-  }, [isClient, toast]); // Removed overtimeRequests, absenceRequests, brigadeMembers from deps
+  }, [isClient, toast]);
 
   useEffect(() => {
     if (isClient && dataLoaded) { 
-      console.log("[DeclarationHeurePage SAVE Overtime] Saving overtimeRequests:", overtimeRequests);
+      console.log(`[DeclarationHeurePage SAVE Overtime] Saving ${overtimeRequests.length} overtimeRequests.`);
       localStorage.setItem(OVERTIME_REQUESTS_STORAGE_KEY, JSON.stringify(overtimeRequests));
     }
   }, [overtimeRequests, isClient, dataLoaded]);
 
   useEffect(() => {
     if (isClient && dataLoaded) {
-      console.log("[DeclarationHeurePage SAVE Absence] Saving absenceRequests:", absenceRequests);
+      console.log(`[DeclarationHeurePage SAVE Absence] Saving ${absenceRequests.length} absenceRequests.`);
       localStorage.setItem(ABSENCE_REQUESTS_STORAGE_KEY, JSON.stringify(absenceRequests));
     }
   }, [absenceRequests, isClient, dataLoaded]);
@@ -157,10 +181,10 @@ export default function DeclarationHeurePage() {
   }, [loggedInUsername, brigadeMembers]);
 
   const handleAddOrUpdateOvertimeRequest = useCallback((
-    data: Partial<Omit<OvertimeRequest, 'id' | 'employeeName' | 'requestDate' | 'updatedAt'>> & {id?: string}
+    data: Partial<Omit<OvertimeRequest, 'id' | 'employeeName' | 'requestDate' >>
   ) => {
     if (!dataLoaded) {
-      toast({ title: "Données non prêtes", variant: "default" });
+      toast({ title: "Données non prêtes", description: "Veuillez attendre la fin du chargement.", variant: "default" });
       return;
     }
     const employeeNameToUse = editingOvertimeRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername || "Système";
@@ -171,18 +195,32 @@ export default function DeclarationHeurePage() {
     if (editingOvertimeRequest) {
       updatedRequestsList = overtimeRequests.map(req => 
         req.id === editingOvertimeRequest.id
-        ? { ...req, ...data, employeeName: employeeNameToUse, position: positionToUse, updatedAt: nowISO, reasonStub: data.reasonStub || req.reasonStub || "Non spécifié" } as OvertimeRequest
+        ? { 
+            ...req, 
+            ...data, 
+            employeeName: employeeNameToUse, 
+            position: positionToUse, 
+            updatedAt: nowISO, 
+            reasonStub: data.reasonStub || req.reasonStub || "Non spécifié",
+            prestationTypes: data.prestationTypes && data.prestationTypes.length > 0 ? data.prestationTypes : ['logistique'],
+            prestationTypeAutresDetail: data.prestationTypes?.includes('autres') ? (data.prestationTypeAutresDetail || '') : '',
+          } as OvertimeRequest
         : req
       );
       toast({ title: "Demande Dépassement Modifiée" });
     } else {
       const newRequest: OvertimeRequest = {
         id: `or_${Date.now()}_${Math.random().toString(36).substring(2,9)}`, 
-        employeeName: employeeNameToUse, requestDate: nowISO, updatedAt: nowISO,
-        reasonStub: data.reasonStub || "Non spécifié", approvalStatus: data.approvalStatus || 'pending',
+        employeeName: employeeNameToUse, 
+        requestDate: nowISO, 
+        updatedAt: nowISO,
+        reasonStub: data.reasonStub || "Non spécifié", 
+        approvalStatus: data.approvalStatus || 'pending',
         prestationTypes: data.prestationTypes && data.prestationTypes.length > 0 ? data.prestationTypes : ['logistique'],
-        prestationTypeAutresDetail: "logistique", // Defaulted to logistique
-        ...data, position: positionToUse, overtimeDetails: data.overtimeDetails || [],
+        prestationTypeAutresDetail: data.prestationTypes?.includes('autres') ? (data.prestationTypeAutresDetail || '') : '',
+        ...data, 
+        position: positionToUse, 
+        overtimeDetails: data.overtimeDetails || [],
       } as OvertimeRequest; 
       updatedRequestsList = [newRequest, ...overtimeRequests];
       toast({ title: "Demande Dépassement Soumise" });
@@ -204,7 +242,7 @@ export default function DeclarationHeurePage() {
   };
 
   const handleAddOrUpdateAbsenceRequest = useCallback((
-    data: Partial<Omit<AbsenceRequest, 'id' | 'employeeName' | 'requestDate' | 'updatedAt'>> & {id?: string}
+    data: Partial<Omit<AbsenceRequest, 'id' | 'employeeName' | 'requestDate'>>
   ) => {
     if (!dataLoaded) { toast({ title: "Données non prêtes", variant: "default"}); return; }
     const employeeNameToUse = editingAbsenceRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername || "Système";
@@ -215,19 +253,28 @@ export default function DeclarationHeurePage() {
     if (editingAbsenceRequest) {
         updatedList = absenceRequests.map(req => 
             req.id === editingAbsenceRequest.id 
-            ? { ...req, ...data, employeeName: employeeNameToUse, position: positionToUse, updatedAt: nowISO, approvalStatus: data.approvalStatus || req.approvalStatus || 'pending' } as AbsenceRequest
+            ? { 
+                ...req, 
+                ...data, 
+                employeeName: employeeNameToUse, 
+                position: positionToUse, 
+                updatedAt: nowISO, 
+                approvalStatus: data.approvalStatus || req.approvalStatus || 'pending' 
+              } as AbsenceRequest
             : req
         );
         toast({ title: "Demande d'Absence Modifiée" });
     } else {
         const newRequest: AbsenceRequest = {
             id: `abs_${Date.now()}_${Math.random().toString(36).substring(2,9)}`,
-            employeeName: employeeNameToUse, position: positionToUse, requestDate: nowISO, updatedAt: nowISO,
+            employeeName: employeeNameToUse, 
+            position: positionToUse, 
+            requestDate: nowISO, 
+            updatedAt: nowISO,
             approvalStatus: data.approvalStatus || 'pending',
-            // absenceType: data.absenceType!, // Removed
-            // absenceTypeAutresDetail: data.absenceTypeAutresDetail, // Removed
-            hoursPerDay: data.hoursPerDay, // Added
-            startDate: data.startDate!, endDate: data.endDate!, 
+            hoursPerDay: data.hoursPerDay,
+            startDate: data.startDate!, 
+            endDate: data.endDate!, 
             reason: data.reason || '', 
             numberOfDays: data.numberOfDays, 
             employeeSignatureDate: data.employeeSignatureDate || null,
@@ -289,7 +336,7 @@ export default function DeclarationHeurePage() {
                 )}
                 {req.overtimeDetails && req.overtimeDetails.length > 0 && (
                   <div className="mt-1">
-                    <span className="font-medium text-foreground/80 flex items-center gap-1 mb-0.5"><CalendarClock className="h-3 w-3"/>Détail H.Supp:</span>
+                    <span className="font-medium text-foreground/80 flex items-center gap-1 mb-0.5"><Clock className="h-3 w-3 text-primary/70"/>Détail H.Supp:</span>
                     <ul className="list-none pl-2 text-muted-foreground space-y-0.5">
                       {req.overtimeDetails.map((detail, index) => (
                         <li key={detail.id || index} className="flex items-center gap-1.5">
@@ -318,7 +365,9 @@ export default function DeclarationHeurePage() {
                     {(req.approvalStatus === 'pending' || !req.approvalStatus) && !approverModeView && ( 
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
-                          <Button variant="destructive" size="sm" className="text-xs"><Trash2 className="mr-1 h-3.5 w-3.5"/> Annuler/Suppr.</Button>
+                          <Button variant="destructive" size="sm" className="text-xs">
+                            <Trash2 className="mr-1 h-3.5 w-3.5"/> Annuler/Suppr.
+                          </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Annuler la demande ?</AlertDialogTitle><AlertDialogDescription>Cette action est irréversible.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Non</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteOvertimeRequest(req.id)}>Oui, annuler</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
                       </AlertDialog>
@@ -352,7 +401,6 @@ export default function DeclarationHeurePage() {
                 </div>
                 <CardDescription className="text-xs">
                   Demandé par: {req.employeeName} {req.position && `(${req.position})`}
-                  {/* Removed AbsenceType display */}
                   {req.hoursPerDay && ` | ${req.hoursPerDay}h/jour`}
                   {` | Le: ${format(parseISO(req.requestDate), "dd/MM/yy HH:mm", { locale: fr })}`}
                   {req.updatedAt && isValid(parseISO(req.updatedAt)) && ` | Modifié le: ${format(parseISO(req.updatedAt), "dd/MM/yy HH:mm", { locale: fr })}`}
@@ -432,15 +480,6 @@ export default function DeclarationHeurePage() {
       setActiveTab("");
     }
   }, [visibleTabs, activeTab]);
-
-  if (!isClient || !dataLoaded) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="text-lg text-muted-foreground ml-3">Chargement de la déclaration d'heures...</p>
-      </div>
-    );
-  }
   
   const getTabContent = (tabValue: string) => {
     switch (tabValue) {
@@ -449,7 +488,12 @@ export default function DeclarationHeurePage() {
           <Card className="shadow-xl">
             <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
               <div><CardTitle>Mes Demandes de Dépassement d'Horaire</CardTitle><CardDescription>Soumettez et suivez vos demandes.</CardDescription></div>
-              <Button onClick={() => handleOpenOvertimeForm(undefined, false)} disabled={!dataLoaded || (!currentBrigadeMember && !isChef)}><PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande</Button>
+              <Button 
+                onClick={() => handleOpenOvertimeForm(undefined, false)} 
+                disabled={!dataLoaded || (!currentBrigadeMember && !isChef)}
+              >
+                <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande
+              </Button>
             </CardHeader>
             <CardContent>{renderOvertimeRequestList(isChef ? allOvertimeRequestsForChef : employeeOvertimeRequests, false)}</CardContent>
           </Card>
@@ -459,7 +503,12 @@ export default function DeclarationHeurePage() {
           <Card className="shadow-xl">
              <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
               <div><CardTitle>Mes Demandes d'Absence</CardTitle><CardDescription>Soumettez et suivez vos demandes.</CardDescription></div>
-              <Button onClick={() => handleOpenAbsenceForm(undefined, false)} disabled={!dataLoaded || (!currentBrigadeMember && !isChef)}><PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande</Button>
+              <Button 
+                onClick={() => handleOpenAbsenceForm(undefined, false)} 
+                disabled={!dataLoaded || (!currentBrigadeMember && !isChef)}
+              >
+                <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande
+              </Button>
             </CardHeader>
             <CardContent>{renderAbsenceRequestList(isChef ? allAbsenceRequestsForChef : employeeAbsenceRequests, false)}</CardContent>
           </Card>
@@ -494,7 +543,9 @@ export default function DeclarationHeurePage() {
     doc.setFontSize(18); doc.text("DEMANDE DE DEPASSEMENT D'HORAIRE", doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' }); currentY += 25;
     doc.setFontSize(pdfSettings.defaultFontSize); doc.text(`Nom et prénom du salarié : ${request.employeeName || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
     doc.text(`Poste occupé à l'IME : ${request.position || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 20;
-    doc.text("Prestation correspondante : Logistique", pdfSettings.marginLeft, currentY); currentY += 15;
+    const prestationText = (request.prestationTypes || []).map(pt => PRESTATION_TYPE_LABELS[pt] || pt).join(', ') + 
+      ((request.prestationTypes || []).includes('autres') && request.prestationTypeAutresDetail ? ` (${request.prestationTypeAutresDetail})` : '');
+    doc.text(`Prestation correspondante : ${prestationText || 'Logistique'}`, pdfSettings.marginLeft, currentY); currentY += 15;
     doc.text("Motif de la demande :", pdfSettings.marginLeft, currentY); currentY += 15; doc.text(request.reasonStub || 'N/A', pdfSettings.marginLeft + 10, currentY, { maxWidth: doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - 20 }); currentY += (doc.splitTextToSize(request.reasonStub || 'N/A', doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - 20).length * (pdfSettings.defaultFontSize * 0.7)) + 10;
     if (request.overtimeDetails && request.overtimeDetails.length > 0) { doc.text("Détail des heures supplémentaires :", pdfSettings.marginLeft, currentY); currentY += 5; doc.autoTable({ startY: currentY, head: [['Date', 'Heure début', 'Heure fin']], body: request.overtimeDetails.map(d => [ d.date && isValid(parseISO(d.date)) ? format(parseISO(d.date), 'dd/MM/yyyy', { locale: fr }) : 'N/A', d.startTime || '-', d.endTime || '-', ]), theme: 'grid', styles: { fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily }, headStyles: { fillColor: hexToRgb(pdfSettings.primaryColor || '#CCCCCC') || [220,220,220], textColor: [0,0,0], fontSize: pdfSettings.tableHeaderFontSize }, margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight }, }); currentY = (doc as any).lastAutoTable.finalY + 10; }
     doc.text(`Total des heures en plus de l'horaire prévu : ${request.totalOvertimeHours || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 20;
@@ -522,7 +573,6 @@ export default function DeclarationHeurePage() {
     doc.setFontSize(pdfSettings.defaultFontSize);
     doc.text(`Nom et prénom du salarié : ${request.employeeName || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
     doc.text(`Poste occupé à l'IME : ${request.position || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    // Removed AbsenceType
     doc.text(`Date de début : ${format(parseISO(request.startDate), "dd/MM/yyyy", { locale: fr })}`, pdfSettings.marginLeft, currentY); currentY += 15;
     doc.text(`Date de fin : ${format(parseISO(request.endDate), "dd/MM/yyyy", { locale: fr })}`, pdfSettings.marginLeft, currentY); currentY += 15;
     doc.text(`Nombre de jours d'absence : ${request.numberOfDays || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
@@ -546,6 +596,18 @@ export default function DeclarationHeurePage() {
   };
 
 
+  if (!isClient || !dataLoaded) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="text-lg text-muted-foreground ml-3">Chargement de la déclaration d'heures...</p>
+      </div>
+    );
+  }
+  
+  const currentDeclarationHeureTabsConfig = declarationHeureTabsConfig.filter(tab => !tab.isChefOnly || isChef);
+
+
   return (
     <div className="container mx-auto p-4 md:p-6 lg:p-8 min-h-screen">
       <div className="flex flex-col sm:flex-row items-center justify-between mb-6 gap-4">
@@ -566,15 +628,15 @@ export default function DeclarationHeurePage() {
             <Label htmlFor="mobile-declaration-nav-select" className="text-sm font-medium">Naviguer vers :</Label>
             <Select value={activeTab} onValueChange={setActiveTab}>
               <SelectTrigger id="mobile-declaration-nav-select" className="w-full mt-1"><SelectValue placeholder="Choisir une section..." /></SelectTrigger>
-              <SelectContent>{visibleTabs.map(tab => (<SelectItem key={tab.value} value={tab.value} className="text-sm"><span className="flex items-center"><tab.Icon className="mr-2 h-4 w-4" />{tab.label}</span></SelectItem>))}</SelectContent>
+              <SelectContent>{currentDeclarationHeureTabsConfig.map(tab => (<SelectItem key={tab.value} value={tab.value} className="text-sm"><span className="flex items-center"><tab.Icon className="mr-2 h-4 w-4" />{tab.label}</span></SelectItem>))}</SelectContent>
             </Select>
           </div>
         ) : (
           <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-1 mb-6 bg-card p-1 rounded-lg">
-            {visibleTabs.map(tab => (<TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1"><tab.Icon className="mr-1 sm:mr-2 h-4 w-4" />{tab.label}</TabsTrigger>))}
+            {currentDeclarationHeureTabsConfig.map(tab => (<TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1"><tab.Icon className="mr-1 sm:mr-2 h-4 w-4" />{tab.label}</TabsTrigger>))}
           </TabsList>
         )}
-        {visibleTabs.length > 0 ? (visibleTabs.map(tab => (<TabsContent key={tab.value} value={tab.value}>{getTabContent(tab.value)}</TabsContent>))) : (<TabsContent value=""><p className="text-muted-foreground text-center py-6">Aucune section accessible.</p></TabsContent>)}
+        {currentDeclarationHeureTabsConfig.length > 0 ? (currentDeclarationHeureTabsConfig.map(tab => (<TabsContent key={tab.value} value={tab.value}>{getTabContent(tab.value)}</TabsContent>))) : (<TabsContent value=""><p className="text-muted-foreground text-center py-6">Aucune section accessible.</p></TabsContent>)}
       </Tabs>
 
       <OvertimeRequestDialog
@@ -593,3 +655,5 @@ export default function DeclarationHeurePage() {
     </div>
   );
 }
+
+    
