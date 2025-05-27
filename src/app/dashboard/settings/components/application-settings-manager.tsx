@@ -26,8 +26,9 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { 
-  applyThemeMode, 
-  applyAccentColor, 
+  applyThemeMode as applyThemeModeUtil, 
+  applyAccentColor as applyAccentColorUtil, 
+  hexToHsl,
   THEME_STORAGE_KEY, 
   ACCENT_COLOR_STORAGE_KEY 
 } from '@/lib/theme-utils';
@@ -101,6 +102,13 @@ const APP_SPECIFIC_PREFIXES = [
   'pms_fryer_oil_tpm_log_v1',
   'benefits_employees_list_v1', 
   'benefits_tracking_',
+  'picnic_nb_pn_data_v1_',
+  'picnic_client_orders_data_v3_',
+  'picnic_base_bread_v1_',
+  'picnic_master_weekly_menu_templates_v1',
+  'picnic_selected_template_index_v1',
+  'declaration_heure_overtime_requests_v5',
+  'declaration_heure_absence_requests_v5',
 ];
 
 
@@ -124,50 +132,61 @@ export default function ApplicationSettingsManager() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isImportAlertOpen, setIsImportAlertOpen] = useState(false);
 
+  // Memoize utility functions to prevent re-creation on every render
+  const applyThemeMode = useCallback(applyThemeModeUtil, []);
+  const applyAccentColor = useCallback(applyAccentColorUtil, []);
 
+
+  // Effect for loading all settings from localStorage on initial client mount
   useEffect(() => {
     setIsClient(true);
-  }, []);
+    console.log("[Settings EFFECT Load Settings] Running.");
+    
+    // Theme Mode
+    const storedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
+    const initialThemeMode = storedTheme && ['light', 'dark', 'system'].includes(storedTheme) ? storedTheme : 'system';
+    setSelectedThemeMode(initialThemeMode);
+    console.log("[Settings EFFECT Load Settings] Initial theme mode set to:", initialThemeMode);
 
+    // Accent Color
+    const storedAccentColor = localStorage.getItem(ACCENT_COLOR_STORAGE_KEY);
+    const initialAccentColor = storedAccentColor || DEFAULT_APP_PRIMARY_COLOR;
+    setSelectedAccentColor(initialAccentColor);
+    console.log("[Settings EFFECT Load Settings] Initial accent color set to:", initialAccentColor, "(Stored: ", storedAccentColor, ")");
+    
+    // App Logo
+    const storedAppLogo = localStorage.getItem(APP_LOGO_STORAGE_KEY);
+    setAppLogoDataUrl(storedAppLogo || null);
+    console.log("[Settings EFFECT Load Settings] App logo URL loaded.");
+
+    // Notification Settings
+    setEmailNotifications(localStorage.getItem(NOTIFICATIONS_EMAIL_KEY) === 'true' || DEFAULT_NOTIFICATIONS_EMAIL);
+    setInAppGeneralNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_GENERAL_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_GENERAL);
+    setInAppNewTaskNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_NEW_TASK_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_NEW_TASK);
+    setInAppStatusUpdateNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_STATUS_UPDATE_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_STATUS_UPDATE);
+    setInAppInventoryLowNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_INVENTORY_LOW);
+    setSoundNotificationsEnabled(localStorage.getItem(NOTIFICATIONS_SOUND_ENABLED_KEY) === 'true' || DEFAULT_NOTIFICATIONS_SOUND_ENABLED);
+    setNotificationSoundChoice(localStorage.getItem(NOTIFICATIONS_SOUND_CHOICE_KEY) || DEFAULT_NOTIFICATIONS_SOUND_CHOICE);
+    console.log("[Settings EFFECT Load Settings] Notification settings loaded.");
+
+  }, [isClient]); // Removed toast from dependencies as it should be stable
+
+
+  // Effect for applying visual styles (theme & accent color) when states change or on load
   useEffect(() => {
     if (isClient) {
-      console.log("[Settings EFFECT Load] Running.");
-      // Theme Mode
-      const storedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
-      const initialThemeMode = storedTheme && ['light', 'dark', 'system'].includes(storedTheme) ? storedTheme : 'system';
-      setSelectedThemeMode(initialThemeMode);
-      console.log("[Settings EFFECT Load] Initial theme mode set to:", initialThemeMode);
-
-      // Accent Color
-      const storedAccentColor = localStorage.getItem(ACCENT_COLOR_STORAGE_KEY);
-      const initialAccentColor = storedAccentColor || DEFAULT_APP_PRIMARY_COLOR;
-      setSelectedAccentColor(initialAccentColor);
-      console.log("[Settings EFFECT Load] Initial accent color set to:", initialAccentColor, "(Stored: ", storedAccentColor, ")");
-      
-      // App Logo
-      const storedAppLogo = localStorage.getItem(APP_LOGO_STORAGE_KEY);
-      setAppLogoDataUrl(storedAppLogo || null);
-      console.log("[Settings EFFECT Load] App logo URL loaded.");
-
-      // Notification Settings
-      setEmailNotifications(localStorage.getItem(NOTIFICATIONS_EMAIL_KEY) === 'true' || DEFAULT_NOTIFICATIONS_EMAIL);
-      setInAppGeneralNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_GENERAL_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_GENERAL);
-      setInAppNewTaskNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_NEW_TASK_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_NEW_TASK);
-      setInAppStatusUpdateNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_STATUS_UPDATE_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_STATUS_UPDATE);
-      setInAppInventoryLowNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_INVENTORY_LOW);
-      setSoundNotificationsEnabled(localStorage.getItem(NOTIFICATIONS_SOUND_ENABLED_KEY) === 'true' || DEFAULT_NOTIFICATIONS_SOUND_ENABLED);
-      setNotificationSoundChoice(localStorage.getItem(NOTIFICATIONS_SOUND_CHOICE_KEY) || DEFAULT_NOTIFICATIONS_SOUND_CHOICE);
-      console.log("[Settings EFFECT Load] Notification settings loaded.");
+      console.log(`[Settings EFFECT Apply Styles] Running. Theme: ${selectedThemeMode}, Accent: ${selectedAccentColor}`);
+      applyThemeMode(selectedThemeMode);
+      applyAccentColor(selectedAccentColor);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClient]); 
+  }, [isClient, selectedThemeMode, selectedAccentColor, applyThemeMode, applyAccentColor]);
 
 
   const handleThemeModeChange = (newMode: ThemeMode) => {
     setSelectedThemeMode(newMode);
     if (isClient) {
       localStorage.setItem(THEME_STORAGE_KEY, newMode);
-      applyThemeMode(newMode); // Apply immediately
+      // Visual application is handled by the useEffect above
       toast({
         title: "Thème Mis à Jour",
         description: `Le mode d'affichage est maintenant réglé sur "${newMode === 'light' ? 'Clair' : newMode === 'dark' ? 'Sombre' : 'Système'}".`,
@@ -177,18 +196,26 @@ export default function ApplicationSettingsManager() {
 
   const handleAccentColorInputChange = (newColor: string) => {
     setSelectedAccentColor(newColor);
-    if(isClient) {
-      applyAccentColor(newColor); // Live preview
-    }
+    // Live preview is handled by the useEffect above
   };
   
   const handleSaveAccentColor = () => {
     if (isClient) {
-      localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, selectedAccentColor);
-      applyAccentColor(selectedAccentColor); // Ensure application
+      let colorToSave = selectedAccentColor;
+      if (!hexToHsl(colorToSave)) { // Validate if it's a convertible hex
+        colorToSave = DEFAULT_APP_PRIMARY_COLOR;
+        setSelectedAccentColor(colorToSave); // Update state if fallback is used
+        toast({
+            title: "Couleur Invalide",
+            description: `La couleur saisie n'est pas valide. Utilisation de la couleur par défaut (${DEFAULT_APP_PRIMARY_COLOR}).`,
+            variant: "destructive",
+        });
+      }
+      localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, colorToSave);
+      // Visual application is handled by the useEffect
       toast({
         title: "Couleur d'Accentuation Enregistrée",
-        description: `La couleur d'accentuation est maintenant ${selectedAccentColor}.`,
+        description: `La couleur d'accentuation est maintenant ${colorToSave}.`,
       });
     }
   };
@@ -197,7 +224,7 @@ export default function ApplicationSettingsManager() {
     setSelectedAccentColor(DEFAULT_APP_PRIMARY_COLOR);
     if (isClient) {
       localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, DEFAULT_APP_PRIMARY_COLOR);
-      applyAccentColor(DEFAULT_APP_PRIMARY_COLOR);
+      // Visual application is handled by the useEffect
       toast({
         title: "Couleur d'Accentuation Réinitialisée",
         description: `La couleur d'accentuation a été réinitialisée à la valeur par défaut (${DEFAULT_APP_PRIMARY_COLOR}).`,
@@ -246,41 +273,37 @@ export default function ApplicationSettingsManager() {
     window.location.reload(); // Force reload
   };
 
-  const createSwitchHandler = (
-    setter: React.Dispatch<React.SetStateAction<boolean>>,
-    key: string,
-    settingName: string
-  ) => (checked: boolean) => {
-    setter(checked);
-    if (isClient) {
-      localStorage.setItem(key, String(checked));
-      toast({
-        title: "Préférences Mises à Jour",
-        description: `${settingName} ${checked ? 'activées' : 'désactivées'}.`,
-      });
-    }
-  };
+  // Notification switch handlers now only update state
+  const handleEmailNotificationsChange = (checked: boolean) => setEmailNotifications(checked);
+  const handleInAppGeneralNotificationsChange = (checked: boolean) => setInAppGeneralNotifications(checked);
+  const handleInAppNewTaskNotificationsChange = (checked: boolean) => setInAppNewTaskNotifications(checked);
+  const handleInAppStatusUpdateNotificationsChange = (checked: boolean) => setInAppStatusUpdateNotifications(checked);
+  const handleInAppInventoryLowNotificationsChange = (checked: boolean) => setInAppInventoryLowNotifications(checked);
+  const handleSoundNotificationsEnabledChange = (checked: boolean) => setSoundNotificationsEnabled(checked);
   
-  const handleEmailNotificationsChange = createSwitchHandler(setEmailNotifications, NOTIFICATIONS_EMAIL_KEY, "Notifications par e-mail");
-  const handleInAppGeneralNotificationsChange = createSwitchHandler(setInAppGeneralNotifications, NOTIFICATIONS_IN_APP_GENERAL_KEY, "Notifications générales dans l'application");
-  const handleInAppNewTaskNotificationsChange = createSwitchHandler(setInAppNewTaskNotifications, NOTIFICATIONS_IN_APP_NEW_TASK_KEY, "Alertes pour nouvelle tâche/problème");
-  const handleInAppStatusUpdateNotificationsChange = createSwitchHandler(setInAppStatusUpdateNotifications, NOTIFICATIONS_IN_APP_STATUS_UPDATE_KEY, "Alertes pour mise à jour de statut de tâche");
-  const handleInAppInventoryLowNotificationsChange = createSwitchHandler(setInAppInventoryLowNotifications, NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY, "Alertes pour stock bas");
-  const handleSoundNotificationsEnabledChange = createSwitchHandler(setSoundNotificationsEnabled, NOTIFICATIONS_SOUND_ENABLED_KEY, "Sons de notification");
-
   const handleNotificationSoundChoiceChange = (value: string) => {
     setNotificationSoundChoice(value);
-    if (isClient) {
-      localStorage.setItem(NOTIFICATIONS_SOUND_CHOICE_KEY, value);
-      toast({
-        title: "Préférences Mises à Jour",
-        description: `Son de notification réglé sur "${value}".`,
-      });
-      if (soundNotificationsEnabled && value !== 'none') {
-        console.log(`[Notification Sound] Playing sound: ${value}`); 
-      }
+    // Immediate save to localStorage is removed
+    if (soundNotificationsEnabled && value !== 'none' && isClient) {
+        console.log(`[Notification Sound Preview] Playing sound: ${value}`); 
     }
   };
+
+  const handleSaveNotificationPreferences = () => {
+    if (!isClient) return;
+    localStorage.setItem(NOTIFICATIONS_EMAIL_KEY, String(emailNotifications));
+    localStorage.setItem(NOTIFICATIONS_IN_APP_GENERAL_KEY, String(inAppGeneralNotifications));
+    localStorage.setItem(NOTIFICATIONS_IN_APP_NEW_TASK_KEY, String(inAppNewTaskNotifications));
+    localStorage.setItem(NOTIFICATIONS_IN_APP_STATUS_UPDATE_KEY, String(inAppStatusUpdateNotifications));
+    localStorage.setItem(NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY, String(inAppInventoryLowNotifications));
+    localStorage.setItem(NOTIFICATIONS_SOUND_ENABLED_KEY, String(soundNotificationsEnabled));
+    localStorage.setItem(NOTIFICATIONS_SOUND_CHOICE_KEY, notificationSoundChoice);
+    toast({
+      title: "Préférences de Notification Enregistrées",
+      description: "Vos choix de notification ont été sauvegardés.",
+    });
+  };
+
 
   const handleExportData = () => {
     if (!isClient) return;
@@ -343,7 +366,10 @@ export default function ApplicationSettingsManager() {
             } else if (isRecognizedKey && importedData[key] !== null && typeof importedData[key] === 'object') { 
                  localStorage.setItem(key, JSON.stringify(importedData[key]));
                  importedCount++;
-            } else if (isRecognizedKey) { 
+            } else if (isRecognizedKey && importedData[key] === null) {
+                 localStorage.removeItem(key); // Explicitly remove if null in backup
+                 importedCount++; // Or count as a change
+            } else if (isRecognizedKey) { // Catch other primitives like numbers/booleans
                  localStorage.setItem(key, String(importedData[key]));
                  importedCount++;
             }
@@ -356,8 +382,6 @@ export default function ApplicationSettingsManager() {
             description: `${importedCount} éléments de données ont été importés. Veuillez recharger la page pour appliquer tous les changements.`,
           });
           
-          // Force a reload to ensure all components pick up the new localStorage values,
-          // including DashboardLayout for theme/accent.
            setTimeout(() => window.location.reload(), 1000);
 
         } else {
@@ -564,6 +588,9 @@ export default function ApplicationSettingsManager() {
                         </SelectContent>
                     </Select>
                 </div>
+                <Button onClick={handleSaveNotificationPreferences} disabled={!isClient} className="w-full mt-4">
+                    <Save className="mr-2 h-4 w-4" /> Sauvegarder Préférences de Notification
+                </Button>
                 <p className="text-xs text-muted-foreground pt-1">Les notifications réelles et les sons ne sont pas implémentés, seuls les paramètres sont sauvegardés.</p>
             </div>
         </div>
@@ -634,3 +661,5 @@ export default function ApplicationSettingsManager() {
     </Card>
   );
 }
+
+    
