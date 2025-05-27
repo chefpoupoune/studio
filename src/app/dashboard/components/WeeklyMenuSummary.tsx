@@ -3,10 +3,22 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { CalendarDays, AlertCircle } from "lucide-react";
 import { format, startOfWeek, endOfWeek, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import type { DailyMenu } from '@/app/dashboard/menu-planning/types'; // Assurez-vous que le chemin est correct
+import type { DailyMenu, MenuField } from '@/app/dashboard/menu-planning/types';
+
+const mealPartLabels: Record<Exclude<MenuField, 'theme'>, string> = {
+  entree: "Entrée",
+  plat: "Plat",
+  feculent: "Féculent",
+  legume: "Légume",
+  sauce: "Sauce",
+  dessert: "Dessert",
+};
+const mealPartOrder: Exclude<MenuField, 'theme'>[] = ['entree', 'plat', 'feculent', 'legume', 'sauce', 'dessert'];
+
 
 export default function WeeklyMenuSummary() {
   const [weeklyMenu, setWeeklyMenu] = useState<DailyMenu[]>([]);
@@ -47,9 +59,9 @@ export default function WeeklyMenuSummary() {
       const currentWeekEndStr = format(weekEnd, 'yyyy-MM-dd');
 
       const itemsForCurrentWeek = fullMonthMenu.filter(item => {
-        // item.date est déjà au format 'yyyy-MM-dd'
         const itemDateStr = item.date;
-        return itemDateStr >= currentWeekStartStr && itemDateStr <= currentWeekEndStr && item.plat && item.plat.trim() !== '';
+        const hasContent = mealPartOrder.some(part => item[part] && item[part].trim() !== '');
+        return itemDateStr >= currentWeekStartStr && itemDateStr <= currentWeekEndStr && hasContent;
       });
       setWeeklyMenu(itemsForCurrentWeek);
     }
@@ -57,8 +69,8 @@ export default function WeeklyMenuSummary() {
 
   const displayedItems = useMemo(() => {
     return weeklyMenu
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()) // Trier par date
-      .slice(0, 4); // Afficher jusqu'à 4 jours
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .slice(0, 3); // Display up to 3 days with full details
   }, [weeklyMenu]);
 
   return (
@@ -76,21 +88,36 @@ export default function WeeklyMenuSummary() {
       </CardHeader>
       <CardContent className="flex-grow pt-2">
         {displayedItems.length > 0 ? (
-          <ul className="space-y-1.5 text-sm">
-            {displayedItems.map((item) => (
-              <li key={item.date} className="flex">
-                <span className="font-medium w-20 shrink-0 capitalize">
-                  {format(parseISO(item.date), "EEEE", { locale: fr })}:
-                </span>
-                <span className="text-muted-foreground truncate" title={item.plat}>{item.plat}</span>
-              </li>
-            ))}
-            {weeklyMenu.length > 4 && <li className="text-xs text-muted-foreground text-center pt-1">... et plus.</li>}
-          </ul>
+          <ScrollArea className="h-[220px] sm:h-[240px] pr-3"> {/* Adjusted height */}
+            <ul className="space-y-3"> {/* Increased space-y */}
+              {displayedItems.map((item) => (
+                <li key={item.date} className="text-sm border-b pb-2 last:border-b-0">
+                  <p className="font-semibold text-base capitalize mb-1">
+                    {format(parseISO(item.date), "EEEE dd", { locale: fr })}
+                  </p>
+                  <div className="pl-2 space-y-0.5 text-xs">
+                    {mealPartOrder.map(part => {
+                      if (item[part] && item[part].trim() !== '') {
+                        return (
+                          <div key={part} className="flex">
+                            <span className="font-medium w-20 shrink-0">{mealPartLabels[part]}:</span>
+                            <span className="text-muted-foreground truncate" title={item[part]}>{item[part]}</span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })}
+                  </div>
+                </li>
+              ))}
+              {weeklyMenu.length > 3 && <li className="text-xs text-muted-foreground text-center pt-2">... et {weeklyMenu.length - 3} autre(s) jour(s) planifié(s).</li>}
+            </ul>
+          </ScrollArea>
         ) : (
-          <p className="text-sm text-muted-foreground text-center py-4 flex items-center justify-center gap-2">
-             <AlertCircle className="w-4 h-4"/> Aucun menu planifié pour cette semaine.
-          </p>
+          <div className="text-sm text-muted-foreground text-center py-4 h-full flex flex-col items-center justify-center">
+             <AlertCircle className="w-10 h-10 text-muted-foreground/70 mb-2"/>
+             <p>Aucun menu planifié pour cette semaine.</p>
+          </div>
         )}
       </CardContent>
     </Card>
