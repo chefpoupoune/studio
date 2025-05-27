@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Checkbox } from '@/components/ui/checkbox'; // Added
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
@@ -13,12 +14,15 @@ import { Calendar } from '@/components/ui/calendar';
 import { useForm, Controller, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { AbsenceRequest } from '../types'; 
+import type { AbsenceRequest, PrestationType } from '../types'; 
+import { PRESTATION_TYPE_LABELS } from '../types'; // Added
 import { cn } from '@/lib/utils';
 import { format, parseISO, isValid, differenceInCalendarDays, addDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { CalendarIcon as LucideCalendarIcon } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
+
+const prestationTypesSchema = z.array(z.custom<PrestationType>()).optional().default([]);
 
 const absenceFormSchema = z.object({
   hoursPerDay: z.coerce.number().min(0.25, "Minimum 0.25 heures.").max(12, "Maximum 12 heures.").optional().nullable(),
@@ -26,6 +30,9 @@ const absenceFormSchema = z.object({
   endDate: z.date({ required_error: "Date de fin requise." }),
   reason: z.string().max(500, "Motif max 500 caractères.").optional(),
   position: z.string().optional(), 
+
+  prestationTypes: prestationTypesSchema, // Added
+  prestationTypeAutresDetail: z.string().max(100, "Détail max 100 caractères.").optional(), // Added
 
   // Signatures
   employeeSignatureDate: z.date().optional().nullable(),
@@ -40,7 +47,8 @@ const absenceFormSchema = z.object({
 .refine(data => data.endDate >= data.startDate, {
     message: "La date de fin ne peut être antérieure à la date de début.",
     path: ['endDate'],
-}).refine(data => {
+})
+.refine(data => {
   if (data.approvalStatus === 'rejected' && (!data.rejectionReason || data.rejectionReason.trim() === '')) {
     return false;
   }
@@ -48,7 +56,17 @@ const absenceFormSchema = z.object({
 }, {
   message: "Le motif de refus est requis si la demande est refusée.",
   path: ['rejectionReason'],
+})
+.refine(data => { // Added for prestationTypes
+  if (data.prestationTypes?.includes('autres') && (!data.prestationTypeAutresDetail || data.prestationTypeAutresDetail.trim() === '')) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Veuillez préciser le type de prestation pour 'Autres'.",
+  path: ['prestationTypeAutresDetail'],
 });
+
 
 type AbsenceFormData = z.infer<typeof absenceFormSchema>;
 
@@ -78,6 +96,8 @@ export default function AbsenceRequestDialog({
       endDate: addDays(new Date(),0), 
       reason: '',
       position: '',
+      prestationTypes: ['logistique'], // Default to logistique
+      prestationTypeAutresDetail: '',
       employeeSignatureDate: null,
       directManagerSignatureDate: null,
       directorSignatureDate: null,
@@ -88,6 +108,7 @@ export default function AbsenceRequestDialog({
   });
 
   const approvalStatusWatched = useWatch({ control: form.control, name: "approvalStatus" });
+  const prestationTypesWatched = useWatch({ control: form.control, name: "prestationTypes" }); // Added
   const formStartDate = form.watch('startDate');
   const formEndDate = form.watch('endDate');
   const formHoursPerDay = form.watch('hoursPerDay');
@@ -106,10 +127,10 @@ export default function AbsenceRequestDialog({
       }
     } else {
       setDisplayedNumberOfDays('N/A');
-      days = 0; // Cannot calculate total hours if days are N/A
+      days = 0; 
     }
 
-    const hpd = form.getValues('hoursPerDay'); // Get current value directly
+    const hpd = form.getValues('hoursPerDay'); 
     if (days > 0 && hpd && hpd > 0) {
         setDisplayedTotalAbsenceHours(`${(days * hpd).toFixed(1)} heures`);
     } else if (days > 0 && !hpd) {
@@ -155,14 +176,15 @@ export default function AbsenceRequestDialog({
               empSigDate = new Date();
           }
       }
-       // Auto-fill approver dates logic (moved to its own effect)
-
+      
       form.reset({
         hoursPerDay: editingRequest?.hoursPerDay ?? undefined,
         startDate: editingRequest?.startDate && isValid(parseISO(editingRequest.startDate)) ? parseISO(editingRequest.startDate) : defaultStartDate,
         endDate: editingRequest?.endDate && isValid(parseISO(editingRequest.endDate)) ? parseISO(editingRequest.endDate) : defaultEndDate,
         reason: editingRequest?.reason || '',
         position: initialPosition,
+        prestationTypes: editingRequest?.prestationTypes || ['logistique'],
+        prestationTypeAutresDetail: editingRequest?.prestationTypeAutresDetail || '',
         employeeSignatureDate: empSigDate,
         directManagerSignatureDate: managerSigDate,
         directorSignatureDate: directorSigDate,
@@ -204,6 +226,8 @@ export default function AbsenceRequestDialog({
         numberOfDays: calculatedNumberOfDays,
         hoursPerDay: data.hoursPerDay ?? undefined, 
         totalAbsenceHours: calculatedTotalAbsenceHours,
+        prestationTypes: data.prestationTypes && data.prestationTypes.length > 0 ? data.prestationTypes : ['logistique'],
+        prestationTypeAutresDetail: data.prestationTypes?.includes('autres') ? (data.prestationTypeAutresDetail || '') : '',
         employeeSignatureDate: data.employeeSignatureDate ? data.employeeSignatureDate.toISOString() : null,
         directManagerSignatureDate: data.directManagerSignatureDate ? data.directManagerSignatureDate.toISOString() : null,
         directorSignatureDate: data.directorSignatureDate ? data.directorSignatureDate.toISOString() : null,
@@ -313,6 +337,51 @@ export default function AbsenceRequestDialog({
                     </FormItem>
                 </div>
 
+                <FormItem>
+                  <FormLabel>Prestation correspondante</FormLabel>
+                  <div className="space-y-2 rounded-md border p-3">
+                    {(Object.keys(PRESTATION_TYPE_LABELS) as PrestationType[]).map((typeKey) => (
+                      <FormField
+                        key={typeKey}
+                        control={form.control}
+                        name="prestationTypes"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value?.includes(typeKey)}
+                                onCheckedChange={(checked) => {
+                                  return checked
+                                    ? field.onChange([...(field.value || []), typeKey])
+                                    : field.onChange(
+                                        (field.value || []).filter(
+                                          (value) => value !== typeKey
+                                        )
+                                      )
+                                }}
+                                disabled={employeeFieldsActuallyDisabled}
+                              />
+                            </FormControl>
+                            <FormLabel className="font-normal text-sm">{PRESTATION_TYPE_LABELS[typeKey]}</FormLabel>
+                          </FormItem>
+                        )}
+                      />
+                    ))}
+                    {prestationTypesWatched?.includes('autres') && (
+                        <FormField
+                            control={form.control}
+                            name="prestationTypeAutresDetail"
+                            render={({ field }) => (
+                            <FormItem className="ml-7 mt-1">
+                                <FormControl><Input placeholder="Précisez..." {...field} value={field.value || ''} className="h-8 text-sm" disabled={employeeFieldsActuallyDisabled} /></FormControl>
+                                <FormMessage />
+                            </FormItem>
+                            )}
+                        />
+                    )}
+                  </div>
+                  {form.formState.errors.prestationTypeAutresDetail && <FormMessage>{form.formState.errors.prestationTypeAutresDetail.message}</FormMessage>}
+                </FormItem>
 
                 <FormField control={form.control} name="reason" render={({ field }) => (
                     <FormItem>

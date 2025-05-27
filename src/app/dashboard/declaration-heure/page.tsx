@@ -41,7 +41,7 @@ interface jsPDFWithAutoTable extends jsPDF {
 }
 
 const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v5';
-const ABSENCE_REQUESTS_STORAGE_KEY = 'declaration_heure_absence_requests_v4'; // Version bump
+const ABSENCE_REQUESTS_STORAGE_KEY = 'declaration_heure_absence_requests_v5'; // Incremented version
 const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
@@ -121,6 +121,8 @@ export default function DeclarationHeurePage() {
           hoursPerDay: req.hoursPerDay ?? undefined,
           totalAbsenceHours: req.totalAbsenceHours ?? 0,
           numberOfDays: req.numberOfDays || (req.startDate && req.endDate && isValid(parseISO(req.startDate)) && isValid(parseISO(req.endDate)) ? differenceInCalendarDays(parseISO(req.endDate), parseISO(req.startDate)) + 1 : 1),
+          prestationTypes: Array.isArray(req.prestationTypes) ? req.prestationTypes : ['logistique'], // Added
+          prestationTypeAutresDetail: req.prestationTypeAutresDetail || '', // Added
           employeeSignatureDate: req.employeeSignatureDate || null,
           directManagerSignatureDate: req.directManagerSignatureDate || null,
           directorSignatureDate: req.directorSignatureDate || null,
@@ -254,6 +256,8 @@ export default function DeclarationHeurePage() {
                 approvalStatus: data.approvalStatus || req.approvalStatus || 'pending',
                 hoursPerDay: data.hoursPerDay,
                 totalAbsenceHours: data.totalAbsenceHours,
+                prestationTypes: data.prestationTypes && data.prestationTypes.length > 0 ? data.prestationTypes : ['logistique'],
+                prestationTypeAutresDetail: data.prestationTypes?.includes('autres') ? (data.prestationTypeAutresDetail || '') : '',
               } as AbsenceRequest
             : req
         );
@@ -268,6 +272,8 @@ export default function DeclarationHeurePage() {
             approvalStatus: data.approvalStatus || 'pending',
             hoursPerDay: data.hoursPerDay,
             totalAbsenceHours: data.totalAbsenceHours,
+            prestationTypes: data.prestationTypes && data.prestationTypes.length > 0 ? data.prestationTypes : ['logistique'],
+            prestationTypeAutresDetail: data.prestationTypes?.includes('autres') ? (data.prestationTypeAutresDetail || '') : '',
             startDate: data.startDate!, 
             endDate: data.endDate!, 
             reason: data.reason || '', 
@@ -305,7 +311,7 @@ export default function DeclarationHeurePage() {
     switch (status) { case 'accepted': return 'Acceptée'; case 'rejected': return 'Refusée'; case 'pending': default: return 'En attente'; }
   };
 
-  const renderOvertimeRequestList = (requestsToList: OvertimeRequest[], approverModeView: boolean) => (
+  const renderRequestList = (requestsToList: OvertimeRequest[], approverModeView: boolean) => (
     requestsToList.length === 0 ? (
       <p className="text-muted-foreground text-center py-6">
         {approverModeView ? "Aucune demande à approuver pour le moment." : "Vous n'avez aucune demande de dépassement d'horaire."}
@@ -404,6 +410,9 @@ export default function DeclarationHeurePage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="px-4 pb-3 space-y-1 text-xs">
+                {req.prestationTypes && req.prestationTypes.length > 0 && (
+                    <p className="text-muted-foreground"><span className="font-medium text-foreground/80">Prestations:</span>{' '}{req.prestationTypes.map(pt => PRESTATION_TYPE_LABELS[pt as PrestationType] || pt).join(', ')}{req.prestationTypes.includes('autres') && req.prestationTypeAutresDetail && ` (${req.prestationTypeAutresDetail})`}</p>
+                )}
                 {req.reason && <p className="text-muted-foreground"><span className="font-medium text-foreground/80">Motif:</span> {req.reason}</p>}
                 {req.numberOfDays && <p className="text-muted-foreground"><span className="font-medium text-foreground/80">Durée:</span> {req.numberOfDays} jour(s)</p>}
                 {req.approvalStatus && req.approvalStatus !== 'pending' && (
@@ -482,7 +491,7 @@ export default function DeclarationHeurePage() {
                 <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande
               </Button>
             </CardHeader>
-            <CardContent>{renderOvertimeRequestList(isChef ? allOvertimeRequestsForChef : employeeOvertimeRequests, false)}</CardContent>
+            <CardContent>{renderRequestList(isChef ? allOvertimeRequestsForChef : employeeOvertimeRequests, false)}</CardContent>
           </Card>
         );
       case "my-absence-requests":
@@ -504,7 +513,7 @@ export default function DeclarationHeurePage() {
         return isChef ? (
           <Card className="shadow-xl">
             <CardHeader><CardTitle>Approbation des Demandes de Dépassement</CardTitle><CardDescription>Traitez les demandes soumises.</CardDescription></CardHeader>
-            <CardContent>{renderOvertimeRequestList(allOvertimeRequestsForChef, true)}</CardContent>
+            <CardContent>{renderRequestList(allOvertimeRequestsForChef, true)}</CardContent>
           </Card>
         ) : null;
       case "absence-approval": 
@@ -560,6 +569,11 @@ export default function DeclarationHeurePage() {
     doc.setFontSize(pdfSettings.defaultFontSize);
     doc.text(`Nom et prénom du salarié : ${request.employeeName || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
     doc.text(`Poste occupé à l'IME : ${request.position || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
+    
+    const prestationAbsenceText = (request.prestationTypes || []).map(pt => PRESTATION_TYPE_LABELS[pt] || pt).join(', ') +
+      ((request.prestationTypes || []).includes('autres') && request.prestationTypeAutresDetail ? ` (${request.prestationTypeAutresDetail})` : '');
+    doc.text(`Prestation correspondante : ${prestationAbsenceText || 'Logistique'}`, pdfSettings.marginLeft, currentY); currentY += 15;
+
     doc.text(`Date de début : ${format(parseISO(request.startDate), "dd/MM/yyyy", { locale: fr })}`, pdfSettings.marginLeft, currentY); currentY += 15;
     doc.text(`Date de fin : ${format(parseISO(request.endDate), "dd/MM/yyyy", { locale: fr })}`, pdfSettings.marginLeft, currentY); currentY += 15;
     doc.text(`Nombre de jours d'absence : ${request.numberOfDays || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
@@ -640,5 +654,3 @@ export default function DeclarationHeurePage() {
     </div>
   );
 }
-
-    

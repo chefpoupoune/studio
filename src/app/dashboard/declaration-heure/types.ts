@@ -55,13 +55,16 @@ export interface AbsenceRequest {
   position?: string; 
   
   hoursPerDay?: number; 
-  totalAbsenceHours?: number; // Added: Total calculated hours of absence
+  totalAbsenceHours?: number; 
 
   startDate: string; // ISO string yyyy-MM-dd
   endDate: string; // ISO string yyyy-MM-dd
   
   numberOfDays?: number; // Calculated
   reason?: string;
+
+  prestationTypes?: PrestationType[]; // Added
+  prestationTypeAutresDetail?: string; // Added
   
   employeeSignatureDate?: string | null; 
   directManagerSignatureDate?: string | null; 
