@@ -125,14 +125,14 @@ export default function PendingRequestsAlert({ loggedInUsername }: PendingReques
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
           <div className="space-y-1">
             {pendingOvertimeCount > 0 && (
-              <p>
+              <div>
                 Vous avez <Badge variant="destructive" className="mx-1">{pendingOvertimeCount}</Badge> demande(s) de dépassement d'horaire en attente.
-              </p>
+              </div>
             )}
             {pendingAbsenceCount > 0 && (
-              <p>
+              <div>
                 Vous avez <Badge variant="destructive" className="mx-1">{pendingAbsenceCount}</Badge> demande(s) d'absence en attente.
-              </p>
+              </div>
             )}
           </div>
           <Button asChild variant="outline" size="sm" className="mt-2 sm:mt-0 border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive">
