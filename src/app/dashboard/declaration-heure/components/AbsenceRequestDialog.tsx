@@ -8,14 +8,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-// Select related imports are removed as absenceType is removed
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { useForm, Controller, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { AbsenceRequest } from '../types'; // AbsenceType removed from import
-// ABSENCE_TYPES, ABSENCE_TYPE_LABELS removed
+import type { AbsenceRequest } from '../types'; 
 import { cn } from '@/lib/utils';
 import { format, parseISO, isValid, differenceInCalendarDays, addDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -23,11 +21,9 @@ import { CalendarIcon as LucideCalendarIcon } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 const absenceFormSchema = z.object({
-  // absenceType: z.custom<AbsenceType>((val) => ABSENCE_TYPES.includes(val as AbsenceType), "Type d'absence invalide."), // Removed
-  // absenceTypeAutresDetail: z.string().max(100, "Détail max 100 caractères.").optional(), // Removed
+  hoursPerDay: z.coerce.number().min(0.25, "Minimum 0.25 heures.").max(12, "Maximum 12 heures.").optional().nullable(),
   startDate: z.date({ required_error: "Date de début requise." }),
   endDate: z.date({ required_error: "Date de fin requise." }),
-  hoursPerDay: z.coerce.number().min(0.25, "Minimum 0.25 heures.").max(12, "Maximum 12 heures.").optional(), // Added
   reason: z.string().max(500, "Motif max 500 caractères.").optional(),
   position: z.string().optional(), 
 
@@ -41,15 +37,6 @@ const absenceFormSchema = z.object({
   rejectionReason: z.string().max(500, "Motif refus max 500 caractères.").optional(),
   decisionDate: z.date().optional().nullable(),
 })
-// .refine(data => { // Refine for absenceTypeAutresDetail removed
-//     if (data.absenceType === 'Autre' && (!data.absenceTypeAutresDetail || data.absenceTypeAutresDetail.trim() === '')) {
-//         return false;
-//     }
-//     return true;
-// }, {
-//     message: "Veuillez préciser le type d'absence pour 'Autre'.",
-//     path: ['absenceTypeAutresDetail'],
-// })
 .refine(data => data.endDate >= data.startDate, {
     message: "La date de fin ne peut être antérieure à la date de début.",
     path: ['endDate'],
@@ -86,9 +73,7 @@ export default function AbsenceRequestDialog({
   const form = useForm<AbsenceFormData>({
     resolver: zodResolver(absenceFormSchema),
     defaultValues: {
-      // absenceType: 'CP', // Removed
-      // absenceTypeAutresDetail: '', // Removed
-      hoursPerDay: undefined, // Added
+      hoursPerDay: undefined,
       startDate: new Date(),
       endDate: addDays(new Date(),0), 
       reason: '',
@@ -102,24 +87,38 @@ export default function AbsenceRequestDialog({
     },
   });
 
-  // const absenceTypeWatched = form.watch('absenceType'); // Removed
   const approvalStatusWatched = useWatch({ control: form.control, name: "approvalStatus" });
   const formStartDate = form.watch('startDate');
   const formEndDate = form.watch('endDate');
+  const formHoursPerDay = form.watch('hoursPerDay');
+
   const [displayedNumberOfDays, setDisplayedNumberOfDays] = useState<string>('1 jour(s)');
+  const [displayedTotalAbsenceHours, setDisplayedTotalAbsenceHours] = useState<string>('0.0 heures');
 
   useEffect(() => {
+    let days = 1;
     if (formStartDate && isValid(formStartDate)) {
       if (formEndDate && isValid(formEndDate) && formEndDate >= formStartDate) {
-        const days = differenceInCalendarDays(formEndDate, formStartDate) + 1;
+        days = differenceInCalendarDays(formEndDate, formStartDate) + 1;
         setDisplayedNumberOfDays(`${days} jour(s)`);
       } else {
         setDisplayedNumberOfDays('1 jour(s)');
       }
     } else {
       setDisplayedNumberOfDays('N/A');
+      days = 0; // Cannot calculate total hours if days are N/A
     }
-  }, [formStartDate, formEndDate]);
+
+    const hpd = form.getValues('hoursPerDay'); // Get current value directly
+    if (days > 0 && hpd && hpd > 0) {
+        setDisplayedTotalAbsenceHours(`${(days * hpd).toFixed(1)} heures`);
+    } else if (days > 0 && !hpd) {
+        setDisplayedTotalAbsenceHours('Préciser h/jour');
+    }
+     else {
+        setDisplayedTotalAbsenceHours('0.0 heures');
+    }
+  }, [formStartDate, formEndDate, formHoursPerDay, form]);
 
 
   const isFormLockedForEmployee = useMemo(() => {
@@ -155,19 +154,11 @@ export default function AbsenceRequestDialog({
           if (!isApproverView && !empSigDate) {
               empSigDate = new Date();
           }
-           if (isApproverView && currentUser?.name.toLowerCase() === 'chef') {
-              if (editingRequest.approvalStatus === 'accepted' || editingRequest.approvalStatus === 'rejected') {
-                if (!decDate) decDate = new Date();
-                if (!managerSigDate) managerSigDate = new Date();
-                if (!directorSigDate) directorSigDate = new Date();
-              }
-           }
       }
+       // Auto-fill approver dates logic (moved to its own effect)
 
       form.reset({
-        // absenceType: editingRequest?.absenceType || 'CP', // Removed
-        // absenceTypeAutresDetail: editingRequest?.absenceTypeAutresDetail || '', // Removed
-        hoursPerDay: editingRequest?.hoursPerDay ?? undefined, // Added
+        hoursPerDay: editingRequest?.hoursPerDay ?? undefined,
         startDate: editingRequest?.startDate && isValid(parseISO(editingRequest.startDate)) ? parseISO(editingRequest.startDate) : defaultStartDate,
         endDate: editingRequest?.endDate && isValid(parseISO(editingRequest.endDate)) ? parseISO(editingRequest.endDate) : defaultEndDate,
         reason: editingRequest?.reason || '',
@@ -183,21 +174,27 @@ export default function AbsenceRequestDialog({
   }, [isOpen, editingRequest, currentUser, form, isApproverView]);
 
   useEffect(() => {
-    if (isApproverView && (approvalStatusWatched === 'accepted' || approvalStatusWatched === 'rejected')) {
+    if (isOpen && isApproverView && (approvalStatusWatched === 'accepted' || approvalStatusWatched === 'rejected')) {
       if (!form.getValues('decisionDate')) {
         form.setValue('decisionDate', new Date());
       }
-      if (currentUser?.name.toLowerCase() === 'chef') {
+      if (currentUser?.name?.toLowerCase() === 'chef') {
         if (!form.getValues('directManagerSignatureDate')) form.setValue('directManagerSignatureDate', new Date());
         if (!form.getValues('directorSignatureDate')) form.setValue('directorSignatureDate', new Date());
       }
     }
-  }, [approvalStatusWatched, isApproverView, currentUser, form]);
+  }, [approvalStatusWatched, isApproverView, currentUser, form, isOpen]);
+
 
   const handleSubmit = (data: AbsenceFormData) => {
     let calculatedNumberOfDays = 1;
     if (data.startDate && data.endDate && isValid(data.startDate) && isValid(data.endDate) && data.endDate >= data.startDate) {
         calculatedNumberOfDays = differenceInCalendarDays(data.endDate, data.startDate) + 1;
+    }
+
+    let calculatedTotalAbsenceHours = 0;
+    if (calculatedNumberOfDays > 0 && data.hoursPerDay && data.hoursPerDay > 0) {
+        calculatedTotalAbsenceHours = calculatedNumberOfDays * data.hoursPerDay;
     }
     
     const submitData: Partial<Omit<AbsenceRequest, 'id' | 'employeeName' | 'requestDate' | 'updatedAt'>> = {
@@ -205,7 +202,8 @@ export default function AbsenceRequestDialog({
         startDate: format(data.startDate, 'yyyy-MM-dd'),
         endDate: format(data.endDate, 'yyyy-MM-dd'),
         numberOfDays: calculatedNumberOfDays,
-        hoursPerDay: data.hoursPerDay, // Added
+        hoursPerDay: data.hoursPerDay ?? undefined, 
+        totalAbsenceHours: calculatedTotalAbsenceHours,
         employeeSignatureDate: data.employeeSignatureDate ? data.employeeSignatureDate.toISOString() : null,
         directManagerSignatureDate: data.directManagerSignatureDate ? data.directManagerSignatureDate.toISOString() : null,
         directorSignatureDate: data.directorSignatureDate ? data.directorSignatureDate.toISOString() : null,
@@ -284,17 +282,14 @@ export default function AbsenceRequestDialog({
                         </FormItem>
                     )} />
                 </div>
-
-                {/* Absence Type Select Removed */}
-                {/* Absence Type Autres Detail Removed */}
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {renderDateField("startDate", "Date de Début", employeeFieldsActuallyDisabled)}
                     {renderDateField("endDate", "Date de Fin", employeeFieldsActuallyDisabled)}
                 </div>
-                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <FormItem>
-                        <FormLabel>Nombre de jours d'absence</FormLabel>
+                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+                    <FormItem className="sm:col-span-1">
+                        <FormLabel>Nombre de jours</FormLabel>
                         <Input 
                             value={displayedNumberOfDays} 
                             disabled 
@@ -302,12 +297,20 @@ export default function AbsenceRequestDialog({
                         />
                     </FormItem>
                     <FormField control={form.control} name="hoursPerDay" render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>Nombre d'heures par jour d'absence</FormLabel>
+                        <FormItem className="sm:col-span-1">
+                            <FormLabel>Heures/jour</FormLabel>
                             <FormControl><Input type="number" step="0.25" placeholder="Ex: 7.5" {...field} value={field.value ?? ''} disabled={employeeFieldsActuallyDisabled} /></FormControl>
                             <FormMessage />
                         </FormItem>
                     )} />
+                    <FormItem className="sm:col-span-1">
+                        <FormLabel>Total Heures Absence</FormLabel>
+                        <Input 
+                            value={displayedTotalAbsenceHours} 
+                            disabled 
+                            className="bg-muted/50" 
+                        />
+                    </FormItem>
                 </div>
 
 

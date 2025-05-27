@@ -41,12 +41,11 @@ export interface OvertimeRequest {
 
   approvalStatus?: 'pending' | 'accepted' | 'rejected'; 
   rejectionReason?: string;
+  // compensationType?: 'recovery' | 'payment'; // Removed as per user request
   decisionDate?: string | null; 
 }
 
 // Types for Absence Requests
-// ABSENCE_TYPES and ABSENCE_TYPE_LABELS are removed as per user request
-
 export interface AbsenceRequest {
   id: string;
   employeeName: string;
@@ -55,9 +54,8 @@ export interface AbsenceRequest {
 
   position?: string; 
   
-  // absenceType: AbsenceType; // Removed
-  // absenceTypeAutresDetail?: string; // Removed
-  hoursPerDay?: number; // Added
+  hoursPerDay?: number; 
+  totalAbsenceHours?: number; // Added: Total calculated hours of absence
 
   startDate: string; // ISO string yyyy-MM-dd
   endDate: string; // ISO string yyyy-MM-dd

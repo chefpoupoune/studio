@@ -41,7 +41,7 @@ interface jsPDFWithAutoTable extends jsPDF {
 }
 
 const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v5';
-const ABSENCE_REQUESTS_STORAGE_KEY = 'declaration_heure_absence_requests_v3';
+const ABSENCE_REQUESTS_STORAGE_KEY = 'declaration_heure_absence_requests_v4'; // Version bump
 const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
@@ -50,7 +50,6 @@ interface DeclarationHeureTab {
   value: string;
   label: string;
   Icon: React.ElementType;
-  isChefOnly?: boolean;
 }
 
 export default function DeclarationHeurePage() {
@@ -104,10 +103,8 @@ export default function DeclarationHeurePage() {
           directorSignatureDate: req.directorSignatureDate || null,
         }));
         setOvertimeRequests(parsedOvertime.sort((a:OvertimeRequest,b:OvertimeRequest) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()));
-        console.log(`[DeclarationHeurePage LOAD] Overtime requests loaded: ${parsedOvertime.length}`);
       } else { 
         setOvertimeRequests([]); 
-        console.log("[DeclarationHeurePage LOAD] No overtime requests found in localStorage.");
       }
 
       const storedAbsenceRaw = localStorage.getItem(ABSENCE_REQUESTS_STORAGE_KEY);
@@ -122,6 +119,7 @@ export default function DeclarationHeurePage() {
           approvalStatus: req.approvalStatus || 'pending', 
           position: req.position || '',
           hoursPerDay: req.hoursPerDay ?? undefined,
+          totalAbsenceHours: req.totalAbsenceHours ?? 0,
           numberOfDays: req.numberOfDays || (req.startDate && req.endDate && isValid(parseISO(req.startDate)) && isValid(parseISO(req.endDate)) ? differenceInCalendarDays(parseISO(req.endDate), parseISO(req.startDate)) + 1 : 1),
           employeeSignatureDate: req.employeeSignatureDate || null,
           directManagerSignatureDate: req.directManagerSignatureDate || null,
@@ -130,24 +128,19 @@ export default function DeclarationHeurePage() {
           decisionDate: req.decisionDate || null,
         }));
         setAbsenceRequests(parsedAbsence.sort((a:AbsenceRequest,b:AbsenceRequest) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()));
-        console.log(`[DeclarationHeurePage LOAD] Absence requests loaded: ${parsedAbsence.length}`);
       } else { 
         setAbsenceRequests([]); 
-        console.log("[DeclarationHeurePage LOAD] No absence requests found in localStorage.");
       }
 
       const storedBrigadeMembersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
       if (storedBrigadeMembersRaw) {
         setBrigadeMembers(JSON.parse(storedBrigadeMembersRaw));
-        console.log(`[DeclarationHeurePage LOAD] Brigade members loaded: ${JSON.parse(storedBrigadeMembersRaw).length}`);
       } else {
         setBrigadeMembers([]);
-        console.log("[DeclarationHeurePage LOAD] No brigade members found in localStorage.");
       }
       
       usernameFromStorage = localStorage.getItem(LOGGED_IN_USERNAME_KEY);
       setLoggedInUsername(usernameFromStorage);
-      console.log(`[DeclarationHeurePage LOAD] Logged in user: ${usernameFromStorage}`);
 
     } catch (e) {
       console.error("[DeclarationHeurePage LOAD] Error loading data from localStorage", e);
@@ -155,20 +148,17 @@ export default function DeclarationHeurePage() {
       toast({ title: "Erreur de chargement des données de déclaration", variant: "destructive" });
     } finally {
       setDataLoaded(true);
-      console.log("[DeclarationHeurePage LOAD] Data loading complete. dataLoaded set to true.");
     }
   }, [isClient, toast]);
 
   useEffect(() => {
     if (isClient && dataLoaded) { 
-      console.log(`[DeclarationHeurePage SAVE Overtime] Saving ${overtimeRequests.length} overtimeRequests.`);
       localStorage.setItem(OVERTIME_REQUESTS_STORAGE_KEY, JSON.stringify(overtimeRequests));
     }
   }, [overtimeRequests, isClient, dataLoaded]);
 
   useEffect(() => {
     if (isClient && dataLoaded) {
-      console.log(`[DeclarationHeurePage SAVE Absence] Saving ${absenceRequests.length} absenceRequests.`);
       localStorage.setItem(ABSENCE_REQUESTS_STORAGE_KEY, JSON.stringify(absenceRequests));
     }
   }, [absenceRequests, isClient, dataLoaded]);
@@ -204,6 +194,7 @@ export default function DeclarationHeurePage() {
             reasonStub: data.reasonStub || req.reasonStub || "Non spécifié",
             prestationTypes: data.prestationTypes && data.prestationTypes.length > 0 ? data.prestationTypes : ['logistique'],
             prestationTypeAutresDetail: data.prestationTypes?.includes('autres') ? (data.prestationTypeAutresDetail || '') : '',
+            approvalStatus: data.approvalStatus || req.approvalStatus || 'pending',
           } as OvertimeRequest
         : req
       );
@@ -225,7 +216,8 @@ export default function DeclarationHeurePage() {
       updatedRequestsList = [newRequest, ...overtimeRequests];
       toast({ title: "Demande Dépassement Soumise" });
     }
-    setOvertimeRequests(updatedRequestsList.sort((a,b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()));
+    updatedRequestsList.sort((a,b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
+    setOvertimeRequests(updatedRequestsList);
     setEditingOvertimeRequest(null); 
   }, [overtimeRequests, editingOvertimeRequest, loggedInUsername, currentBrigadeMember, toast, dataLoaded]);
   
@@ -259,7 +251,9 @@ export default function DeclarationHeurePage() {
                 employeeName: employeeNameToUse, 
                 position: positionToUse, 
                 updatedAt: nowISO, 
-                approvalStatus: data.approvalStatus || req.approvalStatus || 'pending' 
+                approvalStatus: data.approvalStatus || req.approvalStatus || 'pending',
+                hoursPerDay: data.hoursPerDay,
+                totalAbsenceHours: data.totalAbsenceHours,
               } as AbsenceRequest
             : req
         );
@@ -273,6 +267,7 @@ export default function DeclarationHeurePage() {
             updatedAt: nowISO,
             approvalStatus: data.approvalStatus || 'pending',
             hoursPerDay: data.hoursPerDay,
+            totalAbsenceHours: data.totalAbsenceHours,
             startDate: data.startDate!, 
             endDate: data.endDate!, 
             reason: data.reason || '', 
@@ -286,7 +281,8 @@ export default function DeclarationHeurePage() {
         updatedList = [newRequest, ...absenceRequests];
         toast({ title: "Demande d'Absence Soumise" });
     }
-    setAbsenceRequests(updatedList.sort((a,b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()));
+    updatedList.sort((a,b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
+    setAbsenceRequests(updatedList);
     setEditingAbsenceRequest(null);
   }, [absenceRequests, editingAbsenceRequest, loggedInUsername, currentBrigadeMember, toast, dataLoaded]);
 
@@ -401,7 +397,8 @@ export default function DeclarationHeurePage() {
                 </div>
                 <CardDescription className="text-xs">
                   Demandé par: {req.employeeName} {req.position && `(${req.position})`}
-                  {req.hoursPerDay && ` | ${req.hoursPerDay}h/jour`}
+                  {req.hoursPerDay && ` | ${req.hoursPerDay}h/j`}
+                  {req.totalAbsenceHours && req.totalAbsenceHours > 0 && ` (Total: ${req.totalAbsenceHours.toFixed(1)}h)`}
                   {` | Le: ${format(parseISO(req.requestDate), "dd/MM/yy HH:mm", { locale: fr })}`}
                   {req.updatedAt && isValid(parseISO(req.updatedAt)) && ` | Modifié le: ${format(parseISO(req.updatedAt), "dd/MM/yy HH:mm", { locale: fr })}`}
                 </CardDescription>
@@ -449,7 +446,7 @@ export default function DeclarationHeurePage() {
     if (!isClient || !loggedInUsername || !dataLoaded) return [];
     return absenceRequests.filter(req => req.employeeName.toLowerCase() === loggedInUsername.toLowerCase());
   }, [isClient, loggedInUsername, absenceRequests, dataLoaded]);
-
+  
   const allOvertimeRequestsForChef = useMemo(() => {
      if (!isClient || !dataLoaded) return [];
     return overtimeRequests;
@@ -461,25 +458,15 @@ export default function DeclarationHeurePage() {
   }, [isClient, absenceRequests, dataLoaded]);
   
   const declarationHeureTabsConfig: DeclarationHeureTab[] = [
-    { value: "my-overtime-requests", label: "Dépassement Horaire", Icon: History, isChefOnly: false },
-    { value: "my-absence-requests", label: "Demandes Absence", Icon: CalendarOff, isChefOnly: false },
-    { value: "overtime-approval", label: "Approb. Dépassement", Icon: CheckSquare, isChefOnly: true },
-    { value: "absence-approval", label: "Approb. Absence", Icon: MailQuestion, isChefOnly: true },
+    { value: "my-overtime-requests", label: "Dépassement Horaire", Icon: History },
+    { value: "my-absence-requests", label: "Demandes Absence", Icon: CalendarOff },
   ];
+  if (isChef) {
+    declarationHeureTabsConfig.push({ value: "overtime-approval", label: "Approb. Dépassement", Icon: CheckSquare });
+    declarationHeureTabsConfig.push({ value: "absence-approval", label: "Approb. Absence", Icon: MailQuestion });
+  }
 
-  const visibleTabs = useMemo(() => {
-    return declarationHeureTabsConfig.filter(tab => !tab.isChefOnly || isChef);
-  }, [isChef]); 
-
-  const [activeTab, setActiveTab] = useState(visibleTabs.length > 0 ? visibleTabs[0].value : "");
-  
-  useEffect(() => {
-    if (visibleTabs.length > 0 && !visibleTabs.find(tab => tab.value === activeTab)) {
-      setActiveTab(visibleTabs[0].value);
-    } else if (visibleTabs.length === 0 && activeTab !== "") {
-      setActiveTab("");
-    }
-  }, [visibleTabs, activeTab]);
+  const [activeTab, setActiveTab] = useState(declarationHeureTabsConfig[0].value);
   
   const getTabContent = (tabValue: string) => {
     switch (tabValue) {
@@ -566,8 +553,8 @@ export default function DeclarationHeurePage() {
     const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
     let currentY = pdfSettings.marginTop;
 
-    if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { /* Logo rendering logic */ try { const imgProps = doc.getImageProperties(pdfSettings.logoUrl); const formatType = imgProps.fileType.toUpperCase(); const desiredHeight = 30; const imgWidth = (imgProps.width * desiredHeight) / imgProps.height; doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight); currentY += desiredHeight + 5; } catch(e){ console.error("Error drawing logo in PDF:", e); }}
-    if (pdfSettings.headerText) { /* Header text rendering logic */ const headerLines = pdfSettings.headerText.split('\n'); doc.setFontSize(pdfSettings.headerFontSize); headerLines.forEach(line => { doc.text(line, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize * 0.7 + 2; }); currentY += 5; }
+    if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { try { const imgProps = doc.getImageProperties(pdfSettings.logoUrl); const formatType = imgProps.fileType.toUpperCase(); const desiredHeight = 30; const imgWidth = (imgProps.width * desiredHeight) / imgProps.height; doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight); currentY += desiredHeight + 5; } catch(e){ console.error("Error drawing logo in PDF:", e); }}
+    if (pdfSettings.headerText) { const headerLines = pdfSettings.headerText.split('\n'); doc.setFontSize(pdfSettings.headerFontSize); headerLines.forEach(line => { doc.text(line, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize * 0.7 + 2; }); currentY += 5; }
 
     doc.setFontSize(18); doc.text("DEMANDE D'ABSENCE", doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' }); currentY += 25;
     doc.setFontSize(pdfSettings.defaultFontSize);
@@ -577,6 +564,7 @@ export default function DeclarationHeurePage() {
     doc.text(`Date de fin : ${format(parseISO(request.endDate), "dd/MM/yyyy", { locale: fr })}`, pdfSettings.marginLeft, currentY); currentY += 15;
     doc.text(`Nombre de jours d'absence : ${request.numberOfDays || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
     if(request.hoursPerDay) { doc.text(`Nombre d'heures par jour d'absence : ${request.hoursPerDay}h`, pdfSettings.marginLeft, currentY); currentY += 15;}
+    if(request.totalAbsenceHours && request.totalAbsenceHours > 0) { doc.text(`Total heures d'absence : ${request.totalAbsenceHours.toFixed(1)}h`, pdfSettings.marginLeft, currentY); currentY += 15;}
     if (request.reason) { doc.text("Motif :", pdfSettings.marginLeft, currentY); currentY += 15; doc.text(request.reason, pdfSettings.marginLeft + 10, currentY, { maxWidth: doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - 20 }); currentY += (doc.splitTextToSize(request.reason, doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - 20).length * (pdfSettings.defaultFontSize * 0.7)) + 10;}
     
     const sigDate = (dateStr: string | null | undefined) => dateStr && isValid(parseISO(dateStr)) ? format(parseISO(dateStr), "dd/MM/yyyy", { locale: fr }) : 'Non signé';
@@ -605,9 +593,6 @@ export default function DeclarationHeurePage() {
     );
   }
   
-  const currentDeclarationHeureTabsConfig = declarationHeureTabsConfig.filter(tab => !tab.isChefOnly || isChef);
-
-
   return (
     <div className="container mx-auto p-4 md:p-6 lg:p-8 min-h-screen">
       <div className="flex flex-col sm:flex-row items-center justify-between mb-6 gap-4">
@@ -628,15 +613,15 @@ export default function DeclarationHeurePage() {
             <Label htmlFor="mobile-declaration-nav-select" className="text-sm font-medium">Naviguer vers :</Label>
             <Select value={activeTab} onValueChange={setActiveTab}>
               <SelectTrigger id="mobile-declaration-nav-select" className="w-full mt-1"><SelectValue placeholder="Choisir une section..." /></SelectTrigger>
-              <SelectContent>{currentDeclarationHeureTabsConfig.map(tab => (<SelectItem key={tab.value} value={tab.value} className="text-sm"><span className="flex items-center"><tab.Icon className="mr-2 h-4 w-4" />{tab.label}</span></SelectItem>))}</SelectContent>
+              <SelectContent>{declarationHeureTabsConfig.map(tab => (<SelectItem key={tab.value} value={tab.value} className="text-sm"><span className="flex items-center"><tab.Icon className="mr-2 h-4 w-4" />{tab.label}</span></SelectItem>))}</SelectContent>
             </Select>
           </div>
         ) : (
-          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-1 mb-6 bg-card p-1 rounded-lg">
-            {currentDeclarationHeureTabsConfig.map(tab => (<TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1"><tab.Icon className="mr-1 sm:mr-2 h-4 w-4" />{tab.label}</TabsTrigger>))}
+          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-1 mb-6 bg-card p-1 rounded-lg">
+            {declarationHeureTabsConfig.map(tab => (<TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1"><tab.Icon className="mr-1 sm:mr-2 h-4 w-4" />{tab.label}</TabsTrigger>))}
           </TabsList>
         )}
-        {currentDeclarationHeureTabsConfig.length > 0 ? (currentDeclarationHeureTabsConfig.map(tab => (<TabsContent key={tab.value} value={tab.value}>{getTabContent(tab.value)}</TabsContent>))) : (<TabsContent value=""><p className="text-muted-foreground text-center py-6">Aucune section accessible.</p></TabsContent>)}
+        {declarationHeureTabsConfig.map(tab => (<TabsContent key={tab.value} value={tab.value}>{getTabContent(tab.value)}</TabsContent>))}
       </Tabs>
 
       <OvertimeRequestDialog
