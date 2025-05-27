@@ -119,11 +119,11 @@ export default function WeeklyMenuSummary() {
             <ul className="space-y-2">
               {displayedItems.map((item) => (
                 <li key={item.date} className="text-sm border-b pb-3 last:border-b-0 last:pb-0 mb-2 last:mb-0">
-                  <p className="font-semibold text-base capitalize mb-1.5 text-primary">
+                  <p className="font-semibold text-base capitalize mb-1.5 text-white dark:text-white underline">
                     {format(parseISO(item.date), "EEEE dd", { locale: fr })}
                     {item.theme && item.theme !== '' && (
                         <span className={cn(
-                            "ml-2 text-xs font-medium px-1.5 py-0.5 rounded-sm",
+                            "ml-2 text-xs font-medium px-1.5 py-0.5 rounded-sm no-underline", // Added no-underline for the badge
                             menuThemeStyles[item.theme as MenuThemeIdentifier] || 'bg-muted text-muted-foreground'
                         )}>
                             {MENU_THEME_OPTIONS_FOR_SELECT.find(opt => opt.value === item.theme)?.label || item.theme}
