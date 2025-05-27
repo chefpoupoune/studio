@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare, ArrowRightLeft, TextCursorInput, Eye, FileTextIcon, AlignHorizontalSpaceAround, Maximize, Minus, RefreshCw, UploadCloud } from 'lucide-react';
+import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare, ArrowRightLeft, TextCursorInput, Eye, FileTextIcon, AlignHorizontalSpaceAround, Maximize, Minus, RefreshCw, UploadCloud, Heading1 } from 'lucide-react';
 import type { PdfLayoutSettings } from '../types';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -23,7 +23,8 @@ import {
   DEFAULT_MARGIN,
   DEFAULT_FONT_SIZE,
   DEFAULT_FONT_FAMILY,
-  DEFAULT_DOCUMENT_TITLE_FONT_SIZE, // New import
+  DEFAULT_DOCUMENT_BASE_TITLE, // New import
+  DEFAULT_DOCUMENT_TITLE_FONT_SIZE, 
   DEFAULT_HEADER_FONT_SIZE,
   DEFAULT_FOOTER_FONT_SIZE,
   DEFAULT_TABLE_HEADER_FONT_SIZE,
@@ -88,9 +89,9 @@ export default function PdfLayoutManager() {
   const [selectedPdfType, setSelectedPdfType] = useState<string>(GENERAL_CONFIG_KEY);
   const [pdfConfigs, setPdfConfigs] = useState<Record<string, Partial<PdfLayoutSettings>>>({});
   
+  // State for inputs
   const [logoUrlInput, setLogoUrlInput] = useState<string>(''); 
   const [uploadedLogoPreview, setUploadedLogoPreview] = useState<string | null>(null);
-
   const [primaryColorInput, setPrimaryColorInput] = useState<string>(DEFAULT_APP_PRIMARY_COLOR);
   const [headerTextInput, setHeaderTextInput] = useState<string>('');
   const [footerTextInput, setFooterTextInput] = useState<string>('');
@@ -99,9 +100,9 @@ export default function PdfLayoutManager() {
   const [marginBottomInput, setMarginBottomInput] = useState<string>(String(DEFAULT_MARGIN));
   const [marginLeftInput, setMarginLeftInput] = useState<string>(String(DEFAULT_MARGIN));
   const [defaultFontSizeInput, setDefaultFontSizeInput] = useState<string>(String(DEFAULT_FONT_SIZE));
-
   const [fontFamilyInput, setFontFamilyInput] = useState<NonNullable<PdfLayoutSettings['fontFamily']>>(DEFAULT_FONT_FAMILY);
-  const [documentTitleFontSizeInput, setDocumentTitleFontSizeInput] = useState<string>(String(DEFAULT_DOCUMENT_TITLE_FONT_SIZE)); // New state
+  const [documentBaseTitleInput, setDocumentBaseTitleInput] = useState<string>(DEFAULT_DOCUMENT_BASE_TITLE); // New state
+  const [documentTitleFontSizeInput, setDocumentTitleFontSizeInput] = useState<string>(String(DEFAULT_DOCUMENT_TITLE_FONT_SIZE));
   const [headerFontSizeInput, setHeaderFontSizeInput] = useState<string>(String(DEFAULT_HEADER_FONT_SIZE));
   const [footerFontSizeInput, setFooterFontSizeInput] = useState<string>(String(DEFAULT_FOOTER_FONT_SIZE));
   const [tableHeaderFontSizeInput, setTableHeaderFontSizeInput] = useState<string>(String(DEFAULT_TABLE_HEADER_FONT_SIZE));
@@ -124,25 +125,7 @@ export default function PdfLayoutManager() {
       if (storedConfigs) {
         setPdfConfigs(JSON.parse(storedConfigs));
       } else {
-        setPdfConfigs({ [GENERAL_CONFIG_KEY]: { 
-            primaryColor: DEFAULT_APP_PRIMARY_COLOR, 
-            footerText: DEFAULT_FOOTER_TEXT,
-            marginTop: DEFAULT_MARGIN,
-            marginRight: DEFAULT_MARGIN,
-            marginBottom: DEFAULT_MARGIN,
-            marginLeft: DEFAULT_MARGIN,
-            defaultFontSize: DEFAULT_FONT_SIZE,
-            logoUrl: DEFAULT_LOGO_URL,
-            headerText: DEFAULT_HEADER_TEXT,
-            fontFamily: DEFAULT_FONT_FAMILY,
-            documentTitleFontSize: DEFAULT_DOCUMENT_TITLE_FONT_SIZE, // New
-            headerFontSize: DEFAULT_HEADER_FONT_SIZE,
-            footerFontSize: DEFAULT_FOOTER_FONT_SIZE,
-            tableHeaderFontSize: DEFAULT_TABLE_HEADER_FONT_SIZE,
-            tableBodyFontSize: DEFAULT_TABLE_BODY_FONT_SIZE,
-            orientation: DEFAULT_ORIENTATION,
-            pageSize: DEFAULT_PAGE_SIZE,
-        } }); 
+        setPdfConfigs({ [GENERAL_CONFIG_KEY]: { ...DEFAULT_SETTINGS } }); 
       }
     } catch (error) {
       console.error("Error loading PDF layout configs from localStorage:", error);
@@ -151,13 +134,11 @@ export default function PdfLayoutManager() {
         description: "Impossible de charger les configurations de mise en page PDF.",
         variant: "destructive",
       });
-       setPdfConfigs({ [GENERAL_CONFIG_KEY]: { 
-            primaryColor: DEFAULT_APP_PRIMARY_COLOR, 
-            footerText: DEFAULT_FOOTER_TEXT,
-        } });
+       setPdfConfigs({ [GENERAL_CONFIG_KEY]: { ...DEFAULT_SETTINGS } });
     }
   }, [toast]);
 
+  // Effect to update input fields and preview when selectedPdfType or configs change
   useEffect(() => {
     const effectiveSettings = fetchPdfSettings(selectedPdfType || GENERAL_CONFIG_KEY, pdfConfigs);
     
@@ -176,9 +157,9 @@ export default function PdfLayoutManager() {
     setMarginBottomInput(String(effectiveSettings.marginBottom));
     setMarginLeftInput(String(effectiveSettings.marginLeft));
     setDefaultFontSizeInput(String(effectiveSettings.defaultFontSize));
-    
     setFontFamilyInput(effectiveSettings.fontFamily);
-    setDocumentTitleFontSizeInput(String(effectiveSettings.documentTitleFontSize)); // New
+    setDocumentBaseTitleInput(effectiveSettings.documentBaseTitle); // New
+    setDocumentTitleFontSizeInput(String(effectiveSettings.documentTitleFontSize));
     setHeaderFontSizeInput(String(effectiveSettings.headerFontSize));
     setFooterFontSizeInput(String(effectiveSettings.footerFontSize));
     setTableHeaderFontSizeInput(String(effectiveSettings.tableHeaderFontSize));
@@ -186,7 +167,7 @@ export default function PdfLayoutManager() {
     setOrientationInput(effectiveSettings.orientation);
     setPageSizeInput(effectiveSettings.pageSize);
     
-    setPreviewSettingsForDisplay(effectiveSettings);
+    setPreviewSettingsForDisplay(effectiveSettings); // Also update preview on type change
 
   }, [selectedPdfType, pdfConfigs]);
 
@@ -216,7 +197,8 @@ export default function PdfLayoutManager() {
             case 'marginTop': case 'marginRight': case 'marginBottom': case 'marginLeft': defaultValue = DEFAULT_MARGIN; break;
             case 'defaultFontSize': defaultValue = DEFAULT_FONT_SIZE; break;
             case 'fontFamily': defaultValue = DEFAULT_FONT_FAMILY; break;
-            case 'documentTitleFontSize': defaultValue = DEFAULT_DOCUMENT_TITLE_FONT_SIZE; break; // New
+            case 'documentBaseTitle': defaultValue = DEFAULT_DOCUMENT_BASE_TITLE; break; // New
+            case 'documentTitleFontSize': defaultValue = DEFAULT_DOCUMENT_TITLE_FONT_SIZE; break;
             case 'headerFontSize': defaultValue = DEFAULT_HEADER_FONT_SIZE; break;
             case 'footerFontSize': defaultValue = DEFAULT_FOOTER_FONT_SIZE; break;
             case 'tableHeaderFontSize': defaultValue = DEFAULT_TABLE_HEADER_FONT_SIZE; break;
@@ -238,7 +220,7 @@ export default function PdfLayoutManager() {
         newPdfConfigs[activeConfigKey] = newSpecificConfigWithUpdates;
     }
     
-    setPdfConfigs(newPdfConfigs);
+    setPdfConfigs(newPdfConfigs); // This will trigger the useEffect that updates currentEffectiveSettings
     localStorage.setItem(PDF_LAYOUT_CONFIGS_KEY, JSON.stringify(newPdfConfigs));
     toast({
       title: "Configuration Enregistrée",
@@ -285,7 +267,8 @@ export default function PdfLayoutManager() {
       marginLeft: parseFloat(marginLeftInput) || undefined,
       defaultFontSize: parseFloat(defaultFontSizeInput) || undefined,
       fontFamily: fontFamilyInput || undefined,
-      documentTitleFontSize: parseFloat(documentTitleFontSizeInput) || undefined, // New
+      documentBaseTitle: documentBaseTitleInput || undefined, // New
+      documentTitleFontSize: parseFloat(documentTitleFontSizeInput) || undefined,
       headerFontSize: parseFloat(headerFontSizeInput) || undefined,
       footerFontSize: parseFloat(footerFontSizeInput) || undefined,
       tableHeaderFontSize: parseFloat(tableHeaderFontSizeInput) || undefined,
@@ -308,7 +291,8 @@ export default function PdfLayoutManager() {
         marginLeft: parseFloat(marginLeftInput) || DEFAULT_MARGIN,
         defaultFontSize: parseFloat(defaultFontSizeInput) || DEFAULT_FONT_SIZE,
         fontFamily: fontFamilyInput || DEFAULT_FONT_FAMILY,
-        documentTitleFontSize: parseFloat(documentTitleFontSizeInput) || DEFAULT_DOCUMENT_TITLE_FONT_SIZE, // New
+        documentBaseTitle: documentBaseTitleInput || DEFAULT_DOCUMENT_BASE_TITLE, // New
+        documentTitleFontSize: parseFloat(documentTitleFontSizeInput) || DEFAULT_DOCUMENT_TITLE_FONT_SIZE,
         headerFontSize: parseFloat(headerFontSizeInput) || DEFAULT_HEADER_FONT_SIZE,
         footerFontSize: parseFloat(footerFontSizeInput) || DEFAULT_FOOTER_FONT_SIZE,
         tableHeaderFontSize: parseFloat(tableHeaderFontSizeInput) || DEFAULT_TABLE_HEADER_FONT_SIZE,
@@ -427,7 +411,7 @@ export default function PdfLayoutManager() {
                     <Input 
                         id="logo-file-input"
                         type="file"
-                        accept="image/png, image/jpeg, image/svg+xml"
+                        accept="image/png, image/jpeg, image/svg+xml, image/webp"
                         ref={logoFileInputRef}
                         onChange={handleLogoFileUpload}
                         className="mt-1 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
@@ -485,7 +469,7 @@ export default function PdfLayoutManager() {
                 </div>
                 <Label className="flex items-center gap-1"><TextCursorInput className="w-4 h-4"/> Tailles de Police (pt)</Label>
                 <div className="grid grid-cols-2 gap-3">
-                    <div><Label htmlFor="document-title-font-size-input" className="text-xs">Titre Document</Label><Input id="document-title-font-size-input" type="number" value={documentTitleFontSizeInput} onChange={e => setDocumentTitleFontSizeInput(e.target.value)} className="h-8"/></div> {/* New Field */}
+                    <div><Label htmlFor="document-title-font-size-input" className="text-xs">Titre Document</Label><Input id="document-title-font-size-input" type="number" value={documentTitleFontSizeInput} onChange={e => setDocumentTitleFontSizeInput(e.target.value)} className="h-8"/></div>
                     <div><Label htmlFor="default-font-size-input" className="text-xs">Défaut</Label><Input id="default-font-size-input" type="number" value={defaultFontSizeInput} onChange={e => setDefaultFontSizeInput(e.target.value)} className="h-8"/></div>
                     <div><Label htmlFor="header-font-size-input" className="text-xs">En-tête (Perso)</Label><Input id="header-font-size-input" type="number" value={headerFontSizeInput} onChange={e => setHeaderFontSizeInput(e.target.value)} className="h-8"/></div>
                     <div><Label htmlFor="footer-font-size-input" className="text-xs">Pied de Page</Label><Input id="footer-font-size-input" type="number" value={footerFontSizeInput} onChange={e => setFooterFontSizeInput(e.target.value)} className="h-8"/></div>
@@ -541,11 +525,27 @@ export default function PdfLayoutManager() {
            <div className="p-6 border rounded-lg shadow-sm bg-card/50 hover:shadow-md transition-shadow">
               <div className="flex items-center gap-3 mb-3">
                 <FileCog className="w-6 h-6 text-accent" />
-                <h3 className="text-lg font-semibold text-foreground">Contenu En-têtes et Pieds de Page</h3>
+                <h3 className="text-lg font-semibold text-foreground">Contenu En-têtes, Pieds de Page & Titres</h3>
               </div>
               <div className="space-y-4">
                 <div>
-                    <Label htmlFor="header-text-input" className="flex items-center gap-1"><Type className="w-4 h-4"/> Texte d'En-tête</Label>
+                    <Label htmlFor="document-base-title-input" className="flex items-center gap-1"><Heading1 className="w-4 h-4"/> Titre de Base du Document</Label>
+                    <Input 
+                        id="document-base-title-input"
+                        type="text"
+                        placeholder="Ex: Rapport Mensuel"
+                        value={documentBaseTitleInput}
+                        onChange={(e) => setDocumentBaseTitleInput(e.target.value)}
+                        className="mt-1 h-8"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Ce titre sera utilisé comme base. Des informations dynamiques (mois, année, etc.) pourront être ajoutées par chaque module.</p>
+                    {previewSettingsForDisplay.documentBaseTitle && <p className="text-xs text-muted-foreground mt-1">Effectif : {previewSettingsForDisplay.documentBaseTitle}</p>}
+                </div>
+                <Button onClick={() => saveConfig({ documentBaseTitle: documentBaseTitleInput || undefined }, "Le titre de base du document")}>
+                    <Save className="mr-2 h-4 w-4"/> Enregistrer Titre de Base
+                </Button>
+                <div>
+                    <Label htmlFor="header-text-input" className="flex items-center gap-1"><Type className="w-4 h-4"/> Texte d'En-tête Personnalisé</Label>
                     <Textarea 
                         id="header-text-input"
                         placeholder="Pour un en-tête tabulaire : utilisez '|' pour séparer les cellules, un saut de ligne pour une nouvelle rangée. Utilisez {logo} pour placer le logo. Ex: {logo} | Mon Titre Principal\n | Sous-titre"
@@ -554,11 +554,13 @@ export default function PdfLayoutManager() {
                         className="mt-1"
                         rows={3}
                     />
-                    {previewSettingsForDisplay.headerText && <div className="text-xs text-muted-foreground mt-1">Effectif : <pre className="whitespace-pre-wrap text-xs bg-muted/50 p-1 rounded inline-block">{previewSettingsForDisplay.headerText}</pre></div>}
-                    {!previewSettingsForDisplay.headerText && <p className="text-xs text-muted-foreground mt-1">Aucun texte d'en-tête défini.</p>}
+                    {previewSettingsForDisplay.headerText && 
+                      <div className="text-xs text-muted-foreground mt-1">Effectif : <pre className="whitespace-pre-wrap text-xs bg-muted/50 p-1 rounded inline-block">{previewSettingsForDisplay.headerText}</pre></div>
+                    }
+                    {!previewSettingsForDisplay.headerText && <p className="text-xs text-muted-foreground mt-1">Aucun texte d'en-tête personnalisé défini.</p>}
                 </div>
                 <Button onClick={handleSaveHeaderText}>
-                    <Save className="mr-2 h-4 w-4"/> Enregistrer En-tête
+                    <Save className="mr-2 h-4 w-4"/> Enregistrer En-tête Personnalisé
                 </Button>
                  <div>
                     <Label htmlFor="footer-text-input" className="flex items-center gap-1"><MessageSquare className="w-4 h-4"/> Texte de Pied de Page</Label>
@@ -583,7 +585,7 @@ export default function PdfLayoutManager() {
                     <RefreshCw className="mr-2 h-4 w-4" /> Actualiser l'Aperçu
                 </Button>
                 <Button onClick={handleSaveLayoutAndFontStyles} size="lg">
-                    <Save className="mr-2 h-5 w-5"/> Enregistrer Toutes les Configurations de Mise en Page & Police
+                    <Save className="mr-2 h-5 w-5"/> Enregistrer Configurations Mise en Page, Police, Couleur & Marges
                 </Button>
             </div>
         </CardContent>
@@ -631,7 +633,7 @@ export default function PdfLayoutManager() {
 
               {/* Document Title */}
               <div className="text-center font-bold leading-tight my-1" style={{fontSize: `${Math.max(4, (previewSettingsForDisplay.documentTitleFontSize || DEFAULT_DOCUMENT_TITLE_FONT_SIZE) / 2.5)}pt`}}>
-                  Titre du Document
+                  {previewSettingsForDisplay.documentBaseTitle || "Titre du Document (Dynamique)"}
               </div>
 
               {/* Dummy Content Area */}

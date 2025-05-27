@@ -12,7 +12,8 @@ export interface PdfLayoutSettings {
 
   // New fields
   fontFamily?: 'helvetica' | 'times' | 'courier' | 'arial' | 'verdana';
-  documentTitleFontSize?: number; // Added for main document title
+  documentBaseTitle?: string; // New: Base title for the document
+  documentTitleFontSize?: number; 
   headerFontSize?: number;
   footerFontSize?: number;
   tableHeaderFontSize?: number;
@@ -22,7 +23,7 @@ export interface PdfLayoutSettings {
 }
 
 // Types for PMS Configuration
-export interface PmsTaskDefinition {
+export interface PmsTaskDefinition { // Renamed from PmsCriterion
   id: string;
   name: string;
 }
@@ -30,16 +31,16 @@ export interface PmsTaskDefinition {
 export interface PmsZone { // Can also represent an "Equipment"
   id: string;
   name: string;
-  tasks?: PmsTaskDefinition[];
+  tasks?: PmsTaskDefinition[]; // Renamed from criteria
 
   // Fields specific to Temperature Monitoring Equipment
   equipmentType?: 'refrigerator' | 'freezer';
   targetTempMin?: number;
   targetTempMax?: number;
-  tolerance1TempMin?: number;
-  tolerance1TempMax?: number;
-  tolerance2TempMin?: number;
-  tolerance2TempMax?: number;
+  tolerance1TempMin?: number; 
+  tolerance1TempMax?: number; 
+  tolerance2TempMin?: number; 
+  tolerance2TempMax?: number; 
 }
 
 export interface PmsConfigurations {
@@ -50,5 +51,5 @@ export const PMS_KITCHEN_CLEANING_KEY = 'kitchenCleaning_v1';
 export const PMS_RESTAURANT_CLEANING_KEY = 'restaurantCleaning_v1';
 export const PMS_TEMPERATURE_MONITORING_KEY = 'temperatureMonitoring_v1';
 // Key for storing all PMS module configurations
-export const PMS_CONFIG_STORAGE_KEY = 'pms_module_configurations_v6';
+export const PMS_CONFIG_STORAGE_KEY = 'pms_module_configurations_v5'; // Incremented version
     

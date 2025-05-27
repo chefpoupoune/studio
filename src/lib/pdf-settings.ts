@@ -12,8 +12,9 @@ export const DEFAULT_MARGIN = 30;
 export const DEFAULT_FONT_SIZE = 10;
 
 export const DEFAULT_FONT_FAMILY: NonNullable<PdfLayoutSettings['fontFamily']> = 'helvetica';
-export const DEFAULT_DOCUMENT_TITLE_FONT_SIZE = 18; // New default
-export const DEFAULT_HEADER_FONT_SIZE = 10; // Adjusted default for custom header table
+export const DEFAULT_DOCUMENT_BASE_TITLE = ''; // New default
+export const DEFAULT_DOCUMENT_TITLE_FONT_SIZE = 18; 
+export const DEFAULT_HEADER_FONT_SIZE = 10; 
 export const DEFAULT_FOOTER_FONT_SIZE = 8;
 export const DEFAULT_TABLE_HEADER_FONT_SIZE = 9;
 export const DEFAULT_TABLE_BODY_FONT_SIZE = 8;
@@ -32,7 +33,8 @@ const DEFAULT_SETTINGS: Required<PdfLayoutSettings> = {
   marginLeft: DEFAULT_MARGIN,
   defaultFontSize: DEFAULT_FONT_SIZE,
   fontFamily: DEFAULT_FONT_FAMILY,
-  documentTitleFontSize: DEFAULT_DOCUMENT_TITLE_FONT_SIZE, // New
+  documentBaseTitle: DEFAULT_DOCUMENT_BASE_TITLE, // New
+  documentTitleFontSize: DEFAULT_DOCUMENT_TITLE_FONT_SIZE, 
   headerFontSize: DEFAULT_HEADER_FONT_SIZE,
   footerFontSize: DEFAULT_FOOTER_FONT_SIZE,
   tableHeaderFontSize: DEFAULT_TABLE_HEADER_FONT_SIZE,
@@ -81,7 +83,8 @@ export function getPdfLayoutSettings(pdfTypeKey: string, allConfigsParam?: Recor
     marginLeft: specificConfig.marginLeft ?? generalConfig.marginLeft ?? DEFAULT_SETTINGS.marginLeft,
     defaultFontSize: specificConfig.defaultFontSize ?? generalConfig.defaultFontSize ?? DEFAULT_SETTINGS.defaultFontSize,
     fontFamily: specificConfig.fontFamily ?? generalConfig.fontFamily ?? DEFAULT_SETTINGS.fontFamily,
-    documentTitleFontSize: specificConfig.documentTitleFontSize ?? generalConfig.documentTitleFontSize ?? DEFAULT_SETTINGS.documentTitleFontSize, // New
+    documentBaseTitle: specificConfig.documentBaseTitle ?? generalConfig.documentBaseTitle ?? DEFAULT_SETTINGS.documentBaseTitle, // New
+    documentTitleFontSize: specificConfig.documentTitleFontSize ?? generalConfig.documentTitleFontSize ?? DEFAULT_SETTINGS.documentTitleFontSize, 
     headerFontSize: specificConfig.headerFontSize ?? generalConfig.headerFontSize ?? DEFAULT_SETTINGS.headerFontSize,
     footerFontSize: specificConfig.footerFontSize ?? generalConfig.footerFontSize ?? DEFAULT_SETTINGS.footerFontSize,
     tableHeaderFontSize: specificConfig.tableHeaderFontSize ?? generalConfig.tableHeaderFontSize ?? DEFAULT_SETTINGS.tableHeaderFontSize,

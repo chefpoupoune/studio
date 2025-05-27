@@ -211,8 +211,9 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
          doc.setFontSize(pdfSettings.defaultFontSize); doc.text(`[Logo URL: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 5;
       }
       
-      const title = `Suivi Avantages en Nature - ${monthLabel} ${selectedYear}`;
-      doc.setFontSize(pdfSettings.documentTitleFontSize || 18); // Use configured document title font size
+      const baseTitle = pdfSettings.documentBaseTitle || "Suivi Avantages en Nature";
+      const title = `${baseTitle} - ${monthLabel} ${selectedYear}`;
+      doc.setFontSize(pdfSettings.documentTitleFontSize || 18); 
       doc.text(title, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.documentTitleFontSize || 18) * 0.7;
       doc.setFontSize(pdfSettings.defaultFontSize);
       doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 5;
