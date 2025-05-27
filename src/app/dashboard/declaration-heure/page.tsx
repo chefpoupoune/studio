@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CheckSquare, ListFilter, Clock, CalendarOff, FileText as PdfFileTextIcon, MailQuestion, Loader2, User } from 'lucide-react'; 
+import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CheckSquare, ListFilter, Clock, CalendarOff, FileText as PdfFileTextIcon, MailQuestion, Loader2, User, CalendarClock } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
@@ -41,7 +41,7 @@ interface jsPDFWithAutoTable extends jsPDF {
 }
 
 const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v5';
-const ABSENCE_REQUESTS_STORAGE_KEY = 'declaration_heure_absence_requests_v5'; // Incremented version
+const ABSENCE_REQUESTS_STORAGE_KEY = 'declaration_heure_absence_requests_v5';
 const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
@@ -101,10 +101,13 @@ export default function DeclarationHeurePage() {
           employeeSignatureDate: req.employeeSignatureDate || null,
           directManagerSignatureDate: req.directManagerSignatureDate || null, 
           directorSignatureDate: req.directorSignatureDate || null,
+          compensationType: null, // Ensure compensationType is handled if it was previously stored
         }));
         setOvertimeRequests(parsedOvertime.sort((a:OvertimeRequest,b:OvertimeRequest) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()));
+        console.log(`[DeclarationHeurePage LOAD] Loaded ${parsedOvertime.length} overtime requests.`);
       } else { 
         setOvertimeRequests([]); 
+        console.log("[DeclarationHeurePage LOAD] No overtime requests found in localStorage.");
       }
 
       const storedAbsenceRaw = localStorage.getItem(ABSENCE_REQUESTS_STORAGE_KEY);
@@ -121,8 +124,8 @@ export default function DeclarationHeurePage() {
           hoursPerDay: req.hoursPerDay ?? undefined,
           totalAbsenceHours: req.totalAbsenceHours ?? 0,
           numberOfDays: req.numberOfDays || (req.startDate && req.endDate && isValid(parseISO(req.startDate)) && isValid(parseISO(req.endDate)) ? differenceInCalendarDays(parseISO(req.endDate), parseISO(req.startDate)) + 1 : 1),
-          prestationTypes: Array.isArray(req.prestationTypes) ? req.prestationTypes : ['logistique'], // Added
-          prestationTypeAutresDetail: req.prestationTypeAutresDetail || '', // Added
+          prestationTypes: Array.isArray(req.prestationTypes) ? req.prestationTypes : ['logistique'],
+          prestationTypeAutresDetail: req.prestationTypeAutresDetail || '',
           employeeSignatureDate: req.employeeSignatureDate || null,
           directManagerSignatureDate: req.directManagerSignatureDate || null,
           directorSignatureDate: req.directorSignatureDate || null,
@@ -130,8 +133,10 @@ export default function DeclarationHeurePage() {
           decisionDate: req.decisionDate || null,
         }));
         setAbsenceRequests(parsedAbsence.sort((a:AbsenceRequest,b:AbsenceRequest) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()));
+         console.log(`[DeclarationHeurePage LOAD] Loaded ${parsedAbsence.length} absence requests.`);
       } else { 
         setAbsenceRequests([]); 
+        console.log("[DeclarationHeurePage LOAD] No absence requests found in localStorage.");
       }
 
       const storedBrigadeMembersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
@@ -150,18 +155,23 @@ export default function DeclarationHeurePage() {
       toast({ title: "Erreur de chargement des données de déclaration", variant: "destructive" });
     } finally {
       setDataLoaded(true);
+      console.log("[DeclarationHeurePage LOAD] Data loading complete, dataLoaded set to true.");
     }
   }, [isClient, toast]);
 
   useEffect(() => {
     if (isClient && dataLoaded) { 
+      console.log("[DeclarationHeurePage SAVE OT] Attempting to save overtimeRequests to localStorage. Count:", overtimeRequests.length);
       localStorage.setItem(OVERTIME_REQUESTS_STORAGE_KEY, JSON.stringify(overtimeRequests));
+      window.dispatchEvent(new CustomEvent('overtimeRequestsUpdated'));
     }
   }, [overtimeRequests, isClient, dataLoaded]);
 
   useEffect(() => {
     if (isClient && dataLoaded) {
+      console.log("[DeclarationHeurePage SAVE ABS] Attempting to save absenceRequests to localStorage. Count:", absenceRequests.length);
       localStorage.setItem(ABSENCE_REQUESTS_STORAGE_KEY, JSON.stringify(absenceRequests));
+      window.dispatchEvent(new CustomEvent('absenceRequestsUpdated'));
     }
   }, [absenceRequests, isClient, dataLoaded]);
 
@@ -173,7 +183,7 @@ export default function DeclarationHeurePage() {
   }, [loggedInUsername, brigadeMembers]);
 
   const handleAddOrUpdateOvertimeRequest = useCallback((
-    data: Partial<Omit<OvertimeRequest, 'id' | 'employeeName' | 'requestDate' >>
+    data: Partial<Omit<OvertimeRequest, 'id' | 'employeeName' | 'requestDate' | 'updatedAt' >>
   ) => {
     if (!dataLoaded) {
       toast({ title: "Données non prêtes", description: "Veuillez attendre la fin du chargement.", variant: "default" });
@@ -197,6 +207,7 @@ export default function DeclarationHeurePage() {
             prestationTypes: data.prestationTypes && data.prestationTypes.length > 0 ? data.prestationTypes : ['logistique'],
             prestationTypeAutresDetail: data.prestationTypes?.includes('autres') ? (data.prestationTypeAutresDetail || '') : '',
             approvalStatus: data.approvalStatus || req.approvalStatus || 'pending',
+            compensationType: null, // Explicitly setting to null as it's removed
           } as OvertimeRequest
         : req
       );
@@ -214,6 +225,7 @@ export default function DeclarationHeurePage() {
         ...data, 
         position: positionToUse, 
         overtimeDetails: data.overtimeDetails || [],
+        compensationType: null, // Explicitly setting to null
       } as OvertimeRequest; 
       updatedRequestsList = [newRequest, ...overtimeRequests];
       toast({ title: "Demande Dépassement Soumise" });
@@ -236,7 +248,7 @@ export default function DeclarationHeurePage() {
   };
 
   const handleAddOrUpdateAbsenceRequest = useCallback((
-    data: Partial<Omit<AbsenceRequest, 'id' | 'employeeName' | 'requestDate'>>
+    data: Partial<Omit<AbsenceRequest, 'id' | 'employeeName' | 'requestDate' | 'updatedAt'>>
   ) => {
     if (!dataLoaded) { toast({ title: "Données non prêtes", variant: "default"}); return; }
     const employeeNameToUse = editingAbsenceRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername || "Système";
@@ -311,7 +323,7 @@ export default function DeclarationHeurePage() {
     switch (status) { case 'accepted': return 'Acceptée'; case 'rejected': return 'Refusée'; case 'pending': default: return 'En attente'; }
   };
 
-  const renderRequestList = (requestsToList: OvertimeRequest[], approverModeView: boolean) => (
+  const renderOvertimeRequestList = (requestsToList: OvertimeRequest[], approverModeView: boolean) => (
     requestsToList.length === 0 ? (
       <p className="text-muted-foreground text-center py-6">
         {approverModeView ? "Aucune demande à approuver pour le moment." : "Vous n'avez aucune demande de dépassement d'horaire."}
@@ -342,7 +354,7 @@ export default function DeclarationHeurePage() {
                     <ul className="list-none pl-2 text-muted-foreground space-y-0.5">
                       {req.overtimeDetails.map((detail, index) => (
                         <li key={detail.id || index} className="flex items-center gap-1.5">
-                          <Clock className="h-3 w-3 text-primary/70"/>
+                          <CalendarClock className="h-3 w-3 text-primary/70"/>
                           {detail.date && isValid(parseISO(detail.date)) ? format(parseISO(detail.date), "dd/MM/yy", {locale: fr}) : 'Date invalide'}
                           {detail.startTime && detail.endTime ? `: de ${detail.startTime} à ${detail.endTime}` : 
                             detail.startTime ? `: à partir de ${detail.startTime}` : 
@@ -488,10 +500,10 @@ export default function DeclarationHeurePage() {
                 onClick={() => handleOpenOvertimeForm(undefined, false)} 
                 disabled={!dataLoaded || (!currentBrigadeMember && !isChef)}
               >
-                <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande
+                <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande Dépassement
               </Button>
             </CardHeader>
-            <CardContent>{renderRequestList(isChef ? allOvertimeRequestsForChef : employeeOvertimeRequests, false)}</CardContent>
+            <CardContent>{renderOvertimeRequestList(isChef ? allOvertimeRequestsForChef : employeeOvertimeRequests, false)}</CardContent>
           </Card>
         );
       case "my-absence-requests":
@@ -503,7 +515,7 @@ export default function DeclarationHeurePage() {
                 onClick={() => handleOpenAbsenceForm(undefined, false)} 
                 disabled={!dataLoaded || (!currentBrigadeMember && !isChef)}
               >
-                <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande
+                <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande Absence
               </Button>
             </CardHeader>
             <CardContent>{renderAbsenceRequestList(isChef ? allAbsenceRequestsForChef : employeeAbsenceRequests, false)}</CardContent>
@@ -513,7 +525,7 @@ export default function DeclarationHeurePage() {
         return isChef ? (
           <Card className="shadow-xl">
             <CardHeader><CardTitle>Approbation des Demandes de Dépassement</CardTitle><CardDescription>Traitez les demandes soumises.</CardDescription></CardHeader>
-            <CardContent>{renderRequestList(allOvertimeRequestsForChef, true)}</CardContent>
+            <CardContent>{renderOvertimeRequestList(allOvertimeRequestsForChef, true)}</CardContent>
           </Card>
         ) : null;
       case "absence-approval": 
