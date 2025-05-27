@@ -37,13 +37,13 @@ import {
 const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1";
 
 // Notification settings keys
-const NOTIFICATIONS_EMAIL_KEY = "app_settings_notifications_email";
-const NOTIFICATIONS_IN_APP_GENERAL_KEY = "app_settings_notifications_in_app_general";
-const NOTIFICATIONS_IN_APP_NEW_TASK_KEY = "app_settings_notifications_in_app_new_task";
-const NOTIFICATIONS_IN_APP_STATUS_UPDATE_KEY = "app_settings_notifications_in_app_status_update";
-const NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY = "app_settings_notifications_in_app_inventory_low";
-const NOTIFICATIONS_SOUND_ENABLED_KEY = "app_settings_notifications_sound_enabled";
-const NOTIFICATIONS_SOUND_CHOICE_KEY = "app_settings_notifications_sound_choice";
+const NOTIFICATIONS_EMAIL_KEY = "app_settings_notifications_email_v1"; // Added versioning just in case
+const NOTIFICATIONS_IN_APP_GENERAL_KEY = "app_settings_notifications_in_app_general_v1";
+const NOTIFICATIONS_IN_APP_NEW_TASK_KEY = "app_settings_notifications_in_app_new_task_v1";
+const NOTIFICATIONS_IN_APP_STATUS_UPDATE_KEY = "app_settings_notifications_in_app_status_update_v1";
+const NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY = "app_settings_notifications_in_app_inventory_low_v1";
+const NOTIFICATIONS_SOUND_ENABLED_KEY = "app_settings_notifications_sound_enabled_v1";
+const NOTIFICATIONS_SOUND_CHOICE_KEY = "app_settings_notifications_sound_choice_v1";
 
 // Default notification values
 const DEFAULT_NOTIFICATIONS_EMAIL = false;
@@ -85,6 +85,11 @@ const APP_SPECIFIC_KEYS = [
   'app_defined_users_v2',
   'loggedInUserPermissions',
   'loggedInUserHourViewConfig',
+  // PMS settings
+  'pms_module_configurations_v6',
+  // Declaration heure
+  'declaration_heure_overtime_requests_v5',
+  'declaration_heure_absence_requests_v5',
 ];
 
 const APP_SPECIFIC_PREFIXES = [
@@ -107,12 +112,15 @@ const APP_SPECIFIC_PREFIXES = [
   'picnic_base_bread_v1_',
   'picnic_master_weekly_menu_templates_v1',
   'picnic_selected_template_index_v1',
-  'declaration_heure_overtime_requests_v5',
-  'declaration_heure_absence_requests_v5',
+  // Added missing pms_cold_chain prefixes
+  'pms_cold_chain_cooldown_v2_',
+  'pms_cold_chain_delivery_v2_',
 ];
 
 
 export default function ApplicationSettingsManager() {
+  const [isClient, setIsClient] = useState(false);
+  
   const [selectedThemeMode, setSelectedThemeMode] = useState<ThemeMode>('system');
   const [selectedAccentColor, setSelectedAccentColor] = useState<string>(DEFAULT_APP_PRIMARY_COLOR);
 
@@ -127,55 +135,69 @@ export default function ApplicationSettingsManager() {
   const [appLogoDataUrl, setAppLogoDataUrl] = useState<string | null>(null);
   const appLogoFileInputRef = useRef<HTMLInputElement>(null);
 
-  const [isClient, setIsClient] = useState(false);
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isImportAlertOpen, setIsImportAlertOpen] = useState(false);
 
-  // Memoize utility functions to prevent re-creation on every render
   const applyThemeMode = useCallback(applyThemeModeUtil, []);
   const applyAccentColor = useCallback(applyAccentColorUtil, []);
 
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   // Effect for loading all settings from localStorage on initial client mount
   useEffect(() => {
-    setIsClient(true);
-    console.log("[Settings EFFECT Load Settings] Running.");
-    
+    if (!isClient) return;
+    console.log("[Settings EFFECT Load Settings] Initializing settings from localStorage.");
+
     // Theme Mode
     const storedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
     const initialThemeMode = storedTheme && ['light', 'dark', 'system'].includes(storedTheme) ? storedTheme : 'system';
     setSelectedThemeMode(initialThemeMode);
-    console.log("[Settings EFFECT Load Settings] Initial theme mode set to:", initialThemeMode);
+    console.log(`[Settings Load] Theme mode loaded: ${initialThemeMode} (localStorage: ${storedTheme})`);
 
     // Accent Color
     const storedAccentColor = localStorage.getItem(ACCENT_COLOR_STORAGE_KEY);
     const initialAccentColor = storedAccentColor || DEFAULT_APP_PRIMARY_COLOR;
     setSelectedAccentColor(initialAccentColor);
-    console.log("[Settings EFFECT Load Settings] Initial accent color set to:", initialAccentColor, "(Stored: ", storedAccentColor, ")");
+    console.log(`[Settings Load] Accent color loaded: ${initialAccentColor} (localStorage: ${storedAccentColor})`);
     
     // App Logo
     const storedAppLogo = localStorage.getItem(APP_LOGO_STORAGE_KEY);
     setAppLogoDataUrl(storedAppLogo || null);
-    console.log("[Settings EFFECT Load Settings] App logo URL loaded.");
+    console.log(`[Settings Load] App logo URL loaded: ${storedAppLogo ? 'found' : 'not found'}`);
 
     // Notification Settings
-    setEmailNotifications(localStorage.getItem(NOTIFICATIONS_EMAIL_KEY) === 'true' || DEFAULT_NOTIFICATIONS_EMAIL);
-    setInAppGeneralNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_GENERAL_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_GENERAL);
-    setInAppNewTaskNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_NEW_TASK_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_NEW_TASK);
-    setInAppStatusUpdateNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_STATUS_UPDATE_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_STATUS_UPDATE);
-    setInAppInventoryLowNotifications(localStorage.getItem(NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY) === 'true' || DEFAULT_NOTIFICATIONS_IN_APP_INVENTORY_LOW);
-    setSoundNotificationsEnabled(localStorage.getItem(NOTIFICATIONS_SOUND_ENABLED_KEY) === 'true' || DEFAULT_NOTIFICATIONS_SOUND_ENABLED);
-    setNotificationSoundChoice(localStorage.getItem(NOTIFICATIONS_SOUND_CHOICE_KEY) || DEFAULT_NOTIFICATIONS_SOUND_CHOICE);
-    console.log("[Settings EFFECT Load Settings] Notification settings loaded.");
+    console.log("[Settings Load] Loading Notification Preferences...");
+    const loadBoolSetting = (key: string, defaultValue: boolean, name: string) => {
+      const storedValue = localStorage.getItem(key);
+      const value = storedValue !== null ? storedValue === 'true' : defaultValue;
+      console.log(`[Settings Load] ${name}: ${value} (localStorage: ${storedValue}, default: ${defaultValue})`);
+      return value;
+    };
 
-  }, [isClient]); // Removed toast from dependencies as it should be stable
+    setEmailNotifications(loadBoolSetting(NOTIFICATIONS_EMAIL_KEY, DEFAULT_NOTIFICATIONS_EMAIL, "Email Notifications"));
+    setInAppGeneralNotifications(loadBoolSetting(NOTIFICATIONS_IN_APP_GENERAL_KEY, DEFAULT_NOTIFICATIONS_IN_APP_GENERAL, "In-App General"));
+    setInAppNewTaskNotifications(loadBoolSetting(NOTIFICATIONS_IN_APP_NEW_TASK_KEY, DEFAULT_NOTIFICATIONS_IN_APP_NEW_TASK, "In-App New Task"));
+    setInAppStatusUpdateNotifications(loadBoolSetting(NOTIFICATIONS_IN_APP_STATUS_UPDATE_KEY, DEFAULT_NOTIFICATIONS_IN_APP_STATUS_UPDATE, "In-App Status Update"));
+    setInAppInventoryLowNotifications(loadBoolSetting(NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY, DEFAULT_NOTIFICATIONS_IN_APP_INVENTORY_LOW, "In-App Inventory Low"));
+    setSoundNotificationsEnabled(loadBoolSetting(NOTIFICATIONS_SOUND_ENABLED_KEY, DEFAULT_NOTIFICATIONS_SOUND_ENABLED, "Sound Enabled"));
+    
+    const storedSoundChoice = localStorage.getItem(NOTIFICATIONS_SOUND_CHOICE_KEY);
+    const initialSoundChoice = storedSoundChoice || DEFAULT_NOTIFICATIONS_SOUND_CHOICE;
+    setNotificationSoundChoice(initialSoundChoice);
+    console.log(`[Settings Load] Sound Choice: ${initialSoundChoice} (localStorage: ${storedSoundChoice}, default: ${DEFAULT_NOTIFICATIONS_SOUND_CHOICE})`);
+    
+    console.log("[Settings EFFECT Load Settings] All settings loading routines complete.");
+
+  }, [isClient]);
 
 
   // Effect for applying visual styles (theme & accent color) when states change or on load
   useEffect(() => {
     if (isClient) {
-      console.log(`[Settings EFFECT Apply Styles] Running. Theme: ${selectedThemeMode}, Accent: ${selectedAccentColor}`);
+      console.log(`[Settings EFFECT Apply Styles] Applying theme: ${selectedThemeMode}, Accent: ${selectedAccentColor}`);
       applyThemeMode(selectedThemeMode);
       applyAccentColor(selectedAccentColor);
     }
@@ -186,7 +208,6 @@ export default function ApplicationSettingsManager() {
     setSelectedThemeMode(newMode);
     if (isClient) {
       localStorage.setItem(THEME_STORAGE_KEY, newMode);
-      // Visual application is handled by the useEffect above
       toast({
         title: "Thème Mis à Jour",
         description: `Le mode d'affichage est maintenant réglé sur "${newMode === 'light' ? 'Clair' : newMode === 'dark' ? 'Sombre' : 'Système'}".`,
@@ -196,15 +217,14 @@ export default function ApplicationSettingsManager() {
 
   const handleAccentColorInputChange = (newColor: string) => {
     setSelectedAccentColor(newColor);
-    // Live preview is handled by the useEffect above
   };
   
   const handleSaveAccentColor = () => {
     if (isClient) {
       let colorToSave = selectedAccentColor;
-      if (!hexToHsl(colorToSave)) { // Validate if it's a convertible hex
+      if (!hexToHsl(colorToSave)) { 
         colorToSave = DEFAULT_APP_PRIMARY_COLOR;
-        setSelectedAccentColor(colorToSave); // Update state if fallback is used
+        setSelectedAccentColor(colorToSave);
         toast({
             title: "Couleur Invalide",
             description: `La couleur saisie n'est pas valide. Utilisation de la couleur par défaut (${DEFAULT_APP_PRIMARY_COLOR}).`,
@@ -212,7 +232,7 @@ export default function ApplicationSettingsManager() {
         });
       }
       localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, colorToSave);
-      // Visual application is handled by the useEffect
+      applyAccentColor(colorToSave); // Ensure immediate visual update
       toast({
         title: "Couleur d'Accentuation Enregistrée",
         description: `La couleur d'accentuation est maintenant ${colorToSave}.`,
@@ -224,7 +244,7 @@ export default function ApplicationSettingsManager() {
     setSelectedAccentColor(DEFAULT_APP_PRIMARY_COLOR);
     if (isClient) {
       localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, DEFAULT_APP_PRIMARY_COLOR);
-      // Visual application is handled by the useEffect
+      applyAccentColor(DEFAULT_APP_PRIMARY_COLOR); // Ensure immediate visual update
       toast({
         title: "Couleur d'Accentuation Réinitialisée",
         description: `La couleur d'accentuation a été réinitialisée à la valeur par défaut (${DEFAULT_APP_PRIMARY_COLOR}).`,
@@ -253,14 +273,16 @@ export default function ApplicationSettingsManager() {
   };
 
   const handleSaveAppLogo = () => {
-    if (appLogoDataUrl && isClient) {
-      localStorage.setItem(APP_LOGO_STORAGE_KEY, appLogoDataUrl);
-      toast({ title: "Logo de l'Application Enregistré" });
-    } else if (!appLogoDataUrl && isClient) { 
-      localStorage.removeItem(APP_LOGO_STORAGE_KEY);
-      toast({ title: "Logo de l'Application Supprimé" });
+    if (isClient) {
+      if (appLogoDataUrl) {
+        localStorage.setItem(APP_LOGO_STORAGE_KEY, appLogoDataUrl);
+        toast({ title: "Logo de l'Application Enregistré" });
+      } else { // If appLogoDataUrl is null/empty, it means we want to remove it
+        localStorage.removeItem(APP_LOGO_STORAGE_KEY);
+        toast({ title: "Logo de l'Application Supprimé" });
+      }
+      window.location.reload(); 
     }
-    window.location.reload(); // Force reload to update sidebar
   };
 
   const handleDeleteAppLogo = () => {
@@ -270,20 +292,37 @@ export default function ApplicationSettingsManager() {
       toast({ title: "Logo de l'Application Supprimé", variant: "destructive" });
     }
     if (appLogoFileInputRef.current) appLogoFileInputRef.current.value = "";
-    window.location.reload(); // Force reload
+    window.location.reload();
   };
 
-  // Notification switch handlers now only update state
-  const handleEmailNotificationsChange = (checked: boolean) => setEmailNotifications(checked);
-  const handleInAppGeneralNotificationsChange = (checked: boolean) => setInAppGeneralNotifications(checked);
-  const handleInAppNewTaskNotificationsChange = (checked: boolean) => setInAppNewTaskNotifications(checked);
-  const handleInAppStatusUpdateNotificationsChange = (checked: boolean) => setInAppStatusUpdateNotifications(checked);
-  const handleInAppInventoryLowNotificationsChange = (checked: boolean) => setInAppInventoryLowNotifications(checked);
-  const handleSoundNotificationsEnabledChange = (checked: boolean) => setSoundNotificationsEnabled(checked);
+  const handleEmailNotificationsChange = (checked: boolean) => {
+    console.log(`[UI Change] Email Notifications set to: ${checked}`);
+    setEmailNotifications(checked);
+  }
+  const handleInAppGeneralNotificationsChange = (checked: boolean) => {
+    console.log(`[UI Change] In-App General set to: ${checked}`);
+    setInAppGeneralNotifications(checked);
+  }
+  const handleInAppNewTaskNotificationsChange = (checked: boolean) => {
+    console.log(`[UI Change] In-App New Task set to: ${checked}`);
+    setInAppNewTaskNotifications(checked);
+  }
+  const handleInAppStatusUpdateNotificationsChange = (checked: boolean) => {
+    console.log(`[UI Change] In-App Status Update set to: ${checked}`);
+    setInAppStatusUpdateNotifications(checked);
+  }
+  const handleInAppInventoryLowNotificationsChange = (checked: boolean) => {
+    console.log(`[UI Change] In-App Inventory Low set to: ${checked}`);
+    setInAppInventoryLowNotifications(checked);
+  }
+  const handleSoundNotificationsEnabledChange = (checked: boolean) => {
+    console.log(`[UI Change] Sound Enabled set to: ${checked}`);
+    setSoundNotificationsEnabled(checked);
+  }
   
   const handleNotificationSoundChoiceChange = (value: string) => {
+    console.log(`[UI Change] Sound Choice set to: ${value}`);
     setNotificationSoundChoice(value);
-    // Immediate save to localStorage is removed
     if (soundNotificationsEnabled && value !== 'none' && isClient) {
         console.log(`[Notification Sound Preview] Playing sound: ${value}`); 
     }
@@ -291,23 +330,42 @@ export default function ApplicationSettingsManager() {
 
   const handleSaveNotificationPreferences = () => {
     if (!isClient) return;
+    console.log("[SavePrefs] Attempting to Save Notification Preferences...");
+    
     localStorage.setItem(NOTIFICATIONS_EMAIL_KEY, String(emailNotifications));
+    console.log(`[SavePrefs] Saved ${NOTIFICATIONS_EMAIL_KEY}: ${emailNotifications}`);
+    
     localStorage.setItem(NOTIFICATIONS_IN_APP_GENERAL_KEY, String(inAppGeneralNotifications));
+    console.log(`[SavePrefs] Saved ${NOTIFICATIONS_IN_APP_GENERAL_KEY}: ${inAppGeneralNotifications}`);
+    
     localStorage.setItem(NOTIFICATIONS_IN_APP_NEW_TASK_KEY, String(inAppNewTaskNotifications));
+    console.log(`[SavePrefs] Saved ${NOTIFICATIONS_IN_APP_NEW_TASK_KEY}: ${inAppNewTaskNotifications}`);
+
     localStorage.setItem(NOTIFICATIONS_IN_APP_STATUS_UPDATE_KEY, String(inAppStatusUpdateNotifications));
+    console.log(`[SavePrefs] Saved ${NOTIFICATIONS_IN_APP_STATUS_UPDATE_KEY}: ${inAppStatusUpdateNotifications}`);
+
     localStorage.setItem(NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY, String(inAppInventoryLowNotifications));
+    console.log(`[SavePrefs] Saved ${NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY}: ${inAppInventoryLowNotifications}`);
+
     localStorage.setItem(NOTIFICATIONS_SOUND_ENABLED_KEY, String(soundNotificationsEnabled));
+    console.log(`[SavePrefs] Saved ${NOTIFICATIONS_SOUND_ENABLED_KEY}: ${soundNotificationsEnabled}`);
+
     localStorage.setItem(NOTIFICATIONS_SOUND_CHOICE_KEY, notificationSoundChoice);
+    console.log(`[SavePrefs] Saved ${NOTIFICATIONS_SOUND_CHOICE_KEY}: ${notificationSoundChoice}`);
+
     toast({
       title: "Préférences de Notification Enregistrées",
-      description: "Vos choix de notification ont été sauvegardés.",
+      description: "Vos choix de notification ont été sauvegardés avec succès.",
     });
+    console.log("[SavePrefs] Notification Preferences Save Complete.");
   };
-
 
   const handleExportData = () => {
     if (!isClient) return;
     const dataToExport: Record<string, string | null> = {};
+    let keysFound = 0;
+    console.log("[Export Data] Starting export. APP_SPECIFIC_KEYS:", APP_SPECIFIC_KEYS, "APP_SPECIFIC_PREFIXES:", APP_SPECIFIC_PREFIXES);
+
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key) {
@@ -315,12 +373,17 @@ export default function ApplicationSettingsManager() {
                          APP_SPECIFIC_PREFIXES.some(prefix => key.startsWith(prefix));
         if (isAppKey) {
           dataToExport[key] = localStorage.getItem(key);
+          keysFound++;
+          console.log(`[Export Data] Exporting key: ${key}`);
+        } else {
+          console.log(`[Export Data] Skipping key (not app specific): ${key}`);
         }
       }
     }
+    console.log(`[Export Data] Total app-specific keys found for export: ${keysFound}`);
 
     if (Object.keys(dataToExport).length === 0) {
-      toast({ title: "Aucune donnée à exporter", description: "Aucune donnée spécifique à l'application n'a été trouvée.", variant: "default" });
+      toast({ title: "Aucune donnée à exporter", description: "Aucune donnée spécifique à l'application n'a été trouvée dans le stockage local.", variant: "default" });
       return;
     }
 
@@ -334,7 +397,7 @@ export default function ApplicationSettingsManager() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    toast({ title: "Données Exportées", description: "Toutes les données locales de l'application ont été exportées." });
+    toast({ title: "Données Exportées", description: `Toutes les ${keysFound} données locales de l'application ont été exportées.` });
   };
 
   const triggerFileInput = () => {
@@ -355,37 +418,42 @@ export default function ApplicationSettingsManager() {
         if (typeof importedData !== 'object' || importedData === null) {
           throw new Error("Format de fichier invalide.");
         }
+        console.log("[Import Data] File parsed. Data to import:", importedData);
 
         let importedCount = 0;
         for (const key in importedData) {
           if (Object.prototype.hasOwnProperty.call(importedData, key)) {
             const isRecognizedKey = APP_SPECIFIC_KEYS.includes(key) || APP_SPECIFIC_PREFIXES.some(prefix => key.startsWith(prefix));
-            if (isRecognizedKey && typeof importedData[key] === 'string') {
-                 localStorage.setItem(key, importedData[key]);
+            if (isRecognizedKey) {
+                const valueToStore = importedData[key];
+                if (valueToStore === null) { // Handle explicit nulls in backup to remove item
+                    localStorage.removeItem(key);
+                    console.log(`[Import Data] Removed key: ${key} (was null in backup)`);
+                } else if (typeof valueToStore === 'object') { // If it's an object (like some settings might be)
+                    localStorage.setItem(key, JSON.stringify(valueToStore));
+                     console.log(`[Import Data] Imported key (object): ${key}`);
+                } else { // Primitives (string, number, boolean)
+                    localStorage.setItem(key, String(valueToStore));
+                    console.log(`[Import Data] Imported key (primitive): ${key}`);
+                }
                  importedCount++;
-            } else if (isRecognizedKey && importedData[key] !== null && typeof importedData[key] === 'object') { 
-                 localStorage.setItem(key, JSON.stringify(importedData[key]));
-                 importedCount++;
-            } else if (isRecognizedKey && importedData[key] === null) {
-                 localStorage.removeItem(key); // Explicitly remove if null in backup
-                 importedCount++; // Or count as a change
-            } else if (isRecognizedKey) { // Catch other primitives like numbers/booleans
-                 localStorage.setItem(key, String(importedData[key]));
-                 importedCount++;
+            } else {
+                console.log(`[Import Data] Skipping key (not recognized app specific): ${key}`);
             }
           }
         }
         
         if (importedCount > 0) {
           toast({
-            title: "Données Importées",
+            title: "Données Importées avec Succès",
             description: `${importedCount} éléments de données ont été importés. Veuillez recharger la page pour appliquer tous les changements.`,
           });
-          
-           setTimeout(() => window.location.reload(), 1000);
+           console.log("[Import Data] Import successful. Reloading page in 2 seconds...");
+           setTimeout(() => window.location.reload(), 2000);
 
         } else {
-            toast({ title: "Importation Partielle ou Vide", description: "Aucune donnée pertinente trouvée ou importée depuis le fichier.", variant: "default" });
+            toast({ title: "Importation Vide", description: "Aucune donnée pertinente trouvée dans le fichier pour cette application.", variant: "default" });
+            console.log("[Import Data] No relevant data found in file.");
         }
 
       } catch (error) {
@@ -620,7 +688,7 @@ export default function ApplicationSettingsManager() {
                       variant="outline" 
                       disabled={!isClient}
                       className="w-full sm:w-auto"
-                      onClick={() => setIsImportAlertOpen(true)}
+                      onClick={() => setIsImportAlertOpen(true)} // Manually trigger dialog open
                     >
                         <Upload className="mr-2 h-4 w-4" />
                         Importer des Données Locales
