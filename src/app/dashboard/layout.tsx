@@ -105,16 +105,15 @@ function AppSidebar() {
         setVisibleNavItems([]);
       }
     }
-  }, [pathname]); // Re-filter when pathname changes, e.g., after login/logout if state isn't reset immediately.
+  }, [pathname]); 
 
   React.useEffect(() => {
-    if (isMobile && openMobile && pathname) { // Added isMobile and openMobile checks
-      // Only close if mobile sidebar is open and path changes
-      // setOpenMobile(false); // This was causing issues, better to let user close it or have trigger close it.
+    if (openMobile && pathname) { 
+      // setOpenMobile(false); // Commented out to prevent auto-closing issues
     }
-  }, [pathname, openMobile, setOpenMobile]); // Removed isMobile from dependency array as it's stable per session
+  }, [pathname, setOpenMobile, openMobile]); 
 
-  const { isMobile } = useSidebar(); // Get isMobile from context
+  const { isMobile } = useSidebar(); 
 
   const handleLogout = () => {
     if (typeof window !== 'undefined') {
@@ -187,7 +186,7 @@ function AppSidebar() {
           </SidebarMenuItem>
           <SidebarMenuItem className="group-data-[collapsible=icon]:hidden">
             <div className="p-2 text-xs text-sidebar-foreground/60">
-              Créé par Votre Chef
+              Créé par Julien Dernoncourt
             </div>
           </SidebarMenuItem>
           <SidebarMenuItem className="group-data-[collapsible=icon]:hidden">
@@ -216,41 +215,52 @@ export default function DashboardLayout({
   React.useEffect(() => {
     setIsClient(true);
     if (typeof window !== 'undefined') {
+        console.log("[DashboardLayout EFFECT 1] Running initial setup.");
         const storedAppLogo = localStorage.getItem(APP_LOGO_STORAGE_KEY);
         if (storedAppLogo) {
             setAppLogoUrl(storedAppLogo);
+            console.log("[DashboardLayout EFFECT 1] App logo loaded from localStorage.");
+        } else {
+            console.log("[DashboardLayout EFFECT 1] No app logo in localStorage.");
         }
 
         const storedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
         const initialThemeMode = storedTheme && ['light', 'dark', 'system'].includes(storedTheme) ? storedTheme : 'system';
         applyThemeMode(initialThemeMode);
-        console.log("[DashboardLayout] Applied theme:", initialThemeMode);
+        console.log("[DashboardLayout EFFECT 1] Applied theme:", initialThemeMode);
 
         const storedAccentColor = localStorage.getItem(ACCENT_COLOR_STORAGE_KEY);
         const initialAccentColor = storedAccentColor || DEFAULT_APP_PRIMARY_COLOR;
         applyAccentColor(initialAccentColor);
-        console.log("[DashboardLayout] Applied accent color:", initialAccentColor);
+        console.log("[DashboardLayout EFFECT 1] Applied accent color:", initialAccentColor);
 
 
         const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
         const handleChange = () => {
           const currentThemeSetting = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
           if (currentThemeSetting === 'system' || !currentThemeSetting) {
-             console.log("[DashboardLayout] System theme changed, re-applying.");
+             console.log("[DashboardLayout Media Query Change] System theme changed, re-applying.");
              applyThemeMode('system');
           }
         };
         mediaQuery.addEventListener('change', handleChange);
-        return () => mediaQuery.removeEventListener('change', handleChange);
+        console.log("[DashboardLayout EFFECT 1] System theme change listener added.");
+        return () => {
+            mediaQuery.removeEventListener('change', handleChange);
+            console.log("[DashboardLayout EFFECT 1 Cleanup] System theme change listener removed.");
+        }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); 
+  }, [isClient]); 
 
   React.useEffect(() => {
     if (isClient) {
+      console.log("[DashboardLayout EFFECT 2] Checking auth status.");
       if (localStorage.getItem('isLoggedIn') !== 'true') {
+        console.log("[DashboardLayout EFFECT 2] Not logged in, redirecting to /login.");
         router.replace('/login');
       } else {
+        console.log("[DashboardLayout EFFECT 2] Logged in, setting authChecked to true.");
         setAuthChecked(true);
       }
     }
@@ -258,9 +268,11 @@ export default function DashboardLayout({
 
   React.useEffect(() => {
     if (isClient && authChecked) {
+      console.log("[DashboardLayout EFFECT 3] Auth checked, verifying route access for pathname:", pathname);
       const username = localStorage.getItem('loggedInUsername');
       if (username?.toLowerCase() === 'chef') {
-        return; // Chef has access to everything
+        console.log("[DashboardLayout EFFECT 3] User is Chef, access granted.");
+        return; 
       }
 
       const storedPermissionsRaw = localStorage.getItem('loggedInUserPermissions');
@@ -268,32 +280,21 @@ export default function DashboardLayout({
       if (storedPermissionsRaw) {
         try {
           userPermissions = JSON.parse(storedPermissionsRaw);
+          console.log("[DashboardLayout EFFECT 3] User permissions loaded:", userPermissions);
         } catch (e) {
-          console.error("Error parsing permissions for route access control:", e);
-          router.replace('/dashboard'); // Default to dashboard on error
+          console.error("[DashboardLayout EFFECT 3] Error parsing permissions for route access control:", e);
+          router.replace('/dashboard'); 
           return;
         }
+      } else {
+        console.log("[DashboardLayout EFFECT 3] No user permissions found in localStorage.");
       }
-
-      // Allow access to /dashboard if user has 'dashboard' permission or any other permission
-      // This handles cases where 'dashboard' itself might not be explicitly set but other sections are.
-      // The sidebar visibility is handled separately.
+      
       if (pathname === '/dashboard' || pathname === '/dashboard/') {
-         if (Object.values(userPermissions).every(perm => perm === false)) {
-             // If user has NO permissions at all, and is not chef, block from dashboard too.
-             // Or redirect to login / a specific error page.
-             // For now, let's assume if they are logged in and not chef, but have no permissions,
-             // they still see an empty dashboard (sidebar handles visible items).
-             // If you want to strictly block dashboard access:
-             // if (!userPermissions.dashboard && Object.values(userPermissions).every(p => !p)) {
-             //    router.replace('/login'); // Or an "access denied" page
-             //    return;
-             // }
-         }
+         console.log("[DashboardLayout EFFECT 3] Accessing main dashboard page, allowed.");
          return;
       }
       
-
       const pathSegments = pathname.split('/');
       if (pathSegments.length > 2 && pathSegments[1] === 'dashboard') {
         const currentTopLevelPath = pathSegments[2];
@@ -302,21 +303,22 @@ export default function DashboardLayout({
         if (navItem) {
           let hasAccessToSection = false;
           if (navItem.rubricId === 'timeTracking_parent') {
-            // Check if user has permission to any of the time tracking sub-rubrics
             hasAccessToSection = TIME_TRACKING_SUB_RUBRICS.some(sub => userPermissions[sub.id]);
+            console.log(`[DashboardLayout EFFECT 3] Checking timeTracking_parent access, result: ${hasAccessToSection}`);
           } else {
             hasAccessToSection = !!userPermissions[navItem.rubricId as RubricId];
+            console.log(`[DashboardLayout EFFECT 3] Checking access to ${navItem.rubricId}, result: ${hasAccessToSection}`);
           }
 
           if (!hasAccessToSection) {
-            console.log(`[DashboardLayout] Access denied to ${pathname}. Redirecting to /dashboard.`);
+            console.log(`[DashboardLayout EFFECT 3] Access denied to ${pathname}. Redirecting to /dashboard.`);
             router.replace('/dashboard');
+          } else {
+            console.log(`[DashboardLayout EFFECT 3] Access granted to ${pathname}.`);
           }
         } else {
-           // Path doesn't match any known navItem, could be a 404 or a deeper route.
-           // For simplicity, if it's not a recognized top-level nav item, we don't redirect.
            if (currentTopLevelPath) {
-             // console.log(`[DashboardLayout] Accessing potentially non-sidebar path: /dashboard/${currentTopLevelPath}`);
+             // console.log(`[DashboardLayout EFFECT 3] Accessing potentially non-sidebar path: /dashboard/${currentTopLevelPath}`);
            }
         }
       }
