@@ -50,7 +50,7 @@ const months = Array.from({ length: 12 }, (_, i) => ({
 const SELECT_EMPTY_VALUE_PLACEHOLDER = "_SELECT_EMPTY_";
 
 interface BenefitTrackingTableProps {
-  employees: BenefitEmployee[]; // Now receives employees as a prop
+  employees: BenefitEmployee[]; 
 }
 
 export default function BenefitTrackingTable({ employees }: BenefitTrackingTableProps) {
@@ -144,14 +144,13 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
         format: pdfSettings.pageSize,
       }) as jsPDFWithAutoTable;
       
-      doc.setFont(pdfSettings.fontFamily || 'helvetica'); // Use configured font or default
+      doc.setFont(pdfSettings.fontFamily || 'helvetica'); 
 
       const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
       let currentY = pdfSettings.marginTop;
 
-      // Header Table from settings
       if (pdfSettings.headerText) {
         const headerRows = pdfSettings.headerText.split('\n').map(rowText => 
           rowText.split('|').map(cellText => cellText.trim())
@@ -169,7 +168,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
             if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image') && headerRows[data.row.index][data.column.index] === '{logo}') {
               try {
                 const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
-                const formatType = imgProps.fileType.toUpperCase(); // Ensure format is uppercase
+                const formatType = imgProps.fileType.toUpperCase();
                 const cellPadding = 2; 
                 let imgWidth = data.cell.width - 2 * cellPadding;
                 let imgHeight = data.cell.height - 2 * cellPadding;
@@ -199,22 +198,22 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
       } else if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { 
         try {
             const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
-            const formatType = imgProps.fileType.toUpperCase(); // Ensure format is uppercase
+            const formatType = imgProps.fileType.toUpperCase(); 
             const desiredHeight = 30; 
             const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
             doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
             currentY += desiredHeight + 5;
         } catch(e: any) {
             console.error(`Error drawing standalone logo in PDF: ${e.message || e}.`, {logoUrl: pdfSettings.logoUrl ? pdfSettings.logoUrl.substring(0, 50) + "..." : "N/A"});
-            doc.setFontSize(pdfSettings.headerFontSize); doc.text(`[Logo Error]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize + 5;
+            doc.setFontSize(pdfSettings.defaultFontSize); doc.text(`[Logo Error]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 5;
         }
       } else if (pdfSettings.logoUrl) {
-         doc.setFontSize(pdfSettings.headerFontSize); doc.text(`[Logo URL: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize + 5;
+         doc.setFontSize(pdfSettings.defaultFontSize); doc.text(`[Logo URL: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 5;
       }
       
       const title = `Suivi Avantages en Nature - ${monthLabel} ${selectedYear}`;
-      doc.setFontSize(pdfSettings.headerFontSize + 4); 
-      doc.text(title, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.headerFontSize + 4) * 0.7;
+      doc.setFontSize(pdfSettings.documentTitleFontSize || 18); // Use configured document title font size
+      doc.text(title, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.documentTitleFontSize || 18) * 0.7;
       doc.setFontSize(pdfSettings.defaultFontSize);
       doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 5;
 
@@ -245,7 +244,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
       (head[0] as any[]).push({ content: 'TOTAL', rowSpan: 2, styles: { ...headStyles, valign: 'middle'} });
 
 
-      const body = employees.flatMap(employee => { // Use prop 'employees'
+      const body = employees.flatMap(employee => { 
         const planningRow: any[] = [{ content: employee.name, rowSpan: 2, styles: { valign: 'middle', fontStyle: 'bold'} }, 'Planning'];
         const repasPrisRow: any[] = ['Repas Pris'];
 
@@ -367,7 +366,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <span className="ml-2 text-muted-foreground">Chargement des données...</span>
         </div>
-      ) : employees.length === 0 ? ( // Use prop 'employees'
+      ) : employees.length === 0 ? ( 
         <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
             <Users className="mx-auto h-12 w-12 text-muted-foreground" />
             <p className="mt-2 text-sm text-muted-foreground">
@@ -403,7 +402,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
               </TableRow>
             </TableHeader>
             <TableBody>
-              {employees.map(employee => ( // Use prop 'employees'
+              {employees.map(employee => ( 
                 <React.Fragment key={employee.id}>
                   {(['planning', 'repasPris'] as const).map((type, typeIndex) => {
                     const dayRow = daysInSelectedMonth.map(day => {

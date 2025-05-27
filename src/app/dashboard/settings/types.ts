@@ -12,6 +12,7 @@ export interface PdfLayoutSettings {
 
   // New fields
   fontFamily?: 'helvetica' | 'times' | 'courier' | 'arial' | 'verdana';
+  documentTitleFontSize?: number; // Added for main document title
   headerFontSize?: number;
   footerFontSize?: number;
   tableHeaderFontSize?: number;
@@ -48,7 +49,6 @@ export interface PmsConfigurations {
 export const PMS_KITCHEN_CLEANING_KEY = 'kitchenCleaning_v1';
 export const PMS_RESTAURANT_CLEANING_KEY = 'restaurantCleaning_v1';
 export const PMS_TEMPERATURE_MONITORING_KEY = 'temperatureMonitoring_v1';
-
 // Key for storing all PMS module configurations
 export const PMS_CONFIG_STORAGE_KEY = 'pms_module_configurations_v6';
     

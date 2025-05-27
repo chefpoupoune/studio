@@ -23,6 +23,7 @@ import {
   DEFAULT_MARGIN,
   DEFAULT_FONT_SIZE,
   DEFAULT_FONT_FAMILY,
+  DEFAULT_DOCUMENT_TITLE_FONT_SIZE, // New import
   DEFAULT_HEADER_FONT_SIZE,
   DEFAULT_FOOTER_FONT_SIZE,
   DEFAULT_TABLE_HEADER_FONT_SIZE,
@@ -100,6 +101,7 @@ export default function PdfLayoutManager() {
   const [defaultFontSizeInput, setDefaultFontSizeInput] = useState<string>(String(DEFAULT_FONT_SIZE));
 
   const [fontFamilyInput, setFontFamilyInput] = useState<NonNullable<PdfLayoutSettings['fontFamily']>>(DEFAULT_FONT_FAMILY);
+  const [documentTitleFontSizeInput, setDocumentTitleFontSizeInput] = useState<string>(String(DEFAULT_DOCUMENT_TITLE_FONT_SIZE)); // New state
   const [headerFontSizeInput, setHeaderFontSizeInput] = useState<string>(String(DEFAULT_HEADER_FONT_SIZE));
   const [footerFontSizeInput, setFooterFontSizeInput] = useState<string>(String(DEFAULT_FOOTER_FONT_SIZE));
   const [tableHeaderFontSizeInput, setTableHeaderFontSizeInput] = useState<string>(String(DEFAULT_TABLE_HEADER_FONT_SIZE));
@@ -133,6 +135,7 @@ export default function PdfLayoutManager() {
             logoUrl: DEFAULT_LOGO_URL,
             headerText: DEFAULT_HEADER_TEXT,
             fontFamily: DEFAULT_FONT_FAMILY,
+            documentTitleFontSize: DEFAULT_DOCUMENT_TITLE_FONT_SIZE, // New
             headerFontSize: DEFAULT_HEADER_FONT_SIZE,
             footerFontSize: DEFAULT_FOOTER_FONT_SIZE,
             tableHeaderFontSize: DEFAULT_TABLE_HEADER_FONT_SIZE,
@@ -175,6 +178,7 @@ export default function PdfLayoutManager() {
     setDefaultFontSizeInput(String(effectiveSettings.defaultFontSize));
     
     setFontFamilyInput(effectiveSettings.fontFamily);
+    setDocumentTitleFontSizeInput(String(effectiveSettings.documentTitleFontSize)); // New
     setHeaderFontSizeInput(String(effectiveSettings.headerFontSize));
     setFooterFontSizeInput(String(effectiveSettings.footerFontSize));
     setTableHeaderFontSizeInput(String(effectiveSettings.tableHeaderFontSize));
@@ -212,6 +216,7 @@ export default function PdfLayoutManager() {
             case 'marginTop': case 'marginRight': case 'marginBottom': case 'marginLeft': defaultValue = DEFAULT_MARGIN; break;
             case 'defaultFontSize': defaultValue = DEFAULT_FONT_SIZE; break;
             case 'fontFamily': defaultValue = DEFAULT_FONT_FAMILY; break;
+            case 'documentTitleFontSize': defaultValue = DEFAULT_DOCUMENT_TITLE_FONT_SIZE; break; // New
             case 'headerFontSize': defaultValue = DEFAULT_HEADER_FONT_SIZE; break;
             case 'footerFontSize': defaultValue = DEFAULT_FOOTER_FONT_SIZE; break;
             case 'tableHeaderFontSize': defaultValue = DEFAULT_TABLE_HEADER_FONT_SIZE; break;
@@ -244,7 +249,7 @@ export default function PdfLayoutManager() {
   const handleLogoFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-        if (file.size > 2 * 1024 * 1024) { // 2MB limit
+        if (file.size > 2 * 1024 * 1024) { 
             toast({
                 title: "Fichier trop volumineux",
                 description: "La taille du logo ne doit pas dépasser 2Mo.",
@@ -280,6 +285,7 @@ export default function PdfLayoutManager() {
       marginLeft: parseFloat(marginLeftInput) || undefined,
       defaultFontSize: parseFloat(defaultFontSizeInput) || undefined,
       fontFamily: fontFamilyInput || undefined,
+      documentTitleFontSize: parseFloat(documentTitleFontSizeInput) || undefined, // New
       headerFontSize: parseFloat(headerFontSizeInput) || undefined,
       footerFontSize: parseFloat(footerFontSizeInput) || undefined,
       tableHeaderFontSize: parseFloat(tableHeaderFontSizeInput) || undefined,
@@ -302,6 +308,7 @@ export default function PdfLayoutManager() {
         marginLeft: parseFloat(marginLeftInput) || DEFAULT_MARGIN,
         defaultFontSize: parseFloat(defaultFontSizeInput) || DEFAULT_FONT_SIZE,
         fontFamily: fontFamilyInput || DEFAULT_FONT_FAMILY,
+        documentTitleFontSize: parseFloat(documentTitleFontSizeInput) || DEFAULT_DOCUMENT_TITLE_FONT_SIZE, // New
         headerFontSize: parseFloat(headerFontSizeInput) || DEFAULT_HEADER_FONT_SIZE,
         footerFontSize: parseFloat(footerFontSizeInput) || DEFAULT_FOOTER_FONT_SIZE,
         tableHeaderFontSize: parseFloat(tableHeaderFontSizeInput) || DEFAULT_TABLE_HEADER_FONT_SIZE,
@@ -478,14 +485,15 @@ export default function PdfLayoutManager() {
                 </div>
                 <Label className="flex items-center gap-1"><TextCursorInput className="w-4 h-4"/> Tailles de Police (pt)</Label>
                 <div className="grid grid-cols-2 gap-3">
+                    <div><Label htmlFor="document-title-font-size-input" className="text-xs">Titre Document</Label><Input id="document-title-font-size-input" type="number" value={documentTitleFontSizeInput} onChange={e => setDocumentTitleFontSizeInput(e.target.value)} className="h-8"/></div> {/* New Field */}
                     <div><Label htmlFor="default-font-size-input" className="text-xs">Défaut</Label><Input id="default-font-size-input" type="number" value={defaultFontSizeInput} onChange={e => setDefaultFontSizeInput(e.target.value)} className="h-8"/></div>
-                    <div><Label htmlFor="header-font-size-input" className="text-xs">En-tête Doc.</Label><Input id="header-font-size-input" type="number" value={headerFontSizeInput} onChange={e => setHeaderFontSizeInput(e.target.value)} className="h-8"/></div>
+                    <div><Label htmlFor="header-font-size-input" className="text-xs">En-tête (Perso)</Label><Input id="header-font-size-input" type="number" value={headerFontSizeInput} onChange={e => setHeaderFontSizeInput(e.target.value)} className="h-8"/></div>
                     <div><Label htmlFor="footer-font-size-input" className="text-xs">Pied de Page</Label><Input id="footer-font-size-input" type="number" value={footerFontSizeInput} onChange={e => setFooterFontSizeInput(e.target.value)} className="h-8"/></div>
                     <div><Label htmlFor="table-header-font-size-input" className="text-xs">En-tête Tableau</Label><Input id="table-header-font-size-input" type="number" value={tableHeaderFontSizeInput} onChange={e => setTableHeaderFontSizeInput(e.target.value)} className="h-8"/></div>
                     <div><Label htmlFor="table-body-font-size-input" className="text-xs">Corps Tableau</Label><Input id="table-body-font-size-input" type="number" value={tableBodyFontSizeInput} onChange={e => setTableBodyFontSizeInput(e.target.value)} className="h-8"/></div>
                 </div>
                  <p className="text-xs text-muted-foreground mt-1">
-                    Effectives: Défaut {previewSettingsForDisplay.defaultFontSize}pt, En-tête Doc {previewSettingsForDisplay.headerFontSize}pt, Pied {previewSettingsForDisplay.footerFontSize}pt, En-tête Tab. {previewSettingsForDisplay.tableHeaderFontSize}pt, Corps Tab. {previewSettingsForDisplay.tableBodyFontSize}pt
+                    Effectives: Titre Doc. {previewSettingsForDisplay.documentTitleFontSize}pt, Défaut {previewSettingsForDisplay.defaultFontSize}pt, En-tête Perso {previewSettingsForDisplay.headerFontSize}pt, Pied {previewSettingsForDisplay.footerFontSize}pt, En-tête Tab. {previewSettingsForDisplay.tableHeaderFontSize}pt, Corps Tab. {previewSettingsForDisplay.tableBodyFontSize}pt
                 </p>
               </div>
             </div>
@@ -546,8 +554,8 @@ export default function PdfLayoutManager() {
                         className="mt-1"
                         rows={3}
                     />
-                    {currentEffectiveSettings.headerText && <div className="text-xs text-muted-foreground mt-1">Effectif : <pre className="whitespace-pre-wrap text-xs bg-muted/50 p-1 rounded inline-block">{currentEffectiveSettings.headerText}</pre></div>}
-                    {!currentEffectiveSettings.headerText && <p className="text-xs text-muted-foreground mt-1">Aucun texte d'en-tête défini.</p>}
+                    {previewSettingsForDisplay.headerText && <div className="text-xs text-muted-foreground mt-1">Effectif : <pre className="whitespace-pre-wrap text-xs bg-muted/50 p-1 rounded inline-block">{previewSettingsForDisplay.headerText}</pre></div>}
+                    {!previewSettingsForDisplay.headerText && <p className="text-xs text-muted-foreground mt-1">Aucun texte d'en-tête défini.</p>}
                 </div>
                 <Button onClick={handleSaveHeaderText}>
                     <Save className="mr-2 h-4 w-4"/> Enregistrer En-tête
@@ -563,7 +571,7 @@ export default function PdfLayoutManager() {
                         rows={2}
                     />
                     <p className="text-xs text-muted-foreground mt-1">Utilisez &#123;date&#125;, &#123;pageNumber&#125;, &#123;totalPages&#125; comme placeholders.</p>
-                    {currentEffectiveSettings.footerText && <p className="text-xs text-muted-foreground mt-1">Effectif : {currentEffectiveSettings.footerText}</p>}
+                    {previewSettingsForDisplay.footerText && <p className="text-xs text-muted-foreground mt-1">Effectif : {previewSettingsForDisplay.footerText}</p>}
                 </div>
                  <Button onClick={handleSaveFooterText}>
                     <Save className="mr-2 h-4 w-4"/> Enregistrer Pied de Page
@@ -619,6 +627,11 @@ export default function PdfLayoutManager() {
               <div className="mb-auto flex-shrink-0 leading-tight border-b border-neutral-300 dark:border-neutral-600 pb-0.5 mb-0.5 text-[0.9em]" style={{fontSize: `${Math.max(3, (previewSettingsForDisplay.headerFontSize || DEFAULT_HEADER_FONT_SIZE) / 2.5)}pt`}}>
                 {renderPreviewHeaderText()}
                  {!(previewSettingsForDisplay.headerText) && !(uploadedLogoPreview || (previewSettingsForDisplay.logoUrl && previewSettingsForDisplay.logoUrl.startsWith('data:image'))) && <div className="h-3">&nbsp;</div>}
+              </div>
+
+              {/* Document Title */}
+              <div className="text-center font-bold leading-tight my-1" style={{fontSize: `${Math.max(4, (previewSettingsForDisplay.documentTitleFontSize || DEFAULT_DOCUMENT_TITLE_FONT_SIZE) / 2.5)}pt`}}>
+                  Titre du Document
               </div>
 
               {/* Dummy Content Area */}

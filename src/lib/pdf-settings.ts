@@ -12,7 +12,8 @@ export const DEFAULT_MARGIN = 30;
 export const DEFAULT_FONT_SIZE = 10;
 
 export const DEFAULT_FONT_FAMILY: NonNullable<PdfLayoutSettings['fontFamily']> = 'helvetica';
-export const DEFAULT_HEADER_FONT_SIZE = 14;
+export const DEFAULT_DOCUMENT_TITLE_FONT_SIZE = 18; // New default
+export const DEFAULT_HEADER_FONT_SIZE = 10; // Adjusted default for custom header table
 export const DEFAULT_FOOTER_FONT_SIZE = 8;
 export const DEFAULT_TABLE_HEADER_FONT_SIZE = 9;
 export const DEFAULT_TABLE_BODY_FONT_SIZE = 8;
@@ -31,6 +32,7 @@ const DEFAULT_SETTINGS: Required<PdfLayoutSettings> = {
   marginLeft: DEFAULT_MARGIN,
   defaultFontSize: DEFAULT_FONT_SIZE,
   fontFamily: DEFAULT_FONT_FAMILY,
+  documentTitleFontSize: DEFAULT_DOCUMENT_TITLE_FONT_SIZE, // New
   headerFontSize: DEFAULT_HEADER_FONT_SIZE,
   footerFontSize: DEFAULT_FOOTER_FONT_SIZE,
   tableHeaderFontSize: DEFAULT_TABLE_HEADER_FONT_SIZE,
@@ -51,9 +53,9 @@ export function hexToRgb(hex: string): [number, number, number] | null {
 export function getPdfLayoutSettings(pdfTypeKey: string, allConfigsParam?: Record<string, Partial<PdfLayoutSettings>>): Required<PdfLayoutSettings> {
   let configsToUse: Record<string, Partial<PdfLayoutSettings>>;
 
-  if (allConfigsParam !== undefined) { // Strictly use the passed parameter if it's defined (even if empty object)
+  if (allConfigsParam !== undefined) { 
     configsToUse = allConfigsParam;
-  } else if (typeof window !== 'undefined' && window.localStorage) { // Fallback to localStorage ONLY if allConfigsParam is not provided at all
+  } else if (typeof window !== 'undefined' && window.localStorage) { 
     try {
       const storedConfigs = localStorage.getItem(PDF_LAYOUT_CONFIGS_KEY);
       configsToUse = storedConfigs ? JSON.parse(storedConfigs) : {};
@@ -79,6 +81,7 @@ export function getPdfLayoutSettings(pdfTypeKey: string, allConfigsParam?: Recor
     marginLeft: specificConfig.marginLeft ?? generalConfig.marginLeft ?? DEFAULT_SETTINGS.marginLeft,
     defaultFontSize: specificConfig.defaultFontSize ?? generalConfig.defaultFontSize ?? DEFAULT_SETTINGS.defaultFontSize,
     fontFamily: specificConfig.fontFamily ?? generalConfig.fontFamily ?? DEFAULT_SETTINGS.fontFamily,
+    documentTitleFontSize: specificConfig.documentTitleFontSize ?? generalConfig.documentTitleFontSize ?? DEFAULT_SETTINGS.documentTitleFontSize, // New
     headerFontSize: specificConfig.headerFontSize ?? generalConfig.headerFontSize ?? DEFAULT_SETTINGS.headerFontSize,
     footerFontSize: specificConfig.footerFontSize ?? generalConfig.footerFontSize ?? DEFAULT_SETTINGS.footerFontSize,
     tableHeaderFontSize: specificConfig.tableHeaderFontSize ?? generalConfig.tableHeaderFontSize ?? DEFAULT_SETTINGS.tableHeaderFontSize,
