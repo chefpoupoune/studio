@@ -33,7 +33,7 @@ import {
   LogOut,
   Clock,
   ShoppingBasket,
-  FileClock // Nouvelle icône pour Déclaration d'Heure
+  FileClock 
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -50,7 +50,7 @@ interface NavItem {
   href: string;
   icon: React.ElementType;
   label: string;
-  rubricId: RubricId | 'timeTracking_parent' | 'picnic' | 'declarationHeure'; // Ajout de 'declarationHeure'
+  rubricId: RubricId | 'timeTracking_parent' | 'picnic' | 'declarationHeure'; 
 }
 
 const allNavItems: NavItem[] = [
@@ -73,17 +73,19 @@ function AppSidebar() {
   const router = useRouter();
   const [visibleNavItems, setVisibleNavItems] = React.useState<NavItem[]>(allNavItems);
   const [appLogoUrl, setAppLogoUrl] = React.useState<string | null>(null);
+  const [loggedInUsername, setLoggedInUsername] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
       const storedPermissionsRaw = localStorage.getItem('loggedInUserPermissions');
-      const loggedInUsername = localStorage.getItem('loggedInUsername');
+      const username = localStorage.getItem('loggedInUsername');
+      setLoggedInUsername(username);
       const storedAppLogo = localStorage.getItem(APP_LOGO_STORAGE_KEY);
       if (storedAppLogo) {
         setAppLogoUrl(storedAppLogo);
       }
 
-      if (loggedInUsername?.toLowerCase() === 'chef') {
+      if (username?.toLowerCase() === 'chef') {
         setVisibleNavItems(allNavItems);
       } else if (storedPermissionsRaw) {
         try {
@@ -103,15 +105,16 @@ function AppSidebar() {
         setVisibleNavItems([]);
       }
     }
-  }, [pathname]);
+  }, [pathname]); // Re-filter when pathname changes, e.g., after login/logout if state isn't reset immediately.
 
   React.useEffect(() => {
-    if (openMobile) {
-      // This effect was potentially causing issues, ensure it doesn't interfere with opening.
-      // If its purpose was to close on navigation, pathname should be its sole dependency.
+    if (isMobile && openMobile && pathname) { // Added isMobile and openMobile checks
+      // Only close if mobile sidebar is open and path changes
+      // setOpenMobile(false); // This was causing issues, better to let user close it or have trigger close it.
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]); 
+  }, [pathname, openMobile, setOpenMobile]); // Removed isMobile from dependency array as it's stable per session
+
+  const { isMobile } = useSidebar(); // Get isMobile from context
 
   const handleLogout = () => {
     if (typeof window !== 'undefined') {
@@ -145,7 +148,7 @@ function AppSidebar() {
             <SidebarMenuItem key={item.href}>
               <SidebarMenuButton
                 asChild
-                isActive={pathname === item.href || (pathname.startsWith(item.href) && item.href !== "/dashboard")}
+                isActive={pathname === item.href || (pathname.startsWith(item.href) && item.href !== "/dashboard" && item.href !== "/dashboard/")}
                 tooltip={{
                   children: item.label,
                   className: "group-data-[collapsible=icon]:block hidden",
@@ -158,7 +161,7 @@ function AppSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}
-           {visibleNavItems.length === 0 && typeof window !== 'undefined' && localStorage.getItem('loggedInUsername')?.toLowerCase() !== 'chef' && (
+           {visibleNavItems.length === 0 && typeof window !== 'undefined' && loggedInUsername?.toLowerCase() !== 'chef' && (
             <SidebarMenuItem>
                 <div className="p-2 text-xs text-sidebar-foreground/60 text-center">
                     Aucune rubrique accessible. Contactez un administrateur.
@@ -181,6 +184,11 @@ function AppSidebar() {
                 <LogOut />
                 <span>Déconnexion</span>
             </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem className="group-data-[collapsible=icon]:hidden">
+            <div className="p-2 text-xs text-sidebar-foreground/60">
+              Créé par Votre Chef
+            </div>
           </SidebarMenuItem>
           <SidebarMenuItem className="group-data-[collapsible=icon]:hidden">
             <div className="p-2 text-xs text-sidebar-foreground/60">
@@ -252,7 +260,7 @@ export default function DashboardLayout({
     if (isClient && authChecked) {
       const username = localStorage.getItem('loggedInUsername');
       if (username?.toLowerCase() === 'chef') {
-        return;
+        return; // Chef has access to everything
       }
 
       const storedPermissionsRaw = localStorage.getItem('loggedInUserPermissions');
@@ -262,20 +270,29 @@ export default function DashboardLayout({
           userPermissions = JSON.parse(storedPermissionsRaw);
         } catch (e) {
           console.error("Error parsing permissions for route access control:", e);
-          router.replace('/dashboard');
+          router.replace('/dashboard'); // Default to dashboard on error
           return;
         }
       }
 
+      // Allow access to /dashboard if user has 'dashboard' permission or any other permission
+      // This handles cases where 'dashboard' itself might not be explicitly set but other sections are.
+      // The sidebar visibility is handled separately.
       if (pathname === '/dashboard' || pathname === '/dashboard/') {
-        if (!userPermissions.dashboard && username?.toLowerCase() !== 'chef') {
-            // If user does not have specific dashboard access and is not chef,
-            // this might be a place to redirect to a minimal allowed page or show error.
-            // For now, if they land here without the 'dashboard' permission,
-            // the sidebar will be empty, but content area is not explicitly blocked.
-        }
-        return;
+         if (Object.values(userPermissions).every(perm => perm === false)) {
+             // If user has NO permissions at all, and is not chef, block from dashboard too.
+             // Or redirect to login / a specific error page.
+             // For now, let's assume if they are logged in and not chef, but have no permissions,
+             // they still see an empty dashboard (sidebar handles visible items).
+             // If you want to strictly block dashboard access:
+             // if (!userPermissions.dashboard && Object.values(userPermissions).every(p => !p)) {
+             //    router.replace('/login'); // Or an "access denied" page
+             //    return;
+             // }
+         }
+         return;
       }
+      
 
       const pathSegments = pathname.split('/');
       if (pathSegments.length > 2 && pathSegments[1] === 'dashboard') {
@@ -285,18 +302,19 @@ export default function DashboardLayout({
         if (navItem) {
           let hasAccessToSection = false;
           if (navItem.rubricId === 'timeTracking_parent') {
+            // Check if user has permission to any of the time tracking sub-rubrics
             hasAccessToSection = TIME_TRACKING_SUB_RUBRICS.some(sub => userPermissions[sub.id]);
           } else {
             hasAccessToSection = !!userPermissions[navItem.rubricId as RubricId];
           }
 
           if (!hasAccessToSection) {
+            console.log(`[DashboardLayout] Access denied to ${pathname}. Redirecting to /dashboard.`);
             router.replace('/dashboard');
           }
         } else {
            // Path doesn't match any known navItem, could be a 404 or a deeper route.
            // For simplicity, if it's not a recognized top-level nav item, we don't redirect.
-           // A more robust system might check against a sitemap or more granular route permissions.
            if (currentTopLevelPath) {
              // console.log(`[DashboardLayout] Accessing potentially non-sidebar path: /dashboard/${currentTopLevelPath}`);
            }
