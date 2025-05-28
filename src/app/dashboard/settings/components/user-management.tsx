@@ -9,8 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Users, AlertTriangle, PlusCircle, Edit2, Trash2, KeyRound, Eye, CalendarClock, FileClock } from 'lucide-react'; // Ajout de FileClock
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Users, AlertTriangle, PlusCircle, Edit2, Trash2, KeyRound, Eye, CalendarClock, FileClock } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -38,8 +38,7 @@ export const RUBRICS = [
   { id: 'dashboard', label: 'Tableau de Bord Principal' },
   { id: 'inventory', label: 'Gestion Stocks' },
   { id: 'benefits', label: 'Avantages Nature' },
-  // timeTracking is now handled by sub-rubrics
-  { id: 'declarationHeure', label: "Déclaration d'Heures" }, // Nouvelle rubrique
+  { id: 'declarationHeure', label: "Déclaration d'Heures" },
   { id: 'taskManagement', label: 'Gestion Tâches' },
   { id: 'costManagement', label: 'Gestion Coûts' },
   { id: 'menuPlanning', label: 'Planification Menus' },
@@ -71,6 +70,11 @@ export interface AppUser {
   permissions: Partial<Record<RubricId, boolean>>;
   viewableHourSummaryConfig?: ViewableHourSummaryConfig;
 }
+
+const ALL_RUBRIC_IDS: RubricId[] = [
+  ...BASE_RUBRICS.map(r => r.id),
+  ...TIME_TRACKING_SUB_RUBRICS.map(sr => sr.id),
+];
 
 const basePermissionsSchema = RUBRICS.reduce((acc, rubric) => {
   acc[rubric.id] = z.boolean().default(false);
@@ -125,7 +129,7 @@ export default function UserManagement() {
   const [isUserFormOpen, setIsUserFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
   const [isClient, setIsClient] = useState(false);
-  const [dataLoaded, setDataLoaded] = useState(false); // New state
+  const [dataLoaded, setDataLoaded] = useState(false);
   const { toast } = useToast();
 
   const form = useForm<UserFormData>({
@@ -148,9 +152,9 @@ export default function UserManagement() {
     setIsClient(true);
   }, []);
 
-  // Effect for initial data loading
   useEffect(() => {
     if (!isClient) return;
+    setDataLoaded(false);
     console.log("UserManagement [EFFECT LOAD]: Attempting to load initial data from localStorage.");
     let loadedUsers: AppUser[] = [];
     let loadedMembers: BrigadeMember[] = [];
@@ -160,8 +164,8 @@ export default function UserManagement() {
         loadedUsers = JSON.parse(storedUsersRaw);
         console.log(`UserManagement [EFFECT LOAD]: Loaded ${loadedUsers.length} users from localStorage.`);
       } else {
-        console.log("UserManagement [EFFECT LOAD]: No users found in localStorage.");
-        loadedUsers = []; // Ensure it's an empty array if nothing is found
+        console.log("UserManagement [EFFECT LOAD]: No users found in localStorage, initializing empty.");
+        loadedUsers = [];
       }
       setAppUsers(loadedUsers);
 
@@ -170,7 +174,7 @@ export default function UserManagement() {
         loadedMembers = JSON.parse(storedBrigadeMembersRaw);
         console.log(`UserManagement [EFFECT LOAD]: Loaded ${loadedMembers.length} brigade members from localStorage.`);
       } else {
-        console.log("UserManagement [EFFECT LOAD]: No brigade members found in localStorage.");
+        console.log("UserManagement [EFFECT LOAD]: No brigade members found in localStorage, initializing empty.");
         loadedMembers = [];
       }
       setBrigadeMembers(loadedMembers);
@@ -178,18 +182,16 @@ export default function UserManagement() {
     } catch (error) {
       console.error("UserManagement [EFFECT LOAD]: Error loading data:", error);
       toast({ title: "Erreur de chargement des données utilisateurs/brigade", variant: "destructive" });
-      setAppUsers([]); // Reset to empty on error
+      setAppUsers([]);
       setBrigadeMembers([]);
     } finally {
-      setDataLoaded(true); // Signal that initial load attempt is complete
+      setDataLoaded(true);
       console.log("UserManagement [EFFECT LOAD]: Initial data load process finished. dataLoaded set to true.");
     }
   }, [isClient, toast]);
 
-
-  // Effect for saving appUsers to localStorage
   useEffect(() => {
-    if (isClient && dataLoaded) { // Only save if client and initial data load is complete
+    if (isClient && dataLoaded) {
       console.log(`UserManagement [EFFECT SAVE Users]: Attempting to save ${appUsers.length} appUsers to localStorage.`);
       try {
         localStorage.setItem(APP_USERS_STORAGE_KEY, JSON.stringify(appUsers));
@@ -198,38 +200,34 @@ export default function UserManagement() {
         console.error("UserManagement [EFFECT SAVE Users]: Error saving appUsers to localStorage:", error);
         toast({ title: "Erreur de sauvegarde des utilisateurs", variant: "destructive" });
       }
-    } else {
-      console.log(`UserManagement [EFFECT SAVE Users]: Save skipped. isClient: ${isClient}, dataLoaded: ${dataLoaded}`);
     }
   }, [appUsers, isClient, dataLoaded, toast]);
 
-
-  // Effect for updating availableBrigadeMembers
   useEffect(() => {
-    if (isClient && dataLoaded) { // Ensure data has been loaded before calculating
+    if (isClient && dataLoaded) {
       const linkedMemberIds = appUsers.map(user => user.brigadeMemberId).filter(id => !!id);
       const updatedAvailableMembers = brigadeMembers.filter(member => !linkedMemberIds.includes(member.id));
       setAvailableBrigadeMembers(updatedAvailableMembers);
-      console.log("UserManagement [EFFECT Available Members]: Updated available brigade members list.", updatedAvailableMembers.length);
     }
   }, [appUsers, brigadeMembers, isClient, dataLoaded]);
 
 
   const handleOpenUserForm = (user?: AppUser) => {
     setEditingUser(user || null);
+    const isChef = user?.username.toLowerCase() === 'chef';
     if (user) {
       const currentPermissions = {
-        ...RUBRICS.reduce((acc, rubric) => ({ ...acc, [rubric.id]: !!user.permissions[rubric.id] }), {}),
-        ...TIME_TRACKING_SUB_RUBRICS.reduce((acc, subRubric) => ({ ...acc, [subRubric.id]: !!user.permissions[subRubric.id] }), {}),
+        ...RUBRICS.reduce((acc, rubric) => ({ ...acc, [rubric.id]: isChef ? true : !!user.permissions[rubric.id] }), {}),
+        ...TIME_TRACKING_SUB_RUBRICS.reduce((acc, subRubric) => ({ ...acc, [subRubric.id]: isChef ? true : !!user.permissions[subRubric.id] }), {}),
       };
       form.reset({
         selectedBrigadeMemberId: user.brigadeMemberId,
-        passwordRequired: user.passwordRequired,
+        passwordRequired: isChef ? true : user.passwordRequired,
         newPassword: '',
         confirmNewPassword: '',
         permissions: currentPermissions,
-        viewableHourSummary_type: user.viewableHourSummaryConfig?.type || 'none',
-        viewableHourSummary_specificMemberId: user.viewableHourSummaryConfig?.specificMemberId || undefined,
+        viewableHourSummary_type: isChef ? 'all' : (user.viewableHourSummaryConfig?.type || 'none'),
+        viewableHourSummary_specificMemberId: isChef ? undefined : (user.viewableHourSummaryConfig?.specificMemberId || undefined),
       });
     } else {
       form.reset({
@@ -254,26 +252,36 @@ export default function UserManagement() {
         passwordToStore = simulatedHash(data.newPassword);
     }
 
-    const summaryConfig: ViewableHourSummaryConfig = {
+    let summaryConfig: ViewableHourSummaryConfig = {
         type: data.viewableHourSummary_type,
         specificMemberId: data.viewableHourSummary_type === 'specific' ? data.viewableHourSummary_specificMemberId : undefined,
     };
     
+    let permissionsToSave = data.permissions;
+
+    if (editingUser && editingUser.username.toLowerCase() === 'chef') {
+        // For Chef, enforce all permissions and 'all' view config
+        permissionsToSave = ALL_RUBRIC_IDS.reduce((acc, rubricId) => {
+            acc[rubricId] = true;
+            return acc;
+        }, {} as Partial<Record<RubricId, boolean>>);
+        summaryConfig = { type: 'all' };
+    }
+    
     const baseUserData: Omit<AppUser, 'id' | 'username' | 'brigadeMemberId'> = {
-      passwordRequired: data.passwordRequired,
-      permissions: data.permissions,
+      passwordRequired: (editingUser && editingUser.username.toLowerCase() === 'chef') ? true : data.passwordRequired,
+      permissions: permissionsToSave,
       viewableHourSummaryConfig: summaryConfig,
-      simulatedStoredPassword: passwordToStore, // Will be undefined if no new password
+      simulatedStoredPassword: passwordToStore,
     };
 
     if (editingUser) {
-      // Preserve existing password if not changed, or if password requirement is turned off
       const updatedSimulatedPassword = 
-        (data.passwordRequired && passwordToStore) // New password set
+        (baseUserData.passwordRequired && passwordToStore) 
           ? passwordToStore 
-          : data.passwordRequired // Password still required, but not changed
+          : baseUserData.passwordRequired 
             ? editingUser.simulatedStoredPassword 
-            : undefined; // Password no longer required
+            : undefined; 
 
       setAppUsers(prev => prev.map(u => u.id === editingUser.id ? { 
           ...editingUser, 
@@ -318,7 +326,7 @@ export default function UserManagement() {
   const currentSelectedSummaryType = form.watch('viewableHourSummary_type');
   
   const hasSomeTimeTrackingPermission = Object.keys(form.watch('permissions') || {})
-  .filter(key => TIME_TRACKING_SUB_RUBRICS.some(sr => sr.id === key)) // Check against actual sub-rubric IDs
+  .filter(key => TIME_TRACKING_SUB_RUBRICS.some(sr => sr.id === key)) 
   .some(key => (form.watch('permissions') as any)[key] === true);
 
   const isEditingChef = editingUser?.username.toLowerCase() === 'chef';
@@ -354,7 +362,7 @@ export default function UserManagement() {
           <AlertTitle className="text-destructive font-semibold">Avertissement de Sécurité</AlertTitle>
           <AlertDescription className="text-destructive/90">
             Ce système est pour la démonstration. Les mots de passe ne sont pas stockés de manière sécurisée (simulation).
-            L'utilisateur 'Chef' est le compte administrateur avec tous les accès et un mot de passe initial de '000' (s'il n'est pas redéfini dans la page de connexion).
+            L'utilisateur 'Chef' est le compte administrateur avec tous les accès. Si non configuré, son mot de passe par défaut est '000'.
           </AlertDescription>
         </Alert>
 
@@ -416,11 +424,11 @@ export default function UserManagement() {
                             Si coché, un mot de passe sera nécessaire pour se connecter.
                           </FormDescription>
                         </div>
-                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={isEditingChef} /></FormControl>
+                        <FormControl><Switch checked={isEditingChef ? true : field.value} onCheckedChange={field.onChange} disabled={isEditingChef} /></FormControl>
                       </FormItem>
                     )} />
                     
-                    {form.watch('passwordRequired') && !isEditingChef && (
+                    {form.watch('passwordRequired') && (
                       <div className="p-3 border rounded-md space-y-3 bg-muted/30">
                          <FormField control={form.control} name="newPassword" render={({ field }) => (
                           <FormItem>
@@ -451,9 +459,9 @@ export default function UserManagement() {
                               <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 hover:bg-muted/20">
                                 <FormControl>
                                   <Checkbox
-                                    checked={field.value}
+                                    checked={isEditingChef ? true : field.value}
                                     onCheckedChange={field.onChange}
-                                    disabled={isEditingChef || (rubric.id === 'settings' && editingUser?.username.toLowerCase() !== 'chef')}
+                                    disabled={isEditingChef || (rubric.id === 'settings' && !isEditingChef)}
                                   />
                                 </FormControl>
                                 <FormLabel className="font-normal text-sm cursor-pointer flex-grow">{rubric.label}</FormLabel>
@@ -472,7 +480,7 @@ export default function UserManagement() {
                                     <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 hover:bg-muted/20">
                                     <FormControl>
                                         <Checkbox
-                                        checked={field.value}
+                                        checked={isEditingChef ? true : field.value}
                                         onCheckedChange={field.onChange}
                                         disabled={isEditingChef}
                                         />
@@ -486,7 +494,7 @@ export default function UserManagement() {
                       </div>
                     </div>
 
-                    {!isEditingChef && (
+                    {(
                         <>
                         <div className="pt-4 border-t">
                           <h3 className="text-md font-semibold mb-2 mt-2 flex items-center gap-1"><Eye className="w-4 h-4"/> Vue des Relevés d'Heures & Modèles Horaires</h3>
@@ -496,7 +504,7 @@ export default function UserManagement() {
                           <FormField control={form.control} name="viewableHourSummary_type" render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Type de vue</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value} disabled={!hasSomeTimeTrackingPermission}>
+                                <Select onValueChange={field.onChange} value={field.value} disabled={isEditingChef || !hasSomeTimeTrackingPermission}>
                                 <FormControl><SelectTrigger><SelectValue placeholder="Choisir type de vue..." /></SelectTrigger></FormControl>
                                 <SelectContent>
                                     <SelectItem value="none">Aucun</SelectItem>
@@ -505,12 +513,13 @@ export default function UserManagement() {
                                     <SelectItem value="specific">Données d'un employé spécifique</SelectItem>
                                 </SelectContent>
                                 </Select>
-                                {!hasSomeTimeTrackingPermission && <FormDescription className="text-xs text-orange-600">Nécessite au moins une permission "Suivi des Heures" (détaillée ci-dessus).</FormDescription>}
+                                {!hasSomeTimeTrackingPermission && !isEditingChef && <FormDescription className="text-xs text-orange-600">Nécessite au moins une permission "Suivi des Heures" (détaillée ci-dessus).</FormDescription>}
+                                {isEditingChef && <FormDescription className="text-xs">Le Chef a toujours accès à toutes les données.</FormDescription>}
                                 <FormMessage />
                             </FormItem>
                             )}
                           />
-                          {currentSelectedSummaryType === 'specific' && hasSomeTimeTrackingPermission && (
+                          {currentSelectedSummaryType === 'specific' && hasSomeTimeTrackingPermission && !isEditingChef && (
                             <FormField control={form.control} name="viewableHourSummary_specificMemberId" render={({ field }) => (
                                 <FormItem className="mt-2">
                                 <FormLabel>Employé spécifique à visualiser</FormLabel>
@@ -534,7 +543,7 @@ export default function UserManagement() {
                 </ScrollArea>
                 <DialogFooter className="pt-4">
                   <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                  <Button type="submit" disabled={isEditingChef && editingUser?.username.toLowerCase() !== 'chef'}>{editingUser ? "Enregistrer Modifications" : "Créer Utilisateur"}</Button>
+                  <Button type="submit">{editingUser ? "Enregistrer Modifications" : "Créer Utilisateur"}</Button>
                 </DialogFooter>
               </form>
             </Form>
@@ -627,3 +636,5 @@ export default function UserManagement() {
     </Card>
   );
 }
+
+    
