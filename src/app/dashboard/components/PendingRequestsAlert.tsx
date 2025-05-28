@@ -74,7 +74,6 @@ export default function PendingRequestsAlert({ loggedInUsername }: PendingReques
         }
       };
 
-
       window.addEventListener('overtimeRequestsUpdated', handleOvertimeUpdate);
       window.addEventListener('absenceRequestsUpdated', handleAbsenceUpdate);
       document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -92,6 +91,10 @@ export default function PendingRequestsAlert({ loggedInUsername }: PendingReques
   }
 
   if (isLoading) {
+    // Optionally, you might want to show a subtle loader or nothing during initial load
+    // For now, it will show the loading alert, then disappear if totalPending is 0.
+    // If you want it to be completely invisible until there's something to show,
+    // you could return null here as well, but then the user wouldn't know it's checking.
     return (
       <Alert className="mb-6 bg-muted/30 border-muted-foreground/20">
         <BellRing className="h-5 w-5 text-muted-foreground animate-pulse" />
@@ -106,15 +109,8 @@ export default function PendingRequestsAlert({ loggedInUsername }: PendingReques
   const totalPending = pendingOvertimeCount + pendingAbsenceCount;
 
   if (totalPending === 0) {
-    return (
-       <Alert variant="default" className="mb-6 bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700">
-        <BellRing className="h-5 w-5 text-green-600 dark:text-green-400" />
-        <AlertTitle className="font-semibold text-green-700 dark:text-green-300">Notifications de Demandes</AlertTitle>
-        <AlertDescription className="text-sm text-green-600 dark:text-green-400">
-          Aucune demande de dépassement d'horaire ou d'absence en attente d'approbation.
-        </AlertDescription>
-      </Alert>
-    );
+    // If loading is complete and there are no pending requests, render nothing.
+    return null; 
   }
 
   return (
