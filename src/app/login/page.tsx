@@ -12,7 +12,7 @@ import { User, LockKeyhole, ArrowLeft, Utensils } from 'lucide-react';
 import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
 import type { AppUser, RubricId, ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management';
-import { RUBRICS as BASE_RUBRICS, TIME_TRACKING_SUB_RUBRICS } from '@/app/dashboard/settings/components/user-management';
+import { RUBRICS, TIME_TRACKING_SUB_RUBRICS, ALL_RUBRIC_IDS } from '@/app/dashboard/settings/components/user-management';
 
 
 const APP_USERS_STORAGE_KEY = 'app_defined_users_v2';
@@ -21,11 +21,6 @@ const LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY = 'loggedInUserHourViewConfig';
 const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1";
 
 const simulatedHash = (password: string): string => `sim_hashed_${password}_!`;
-
-const ALL_RUBRIC_IDS: RubricId[] = [
-  ...BASE_RUBRICS.map(r => r.id),
-  ...TIME_TRACKING_SUB_RUBRICS.map(sr => sr.id),
-];
 
 
 export default function LoginPage() {
@@ -68,7 +63,6 @@ export default function LoginPage() {
               simulatedStoredPassword: u.simulatedStoredPassword,
               permissions: u.permissions || {},
               viewableHourSummaryConfig: u.viewableHourSummaryConfig || { type: 'none' },
-              // canViewOwnSchedule removed
             }));
           }
         }
@@ -92,7 +86,6 @@ export default function LoginPage() {
           simulatedStoredPassword: simulatedHash('000'),
           permissions: defaultChefPermissions,
           viewableHourSummaryConfig: { type: 'all' },
-          // canViewOwnSchedule implicitly true for chef via 'all' config
         });
       } else {
          users = users.map(u => {
