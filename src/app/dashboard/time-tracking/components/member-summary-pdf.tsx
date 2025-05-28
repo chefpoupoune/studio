@@ -8,10 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { FileText, UserCheck, TrendingUp, TrendingDown, Scale, Loader2, AlertCircle } from 'lucide-react'; // Added AlertCircle
+import { FileText, UserCheck, TrendingUp, TrendingDown, Scale, Loader2, AlertCircle } from 'lucide-react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import { format, getYear, getMonth } from 'date-fns';
+import { format, getYear, getMonth, startOfMonth, isBefore } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from '@/components/ui/label';
@@ -64,8 +64,7 @@ export default function MemberSummaryPdf({
     if (!isChef && currentUserBrigadeMember) {
       setSelectedMemberId(currentUserBrigadeMember.id);
     } else if (isChef && !selectedMemberId && members.length > 0) {
-      // For Chef, default to the first member if no specific selection is made.
-      // Or keep it null to force a selection by the Chef.
+      // For Chef, default to the first member or keep null to force selection
       // setSelectedMemberId(members[0].id); 
     } else if (!isChef && !currentUserBrigadeMember) {
       setSelectedMemberId(null);
@@ -76,41 +75,73 @@ export default function MemberSummaryPdf({
     return members.find(m => m.id === selectedMemberId) || null;
   }, [selectedMemberId, members]);
 
-  const memberTimeEntries = useMemo(() => {
+  const allMemberTimeEntries = useMemo(() => {
+    if (!selectedMemberId) return [];
+    return timeEntries.filter(entry => entry.memberId === selectedMemberId)
+                      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Sort oldest to newest for cumulative calculation
+  }, [selectedMemberId, timeEntries]);
+
+
+  const previousBalance = useMemo(() => {
+    if (!selectedMemberId) return 0;
+    const yearNum = parseInt(selectedYear, 10);
+    const monthNum = parseInt(selectedMonth, 10);
+    const firstDayOfSelectedMonth = startOfMonth(new Date(yearNum, monthNum, 1));
+
+    let balance = 0;
+    allMemberTimeEntries.forEach(entry => {
+      const entryDate = new Date(entry.date);
+      if (isBefore(entryDate, firstDayOfSelectedMonth)) {
+        if (entry.type === 'addition') {
+          balance += entry.hours;
+        } else if (entry.type === 'deduction') {
+          balance -= entry.hours;
+        }
+      }
+    });
+    return balance;
+  }, [allMemberTimeEntries, selectedYear, selectedMonth, selectedMemberId]);
+
+
+  const entriesForSelectedMonth = useMemo(() => {
     if (!selectedMemberId) return [];
     const yearNum = parseInt(selectedYear, 10);
     const monthNum = parseInt(selectedMonth, 10);
 
-    return timeEntries
+    return allMemberTimeEntries
       .filter(entry => {
         const entryDate = new Date(entry.date);
-        return entry.memberId === selectedMemberId &&
-               getYear(entryDate) === yearNum &&
-               getMonth(entryDate) === monthNum;
+        return getYear(entryDate) === yearNum && getMonth(entryDate) === monthNum;
       })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [selectedMemberId, timeEntries, selectedYear, selectedMonth]);
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Sort most recent first for display
+  }, [allMemberTimeEntries, selectedYear, selectedMonth, selectedMemberId]);
 
-  const summaryStats = useMemo(() => {
-    if (!selectedMemberId) return { totalAdded: 0, totalDeducted: 0, netHours: 0 };
+
+  const statsForSelectedMonth = useMemo(() => {
+    if (!selectedMemberId) return { totalAddedThisMonth: 0, totalDeductedThisMonth: 0, netHoursThisMonth: 0 };
     
-    const totalAdded = memberTimeEntries
+    const totalAddedThisMonth = entriesForSelectedMonth
       .filter(e => e.type === 'addition')
       .reduce((sum, e) => sum + e.hours, 0);
       
-    const totalDeducted = memberTimeEntries
+    const totalDeductedThisMonth = entriesForSelectedMonth
       .filter(e => e.type === 'deduction')
       .reduce((sum, e) => sum + e.hours, 0);
       
     return {
-      totalAdded,
-      totalDeducted,
-      netHours: totalAdded - totalDeducted,
+      totalAddedThisMonth,
+      totalDeductedThisMonth,
+      netHoursThisMonth: totalAddedThisMonth - totalDeductedThisMonth,
     };
-  }, [memberTimeEntries, selectedMemberId]);
+  }, [entriesForSelectedMonth, selectedMemberId]);
+
+  const cumulativeBalance = useMemo(() => {
+    return previousBalance + statsForSelectedMonth.netHoursThisMonth;
+  }, [previousBalance, statsForSelectedMonth.netHoursThisMonth]);
+
 
   const generatePdf = () => {
-    if (!selectedMember || memberTimeEntries.length === 0) {
+    if (!selectedMember || entriesForSelectedMonth.length === 0) {
       toast({ title: "Données Insuffisantes", description: "Sélectionnez un membre avec des entrées d'heures pour la période choisie afin de générer un PDF.", variant: "destructive" });
       return;
     }
@@ -148,7 +179,6 @@ export default function MemberSummaryPdf({
         } catch (e) { console.error("Error drawing logo in PDF:", e); }
       }
 
-
       const baseTitle = pdfSettings.documentBaseTitle || "Relevé d'Heures";
       const title = `${baseTitle} - ${selectedMember.name} (${selectedMember.role}) - ${selectedMonthLabel} ${selectedYear}`;
       doc.setFontSize(pdfSettings.documentTitleFontSize || 18);
@@ -162,13 +192,19 @@ export default function MemberSummaryPdf({
       doc.text("Récapitulatif des Heures pour la période:", pdfSettings.marginLeft || 40, currentY);
       currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 3;
       doc.setFontSize(pdfSettings.defaultFontSize || 10);
-      doc.text(`Total Heures Ajoutées: ${summaryStats.totalAdded.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft || 40, currentY);
+      
+      doc.text(`Solde Reporté (fin ${format(startOfMonth(new Date(parseInt(selectedYear), parseInt(selectedMonth), 1)), "MMMM yyyy", {locale: fr})} précédent): ${previousBalance.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft || 40, currentY);
       currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 2;
-      doc.text(`Total Heures Déduites: ${summaryStats.totalDeducted.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft || 40, currentY);
+      doc.text(`Total Heures Ajoutées (${selectedMonthLabel} ${selectedYear}): ${statsForSelectedMonth.totalAddedThisMonth.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft || 40, currentY);
       currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 2;
+      doc.text(`Total Heures Déduites (${selectedMonthLabel} ${selectedYear}): ${statsForSelectedMonth.totalDeductedThisMonth.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft || 40, currentY);
+      currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 2;
+      doc.text(`Solde du Mois (${selectedMonthLabel} ${selectedYear}): ${statsForSelectedMonth.netHoursThisMonth.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft || 40, currentY);
+      currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 2;
+      
       doc.setFontSize((pdfSettings.defaultFontSize || 10) + 1);
       doc.setFont(undefined, 'bold');
-      doc.text(`Solde d'Heures: ${summaryStats.netHours.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft || 40, currentY);
+      doc.text(`Nouveau Solde Cumulé (fin ${selectedMonthLabel} ${selectedYear}): ${cumulativeBalance.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft || 40, currentY);
       currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 7;
       doc.setFont(undefined, 'normal');
 
@@ -185,7 +221,7 @@ export default function MemberSummaryPdf({
       doc.autoTable({
         startY: currentY,
         head: [['Date', 'Type', 'Heures', 'Raison']],
-        body: memberTimeEntries.map(entry => [
+        body: entriesForSelectedMonth.map(entry => [
           format(new Date(entry.date), "dd/MM/yyyy", { locale: fr }),
           entry.type === 'addition' ? 'Ajout' : 'Déduction',
           entry.hours.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2}),
@@ -273,7 +309,7 @@ export default function MemberSummaryPdf({
           </div>
           <Button 
             onClick={generatePdf} 
-            disabled={!selectedMember || memberTimeEntries.length === 0 || isGeneratingPdf} 
+            disabled={!selectedMember || entriesForSelectedMonth.length === 0 && previousBalance === 0 || isGeneratingPdf} // Also check previousBalance for PDF generation
             className="w-full md:col-start-4"
           >
             {isGeneratingPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileText className="mr-2 h-4 w-4" />}
@@ -287,39 +323,30 @@ export default function MemberSummaryPdf({
               Récapitulatif pour {selectedMember.name} - {monthsArray.find(m=>m.value === selectedMonth)?.label} {selectedYear}
             </h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Heures Ajoutées</CardTitle>
-                        <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-green-600">{summaryStats.totalAdded.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h</div>
-                    </CardContent>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Solde Reporté</CardTitle><Scale className="h-4 w-4 text-muted-foreground" /></CardHeader>
+                    <CardContent><div className="text-2xl font-bold">{previousBalance.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h</div></CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Ajouté (ce mois)</CardTitle><TrendingUp className="h-4 w-4 text-muted-foreground" /></CardHeader>
+                    <CardContent><div className="text-2xl font-bold text-green-600">{statsForSelectedMonth.totalAddedThisMonth.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h</div></CardContent>
                 </Card>
                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Heures Déduites</CardTitle>
-                        <TrendingDown className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-red-600">{summaryStats.totalDeducted.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h</div>
-                    </CardContent>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Déduit (ce mois)</CardTitle><TrendingDown className="h-4 w-4 text-muted-foreground" /></CardHeader>
+                    <CardContent><div className="text-2xl font-bold text-red-600">{statsForSelectedMonth.totalDeductedThisMonth.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h</div></CardContent>
                 </Card>
-                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Solde d'Heures</CardTitle>
-                        <Scale className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className={`text-2xl font-bold ${summaryStats.netHours >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
-                            {summaryStats.netHours.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h
-                        </div>
-                    </CardContent>
+                 <Card className="md:col-span-1 lg:col-span-1">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Solde du Mois</CardTitle><Scale className="h-4 w-4 text-muted-foreground" /></CardHeader>
+                    <CardContent><div className={`text-2xl font-bold ${statsForSelectedMonth.netHoursThisMonth >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>{statsForSelectedMonth.netHoursThisMonth.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h</div></CardContent>
+                </Card>
+                <Card className="md:col-span-2 lg:col-span-2">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Nouveau Solde Cumulé</CardTitle><Scale className="h-4 w-4 text-muted-foreground" /></CardHeader>
+                    <CardContent><div className={`text-2xl font-bold ${cumulativeBalance >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>{cumulativeBalance.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h</div></CardContent>
                 </Card>
             </div>
 
-            {memberTimeEntries.length > 0 ? (
+            {entriesForSelectedMonth.length > 0 ? (
               <div className="overflow-x-auto border rounded-md max-h-[400px]">
                 <Table>
                   <TableHeader className="sticky top-0 bg-card">
@@ -331,7 +358,7 @@ export default function MemberSummaryPdf({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {memberTimeEntries.map((entry) => (
+                    {entriesForSelectedMonth.map((entry) => (
                       <TableRow key={entry.id}>
                         <TableCell>{format(new Date(entry.date), "dd/MM/yyyy", { locale: fr })}</TableCell>
                         <TableCell>
@@ -369,3 +396,5 @@ export default function MemberSummaryPdf({
     </Card>
   );
 }
+
+    
