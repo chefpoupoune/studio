@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Users, AlertTriangle, PlusCircle, Edit2, Trash2, KeyRound, Eye, CalendarClock, FileClock } from 'lucide-react'; // Added FileClock
+import { Users, AlertTriangle, PlusCircle, Edit2, Trash2, KeyRound, Eye, CalendarClock, FileClock } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -34,12 +34,10 @@ import {
 const APP_USERS_STORAGE_KEY = 'app_defined_users_v2';
 const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
 
-// Define RUBRICS and TIME_TRACKING_SUB_RUBRICS before they are used in schemas or other constants
 export const RUBRICS = [
   { id: 'dashboard', label: 'Tableau de Bord Principal' },
   { id: 'inventory', label: 'Gestion Stocks' },
   { id: 'benefits', label: 'Avantages Nature' },
-  // timeTracking is now granular below
   { id: 'declarationHeure', label: "Déclaration d'Heures" },
   { id: 'taskManagement', label: 'Gestion Tâches' },
   { id: 'costManagement', label: 'Gestion Coûts' },
@@ -96,7 +94,7 @@ const userFormSchema = z.object({
   permissions: z.object({
     ...basePermissionsSchema,
     ...timeTrackingPermissionsSchema,
-  }).default({}),
+  }).default(ALL_RUBRIC_IDS.reduce((acc, id) => ({ ...acc, [id]: false }), {})),
   viewableHourSummary_type: z.enum(['none', 'own', 'all', 'specific']).default('none'),
   viewableHourSummary_specificMemberId: z.string().optional(),
 }).refine(data => {
@@ -123,6 +121,7 @@ const userFormSchema = z.object({
 type UserFormData = z.infer<typeof userFormSchema>;
 
 const simulatedHash = (password: string): string => `sim_hashed_${password}_!`;
+const DEFAULT_CHEF_ID = 'default_chef_user_id';
 
 export default function UserManagement() {
   const [appUsers, setAppUsers] = useState<AppUser[]>([]);
@@ -156,31 +155,77 @@ export default function UserManagement() {
     console.log("UserManagement [EFFECT LOAD]: Attempting to load initial data from localStorage.");
     let loadedUsers: AppUser[] = [];
     let loadedMembers: BrigadeMember[] = [];
+    
     try {
       const storedUsersRaw = localStorage.getItem(APP_USERS_STORAGE_KEY);
       if (storedUsersRaw) {
-        loadedUsers = JSON.parse(storedUsersRaw);
+        const parsedUsers = JSON.parse(storedUsersRaw);
+        if (Array.isArray(parsedUsers)) {
+          loadedUsers = parsedUsers.map((u: any) => ({ // Basic mapping
+            id: u.id || `imported_user_${Math.random().toString(36).substring(7)}`,
+            username: u.username || "Utilisateur Inconnu",
+            brigadeMemberId: u.brigadeMemberId,
+            passwordRequired: typeof u.passwordRequired === 'boolean' ? u.passwordRequired : false,
+            simulatedStoredPassword: u.simulatedStoredPassword,
+            permissions: u.permissions || {},
+            viewableHourSummaryConfig: u.viewableHourSummaryConfig || { type: 'none' },
+          }));
+        }
         console.log(`UserManagement [EFFECT LOAD]: Loaded ${loadedUsers.length} users from localStorage.`);
       } else {
-        console.log("UserManagement [EFFECT LOAD]: No users found in localStorage, initializing empty.");
-        loadedUsers = [];
+        console.log("UserManagement [EFFECT LOAD]: No users found in localStorage, will create default Chef if needed.");
       }
-      setAppUsers(loadedUsers);
+
+      // Ensure Chef user exists and has correct defaults
+      const chefUserIndex = loadedUsers.findIndex(u => u.username.toLowerCase() === 'chef');
+      const defaultChefPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => {
+        acc[rubricId] = true;
+        return acc;
+      }, {} as Partial<Record<RubricId, boolean>>);
+
+      if (chefUserIndex !== -1) {
+        console.log("UserManagement [EFFECT LOAD]: Chef user found, standardizing.");
+        loadedUsers[chefUserIndex] = {
+          ...loadedUsers[chefUserIndex],
+          id: loadedUsers[chefUserIndex].id || DEFAULT_CHEF_ID,
+          username: 'Chef', // Normalize case
+          passwordRequired: true,
+          simulatedStoredPassword: loadedUsers[chefUserIndex].simulatedStoredPassword || simulatedHash('000'),
+          permissions: defaultChefPermissions,
+          viewableHourSummaryConfig: { type: 'all' as const },
+        };
+      } else {
+        console.log("UserManagement [EFFECT LOAD]: Chef user NOT found, creating default Chef.");
+        loadedUsers.unshift({
+          id: DEFAULT_CHEF_ID,
+          username: 'Chef',
+          passwordRequired: true,
+          simulatedStoredPassword: simulatedHash('000'),
+          permissions: defaultChefPermissions,
+          viewableHourSummaryConfig: { type: 'all' as const },
+        });
+      }
+      setAppUsers(loadedUsers.sort((a,b) => a.username.localeCompare(b.username)));
+      console.log(`UserManagement [EFFECT LOAD]: Final appUsers state set. Count: ${loadedUsers.length}`);
+
 
       const storedBrigadeMembersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
       if (storedBrigadeMembersRaw) {
         loadedMembers = JSON.parse(storedBrigadeMembersRaw);
-        console.log(`UserManagement [EFFECT LOAD]: Loaded ${loadedMembers.length} brigade members from localStorage.`);
-      } else {
-        console.log("UserManagement [EFFECT LOAD]: No brigade members found in localStorage, initializing empty.");
-        loadedMembers = [];
       }
       setBrigadeMembers(loadedMembers);
+      console.log(`UserManagement [EFFECT LOAD]: Loaded ${loadedMembers.length} brigade members.`);
 
     } catch (error) {
       console.error("UserManagement [EFFECT LOAD]: Error loading data:", error);
       toast({ title: "Erreur de chargement des données utilisateurs/brigade", variant: "destructive" });
-      setAppUsers([]);
+      // Fallback: Ensure at least Chef user exists if everything fails
+      const defaultChefPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
+      setAppUsers([{
+        id: DEFAULT_CHEF_ID, username: 'Chef', passwordRequired: true,
+        simulatedStoredPassword: simulatedHash('000'), permissions: defaultChefPermissions,
+        viewableHourSummaryConfig: { type: 'all' }
+      }]);
       setBrigadeMembers([]);
     } finally {
       setDataLoaded(true);
@@ -188,8 +233,9 @@ export default function UserManagement() {
     }
   }, [isClient, toast]);
 
+
   useEffect(() => {
-    if (isClient && dataLoaded) {
+    if (isClient && dataLoaded && appUsers.length > 0) { // Only save if there's something to save
       console.log(`UserManagement [EFFECT SAVE Users]: Attempting to save ${appUsers.length} appUsers to localStorage.`);
       try {
         localStorage.setItem(APP_USERS_STORAGE_KEY, JSON.stringify(appUsers));
@@ -198,6 +244,9 @@ export default function UserManagement() {
         console.error("UserManagement [EFFECT SAVE Users]: Error saving appUsers to localStorage:", error);
         toast({ title: "Erreur de sauvegarde des utilisateurs", variant: "destructive" });
       }
+    } else if (isClient && dataLoaded && appUsers.length === 0) {
+      console.log("UserManagement [EFFECT SAVE Users]: appUsers is empty, removing from localStorage.");
+      localStorage.removeItem(APP_USERS_STORAGE_KEY); // Clean up if all users are deleted
     }
   }, [appUsers, isClient, dataLoaded, toast]);
 
@@ -212,24 +261,24 @@ export default function UserManagement() {
 
   const handleOpenUserForm = (user?: AppUser) => {
     setEditingUser(user || null);
-    const isChef = user?.username.toLowerCase() === 'chef';
+    const isCurrentUserChef = user?.username.toLowerCase() === 'chef';
     
     let defaultPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: false }), {});
     if (user) {
       defaultPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => {
-        acc[rubricId] = isChef ? true : !!user.permissions[rubricId];
+        acc[rubricId] = isCurrentUserChef ? true : !!user.permissions[rubricId];
         return acc;
       }, {} as Partial<Record<RubricId, boolean>>);
     }
 
     form.reset({
       selectedBrigadeMemberId: user?.brigadeMemberId,
-      passwordRequired: isChef ? true : (user?.passwordRequired || false),
+      passwordRequired: isCurrentUserChef ? true : (user?.passwordRequired || false),
       newPassword: '',
       confirmNewPassword: '',
       permissions: defaultPermissions,
-      viewableHourSummary_type: isChef ? 'all' : (user?.viewableHourSummaryConfig?.type || 'none'),
-      viewableHourSummary_specificMemberId: isChef ? undefined : (user?.viewableHourSummaryConfig?.specificMemberId || undefined),
+      viewableHourSummary_type: isCurrentUserChef ? 'all' : (user?.viewableHourSummaryConfig?.type || 'none'),
+      viewableHourSummary_specificMemberId: isCurrentUserChef ? undefined : (user?.viewableHourSummaryConfig?.specificMemberId || undefined),
     });
     setIsUserFormOpen(true);
   };
@@ -260,7 +309,6 @@ export default function UserManagement() {
       passwordRequired: isCurrentEditingUserChef ? true : data.passwordRequired,
       permissions: permissionsToSave,
       viewableHourSummaryConfig: summaryConfig,
-      // Note: simulatedStoredPassword will be handled specifically for edit vs new
     };
 
     if (editingUser) {
@@ -268,17 +316,16 @@ export default function UserManagement() {
         (baseUserData.passwordRequired && passwordToStore) 
           ? passwordToStore 
           : baseUserData.passwordRequired 
-            ? editingUser.simulatedStoredPassword 
-            : undefined; 
+            ? editingUser.simulatedStoredPassword // Keep old if not changing and still required
+            : undefined; // No password if not required
 
       setAppUsers(prev => prev.map(u => u.id === editingUser.id ? { 
           ...editingUser, 
           ...baseUserData,
           simulatedStoredPassword: updatedSimulatedPassword,
-          // Ensure brigadeMemberId is not overwritten if it's an edit
-          brigadeMemberId: editingUser.brigadeMemberId, 
-          username: editingUser.username, // Username should not change on edit
-        } : u));
+          username: editingUser.username, 
+          brigadeMemberId: editingUser.brigadeMemberId,
+        } : u).sort((a,b) => a.username.localeCompare(b.username)));
       toast({ title: "Utilisateur Modifié", description: `L'utilisateur "${editingUser.username}" a été mis à jour.` });
     } else {
       if (!data.selectedBrigadeMemberId) {
@@ -291,15 +338,19 @@ export default function UserManagement() {
         toast({ title: "Erreur", description: "Membre de la brigade non trouvé.", variant: "destructive" });
         return;
       }
+      if (appUsers.some(u => u.username.toLowerCase() === selectedMember.name.toLowerCase())) {
+        toast({ title: "Erreur", description: `Un utilisateur nommé "${selectedMember.name}" existe déjà.`, variant: "destructive" });
+        return;
+      }
 
       const newUser: AppUser = { 
-        id: `user_${Date.now()}`, 
+        id: `user_${Date.now()}_${Math.random().toString(36).substring(2,7)}`, 
         username: selectedMember.name,
         brigadeMemberId: selectedMember.id,
         ...baseUserData,
-        simulatedStoredPassword: passwordToStore, // Store password for new user if provided
+        simulatedStoredPassword: passwordToStore,
       };
-      setAppUsers(prev => [...prev, newUser]);
+      setAppUsers(prev => [...prev, newUser].sort((a,b) => a.username.localeCompare(b.username)));
       toast({ title: "Utilisateur Créé", description: `L'utilisateur "${newUser.username}" a été créé.` });
     }
     setIsUserFormOpen(false);
@@ -326,7 +377,7 @@ export default function UserManagement() {
   const currentFormHasTimeTrackingPermission = hasAnyTimeTrackingPermission(formTimeTrackingPermissions);
   const isEditingChef = editingUser?.username.toLowerCase() === 'chef';
 
-  if (!isClient) {
+  if (!isClient || !dataLoaded) { // Check dataLoaded here
     return (
       <Card className="shadow-lg">
         <CardHeader>
@@ -338,7 +389,6 @@ export default function UserManagement() {
       </Card>
     );
   }
-
 
   return (
     <Card className="shadow-lg">
@@ -357,7 +407,7 @@ export default function UserManagement() {
           <AlertTitle className="text-destructive font-semibold">Avertissement de Sécurité</AlertTitle>
           <AlertDescription className="text-destructive/90">
             Ce système est pour la démonstration. Les mots de passe ne sont pas stockés de manière sécurisée (simulation).
-            L'utilisateur 'Chef' est le compte administrateur avec tous les accès. Si non configuré lors du premier chargement de cette page, son mot de passe par défaut est '000'.
+            L'utilisateur 'Chef' est le compte administrateur avec tous les accès. Son mot de passe par défaut est '000' s'il n'a pas été modifié.
           </AlertDescription>
         </Alert>
 
@@ -367,7 +417,6 @@ export default function UserManagement() {
         {availableBrigadeMembers.length === 0 && !appUsers.some(u => u.username.toLowerCase() === 'chef' && !u.brigadeMemberId) && (
              <p className="text-sm text-muted-foreground">Veuillez d'abord ajouter des membres à la brigade dans "Suivi des Heures &gt; Gestion Personnel" pour pouvoir créer de nouveaux utilisateurs liés.</p>
         )}
-
 
         <Dialog open={isUserFormOpen} onOpenChange={setIsUserFormOpen}>
           <DialogContent className="sm:max-w-lg md:max-w-2xl">
@@ -380,9 +429,9 @@ export default function UserManagement() {
                   <div className="space-y-4">
                     {editingUser ? (
                       <FormItem>
-                        <FormLabel>Nom d'utilisateur (Membre de la Brigade)</FormLabel>
+                        <FormLabel>Nom d'utilisateur</FormLabel>
                         <Input value={editingUser.username} disabled className="bg-muted/50"/>
-                        <FormDescription className="text-xs">Le nom d'utilisateur est lié au membre de la brigade et ne peut être modifié ici.</FormDescription>
+                        <FormDescription className="text-xs">Le nom d'utilisateur est lié au membre de la brigade (si applicable) et ne peut être modifié ici. L'utilisateur 'Chef' est un compte spécial.</FormDescription>
                       </FormItem>
                     ) : (
                       <FormField control={form.control} name="selectedBrigadeMemberId" render={({ field }) => (
@@ -416,7 +465,7 @@ export default function UserManagement() {
                         <div className="space-y-0.5">
                           <FormLabel>Mot de passe requis ?</FormLabel>
                           <FormDescription className="text-xs">
-                            Si coché, un mot de passe sera nécessaire pour se connecter.
+                            Si coché, un mot de passe sera nécessaire pour se connecter. (Obligatoire pour Chef)
                           </FormDescription>
                         </div>
                         <FormControl><Switch checked={isEditingChef ? true : field.value} onCheckedChange={field.onChange} disabled={isEditingChef} /></FormControl>
@@ -489,17 +538,17 @@ export default function UserManagement() {
                       </div>
                     </div>
 
-                    {(
+                    {(currentFormHasTimeTrackingPermission || isEditingChef) && (
                         <>
                         <div className="pt-4 border-t">
                           <h3 className="text-md font-semibold mb-2 mt-2 flex items-center gap-1"><Eye className="w-4 h-4"/> Vue des Relevés d'Heures & Modèles Horaires</h3>
                            <FormDescription className="text-xs mb-2">
-                            Définir quels relevés d'heures et modèles d'horaires cet utilisateur peut consulter.
+                            Définir quels relevés d'heures et modèles d'horaires cet utilisateur peut consulter. (Chef voit tout par défaut)
                           </FormDescription>
                           <FormField control={form.control} name="viewableHourSummary_type" render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Type de vue</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value} disabled={isEditingChef || !currentFormHasTimeTrackingPermission}>
+                                <Select onValueChange={field.onChange} value={field.value} disabled={isEditingChef}>
                                 <FormControl><SelectTrigger><SelectValue placeholder="Choisir type de vue..." /></SelectTrigger></FormControl>
                                 <SelectContent>
                                     <SelectItem value="none">Aucun</SelectItem>
@@ -508,13 +557,12 @@ export default function UserManagement() {
                                     <SelectItem value="specific">Données d'un employé spécifique</SelectItem>
                                 </SelectContent>
                                 </Select>
-                                {!currentFormHasTimeTrackingPermission && !isEditingChef && <FormDescription className="text-xs text-orange-600">Nécessite au moins une permission de la rubrique "Suivi des Heures" (détaillée ci-dessus).</FormDescription>}
                                 {isEditingChef && <FormDescription className="text-xs">Le Chef a toujours accès à toutes les données.</FormDescription>}
                                 <FormMessage />
                             </FormItem>
                             )}
                           />
-                          {currentSelectedSummaryType === 'specific' && currentFormHasTimeTrackingPermission && !isEditingChef && (
+                          {currentSelectedSummaryType === 'specific' && !isEditingChef && (
                             <FormField control={form.control} name="viewableHourSummary_specificMemberId" render={({ field }) => (
                                 <FormItem className="mt-2">
                                 <FormLabel>Employé spécifique à visualiser</FormLabel>
@@ -545,9 +593,7 @@ export default function UserManagement() {
           </DialogContent>
         </Dialog>
 
-        {!dataLoaded ? (
-          <p className="text-muted-foreground text-center py-6">Chargement des utilisateurs...</p>
-        ) : appUsers.length > 0 ? (
+        {!dataLoaded ? null : appUsers.length > 0 ? (
           <div className="space-y-3">
             <h3 className="text-md font-semibold">Utilisateurs Définis :</h3>
             {appUsers.map(user => (
@@ -631,3 +677,4 @@ export default function UserManagement() {
     </Card>
   );
 }
+
