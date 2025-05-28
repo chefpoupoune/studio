@@ -1,17 +1,17 @@
 
 "use client";
 
-import React, { useState, useMemo, useEffect } from 'react'; // Added useEffect
+import React, { useState, useMemo, useEffect } from 'react';
 import type { BrigadeMember, TimeEntry } from '../types';
-import type { RubricId } from '@/app/dashboard/settings/components/user-management'; // New import
+import type { RubricId } from '@/app/dashboard/settings/components/user-management';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { FileText, UserCheck, TrendingUp, TrendingDown, Scale, Loader2 } from 'lucide-react';
+import { FileText, UserCheck, TrendingUp, TrendingDown, Scale, Loader2, AlertCircle } from 'lucide-react'; // Added AlertCircle
 import jsPDF from 'jspdf';
-import 'jspdf-autotable'; 
-import { format } from 'date-fns';
+import 'jspdf-autotable';
+import { format, getYear, getMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from '@/components/ui/label';
@@ -28,6 +28,13 @@ interface MemberSummaryPdfProps {
   userPermissions: Partial<Record<RubricId, boolean>>;
 }
 
+const currentFullYear = new Date().getFullYear();
+const yearsArray = Array.from({ length: 10 }, (_, i) => currentFullYear - 5 + i);
+const monthsArray = Array.from({ length: 12 }, (_, i) => ({
+  value: i.toString(),
+  label: format(new Date(currentFullYear, i), "MMMM", { locale: fr }),
+}));
+
 export default function MemberSummaryPdf({
   members,
   timeEntries,
@@ -35,6 +42,8 @@ export default function MemberSummaryPdf({
   userPermissions
 }: MemberSummaryPdfProps) {
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [selectedYear, setSelectedYear] = useState<string>(getYear(new Date()).toString());
+  const [selectedMonth, setSelectedMonth] = useState<string>(getMonth(new Date()).toString());
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
@@ -55,12 +64,13 @@ export default function MemberSummaryPdf({
     if (!isChef && currentUserBrigadeMember) {
       setSelectedMemberId(currentUserBrigadeMember.id);
     } else if (isChef && !selectedMemberId && members.length > 0) {
-      // Chef can see all, so no auto-selection unless desired.
-      // If you want to default to first member for chef: setSelectedMemberId(members[0].id);
+      // For Chef, default to the first member if no specific selection is made.
+      // Or keep it null to force a selection by the Chef.
+      // setSelectedMemberId(members[0].id); 
     } else if (!isChef && !currentUserBrigadeMember) {
-      setSelectedMemberId(null); // Non-chef user not linked to a brigade member
+      setSelectedMemberId(null);
     }
-  }, [isChef, currentUserBrigadeMember, members, selectedMemberId]); // selectedMemberId added to avoid loops if it changes externally
+  }, [isChef, currentUserBrigadeMember, members, selectedMemberId]);
 
   const selectedMember = useMemo(() => {
     return members.find(m => m.id === selectedMemberId) || null;
@@ -68,10 +78,18 @@ export default function MemberSummaryPdf({
 
   const memberTimeEntries = useMemo(() => {
     if (!selectedMemberId) return [];
+    const yearNum = parseInt(selectedYear, 10);
+    const monthNum = parseInt(selectedMonth, 10);
+
     return timeEntries
-      .filter(entry => entry.memberId === selectedMemberId)
+      .filter(entry => {
+        const entryDate = new Date(entry.date);
+        return entry.memberId === selectedMemberId &&
+               getYear(entryDate) === yearNum &&
+               getMonth(entryDate) === monthNum;
+      })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [selectedMemberId, timeEntries]);
+  }, [selectedMemberId, timeEntries, selectedYear, selectedMonth]);
 
   const summaryStats = useMemo(() => {
     if (!selectedMemberId) return { totalAdded: 0, totalDeducted: 0, netHours: 0 };
@@ -93,52 +111,68 @@ export default function MemberSummaryPdf({
 
   const generatePdf = () => {
     if (!selectedMember || memberTimeEntries.length === 0) {
-      toast({ title: "Données Insuffisantes", description: "Sélectionnez un membre avec des entrées d'heures pour générer un PDF.", variant: "destructive" });
+      toast({ title: "Données Insuffisantes", description: "Sélectionnez un membre avec des entrées d'heures pour la période choisie afin de générer un PDF.", variant: "destructive" });
       return;
     }
     setIsGeneratingPdf(true);
 
     try {
       const pdfSettings = getPdfLayoutSettings('time_tracking_summary');
-      const doc = new jsPDF() as jsPDFWithAutoTable;
+      const doc = new jsPDF({
+        orientation: pdfSettings.orientation || 'portrait',
+        unit: 'pt',
+        format: pdfSettings.pageSize || 'a4',
+      }) as jsPDFWithAutoTable;
+      doc.setFont(pdfSettings.fontFamily || 'helvetica');
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
+      const selectedMonthLabel = monthsArray.find(m => m.value === selectedMonth)?.label || '';
 
-      let currentY = 15;
+      let currentY = pdfSettings.marginTop || 40;
+      
       if (pdfSettings.headerText) {
-        doc.setFontSize(10);
-        doc.text(pdfSettings.headerText, 14, currentY);
-        currentY += 10;
+        doc.setFontSize(pdfSettings.headerFontSize || 10);
+        const headerLines = pdfSettings.headerText.split('\n');
+        headerLines.forEach(line => {
+            doc.text(line, pdfSettings.marginLeft || 40, currentY);
+            currentY += (pdfSettings.headerFontSize || 10) * 0.7 + 2;
+        });
+        currentY += 5;
+      } else if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
+        try {
+          const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+          const formatType = imgProps.fileType.toUpperCase();
+          const desiredHeight = 30;
+          const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
+          doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft || 40, currentY, imgWidth, desiredHeight);
+          currentY += desiredHeight + 5;
+        } catch (e) { console.error("Error drawing logo in PDF:", e); }
       }
 
-      if (pdfSettings.logoUrl) {
-        doc.setFontSize(8); 
-        doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY);
-        currentY += 5; 
-      }
 
-      const title = `Relevé d'Heures - ${selectedMember.name} (${selectedMember.role})`;
-      doc.setFontSize(18);
-      doc.text(title, 14, currentY);
-      currentY += 8;
-      doc.setFontSize(10);
-      doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY);
-      currentY += 10;
+      const baseTitle = pdfSettings.documentBaseTitle || "Relevé d'Heures";
+      const title = `${baseTitle} - ${selectedMember.name} (${selectedMember.role}) - ${selectedMonthLabel} ${selectedYear}`;
+      doc.setFontSize(pdfSettings.documentTitleFontSize || 18);
+      doc.text(title, pdfSettings.marginLeft || 40, currentY);
+      currentY += (pdfSettings.documentTitleFontSize || 18) * 0.7 + 5;
+      doc.setFontSize(pdfSettings.defaultFontSize || 10);
+      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft || 40, currentY);
+      currentY += (pdfSettings.defaultFontSize || 10) + 10;
 
       doc.setFontSize(12);
-      doc.text("Récapitulatif des Heures:", 14, currentY);
-      currentY += 6;
-      doc.setFontSize(10);
-      doc.text(`Total Heures Ajoutées: ${summaryStats.totalAdded.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, 14, currentY);
-      currentY += 6;
-      doc.text(`Total Heures Déduites: ${summaryStats.totalDeducted.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, 14, currentY);
-      currentY += 6;
-      doc.setFontSize(11);
+      doc.text("Récapitulatif des Heures pour la période:", pdfSettings.marginLeft || 40, currentY);
+      currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 3;
+      doc.setFontSize(pdfSettings.defaultFontSize || 10);
+      doc.text(`Total Heures Ajoutées: ${summaryStats.totalAdded.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft || 40, currentY);
+      currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 2;
+      doc.text(`Total Heures Déduites: ${summaryStats.totalDeducted.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft || 40, currentY);
+      currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 2;
+      doc.setFontSize((pdfSettings.defaultFontSize || 10) + 1);
       doc.setFont(undefined, 'bold');
-      doc.text(`Solde d'Heures: ${summaryStats.netHours.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, 14, currentY);
-      currentY += 7;
+      doc.text(`Solde d'Heures: ${summaryStats.netHours.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft || 40, currentY);
+      currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 7;
       doc.setFont(undefined, 'normal');
 
-      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
+      const headStyles: any = { fontStyle: 'bold', fontSize: pdfSettings.tableHeaderFontSize || 9 };
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
         if (primaryColorRgb) {
@@ -159,6 +193,13 @@ export default function MemberSummaryPdf({
         ]),
         theme: 'grid',
         headStyles: headStyles,
+        styles: { fontSize: pdfSettings.tableBodyFontSize || 8, font: pdfSettings.fontFamily || 'helvetica' },
+        margin: {
+          top: pdfSettings.marginTop || 40,
+          right: pdfSettings.marginRight || 40,
+          bottom: pdfSettings.marginBottom || 40,
+          left: pdfSettings.marginLeft || 40,
+        },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
           if (pdfSettings.footerText) {
@@ -166,14 +207,14 @@ export default function MemberSummaryPdf({
               .replace('{date}', generationDateFormatted)
               .replace('{pageNumber}', data.pageNumber.toString())
               .replace('{totalPages}', pageCount.toString());
-            doc.setFontSize(9);
-            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+            doc.setFontSize(pdfSettings.footerFontSize || 8);
+            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - ((pdfSettings.marginBottom || 40) / 2));
           }
         }
       });
 
-      doc.save(`Releve_Heures_${selectedMember.name.replace(/\s+/g, '_')}_${format(new Date(), "yyyyMMdd")}.pdf`);
-      toast({ title: "PDF Généré", description: `Le relevé d'heures pour ${selectedMember.name} a été téléchargé.` });
+      doc.save(`Releve_Heures_${selectedMember.name.replace(/\s+/g, '_')}_${selectedMonthLabel}_${selectedYear}.pdf`);
+      toast({ title: "PDF Généré", description: `Le relevé d'heures pour ${selectedMember.name} (${selectedMonthLabel} ${selectedYear}) a été téléchargé.` });
     } catch (error) {
       console.error("Error generating PDF:", error);
       toast({ title: "Erreur PDF", description: "La génération du PDF a échoué.", variant: "destructive" });
@@ -191,11 +232,11 @@ export default function MemberSummaryPdf({
             <UserCheck className="w-6 h-6 text-primary"/>
             Relevés Individuels et PDF
         </CardTitle>
-        <CardDescription>Consultez le récapitulatif des heures par membre et générez des relevés PDF.</CardDescription>
+        <CardDescription>Consultez le récapitulatif des heures par membre pour une période donnée et générez des relevés PDF.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="flex flex-col sm:flex-row gap-4 items-end">
-          <div className="w-full sm:w-1/2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
+          <div className="md:col-span-2">
             <Label htmlFor="member-select-summary">Membre de la Brigade</Label>
             <Select 
                 onValueChange={setSelectedMemberId} 
@@ -216,10 +257,24 @@ export default function MemberSummaryPdf({
               </SelectContent>
             </Select>
           </div>
+           <div>
+            <Label htmlFor="year-select-summary">Année</Label>
+            <Select value={selectedYear} onValueChange={setSelectedYear}>
+              <SelectTrigger id="year-select-summary"><SelectValue placeholder="Année" /></SelectTrigger>
+              <SelectContent>{yearsArray.map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="month-select-summary">Mois</Label>
+            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+              <SelectTrigger id="month-select-summary"><SelectValue placeholder="Mois" /></SelectTrigger>
+              <SelectContent>{monthsArray.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
           <Button 
             onClick={generatePdf} 
             disabled={!selectedMember || memberTimeEntries.length === 0 || isGeneratingPdf} 
-            className="w-full sm:w-auto"
+            className="w-full md:col-start-4"
           >
             {isGeneratingPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileText className="mr-2 h-4 w-4" />}
             Générer PDF du Relevé
@@ -229,7 +284,7 @@ export default function MemberSummaryPdf({
         {selectedMember ? (
           <div className="space-y-4">
             <h3 className="text-xl font-semibold text-foreground">
-              Récapitulatif pour {selectedMember.name}
+              Récapitulatif pour {selectedMember.name} - {monthsArray.find(m=>m.value === selectedMonth)?.label} {selectedYear}
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -292,15 +347,23 @@ export default function MemberSummaryPdf({
                 </Table>
               </div>
             ) : (
-              <p className="text-muted-foreground text-center py-8">Aucune entrée d'heures pour ce membre.</p>
+               <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
+                <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />
+                <p className="mt-2 text-sm text-muted-foreground">
+                    Aucune entrée d'heures pour {selectedMember.name} pour {monthsArray.find(m=>m.value === selectedMonth)?.label} {selectedYear}.
+                </p>
+              </div>
             )}
           </div>
         ) : (
-          <p className="text-muted-foreground text-center py-8">
-            {isChef ? "Sélectionnez un membre pour afficher son récapitulatif d'heures." : 
-             !currentUserBrigadeMember ? "Votre compte utilisateur n'est pas lié à un membre de la brigade." :
-             "Chargement de vos données..."}
-          </p>
+          <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
+            <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />
+             <p className="text-muted-foreground mt-2 text-sm">
+              {isChef ? "Sélectionnez un membre pour afficher son récapitulatif d'heures." : 
+               !currentUserBrigadeMember ? "Votre compte utilisateur n'est pas lié à un membre de la brigade." :
+               "Chargement de vos données..."}
+            </p>
+          </div>
         )}
       </CardContent>
     </Card>
