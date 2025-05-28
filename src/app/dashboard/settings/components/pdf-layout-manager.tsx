@@ -13,9 +13,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare, ArrowRightLeft, TextCursorInput, Eye, FileTextIcon, AlignHorizontalSpaceAround, Maximize, Minus, RefreshCw, UploadCloud, Heading1 } from 'lucide-react';
 import type { PdfLayoutSettings } from '../types';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  PDF_LAYOUT_CONFIGS_KEY, 
-  GENERAL_CONFIG_KEY, 
+import {
+  PDF_LAYOUT_CONFIGS_KEY,
+  GENERAL_CONFIG_KEY,
   getPdfLayoutSettings as fetchPdfSettings,
   DEFAULT_LOGO_URL,
   DEFAULT_HEADER_TEXT,
@@ -23,8 +23,8 @@ import {
   DEFAULT_MARGIN,
   DEFAULT_FONT_SIZE,
   DEFAULT_FONT_FAMILY,
-  DEFAULT_DOCUMENT_BASE_TITLE, // New import
-  DEFAULT_DOCUMENT_TITLE_FONT_SIZE, 
+  DEFAULT_DOCUMENT_BASE_TITLE,
+  DEFAULT_DOCUMENT_TITLE_FONT_SIZE,
   DEFAULT_HEADER_FONT_SIZE,
   DEFAULT_FOOTER_FONT_SIZE,
   DEFAULT_TABLE_HEADER_FONT_SIZE,
@@ -60,6 +60,7 @@ const pdfTypes = [
   { value: 'pms_delivery_monitoring', label: 'PMS - Liaison Froide (Livraison)' },
   { value: 'overtime_request_form', label: "Formulaire Demande Dépassement Horaire" },
   { value: 'absence_request_form', label: "Formulaire Demande d'Absence" },
+  { value: 'pms_picnic_departure_form', label: "PMS - Fiche Départ Pique-Nique" },
 ].sort((a, b) => a.label.localeCompare(b.label));
 
 const GENERAL_CONFIG_DISPLAY_LABEL = "Configuration Générale / Par Défaut";
@@ -85,30 +86,51 @@ const pageSizes: { value: NonNullable<PdfLayoutSettings['pageSize']>, label: str
     { value: 'legal', label: 'Légal US' },
 ];
 
+const DEFAULT_SETTINGS: Required<PdfLayoutSettings> = {
+  logoUrl: DEFAULT_LOGO_URL,
+  primaryColor: DEFAULT_APP_PRIMARY_COLOR,
+  headerText: DEFAULT_HEADER_TEXT,
+  footerText: DEFAULT_FOOTER_TEXT,
+  marginTop: DEFAULT_MARGIN,
+  marginRight: DEFAULT_MARGIN,
+  marginBottom: DEFAULT_MARGIN,
+  marginLeft: DEFAULT_MARGIN,
+  defaultFontSize: DEFAULT_FONT_SIZE,
+  fontFamily: DEFAULT_FONT_FAMILY,
+  documentBaseTitle: DEFAULT_DOCUMENT_BASE_TITLE,
+  documentTitleFontSize: DEFAULT_DOCUMENT_TITLE_FONT_SIZE,
+  headerFontSize: DEFAULT_HEADER_FONT_SIZE,
+  footerFontSize: DEFAULT_FOOTER_FONT_SIZE,
+  tableHeaderFontSize: DEFAULT_TABLE_HEADER_FONT_SIZE,
+  tableBodyFontSize: DEFAULT_TABLE_BODY_FONT_SIZE,
+  orientation: DEFAULT_ORIENTATION,
+  pageSize: DEFAULT_PAGE_SIZE,
+};
+
+
 export default function PdfLayoutManager() {
   const [selectedPdfType, setSelectedPdfType] = useState<string>(GENERAL_CONFIG_KEY);
   const [pdfConfigs, setPdfConfigs] = useState<Record<string, Partial<PdfLayoutSettings>>>({});
   
-  // State for inputs
-  const [logoUrlInput, setLogoUrlInput] = useState<string>(''); 
+  const [logoUrlInput, setLogoUrlInput] = useState<string>(DEFAULT_SETTINGS.logoUrl);
   const [uploadedLogoPreview, setUploadedLogoPreview] = useState<string | null>(null);
-  const [primaryColorInput, setPrimaryColorInput] = useState<string>(DEFAULT_APP_PRIMARY_COLOR);
-  const [headerTextInput, setHeaderTextInput] = useState<string>('');
-  const [footerTextInput, setFooterTextInput] = useState<string>('');
-  const [marginTopInput, setMarginTopInput] = useState<string>(String(DEFAULT_MARGIN));
-  const [marginRightInput, setMarginRightInput] = useState<string>(String(DEFAULT_MARGIN));
-  const [marginBottomInput, setMarginBottomInput] = useState<string>(String(DEFAULT_MARGIN));
-  const [marginLeftInput, setMarginLeftInput] = useState<string>(String(DEFAULT_MARGIN));
-  const [defaultFontSizeInput, setDefaultFontSizeInput] = useState<string>(String(DEFAULT_FONT_SIZE));
-  const [fontFamilyInput, setFontFamilyInput] = useState<NonNullable<PdfLayoutSettings['fontFamily']>>(DEFAULT_FONT_FAMILY);
-  const [documentBaseTitleInput, setDocumentBaseTitleInput] = useState<string>(DEFAULT_DOCUMENT_BASE_TITLE); // New state
-  const [documentTitleFontSizeInput, setDocumentTitleFontSizeInput] = useState<string>(String(DEFAULT_DOCUMENT_TITLE_FONT_SIZE));
-  const [headerFontSizeInput, setHeaderFontSizeInput] = useState<string>(String(DEFAULT_HEADER_FONT_SIZE));
-  const [footerFontSizeInput, setFooterFontSizeInput] = useState<string>(String(DEFAULT_FOOTER_FONT_SIZE));
-  const [tableHeaderFontSizeInput, setTableHeaderFontSizeInput] = useState<string>(String(DEFAULT_TABLE_HEADER_FONT_SIZE));
-  const [tableBodyFontSizeInput, setTableBodyFontSizeInput] = useState<string>(String(DEFAULT_TABLE_BODY_FONT_SIZE));
-  const [orientationInput, setOrientationInput] = useState<NonNullable<PdfLayoutSettings['orientation']>>(DEFAULT_ORIENTATION);
-  const [pageSizeInput, setPageSizeInput] = useState<NonNullable<PdfLayoutSettings['pageSize']>>(DEFAULT_PAGE_SIZE);
+  const [primaryColorInput, setPrimaryColorInput] = useState<string>(DEFAULT_SETTINGS.primaryColor);
+  const [headerTextInput, setHeaderTextInput] = useState<string>(DEFAULT_SETTINGS.headerText);
+  const [footerTextInput, setFooterTextInput] = useState<string>(DEFAULT_SETTINGS.footerText);
+  const [marginTopInput, setMarginTopInput] = useState<string>(String(DEFAULT_SETTINGS.marginTop));
+  const [marginRightInput, setMarginRightInput] = useState<string>(String(DEFAULT_SETTINGS.marginRight));
+  const [marginBottomInput, setMarginBottomInput] = useState<string>(String(DEFAULT_SETTINGS.marginBottom));
+  const [marginLeftInput, setMarginLeftInput] = useState<string>(String(DEFAULT_SETTINGS.marginLeft));
+  const [defaultFontSizeInput, setDefaultFontSizeInput] = useState<string>(String(DEFAULT_SETTINGS.defaultFontSize));
+  const [fontFamilyInput, setFontFamilyInput] = useState<NonNullable<PdfLayoutSettings['fontFamily']>>(DEFAULT_SETTINGS.fontFamily);
+  const [documentBaseTitleInput, setDocumentBaseTitleInput] = useState<string>(DEFAULT_SETTINGS.documentBaseTitle);
+  const [documentTitleFontSizeInput, setDocumentTitleFontSizeInput] = useState<string>(String(DEFAULT_SETTINGS.documentTitleFontSize));
+  const [headerFontSizeInput, setHeaderFontSizeInput] = useState<string>(String(DEFAULT_SETTINGS.headerFontSize));
+  const [footerFontSizeInput, setFooterFontSizeInput] = useState<string>(String(DEFAULT_SETTINGS.footerFontSize));
+  const [tableHeaderFontSizeInput, setTableHeaderFontSizeInput] = useState<string>(String(DEFAULT_SETTINGS.tableHeaderFontSize));
+  const [tableBodyFontSizeInput, setTableBodyFontSizeInput] = useState<string>(String(DEFAULT_SETTINGS.tableBodyFontSize));
+  const [orientationInput, setOrientationInput] = useState<NonNullable<PdfLayoutSettings['orientation']>>(DEFAULT_SETTINGS.orientation);
+  const [pageSizeInput, setPageSizeInput] = useState<NonNullable<PdfLayoutSettings['pageSize']>>(DEFAULT_SETTINGS.pageSize);
 
   const { toast } = useToast();
   const logoFileInputRef = useRef<HTMLInputElement>(null);
@@ -117,7 +139,7 @@ export default function PdfLayoutManager() {
     return fetchPdfSettings(selectedPdfType || GENERAL_CONFIG_KEY, pdfConfigs);
   }, [selectedPdfType, pdfConfigs]);
 
-  const [previewSettingsForDisplay, setPreviewSettingsForDisplay] = useState<Required<PdfLayoutSettings>>(currentEffectiveSettings);
+  const [previewSettingsForDisplay, setPreviewSettingsForDisplay] = useState<Required<PdfLayoutSettings>>(DEFAULT_SETTINGS);
 
   useEffect(() => {
     try {
@@ -138,11 +160,10 @@ export default function PdfLayoutManager() {
     }
   }, [toast]);
 
-  // Effect to update input fields and preview when selectedPdfType or configs change
   useEffect(() => {
     const effectiveSettings = fetchPdfSettings(selectedPdfType || GENERAL_CONFIG_KEY, pdfConfigs);
     
-    setLogoUrlInput(effectiveSettings.logoUrl || ''); 
+    setLogoUrlInput(effectiveSettings.logoUrl); 
     if (effectiveSettings.logoUrl && effectiveSettings.logoUrl.startsWith('data:image')) {
         setUploadedLogoPreview(effectiveSettings.logoUrl);
     } else {
@@ -158,7 +179,7 @@ export default function PdfLayoutManager() {
     setMarginLeftInput(String(effectiveSettings.marginLeft));
     setDefaultFontSizeInput(String(effectiveSettings.defaultFontSize));
     setFontFamilyInput(effectiveSettings.fontFamily);
-    setDocumentBaseTitleInput(effectiveSettings.documentBaseTitle); // New
+    setDocumentBaseTitleInput(effectiveSettings.documentBaseTitle);
     setDocumentTitleFontSizeInput(String(effectiveSettings.documentTitleFontSize));
     setHeaderFontSizeInput(String(effectiveSettings.headerFontSize));
     setFooterFontSizeInput(String(effectiveSettings.footerFontSize));
@@ -167,7 +188,7 @@ export default function PdfLayoutManager() {
     setOrientationInput(effectiveSettings.orientation);
     setPageSizeInput(effectiveSettings.pageSize);
     
-    setPreviewSettingsForDisplay(effectiveSettings); // Also update preview on type change
+    setPreviewSettingsForDisplay(effectiveSettings);
 
   }, [selectedPdfType, pdfConfigs]);
 
@@ -190,24 +211,25 @@ export default function PdfLayoutManager() {
         let defaultValue: string | number | undefined;
 
         switch(key) {
-            case 'logoUrl': defaultValue = DEFAULT_LOGO_URL; break;
-            case 'primaryColor': defaultValue = DEFAULT_APP_PRIMARY_COLOR; break;
-            case 'headerText': defaultValue = DEFAULT_HEADER_TEXT; break;
-            case 'footerText': defaultValue = DEFAULT_FOOTER_TEXT; break;
-            case 'marginTop': case 'marginRight': case 'marginBottom': case 'marginLeft': defaultValue = DEFAULT_MARGIN; break;
-            case 'defaultFontSize': defaultValue = DEFAULT_FONT_SIZE; break;
-            case 'fontFamily': defaultValue = DEFAULT_FONT_FAMILY; break;
-            case 'documentBaseTitle': defaultValue = DEFAULT_DOCUMENT_BASE_TITLE; break; // New
-            case 'documentTitleFontSize': defaultValue = DEFAULT_DOCUMENT_TITLE_FONT_SIZE; break;
-            case 'headerFontSize': defaultValue = DEFAULT_HEADER_FONT_SIZE; break;
-            case 'footerFontSize': defaultValue = DEFAULT_FOOTER_FONT_SIZE; break;
-            case 'tableHeaderFontSize': defaultValue = DEFAULT_TABLE_HEADER_FONT_SIZE; break;
-            case 'tableBodyFontSize': defaultValue = DEFAULT_TABLE_BODY_FONT_SIZE; break;
-            case 'orientation': defaultValue = DEFAULT_ORIENTATION; break;
-            case 'pageSize': defaultValue = DEFAULT_PAGE_SIZE; break;
+            case 'logoUrl': defaultValue = DEFAULT_SETTINGS.logoUrl; break;
+            case 'primaryColor': defaultValue = DEFAULT_SETTINGS.primaryColor; break;
+            case 'headerText': defaultValue = DEFAULT_SETTINGS.headerText; break;
+            case 'footerText': defaultValue = DEFAULT_SETTINGS.footerText; break;
+            case 'marginTop': case 'marginRight': case 'marginBottom': case 'marginLeft': defaultValue = DEFAULT_SETTINGS.marginTop; break; // Use marginTop for all margins as default is same
+            case 'defaultFontSize': defaultValue = DEFAULT_SETTINGS.defaultFontSize; break;
+            case 'fontFamily': defaultValue = DEFAULT_SETTINGS.fontFamily; break;
+            case 'documentBaseTitle': defaultValue = DEFAULT_SETTINGS.documentBaseTitle; break;
+            case 'documentTitleFontSize': defaultValue = DEFAULT_SETTINGS.documentTitleFontSize; break;
+            case 'headerFontSize': defaultValue = DEFAULT_SETTINGS.headerFontSize; break;
+            case 'footerFontSize': defaultValue = DEFAULT_SETTINGS.footerFontSize; break;
+            case 'tableHeaderFontSize': defaultValue = DEFAULT_SETTINGS.tableHeaderFontSize; break;
+            case 'tableBodyFontSize': defaultValue = DEFAULT_SETTINGS.tableBodyFontSize; break;
+            case 'orientation': defaultValue = DEFAULT_SETTINGS.orientation; break;
+            case 'pageSize': defaultValue = DEFAULT_SETTINGS.pageSize; break;
         }
         
-        if (valueToSave === undefined || String(valueToSave).trim() === '' || (valueToSave === defaultValue && activeConfigKey !== GENERAL_CONFIG_KEY) ) {
+        const isDefaultValue = String(valueToSave) === String(defaultValue);
+        if (valueToSave === undefined || String(valueToSave).trim() === '' || (isDefaultValue && activeConfigKey !== GENERAL_CONFIG_KEY) ) {
           delete newSpecificConfigWithUpdates[key];
         }
     });
@@ -220,7 +242,7 @@ export default function PdfLayoutManager() {
         newPdfConfigs[activeConfigKey] = newSpecificConfigWithUpdates;
     }
     
-    setPdfConfigs(newPdfConfigs); // This will trigger the useEffect that updates currentEffectiveSettings
+    setPdfConfigs(newPdfConfigs);
     localStorage.setItem(PDF_LAYOUT_CONFIGS_KEY, JSON.stringify(newPdfConfigs));
     toast({
       title: "Configuration Enregistrée",
@@ -257,6 +279,8 @@ export default function PdfLayoutManager() {
 
   const handleSaveHeaderText = () => saveConfig({ headerText: headerTextInput || undefined }, "Le texte d'en-tête");
   const handleSaveFooterText = () => saveConfig({ footerText: footerTextInput || undefined }, "Le texte de pied de page");
+  const handleSaveDocumentBaseTitle = () => saveConfig({ documentBaseTitle: documentBaseTitleInput || undefined }, "Le titre de base du document");
+
 
   const handleSaveLayoutAndFontStyles = () => {
     const updates: Partial<PdfLayoutSettings> = {
@@ -267,7 +291,6 @@ export default function PdfLayoutManager() {
       marginLeft: parseFloat(marginLeftInput) || undefined,
       defaultFontSize: parseFloat(defaultFontSizeInput) || undefined,
       fontFamily: fontFamilyInput || undefined,
-      documentBaseTitle: documentBaseTitleInput || undefined, // New
       documentTitleFontSize: parseFloat(documentTitleFontSizeInput) || undefined,
       headerFontSize: parseFloat(headerFontSizeInput) || undefined,
       footerFontSize: parseFloat(footerFontSizeInput) || undefined,
@@ -281,24 +304,24 @@ export default function PdfLayoutManager() {
 
   const handleRefreshPreview = () => {
     const liveSettings: Required<PdfLayoutSettings> = {
-        logoUrl: logoUrlInput || DEFAULT_LOGO_URL,
-        primaryColor: primaryColorInput || DEFAULT_APP_PRIMARY_COLOR,
-        headerText: headerTextInput || DEFAULT_HEADER_TEXT,
-        footerText: footerTextInput || DEFAULT_FOOTER_TEXT,
-        marginTop: parseFloat(marginTopInput) || DEFAULT_MARGIN,
-        marginRight: parseFloat(marginRightInput) || DEFAULT_MARGIN,
-        marginBottom: parseFloat(marginBottomInput) || DEFAULT_MARGIN,
-        marginLeft: parseFloat(marginLeftInput) || DEFAULT_MARGIN,
-        defaultFontSize: parseFloat(defaultFontSizeInput) || DEFAULT_FONT_SIZE,
-        fontFamily: fontFamilyInput || DEFAULT_FONT_FAMILY,
-        documentBaseTitle: documentBaseTitleInput || DEFAULT_DOCUMENT_BASE_TITLE, // New
-        documentTitleFontSize: parseFloat(documentTitleFontSizeInput) || DEFAULT_DOCUMENT_TITLE_FONT_SIZE,
-        headerFontSize: parseFloat(headerFontSizeInput) || DEFAULT_HEADER_FONT_SIZE,
-        footerFontSize: parseFloat(footerFontSizeInput) || DEFAULT_FOOTER_FONT_SIZE,
-        tableHeaderFontSize: parseFloat(tableHeaderFontSizeInput) || DEFAULT_TABLE_HEADER_FONT_SIZE,
-        tableBodyFontSize: parseFloat(tableBodyFontSizeInput) || DEFAULT_TABLE_BODY_FONT_SIZE,
-        orientation: orientationInput || DEFAULT_ORIENTATION,
-        pageSize: pageSizeInput || DEFAULT_PAGE_SIZE,
+        logoUrl: logoUrlInput || DEFAULT_SETTINGS.logoUrl,
+        primaryColor: primaryColorInput || DEFAULT_SETTINGS.primaryColor,
+        headerText: headerTextInput || DEFAULT_SETTINGS.headerText,
+        footerText: footerTextInput || DEFAULT_SETTINGS.footerText,
+        marginTop: parseFloat(marginTopInput) || DEFAULT_SETTINGS.marginTop,
+        marginRight: parseFloat(marginRightInput) || DEFAULT_SETTINGS.marginRight,
+        marginBottom: parseFloat(marginBottomInput) || DEFAULT_SETTINGS.marginBottom,
+        marginLeft: parseFloat(marginLeftInput) || DEFAULT_SETTINGS.marginLeft,
+        defaultFontSize: parseFloat(defaultFontSizeInput) || DEFAULT_SETTINGS.defaultFontSize,
+        fontFamily: fontFamilyInput || DEFAULT_SETTINGS.fontFamily,
+        documentBaseTitle: documentBaseTitleInput || DEFAULT_SETTINGS.documentBaseTitle,
+        documentTitleFontSize: parseFloat(documentTitleFontSizeInput) || DEFAULT_SETTINGS.documentTitleFontSize,
+        headerFontSize: parseFloat(headerFontSizeInput) || DEFAULT_SETTINGS.headerFontSize,
+        footerFontSize: parseFloat(footerFontSizeInput) || DEFAULT_SETTINGS.footerFontSize,
+        tableHeaderFontSize: parseFloat(tableHeaderFontSizeInput) || DEFAULT_SETTINGS.tableHeaderFontSize,
+        tableBodyFontSize: parseFloat(tableBodyFontSizeInput) || DEFAULT_SETTINGS.tableBodyFontSize,
+        orientation: orientationInput || DEFAULT_SETTINGS.orientation,
+        pageSize: pageSizeInput || DEFAULT_SETTINGS.pageSize,
     };
     setPreviewSettingsForDisplay(liveSettings);
     toast({
@@ -315,7 +338,7 @@ export default function PdfLayoutManager() {
   
     const lines = headerToDisplay.split('\n');
     return (
-      <div style={{ fontSize: `${Math.max(5, (previewSettingsForDisplay.headerFontSize || DEFAULT_HEADER_FONT_SIZE) / 2)}pt` }}>
+      <div style={{ fontSize: `${Math.max(5, (previewSettingsForDisplay.headerFontSize) / 2)}pt` }}>
         {lines.map((line, lineIndex) => {
           const cells = line.split('|');
           return (
@@ -467,7 +490,7 @@ export default function PdfLayoutManager() {
                   </Select>
                    <p className="text-xs text-muted-foreground mt-1">Effective: {fontFamilies.find(f => f.value === previewSettingsForDisplay.fontFamily)?.label || previewSettingsForDisplay.fontFamily}</p>
                 </div>
-                <Label className="flex items-center gap-1"><TextCursorInput className="w-4 h-4"/> Tailles de Police (pt)</Label>
+                <Label className="flex items-center gap-1 pt-2"><TextCursorInput className="w-4 h-4"/> Tailles de Police (pt)</Label>
                 <div className="grid grid-cols-2 gap-3">
                     <div><Label htmlFor="document-title-font-size-input" className="text-xs">Titre Document</Label><Input id="document-title-font-size-input" type="number" value={documentTitleFontSizeInput} onChange={e => setDocumentTitleFontSizeInput(e.target.value)} className="h-8"/></div>
                     <div><Label htmlFor="default-font-size-input" className="text-xs">Défaut</Label><Input id="default-font-size-input" type="number" value={defaultFontSizeInput} onChange={e => setDefaultFontSizeInput(e.target.value)} className="h-8"/></div>
@@ -541,7 +564,7 @@ export default function PdfLayoutManager() {
                     <p className="text-xs text-muted-foreground mt-1">Ce titre sera utilisé comme base. Des informations dynamiques (mois, année, etc.) pourront être ajoutées par chaque module.</p>
                     {previewSettingsForDisplay.documentBaseTitle && <p className="text-xs text-muted-foreground mt-1">Effectif : {previewSettingsForDisplay.documentBaseTitle}</p>}
                 </div>
-                <Button onClick={() => saveConfig({ documentBaseTitle: documentBaseTitleInput || undefined }, "Le titre de base du document")}>
+                <Button onClick={handleSaveDocumentBaseTitle}>
                     <Save className="mr-2 h-4 w-4"/> Enregistrer Titre de Base
                 </Button>
                 <div>
@@ -618,21 +641,21 @@ export default function PdfLayoutManager() {
             <div
               className="h-full w-full bg-neutral-50 dark:bg-neutral-700 relative flex flex-col text-neutral-700 dark:text-neutral-200"
               style={{
-                paddingTop: `${Math.max(1, (previewSettingsForDisplay.marginTop || DEFAULT_MARGIN) / 7)}px`, 
-                paddingBottom: `${Math.max(1, (previewSettingsForDisplay.marginBottom || DEFAULT_MARGIN) / 7)}px`,
-                paddingLeft: `${Math.max(1, (previewSettingsForDisplay.marginLeft || DEFAULT_MARGIN) / 7)}px`,
-                paddingRight: `${Math.max(1, (previewSettingsForDisplay.marginRight || DEFAULT_MARGIN) / 7)}px`,
-                fontSize: `${Math.max(3, (previewSettingsForDisplay.defaultFontSize || DEFAULT_FONT_SIZE) / 2.5)}pt`,
+                paddingTop: `${Math.max(1, (previewSettingsForDisplay.marginTop) / 7)}px`, 
+                paddingBottom: `${Math.max(1, (previewSettingsForDisplay.marginBottom) / 7)}px`,
+                paddingLeft: `${Math.max(1, (previewSettingsForDisplay.marginLeft) / 7)}px`,
+                paddingRight: `${Math.max(1, (previewSettingsForDisplay.marginRight) / 7)}px`,
+                fontSize: `${Math.max(3, (previewSettingsForDisplay.defaultFontSize) / 2.5)}pt`,
               }}
             >
               {/* Header Area */}
-              <div className="mb-auto flex-shrink-0 leading-tight border-b border-neutral-300 dark:border-neutral-600 pb-0.5 mb-0.5 text-[0.9em]" style={{fontSize: `${Math.max(3, (previewSettingsForDisplay.headerFontSize || DEFAULT_HEADER_FONT_SIZE) / 2.5)}pt`}}>
+              <div className="mb-auto flex-shrink-0 leading-tight border-b border-neutral-300 dark:border-neutral-600 pb-0.5 mb-0.5 text-[0.9em]" style={{fontSize: `${Math.max(3, (previewSettingsForDisplay.headerFontSize) / 2.5)}pt`}}>
                 {renderPreviewHeaderText()}
                  {!(previewSettingsForDisplay.headerText) && !(uploadedLogoPreview || (previewSettingsForDisplay.logoUrl && previewSettingsForDisplay.logoUrl.startsWith('data:image'))) && <div className="h-3">&nbsp;</div>}
               </div>
 
               {/* Document Title */}
-              <div className="text-center font-bold leading-tight my-1" style={{fontSize: `${Math.max(4, (previewSettingsForDisplay.documentTitleFontSize || DEFAULT_DOCUMENT_TITLE_FONT_SIZE) / 2.5)}pt`}}>
+              <div className="text-center font-bold leading-tight my-1" style={{fontSize: `${Math.max(4, (previewSettingsForDisplay.documentTitleFontSize) / 2.5)}pt`}}>
                   {previewSettingsForDisplay.documentBaseTitle || "Titre du Document (Dynamique)"}
               </div>
 
@@ -642,11 +665,11 @@ export default function PdfLayoutManager() {
                   className="h-1.5 w-full rounded-sm"
                   style={{ backgroundColor: previewSettingsForDisplay.primaryColor }}
                 />
-                <div className="text-neutral-600 dark:text-neutral-300" style={{fontSize: `${Math.max(3, (previewSettingsForDisplay.tableHeaderFontSize || DEFAULT_TABLE_HEADER_FONT_SIZE) / 2.5)}pt`}}>
+                <div className="text-neutral-600 dark:text-neutral-300" style={{fontSize: `${Math.max(3, (previewSettingsForDisplay.tableHeaderFontSize) / 2.5)}pt`}}>
                     En-tête Table 1 | En-tête Table 2 | En-tête Table 3
                 </div>
                 <div className="h-0.5 w-full bg-neutral-300 dark:bg-neutral-600 rounded-sm my-px" />
-                <div className="text-neutral-500 dark:text-neutral-400" style={{fontSize: `${Math.max(3, (previewSettingsForDisplay.tableBodyFontSize || DEFAULT_TABLE_BODY_FONT_SIZE) / 2.5)}pt`}}>
+                <div className="text-neutral-500 dark:text-neutral-400" style={{fontSize: `${Math.max(3, (previewSettingsForDisplay.tableBodyFontSize) / 2.5)}pt`}}>
                     Ligne de contenu 1, col 1 | Col 2 | Col 3<br/>
                     Ligne de contenu 2, col 1 | Col 2 | Col 3<br/>
                     ... <br/>
@@ -656,7 +679,7 @@ export default function PdfLayoutManager() {
               {/* Footer Area */}
               <div className="mt-auto flex-shrink-0">
                 {previewSettingsForDisplay.footerText && (
-                  <div className="text-neutral-500 dark:text-neutral-400 truncate leading-tight border-t border-neutral-300 dark:border-neutral-600 pt-0.5 mt-0.5" style={{fontSize: `${Math.max(2, (previewSettingsForDisplay.footerFontSize || DEFAULT_FOOTER_FONT_SIZE) / 2.5)}pt`}}>
+                  <div className="text-neutral-500 dark:text-neutral-400 truncate leading-tight border-t border-neutral-300 dark:border-neutral-600 pt-0.5 mt-0.5" style={{fontSize: `${Math.max(2, (previewSettingsForDisplay.footerFontSize) / 2.5)}pt`}}>
                     {previewSettingsForDisplay.footerText
                       .replace('{date}', format(new Date(), "dd/MM/yy HH:mm", { locale: fr }))
                       .replace('{pageNumber}', '1')

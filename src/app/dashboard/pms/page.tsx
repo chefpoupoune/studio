@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { ShieldCheck, SprayCan, Sparkles, Thermometer, Truck, ThermometerSnowflake, ArrowDownUp, Snowflake, Flame } from 'lucide-react'; 
+import { ShieldCheck, SprayCan, Sparkles, Thermometer, Truck, ThermometerSnowflake, ArrowDownUp, Snowflake, Flame, FileText as FileTextIcon, ShoppingBasket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
@@ -14,8 +14,9 @@ import TemperatureMonitoring from './components/temperature-monitoring';
 import ReceptionMonitoring from './components/reception-monitoring';
 import ColdChainMonitoring from './components/cold-chain-monitoring';
 import TempChangeMonitoring from './components/temp-change-monitoring';
-import DefrostingMonitoring from './components/defrosting-monitoring'; 
+import DefrostingMonitoring from './components/defrosting-monitoring';
 import FryerOilOverallMonitoring from './components/fryer-oil-overall-monitoring';
+import PicnicDepartureForm from './components/picnic-departure-form'; // New import
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -29,6 +30,7 @@ const pmsTabsConfig = [
   { value: "reception-monitoring", label: "Suivi Réception", Icon: Truck, component: <ReceptionMonitoring /> },
   { value: "defrosting-monitoring", label: "Suivi Décongélation", Icon: Snowflake, component: <DefrostingMonitoring /> },
   { value: "fryer-oil-tracking", label: "Suivi Friteuse / Huiles", Icon: Flame, component: <FryerOilOverallMonitoring /> },
+  { value: "picnic-departure", label: "Suivi Départ PN", Icon: ShoppingBasket, component: <PicnicDepartureForm /> }, // New tab
 ];
 
 
@@ -85,7 +87,7 @@ export default function PmsPage() {
             </Select>
           </div>
         ) : (
-          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-8 gap-1 mb-6 bg-card p-1 rounded-lg"> 
+          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-5 gap-1 mb-6 bg-card p-1 rounded-lg">
             {pmsTabsConfig.map(tab => (
               <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
                 <tab.Icon className="mr-1 sm:mr-2 h-4 w-4" /> {tab.label}

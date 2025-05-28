@@ -4,26 +4,26 @@ export interface PmsTaskDefinition {
   name: string;
 }
 
-export interface PmsZoneWithTasksDefinition { 
+export interface PmsZoneWithTasksDefinition {
   id: string;
   name: string;
   tasks: PmsTaskDefinition[];
 }
 
-export interface PmsEquipmentDefinition { 
+export interface PmsEquipmentDefinition {
   id: string;
   name: string;
   equipmentType: 'refrigerator' | 'freezer';
   targetTempMin?: number;
   targetTempMax?: number;
-  tolerance1TempMin?: number; 
-  tolerance1TempMax?: number; 
-  tolerance2TempMin?: number; 
-  tolerance2TempMax?: number; 
+  tolerance1TempMin?: number;
+  tolerance1TempMax?: number;
+  tolerance2TempMin?: number;
+  tolerance2TempMax?: number;
 }
 
 export interface PmsConfigurations {
-  [categoryKey: string]: (PmsZoneWithTasksDefinition | PmsEquipmentDefinition)[]; 
+  [categoryKey: string]: (PmsZoneWithTasksDefinition | PmsEquipmentDefinition)[];
 }
 
 export interface SimplifiedTaskRecord {
@@ -31,15 +31,17 @@ export interface SimplifiedTaskRecord {
   operator: string;
 }
 
-export interface SimplifiedMonthlyKitchenCleaningRecord { 
+export interface SimplifiedMonthlyKitchenCleaningRecord {
   [date_itemId_taskId: string]: SimplifiedTaskRecord;
 }
 
 export type SimplifiedMonthlyRestaurantCleaningRecord = SimplifiedMonthlyKitchenCleaningRecord;
+export type SimplifiedMonthlyFryerLog = SimplifiedMonthlyKitchenCleaningRecord;
+
 
 export interface DailyTemperatureRecord {
-  markedTemperatureValue?: number; 
-  time?: string;       
+  markedTemperatureValue?: number;
+  time?: string;
   operator?: string;
 }
 
@@ -49,52 +51,51 @@ export interface MonthlyTemperatureLog {
 
 export interface ReceptionEntry {
   id: string;
-  dateTime: string; 
+  dateTime: string;
   supplierName: string;
   productNameControlled: string;
-  vehicleObservations: string; 
-  productTemperature?: string; 
+  vehicleObservations: string;
+  productTemperature?: string;
   dlcDluo?: string;
   lotNumber?: string;
   packagingAspect?: string;
   quantity?: string;
   productLabeling?: string;
   refused: boolean;
-  refusalReason?: string; 
-  visa?: string; 
+  refusalReason?: string;
+  visa?: string;
 }
 
 export interface TempChangeEntry {
   id: string;
-  coolingDate: string; 
+  coolingDate: string;
   productName: string;
   quantity: string;
-  coolingHotProductTime?: string; 
-  coolingHotProductTemp?: string; 
-  coolingColdProductTime?: string; 
-  coolingColdProductTemp?: string; 
-  coolingVisa?: string; 
-  reheatingDate?: string; 
-  reheatingColdProductTime?: string; 
-  reheatingColdProductTemp?: string; 
-  reheatingHotProductTime?: string; 
-  reheatingHotProductTemp?: string; 
-  reheatingVisa?: string; 
+  coolingHotProductTime?: string;
+  coolingHotProductTemp?: string;
+  coolingColdProductTime?: string;
+  coolingColdProductTemp?: string;
+  coolingVisa?: string;
+  reheatingDate?: string;
+  reheatingColdProductTime?: string;
+  reheatingColdProductTemp?: string;
+  reheatingHotProductTime?: string;
+  reheatingHotProductTemp?: string;
+  reheatingVisa?: string;
 }
 
 export interface DefrostingEntry {
   id: string;
-  defrostStartDate: string; 
-  defrostStartTime: string; 
+  defrostStartDate: string;
+  defrostStartTime: string;
   productName: string;
   quantity: string;
-  tempOnRemoval?: string; 
-  initialsStart?: string; 
-  
-  useDate?: string | null; 
-  useTime?: string | null; 
-  tempOnUse?: string | null; 
-  initialsEnd?: string | null; 
+  tempOnRemoval?: string;
+  initialsStart?: string;
+  useDate?: string | null;
+  useTime?: string | null;
+  tempOnUse?: string | null;
+  initialsEnd?: string | null;
 }
 
 export interface DailyCoolDownEntry {
@@ -102,11 +103,11 @@ export interface DailyCoolDownEntry {
   productName: string;
   quantity: string;
   piecesOrPlats?: string;
-  startTime?: string; 
-  startTemp?: string; 
-  endTime?: string;   
-  endTemp?: string;   
-  visa?: string;      
+  startTime?: string;
+  startTemp?: string;
+  endTime?: string;
+  endTemp?: string;
+  visa?: string;
 }
 
 export interface DailyDeliveryEntry {
@@ -114,35 +115,23 @@ export interface DailyDeliveryEntry {
   productName: string;
   quantity?: string;
   piecesOrPlats?: string;
-  departureTime?: string; 
-  departureTemp?: string; 
-  arrivalTime?: string;   
-  arrivalTemp?: string;   
-  visaLivreur?: string;  
-  visaClient?: string;   
+  departureTime?: string;
+  departureTemp?: string;
+  arrivalTime?: string;
+  arrivalTemp?: string;
+  visaLivreur?: string;
+  visaClient?: string;
 }
+
+export interface PicnicDepartureEntry {
+  id: string;
+  entryCreationDate: string; // ISO string, when the record was created/updated in the app
+  orderReceivedDate: string; // Date (ISO string) from "Commande reçue le"
+  orderReceivedTime: string; // HH:mm from "à ...H..."
+  clientName: string;
+  numberOfPicnics: number;
+  departureTemperature: string;
+}
+
 
 export const NO_STATUS_SELECT_VALUE = "_aucun_statut_";
-
-// New types for Fryer / Oil Tracking
-export interface FryerMaintenanceLogEntry {
-  id: string;
-  useDate: string; // Date d'utilisation de la friture (ISO string)
-  filterDate?: string | null;
-  filterSignature?: string;
-  cleaningDate?: string | null;
-  cleaningSignature?: string;
-  changeDate?: string | null;
-  changeSignature?: string;
-}
-
-export type LedTpmStatus = 'lt_20' | '20_24' | 'gt_24' | '';
-
-export interface FryerOilTpmLogEntry {
-  id: string;
-  date: string; // ISO string
-  operator?: string;
-  ledTpmStatus: LedTpmStatus;
-  fryerIdentifier: string; // e.g., "1", "2", "Côté Bar"
-  tpmPercentage?: string; // e.g., "22%"
-}
