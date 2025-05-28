@@ -13,7 +13,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"; // Assuming this is not used based on previous changes
 import { FileText, Loader2, Trash2, Users } from 'lucide-react';
 import { format, getDaysInMonth, getDate, getDay, startOfMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -23,7 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import type { BenefitEmployee, BenefitDailyStatusCode, FullMonthlyBenefitData, DailyBenefitEntry } from '../types';
 import { BENEFIT_STATUS_CODES, BENEFIT_STATUS_LEGEND, frenchShortDays } from '../types';
-import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings'; 
+import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,10 +50,10 @@ const months = Array.from({ length: 12 }, (_, i) => ({
 const SELECT_EMPTY_VALUE_PLACEHOLDER = "_SELECT_EMPTY_";
 
 interface BenefitTrackingTableProps {
-  employees: BenefitEmployee[]; 
+  employees: BenefitEmployee[];
 }
 
-export default function BenefitTrackingTable({ employees }: BenefitTrackingTableProps) {
+export default function BenefitTrackingTable({ employees: employeesToRender }: BenefitTrackingTableProps) {
   const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().getMonth().toString());
   const [benefitData, setBenefitData] = useState<FullMonthlyBenefitData>({});
@@ -143,8 +143,8 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
         unit: 'pt',
         format: pdfSettings.pageSize,
       }) as jsPDFWithAutoTable;
-      
-      doc.setFont(pdfSettings.fontFamily || 'helvetica'); 
+
+      doc.setFont(pdfSettings.fontFamily || 'helvetica');
 
       const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
@@ -152,7 +152,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
       let currentY = pdfSettings.marginTop;
 
       if (pdfSettings.headerText) {
-        const headerRows = pdfSettings.headerText.split('\n').map(rowText => 
+        const headerRows = pdfSettings.headerText.split('\n').map(rowText =>
           rowText.split('|').map(cellText => cellText.trim())
         );
         const headerTableBody = headerRows.map(row => row.map(cell => cell === '{logo}' ? '' : cell));
@@ -169,61 +169,61 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
               try {
                 const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
                 const formatType = imgProps.fileType.toUpperCase();
-                const cellPadding = 2; 
+                const cellPadding = 2;
                 let imgWidth = data.cell.width - 2 * cellPadding;
                 let imgHeight = data.cell.height - 2 * cellPadding;
                 const cellAspectRatio = data.cell.width / data.cell.height;
                 const imgAspectRatio = imgProps.width / imgProps.height;
 
-                if (imgAspectRatio > cellAspectRatio) { 
+                if (imgAspectRatio > cellAspectRatio) {
                     imgHeight = imgWidth / imgAspectRatio;
-                } else { 
+                } else {
                     imgWidth = imgHeight * imgAspectRatio;
                 }
                 const imgX = data.cell.x + (data.cell.width - imgWidth) / 2;
                 const imgY = data.cell.y + (data.cell.height - imgHeight) / 2;
                 doc.addImage(pdfSettings.logoUrl, formatType, imgX, imgY, imgWidth, imgHeight);
-              } catch (e: any) { 
+              } catch (e: any) {
                 console.error(`Error drawing logo in PDF header table: ${e.message || e}. Cell:`, data.cell, {logoUrl: pdfSettings.logoUrl ? pdfSettings.logoUrl.substring(0, 50) + "..." : "N/A"});
                 doc.setFillColor(230, 230, 230); doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
-                doc.setFontSize(8); doc.setTextColor(100); doc.text("LOGO_ERR", data.cell.x + data.cell.width/2, data.cell.y + data.cell.height/2, {align: 'center', baseline: 'middle'});
+                doc.setFontSize(pdfSettings.footerFontSize || 8); doc.setTextColor(100); doc.text("LOGO_ERR", data.cell.x + data.cell.width/2, data.cell.y + data.cell.height/2, {align: 'center', baseline: 'middle'});
               }
-            } else if (pdfSettings.logoUrl && headerRows[data.row.index][data.column.index] === '{logo}') { 
+            } else if (pdfSettings.logoUrl && headerRows[data.row.index][data.column.index] === '{logo}') {
                 doc.setFillColor(230, 230, 230); doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
-                doc.setFontSize(8); doc.setTextColor(100); doc.text("LOGO", data.cell.x + data.cell.width/2, data.cell.y + data.cell.height/2, {align: 'center', baseline: 'middle'});
+                doc.setFontSize(pdfSettings.footerFontSize || 8); doc.setTextColor(100); doc.text("LOGO", data.cell.x + data.cell.width/2, data.cell.y + data.cell.height/2, {align: 'center', baseline: 'middle'});
             }
           },
         });
         currentY = (doc as any).lastAutoTable.finalY + 5;
-      } else if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { 
+      } else if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
         try {
             const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
-            const formatType = imgProps.fileType.toUpperCase(); 
-            const desiredHeight = 30; 
+            const formatType = imgProps.fileType.toUpperCase();
+            const desiredHeight = 30;
             const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
             doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
             currentY += desiredHeight + 5;
         } catch(e: any) {
             console.error(`Error drawing standalone logo in PDF: ${e.message || e}.`, {logoUrl: pdfSettings.logoUrl ? pdfSettings.logoUrl.substring(0, 50) + "..." : "N/A"});
-            doc.setFontSize(pdfSettings.defaultFontSize); doc.text(`[Logo Error]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 5;
+            doc.setFontSize(pdfSettings.defaultFontSize || 10); doc.text(`[Logo Error]`, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.defaultFontSize || 10) + 5;
         }
       } else if (pdfSettings.logoUrl) {
-         doc.setFontSize(pdfSettings.defaultFontSize); doc.text(`[Logo URL: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 5;
+         doc.setFontSize(pdfSettings.defaultFontSize || 10); doc.text(`[Logo URL: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.defaultFontSize || 10) + 5;
       }
-      
+
       const baseTitle = pdfSettings.documentBaseTitle || "Suivi Avantages en Nature";
       const title = `${baseTitle} - ${monthLabel} ${selectedYear}`;
-      doc.setFontSize(pdfSettings.documentTitleFontSize || 18); 
+      doc.setFontSize(pdfSettings.documentTitleFontSize || 18);
       doc.text(title, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.documentTitleFontSize || 18) * 0.7;
-      doc.setFontSize(pdfSettings.defaultFontSize);
-      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 5;
+      doc.setFontSize(pdfSettings.defaultFontSize || 10);
+      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.defaultFontSize || 10) + 5;
 
-      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, fontSize?: number, font?: string } = { 
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, fontSize?: number, font?: string } = {
         fontStyle: 'bold',
-        fontSize: pdfSettings.tableHeaderFontSize, 
+        fontSize: pdfSettings.tableHeaderFontSize,
         font: pdfSettings.fontFamily,
       };
-      
+
       if (pdfSettings.primaryColor) {
         const primaryRgb = hexToRgb(pdfSettings.primaryColor);
         if (primaryRgb) {
@@ -235,9 +235,9 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
 
       const head: any = [
         [{ content: 'Employé', rowSpan: 2, styles: { ...headStyles, valign: 'middle'} }, { content: 'Type', rowSpan: 2, styles: { ...headStyles, valign: 'middle'} }],
-        [] 
+        []
       ];
-      
+
       daysInSelectedMonth.forEach(day => {
         (head[0] as any[]).push({ content: day.dayNumber.toString(), styles: { ...headStyles, halign: 'center' } });
         (head[1] as any[]).push({ content: day.dayLetter, styles: { ...headStyles, halign: 'center', fontSize: (pdfSettings.tableHeaderFontSize || 9) -1, fillColor: day.isWeekend ? [200, 220, 255] : headStyles.fillColor } });
@@ -245,14 +245,14 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
       (head[0] as any[]).push({ content: 'TOTAL', rowSpan: 2, styles: { ...headStyles, valign: 'middle'} });
 
 
-      const body = employees.flatMap(employee => { 
+      const body = employeesToRender.flatMap(employee => {
         const planningRow: any[] = [{ content: employee.name, rowSpan: 2, styles: { valign: 'middle', fontStyle: 'bold'} }, 'Planning'];
         const repasPrisRow: any[] = ['Repas Pris'];
 
         daysInSelectedMonth.forEach(day => {
           const dateKey = `${selectedYear}-${(parseInt(selectedMonth) + 1).toString().padStart(2, '0')}-${day.dayNumber.toString().padStart(2, '0')}`;
           const entry = benefitData[employee.id]?.[dateKey] || { planning: "", repasPris: "" };
-          
+
           const cellStyle = { halign: 'center', fontSize: pdfSettings.tableBodyFontSize, fillColor: day.isWeekend ? [229, 231, 235] : (entry.planning === "X" ? [209,250,229] : undefined) };
           const cellStyleRepas = { halign: 'center', fontSize: pdfSettings.tableBodyFontSize, fillColor: day.isWeekend ? [229, 231, 235] : (entry.repasPris === "X" ? [209,250,229] : undefined) };
 
@@ -269,11 +269,11 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
         head: head,
         body: body,
         theme: 'grid',
-        margin: { 
-            top: pdfSettings.marginTop, 
-            right: pdfSettings.marginRight, 
-            bottom: pdfSettings.marginBottom, 
-            left: pdfSettings.marginLeft 
+        margin: {
+            top: pdfSettings.marginTop,
+            right: pdfSettings.marginRight,
+            bottom: pdfSettings.marginBottom,
+            left: pdfSettings.marginLeft
         },
         styles: { fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily },
         didDrawPage: (data) => {
@@ -283,7 +283,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
               .replace('{date}', generationDateFormatted)
               .replace('{pageNumber}', data.pageNumber.toString())
               .replace('{totalPages}', pageCount.toString());
-            doc.setFontSize(pdfSettings.footerFontSize);
+            doc.setFontSize(pdfSettings.footerFontSize || 8);
             doc.text(footerStr, pdfSettings.marginLeft, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
           }
         },
@@ -319,7 +319,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
           </Select>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 md:col-span-1 md:justify-self-end pt-2">
-            <Button onClick={generatePdf} disabled={isLoading || employees.length === 0} className="w-full sm:w-auto">
+            <Button onClick={generatePdf} disabled={isLoading || employeesToRender.length === 0} className="w-full sm:w-auto">
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
                 Générer PDF
             </Button>
@@ -367,7 +367,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <span className="ml-2 text-muted-foreground">Chargement des données...</span>
         </div>
-      ) : employees.length === 0 ? ( 
+      ) : employeesToRender.length === 0 ? (
         <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
             <Users className="mx-auto h-12 w-12 text-muted-foreground" />
             <p className="mt-2 text-sm text-muted-foreground">
@@ -381,21 +381,21 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
         <div className="overflow-x-auto border rounded-md shadow-sm">
           <Table className="min-w-full table-fixed">
             <TableHeader>
-              <TableRow>
-                <TableHead className="w-[180px] min-w-[180px] sticky left-0 z-10 bg-card">Employé</TableHead>
-                <TableHead className="w-[100px] min-w-[100px] sticky left-[180px] z-10 bg-card">Type</TableHead>
+              <TableRow className="bg-card"> {/* Ensure sticky headers also have a solid background */}
+                <TableHead className="w-[180px] min-w-[180px] sticky left-0 z-30 bg-card">Employé</TableHead>
+                <TableHead className="w-[100px] min-w-[100px] sticky left-[180px] z-30 bg-card">Type</TableHead>
                 {daysInSelectedMonth.map(day => (
-                  <TableHead key={`header-num-${day.dayNumber}`} className={cn("w-[50px] min-w-[50px] text-center p-1 text-xs", day.isWeekend && "bg-blue-100 dark:bg-blue-800/30")}>
+                  <TableHead key={`header-num-${day.dayNumber}`} className={cn("w-[50px] min-w-[50px] text-center p-1 text-xs bg-card", day.isWeekend && "bg-blue-100 dark:bg-blue-800/30")}>
                     {day.dayNumber}
                   </TableHead>
                 ))}
-                <TableHead className="w-[70px] min-w-[70px] text-center sticky right-0 z-10 bg-card">TOTAL</TableHead>
+                <TableHead className="w-[70px] min-w-[70px] text-center sticky right-0 z-30 bg-card">TOTAL</TableHead>
               </TableRow>
-              <TableRow className="sticky top-10 z-10 bg-card">
-                <TableHead className="sticky left-0 z-10 bg-card"></TableHead>
+              <TableRow className="sticky top-10 z-20 bg-card"> {/* Increased z-index if necessary, ensure it's below the first header row if they overlap */}
+                <TableHead className="sticky left-0 z-10 bg-card"></TableHead> {/* z-index for cell should be lower than row's z-index if they are separate elements in stacking context */}
                 <TableHead className="sticky left-[180px] z-10 bg-card"></TableHead>
                 {daysInSelectedMonth.map(day => (
-                  <TableHead key={`header-letter-${day.dayNumber}`} className={cn("text-center p-1 text-xs font-semibold", day.isWeekend && "bg-blue-100 dark:bg-blue-800/30")}>
+                  <TableHead key={`header-letter-${day.dayNumber}`} className={cn("text-center p-1 text-xs font-semibold bg-card", day.isWeekend && "bg-blue-100 dark:bg-blue-800/30")}>
                     {day.dayLetter}
                   </TableHead>
                 ))}
@@ -403,7 +403,7 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
               </TableRow>
             </TableHeader>
             <TableBody>
-              {employees.map(employee => ( 
+              {employeesToRender.map(employee => (
                 <React.Fragment key={employee.id}>
                   {(['planning', 'repasPris'] as const).map((type, typeIndex) => {
                     const dayRow = daysInSelectedMonth.map(day => {
@@ -427,9 +427,9 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
                             </SelectTrigger>
                             <SelectContent>
                               {BENEFIT_STATUS_CODES.map(code => (
-                                <SelectItem 
-                                  key={code === "" ? SELECT_EMPTY_VALUE_PLACEHOLDER : code} 
-                                  value={code === "" ? SELECT_EMPTY_VALUE_PLACEHOLDER : code} 
+                                <SelectItem
+                                  key={code === "" ? SELECT_EMPTY_VALUE_PLACEHOLDER : code}
+                                  value={code === "" ? SELECT_EMPTY_VALUE_PLACEHOLDER : code}
                                   className="text-xs"
                                 >
                                   {code === "" ? "-" : code}
@@ -444,15 +444,15 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
                     return (
                       <TableRow key={`${employee.id}-${type}`} className={typeIndex === 0 ? "border-t-2 border-primary/50" : ""}>
                         {typeIndex === 0 && (
-                          <TableCell rowSpan={2} className="font-medium align-middle sticky left-0 z-10 bg-card/90 backdrop-blur-sm">
+                          <TableCell rowSpan={2} className="font-medium align-middle sticky left-0 z-10 bg-card"> {/* Removed backdrop-blur */}
                             {employee.name}
                           </TableCell>
                         )}
-                        <TableCell className="text-xs sticky left-[180px] z-10 bg-card/90 backdrop-blur-sm">
+                        <TableCell className="text-xs sticky left-[180px] z-10 bg-card"> {/* Removed backdrop-blur */}
                           {type === 'planning' ? 'Planning' : 'Repas Pris'}
                         </TableCell>
                         {dayRow}
-                        <TableCell className="text-center font-bold sticky right-0 z-10 bg-card/90 backdrop-blur-sm">
+                        <TableCell className="text-center font-bold sticky right-0 z-10 bg-card"> {/* Removed backdrop-blur */}
                           {calculateTotal(employee.id, type)}
                         </TableCell>
                       </TableRow>
@@ -467,3 +467,4 @@ export default function BenefitTrackingTable({ employees }: BenefitTrackingTable
     </div>
   );
 }
+
