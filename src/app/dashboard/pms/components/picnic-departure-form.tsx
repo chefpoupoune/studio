@@ -54,7 +54,7 @@ export default function PicnicDepartureForm() {
   const [forms, setForms] = useState<PicnicDepartureEntry[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingForm, setEditingForm] = useState<PicnicDepartureEntry | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // Used for general loading and PDF generation
   const { toast } = useToast();
 
   const form = useForm<PicnicDepartureFormData>({
@@ -86,7 +86,7 @@ export default function PicnicDepartureForm() {
   }, [toast]);
 
   useEffect(() => {
-    if (!isLoading) {
+    if (!isLoading) { // Only save if not in a loading state (like PDF generation)
       localStorage.setItem(PICNIC_DEPARTURE_FORMS_KEY, JSON.stringify(forms));
     }
   }, [forms, isLoading]);
@@ -138,15 +138,26 @@ export default function PicnicDepartureForm() {
     setIsLoading(true);
     try {
       const pdfSettings = getPdfLayoutSettings('pms_picnic_departure_form');
-      const doc = new jsPDF({ unit: 'pt', format: pdfSettings.pageSize || 'a4' }); 
+      const doc = new jsPDF({ 
+        unit: 'pt', 
+        format: pdfSettings.pageSize || 'a4',
+        orientation: pdfSettings.orientation || 'portrait',
+      }) as jsPDFWithAutoTable; 
       doc.setFont(pdfSettings.fontFamily || 'helvetica');
       const defaultFontSize = pdfSettings.defaultFontSize || 10;
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
+      
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const pageWidth = doc.internal.pageSize.getWidth();
       const marginLeft = pdfSettings.marginLeft || 40;
       const marginRight = pdfSettings.marginRight || 40;
-      const contentWidth = doc.internal.pageSize.getWidth() - marginLeft - marginRight;
-      let currentY = pdfSettings.marginTop || 40;
+      const marginTop = pdfSettings.marginTop || 40;
+      const marginBottom = pdfSettings.marginBottom || 40;
+      const contentWidth = pageWidth - marginLeft - marginRight;
+      
+      let currentY = marginTop;
 
+      // Draw Logo and Custom Header Text (if any)
       if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
         try {
           const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
@@ -157,37 +168,39 @@ export default function PicnicDepartureForm() {
           currentY += desiredHeight + 10;
         } catch (e) {
           console.error("Error drawing logo in PDF:", e);
-          doc.setFontSize(8); doc.text("[Erreur Logo]", marginLeft, currentY); currentY += 15;
+          doc.setFontSize(pdfSettings.headerFontSize || 8); doc.text("[Erreur Logo]", marginLeft, currentY); currentY += 15;
         }
       } else if (pdfSettings.headerText) {
         doc.setFontSize(pdfSettings.headerFontSize || 10);
         const headerLines = pdfSettings.headerText.split('\n');
         headerLines.forEach(line => {
-            doc.text(line, marginLeft, currentY);
+            doc.text(line, marginLeft, currentY, {maxWidth: contentWidth});
             currentY += (pdfSettings.headerFontSize || 10) * 0.7 + 2;
         });
         currentY += 5;
       } else {
-        // Fallback if no logo and no header text, ensure some space or default app name
-        doc.setFontSize(10); doc.setTextColor(150);
+        doc.setFontSize(10); doc.setTextColor(150, 150, 150);
         doc.text("LA VIE ACTIVE - I.M.E BREBIERES", marginLeft, currentY); 
-        doc.setTextColor(0);
+        doc.setTextColor(0,0,0);
         currentY += 20;
       }
       
       // Top right box with document reference
-      const topRightBoxX = doc.internal.pageSize.getWidth() - marginRight - 150;
-      const topRightBoxY = (pdfSettings.marginTop || 40) - 10; // Position it relative to top margin
-      doc.rect(topRightBoxX, topRightBoxY, 150, 30);
+      const topRightBoxWidth = 120; // Adjusted width
+      const topRightBoxHeight = 30;
+      const topRightBoxX = pageWidth - marginRight - topRightBoxWidth;
+      const topRightBoxY = marginTop - 10 > 0 ? marginTop -10 : marginTop; // Position it slightly above the main content start
+
+      doc.rect(topRightBoxX, topRightBoxY, topRightBoxWidth, topRightBoxHeight);
       doc.setFontSize(8); doc.setTextColor(0,0,0);
       doc.text("09-GFL-F-17", topRightBoxX + 5, topRightBoxY + 12);
       doc.text("Version : 2.0", topRightBoxX + 5, topRightBoxY + 22);
       
-      currentY = Math.max(currentY, topRightBoxY + 30 + 10); // Ensure currentY is below the top-right box
+      currentY = Math.max(currentY, topRightBoxY + topRightBoxHeight + 15);
 
-      doc.setFontSize(defaultFontSize + 4); doc.setFont(undefined, 'bold');
-      doc.text("ENLEVEMENT DE PREPARATION CULINAIRE", doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
-      currentY += (defaultFontSize + 4) * 0.7 + 15;
+      doc.setFontSize((pdfSettings.documentTitleFontSize || 14)); doc.setFont(undefined, 'bold');
+      doc.text("ENLEVEMENT DE PREPARATION CULINAIRE", pageWidth / 2, currentY, { align: 'center' });
+      currentY += (pdfSettings.documentTitleFontSize || 14) + 15;
 
       doc.setFontSize(defaultFontSize - 1); doc.setFont(undefined, 'normal');
       const addressLines = [
@@ -197,12 +210,12 @@ export default function PicnicDepartureForm() {
         "Tel: 03.21.50.00.36"
       ];
       addressLines.forEach(line => {
-        doc.text(line, marginLeft, currentY);
+        doc.text(line, pageWidth / 2, currentY, { align: 'center' });
         currentY += (defaultFontSize -1) * 1.2;
       });
-      currentY += 10;
+      currentY += 15;
 
-      const paragraph1 = "Ce Repas a été préparé en respectant scrupuleusement les règles d'hygiène en vigueur. Les repas sont stockés en réfrigération positive à 3° en attente d'enlèvement";
+      const paragraph1 = "Ce Repas a été préparé en respectant scrupuleusement les règles d'hygiène en vigueur. Les repas sont stockés en réfrigération positive à 3° en attente d'enlèvement.";
       const paragraph2 = "Afin de conserver cette commande, il est impératif de le garder stocké en glacière, avec pains de glace ou plaques eutectiques.";
       const paragraph3 = "L'I.M.E Jean de Saint Aubert décline toute responsabilité après enlèvement de ce repas.";
 
@@ -211,30 +224,30 @@ export default function PicnicDepartureForm() {
       doc.text(doc.splitTextToSize(paragraph2, contentWidth), marginLeft, currentY);
       currentY += doc.getTextDimensions(doc.splitTextToSize(paragraph2, contentWidth)).h + 10;
       doc.text(doc.splitTextToSize(paragraph3, contentWidth), marginLeft, currentY);
-      currentY += doc.getTextDimensions(doc.splitTextToSize(paragraph3, contentWidth)).h + 20;
+      currentY += doc.getTextDimensions(doc.splitTextToSize(paragraph3, contentWidth)).h + 25;
 
-      doc.text(`Commande reçue le ........ ${format(parseISO(entry.orderReceivedDate), "dd/MM/yyyy", { locale: fr })} ........`, marginLeft, currentY);
-      currentY += defaultFontSize * 1.2;
-      doc.text(`à ........ ${entry.orderReceivedTime} H ........`, marginLeft + 20, currentY);
-      currentY += defaultFontSize * 1.2;
+      const orderDateStr = isValid(parseISO(entry.orderReceivedDate)) ? format(parseISO(entry.orderReceivedDate), "dd/MM/yyyy", { locale: fr }) : "Date Invalide";
+      doc.text(`Commande reçue le ........ ${orderDateStr} ........`, marginLeft, currentY);
+      currentY += defaultFontSize * 1.2 + 5;
+      doc.text(`à ........ ${entry.orderReceivedTime || 'Heure N/A'} H ........`, marginLeft + 20, currentY);
+      currentY += defaultFontSize * 1.2 + 5;
       doc.text("à Brebières", marginLeft + 20, currentY);
-      currentY += 20;
+      currentY += 25;
 
       const signatureTableBody = [
         [
-          { content: 'Le cuisinier\nMr Dernoncourt Julien', styles: { halign: 'center', valign: 'top', minCellHeight: 60 } },
-          { content: `Le client\n${entry.clientName}`, styles: { halign: 'center', valign: 'top', minCellHeight: 60 } }
+          { content: 'Le cuisinier\nMr Dernoncourt Julien', styles: { halign: 'center', valign: 'top', minCellHeight: 80 } }, // Increased minCellHeight for signature space
+          { content: `Le client\n${entry.clientName}`, styles: { halign: 'center', valign: 'top', minCellHeight: 80 } }
         ]
       ];
-      const availableWidthForSigTable = doc.internal.pageSize.getWidth() - marginLeft - marginRight;
-      const colWidth = (availableWidthForSigTable - (doc.getLineWidth() * (signatureTableBody[0].length + 1))) / signatureTableBody[0].length;
+      const sigTableColWidth = (contentWidth - (doc.getLineWidth() * 3)) / 2; // Adjusted for 2 columns
 
       doc.autoTable({
         startY: currentY,
         body: signatureTableBody,
         theme: 'grid',
         styles: { fontSize: defaultFontSize, cellPadding: 5, font: pdfSettings.fontFamily || 'helvetica' },
-        columnStyles: { 0: { cellWidth: colWidth }, 1: { cellWidth: colWidth } },
+        columnStyles: { 0: { cellWidth: sigTableColWidth }, 1: { cellWidth: sigTableColWidth } },
         margin: { left: marginLeft, right: marginRight },
         tableWidth: 'auto'
       });
@@ -243,11 +256,17 @@ export default function PicnicDepartureForm() {
       doc.text(`Nombre de Pique-Niques : ........ ${entry.numberOfPicnics} ........`, marginLeft, currentY);
       currentY += defaultFontSize * 1.2 + 10;
       doc.text(`T° de Départ : ........ ${entry.departureTemperature} ........`, marginLeft, currentY);
+      currentY += defaultFontSize * 1.2 + 5;
       
+      // Ensure currentY does not exceed page height before drawing footer
+      if (currentY > pageHeight - marginBottom - (pdfSettings.footerFontSize || 8) - 10) { // Extra buffer for footer
+         currentY = pageHeight - marginBottom - (pdfSettings.footerFontSize || 8) - 5;
+      }
+
       if (pdfSettings.footerText) {
         let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', '1').replace('{totalPages}', '1');
         doc.setFontSize(pdfSettings.footerFontSize || 8);
-        doc.text(footerStr, marginLeft, doc.internal.pageSize.getHeight() - (pdfSettings.marginBottom || 30));
+        doc.text(footerStr, marginLeft, pageHeight - (marginBottom / 2));
       }
 
       doc.save(`Fiche_Depart_PN_${entry.clientName.replace(/\s+/g, '_')}_${format(parseISO(entry.orderReceivedDate), "yyyyMMdd")}.pdf`);
@@ -304,9 +323,9 @@ export default function PicnicDepartureForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
+        {isLoading && forms.length === 0 ? ( // Show loading only if initially loading and no forms yet
           <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Chargement...</div>
-        ) : forms.length === 0 ? (
+        ) : !isLoading && forms.length === 0 ? ( // Show no forms message only after loading is done
           <p className="text-muted-foreground text-center py-8">Aucune fiche de départ enregistrée. Cliquez sur "Nouvelle Fiche" pour commencer.</p>
         ) : (
           <div className="overflow-x-auto border rounded-md max-h-[60vh]">
@@ -331,7 +350,7 @@ export default function PicnicDepartureForm() {
                     <TableCell>{entry.departureTemperature}</TableCell>
                     <TableCell className="text-center space-x-1">
                       <Button variant="outline" size="icon" onClick={() => generatePdfForEntry(entry)} className="h-7 w-7" disabled={isLoading} title="Générer PDF">
-                        {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <FileText className="h-3.5 w-3.5"/>}
+                        {isLoading && editingForm?.id === entry.id ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <FileText className="h-3.5 w-3.5"/>}
                       </Button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
@@ -362,3 +381,4 @@ export default function PicnicDepartureForm() {
     </Card>
   );
 }
+
