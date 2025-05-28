@@ -21,14 +21,10 @@ export default function MenuPlanningTable({ menuData, onUpdateMenuEntry }: MenuP
   }
 
   const handleInputChange = (date: string, field: MenuField, value: string) => {
-    // For 'theme' field, value is StoredMenuThemeValue. For others, it's string.
-    // The onUpdateMenuEntry prop expects StoredMenuThemeValue for the theme field.
     onUpdateMenuEntry(date, field, value as StoredMenuThemeValue);
   };
 
   const getRowClass = (dayMenu: DailyMenu): string => {
-    // dayMenu.theme is StoredMenuThemeValue ('froid', 'vege', or '')
-    // menuThemeStyles expects MenuThemeIdentifier (not '')
     const themeClass = dayMenu.theme && dayMenu.theme !== '' && menuThemeStyles[dayMenu.theme as MenuThemeIdentifier]
       ? menuThemeStyles[dayMenu.theme as MenuThemeIdentifier]
       : '';
@@ -38,11 +34,11 @@ export default function MenuPlanningTable({ menuData, onUpdateMenuEntry }: MenuP
     }
     if (dayMenu.isHoliday) {
       return dayMenu.isWeekend 
-        ? 'bg-yellow-200 dark:bg-yellow-800/50 text-yellow-900 dark:text-yellow-100' // Holiday on Weekend
-        : 'bg-yellow-100 dark:bg-yellow-700/40 text-yellow-800 dark:text-yellow-200'; // Holiday on Weekday
+        ? 'bg-yellow-200 dark:bg-yellow-800 text-yellow-900 dark:text-yellow-100' // Holiday on Weekend (solid dark)
+        : 'bg-yellow-100 dark:bg-yellow-700 text-yellow-800 dark:text-yellow-200'; // Holiday on Weekday (solid dark)
     }
     if (dayMenu.isWeekend) {
-      return 'bg-muted/30'; // Weekend only
+      return 'bg-muted'; // Weekend only (solid bg-muted)
     }
     return ''; // Default
   };
@@ -50,9 +46,9 @@ export default function MenuPlanningTable({ menuData, onUpdateMenuEntry }: MenuP
   return (
     <div className="overflow-x-auto border rounded-md shadow-sm">
       <Table className="min-w-full">
-        <TableHeader className="bg-muted/50 sticky top-0 z-10">
+        <TableHeader className="bg-card sticky top-0 z-30">
           <TableRow>
-            <TableHead className="w-[150px] min-w-[150px] sticky left-0 bg-muted/50 z-20">Date</TableHead>
+            <TableHead className="w-[150px] min-w-[150px] sticky left-0 bg-card z-20">Date</TableHead>
             <TableHead className="w-[120px] min-w-[120px]">Jour</TableHead>
             <TableHead className="w-[180px] min-w-[180px]">Thème</TableHead>
             <TableHead className="w-[200px] min-w-[200px]">Entrée</TableHead>
@@ -71,7 +67,7 @@ export default function MenuPlanningTable({ menuData, onUpdateMenuEntry }: MenuP
             >
               <TableCell className={cn(
                 "font-medium sticky left-0 z-10 group-hover:bg-muted/60 transition-colors",
-                getRowClass(dayMenu) ? '' : 'bg-card' 
+                getRowClass(dayMenu) || 'bg-card' // Ensure solid background
               )}>
                 {dayMenu.date.split('-')[2]} {/* Show only day number */}
                 {dayMenu.isHoliday && dayMenu.holidayName && (

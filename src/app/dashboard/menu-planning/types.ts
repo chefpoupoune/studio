@@ -20,12 +20,13 @@ export const MENU_THEME_OPTIONS_FOR_SELECT: { value: MenuThemeIdentifier | typeo
 ];
 
 // Styles map uses the actual theme identifiers. It does not include '' or NO_THEME_SELECT_VALUE.
+// Dark mode variants now use solid backgrounds.
 export const menuThemeStyles: Record<MenuThemeIdentifier, string> = {
-  froid: 'bg-blue-100 dark:bg-blue-800/30 text-blue-800 dark:text-blue-200',
-  vege: 'bg-green-100 dark:bg-green-800/30 text-green-800 dark:text-green-200',
-  sam: 'bg-yellow-100 dark:bg-yellow-800/30 text-yellow-800 dark:text-yellow-200',
-  poisson: 'bg-pink-100 dark:bg-pink-800/30 text-pink-800 dark:text-pink-200',
-  fete: 'bg-orange-100 dark:bg-orange-800/30 text-orange-800 dark:text-orange-200',
+  froid: 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100',
+  vege: 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-100',
+  sam: 'bg-yellow-100 dark:bg-yellow-700 text-yellow-800 dark:text-yellow-100', // Adjusted yellow for dark
+  poisson: 'bg-pink-100 dark:bg-pink-900 text-pink-800 dark:text-pink-100',
+  fete: 'bg-orange-100 dark:bg-orange-800 text-orange-800 dark:text-orange-100',
 };
 
 
@@ -64,3 +65,4 @@ export const frenchMonths = [
   "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
   "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
 ];
+
