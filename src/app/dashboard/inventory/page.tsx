@@ -2,32 +2,33 @@
 "use client";
 
 import Link from 'next/link';
-import { PackagePlusIcon, ListOrderedIcon, ShoppingCartIcon, HistoryIcon } from 'lucide-react';
+import { PackagePlusIcon, ListOrderedIcon, ShoppingCartIcon, HistoryIcon, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ManageProducts from './components/manage-products';
 import ManageStockMovements from './components/manage-stock-movements';
 import GenerateInventory from './components/generate-inventory';
 import GeneratePurchaseOrder from './components/generate-purchase-order';
-import type { Product, StockMovement, PurchaseOrder, PurchaseOrderItem } from './types';
+import type { Product, StockMovement, PurchaseOrder, PurchaseOrderItem, PurchaseOrderStatus } from './types';
 import React, { useState, useEffect, useCallback } from 'react';
 import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
-import { format } from 'date-fns';
+import { format, Timestamp } from 'date-fns'; // Timestamp for Firestore
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { useIsMobile } from '@/hooks/use-mobile';
-
-const PRODUCTS_STORAGE_KEY = 'inventory_products';
-const STOCK_MOVEMENTS_STORAGE_KEY = 'inventory_stock_movements';
-const PURCHASE_ORDERS_STORAGE_KEY = 'inventory_purchase_orders';
-
-const initialProducts: Product[] = [
-  { id: 'prod_1', name: 'Détergent Multi-Surfaces', reference: 'DMS001', quantity: 50 },
-  { id: 'prod_2', name: 'Lingettes Désinfectantes Pro', reference: 'LDP002', quantity: 100 },
-  { id: 'prod_3', name: 'Sacs Poubelle Renforcés 50L', reference: 'SPR050', quantity: 200 },
-  { id: 'prod_4', name: 'Liquide Vaisselle Écologique', reference: 'LVE004', quantity: 30 },
-];
+import { firestore } from '@/lib/firebase';
+import { 
+  collection, 
+  getDocs, 
+  addDoc, 
+  doc, 
+  setDoc, 
+  deleteDoc, 
+  query, 
+  orderBy,
+  writeBatch
+} from 'firebase/firestore';
 
 interface InventoryTab {
   value: string;
@@ -40,184 +41,263 @@ export default function InventoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+  const [isLoadingMovements, setIsLoadingMovements] = useState(true);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(true);
+  
   const [isClient, setIsClient] = useState(false);
-  const [dataLoaded, setDataLoaded] = useState(false);
   const { toast } = useToast();
   const isMobile = useIsMobile();
   
   useEffect(() => {
     setIsClient(true);
   }, []);
-  
-  useEffect(() => {
-    if (isClient) {
-      console.log("InventoryPage: Attempting to load data from localStorage.");
-      setDataLoaded(false); // Ensure dataLoaded is false before loading
-      try {
-        const storedProducts = localStorage.getItem(PRODUCTS_STORAGE_KEY);
-        if (storedProducts) {
-          console.log("InventoryPage: Found stored products.");
-          setProducts(JSON.parse(storedProducts));
-        } else {
-          console.log("InventoryPage: No stored products found, using initialProducts.");
-          setProducts(initialProducts); 
-        }
 
-        const storedMovements = localStorage.getItem(STOCK_MOVEMENTS_STORAGE_KEY);
-        if (storedMovements) {
-          console.log("InventoryPage: Found stored movements.");
-          setStockMovements(JSON.parse(storedMovements).map((m: StockMovement) => ({...m, date: new Date(m.date)})));
-        } else {
-          console.log("InventoryPage: No stored movements found, defaulting to empty array.");
-          setStockMovements([]);
-        }
-        
-        const storedOrders = localStorage.getItem(PURCHASE_ORDERS_STORAGE_KEY);
-        if (storedOrders) {
-          console.log("InventoryPage: Found stored orders.");
-          setPurchaseOrders(JSON.parse(storedOrders).map((o: PurchaseOrder) => ({...o, date: new Date(o.date), status: o.status || 'pending'})));
-        } else {
-          console.log("InventoryPage: No stored orders found, defaulting to empty array.");
-          setPurchaseOrders([]);
-        }
-
-      } catch (e) {
-        console.error("InventoryPage: Error loading data from localStorage", e);
-        localStorage.removeItem(PRODUCTS_STORAGE_KEY);
-        localStorage.removeItem(STOCK_MOVEMENTS_STORAGE_KEY);
-        localStorage.removeItem(PURCHASE_ORDERS_STORAGE_KEY);
-        setProducts(initialProducts); 
-        setStockMovements([]);
-        setPurchaseOrders([]);
-        toast({ title: "Erreur de chargement des données d'inventaire", description: "Les données ont été réinitialisées aux valeurs par défaut.", variant: "destructive" });
-      } finally {
-        setDataLoaded(true);
-        console.log("InventoryPage: Data loading complete, dataLoaded set to true.");
-      }
+  // Fetch Products from Firestore
+  const fetchProducts = useCallback(async () => {
+    if (!isClient) return;
+    setIsLoadingProducts(true);
+    try {
+      const productsCollectionRef = collection(firestore, 'inventoryProducts');
+      const q = query(productsCollectionRef, orderBy("name"));
+      const querySnapshot = await getDocs(q);
+      const productsList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+      setProducts(productsList);
+      console.log("InventoryPage: Products fetched from Firestore:", productsList.length);
+    } catch (error) {
+      console.error("InventoryPage: Error fetching products from Firestore:", error);
+      toast({ title: "Erreur de chargement des produits", variant: "destructive" });
+      setProducts([]);
+    } finally {
+      setIsLoadingProducts(false);
     }
   }, [isClient, toast]);
 
-  useEffect(() => {
-    if (isClient && dataLoaded) {
-      console.log("InventoryPage: Saving products to localStorage", products);
-      localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(products));
+  // Fetch Stock Movements from Firestore
+  const fetchStockMovements = useCallback(async () => {
+    if (!isClient) return;
+    setIsLoadingMovements(true);
+    try {
+      const movementsCollectionRef = collection(firestore, 'inventoryStockMovements');
+      const q = query(movementsCollectionRef, orderBy("date", "desc"));
+      const querySnapshot = await getDocs(q);
+      const movementsList = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return { 
+          id: doc.id, 
+          ...data,
+          date: (data.date as any).toDate ? (data.date as any).toDate() : new Date(data.date) // Handle Firestore Timestamp
+        } as StockMovement;
+      });
+      setStockMovements(movementsList);
+      console.log("InventoryPage: Stock movements fetched from Firestore:", movementsList.length);
+    } catch (error) {
+      console.error("InventoryPage: Error fetching stock movements from Firestore:", error);
+      toast({ title: "Erreur de chargement des mouvements de stock", variant: "destructive" });
+      setStockMovements([]);
+    } finally {
+      setIsLoadingMovements(false);
     }
-  }, [products, isClient, dataLoaded]);
+  }, [isClient, toast]);
 
-  useEffect(() => {
-    if (isClient && dataLoaded) {
-      console.log("InventoryPage: Saving stock movements to localStorage", stockMovements);
-      localStorage.setItem(STOCK_MOVEMENTS_STORAGE_KEY, JSON.stringify(stockMovements));
+  // Fetch Purchase Orders from Firestore
+  const fetchPurchaseOrders = useCallback(async () => {
+    if (!isClient) return;
+    setIsLoadingOrders(true);
+    try {
+      const ordersCollectionRef = collection(firestore, 'inventoryPurchaseOrders');
+      const q = query(ordersCollectionRef, orderBy("date", "desc"));
+      const querySnapshot = await getDocs(q);
+      const ordersList = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return { 
+          id: doc.id, 
+          ...data,
+          date: (data.date as any).toDate ? (data.date as any).toDate() : new Date(data.date), // Handle Firestore Timestamp
+          status: data.status || 'pending' 
+        } as PurchaseOrder;
+      });
+      setPurchaseOrders(ordersList);
+      console.log("InventoryPage: Purchase orders fetched from Firestore:", ordersList.length);
+    } catch (error) {
+      console.error("InventoryPage: Error fetching purchase orders from Firestore:", error);
+      toast({ title: "Erreur de chargement des bons de commande", variant: "destructive" });
+      setPurchaseOrders([]);
+    } finally {
+      setIsLoadingOrders(false);
     }
-  }, [stockMovements, isClient, dataLoaded]);
+  }, [isClient, toast]);
   
   useEffect(() => {
-    if (isClient && dataLoaded) {
-      console.log("InventoryPage: Saving purchase orders to localStorage", purchaseOrders);
-      localStorage.setItem(PURCHASE_ORDERS_STORAGE_KEY, JSON.stringify(purchaseOrders));
+    if (isClient) {
+      fetchProducts();
+      fetchStockMovements();
+      fetchPurchaseOrders();
     }
-  }, [purchaseOrders, isClient, dataLoaded]);
+  }, [isClient, fetchProducts, fetchStockMovements, fetchPurchaseOrders]);
 
+  const addProduct = useCallback(async (productData: Omit<Product, 'id'>) => {
+    try {
+      const docRef = await addDoc(collection(firestore, "inventoryProducts"), productData);
+      // No need to sort client-side if Firestore query already sorts or if order is not critical after add
+      // For consistency, re-fetch or add optimistically with correct sorting logic
+      fetchProducts(); // Re-fetch to get sorted list with new ID
+      toast({ title: "Produit ajouté", description: `${productData.name} a été ajouté à Firestore.` });
+    } catch (e) {
+      console.error("Error adding product to Firestore: ", e);
+      toast({ title: "Erreur d'ajout", variant: "destructive" });
+    }
+  }, [toast, fetchProducts]);
 
-  const addProduct = useCallback((product: Omit<Product, 'id'>) => {
-    setProducts(prev => [...prev, { ...product, id: `prod_${Date.now()}` }].sort((a, b) => a.name.localeCompare(b.name)));
-    toast({ title: "Produit ajouté", description: `${product.name} a été ajouté avec succès.` });
-  }, [toast]);
-
-  const updateProduct = useCallback((updatedProduct: Product) => {
-    setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p).sort((a, b) => a.name.localeCompare(b.name)));
-    toast({ title: "Produit modifié", description: `${updatedProduct.name} a été mis à jour.` });
-  }, [toast]);
+  const updateProduct = useCallback(async (updatedProduct: Product) => {
+    try {
+      const productDocRef = doc(firestore, "inventoryProducts", updatedProduct.id);
+      const { id, ...dataToSave } = updatedProduct;
+      await setDoc(productDocRef, dataToSave);
+      fetchProducts(); // Re-fetch
+      toast({ title: "Produit modifié", description: `${updatedProduct.name} a été mis à jour dans Firestore.` });
+    } catch (e) {
+      console.error("Error updating product in Firestore: ", e);
+      toast({ title: "Erreur de modification", variant: "destructive" });
+    }
+  }, [toast, fetchProducts]);
   
-  const deleteProduct = useCallback((productId: string) => {
+  const deleteProduct = useCallback(async (productId: string) => {
     const productName = products.find(p => p.id === productId)?.name || "Le produit";
-    setProducts(prev => prev.filter(p => p.id !== productId));
-    toast({ title: "Produit supprimé", description: `${productName} a été supprimé.`, variant: "destructive" });
-  }, [products, toast]);
+    try {
+      await deleteDoc(doc(firestore, "inventoryProducts", productId));
+      fetchProducts(); // Re-fetch
+      toast({ title: "Produit supprimé", description: `${productName} a été supprimé de Firestore.`, variant: "destructive" });
+    } catch (e) {
+      console.error("Error deleting product from Firestore: ", e);
+      toast({ title: "Erreur de suppression", variant: "destructive" });
+    }
+  }, [products, toast, fetchProducts]);
 
-  const addStockMovement = useCallback((movement: Omit<StockMovement, 'id' | 'date' | 'productName'>) => {
-    const product = products.find(p => p.id === movement.productId);
+  const addStockMovement = useCallback(async (movementData: Omit<StockMovement, 'id' | 'date' | 'productName'>) => {
+    const product = products.find(p => p.id === movementData.productId);
     if (!product) {
-      toast({ title: "Erreur", description: "Produit non trouvé pour le mouvement de stock.", variant: "destructive" });
+      toast({ title: "Erreur", description: "Produit non trouvé.", variant: "destructive" });
       return;
     }
 
     let newQuantity = product.quantity;
-    if (movement.type === 'entry') {
-      newQuantity += movement.quantity;
+    if (movementData.type === 'entry') {
+      newQuantity += movementData.quantity;
     } else {
-      if (product.quantity < movement.quantity) {
-        toast({ title: "Stock Insuffisant", description: `Impossible de sortir ${movement.quantity} de ${product.name}. Stock actuel: ${product.quantity}.`, variant: "destructive" });
+      if (product.quantity < movementData.quantity) {
+        toast({ title: "Stock Insuffisant", variant: "destructive" });
         return;
       }
-      newQuantity -= movement.quantity;
+      newQuantity -= movementData.quantity;
     }
     
-    setProducts(prev => prev.map(p => p.id === movement.productId ? { ...p, quantity: newQuantity } : p).sort((a, b) => a.name.localeCompare(b.name)));
-    setStockMovements(prev => [
-        { ...movement, id: `sm_${Date.now()}`, date: new Date(), productName: product.name },
-         ...prev
-    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-    toast({ title: "Mouvement de stock enregistré", description: `${movement.quantity} ${product.name} (${movement.type === 'entry' ? 'entrée' : 'sortie'}).` });
-  }, [products, toast]);
-
-  const handleDeleteAllStockMovements = useCallback(() => {
-    setStockMovements([]);
-    toast({ title: "Historique des Mouvements Supprimé", description: "Tous les mouvements de stock ont été effacés.", variant: "destructive" });
-  }, [toast]);
-
-  const addPurchaseOrder = useCallback((orderItems: PurchaseOrderItem[]) => {
-    const newOrder: PurchaseOrder = {
-      id: `po_${Date.now()}`,
-      date: new Date(),
-      orderNumber: `BC-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Date.now().toString().slice(-4)}`,
-      items: orderItems.map(item => {
-        const product = products.find(p => p.id === item.productId);
-        return {
-          ...item,
-          productName: product?.name || 'Produit Inconnu',
-          reference: product?.reference || 'N/A'
-        };
-      }),
-      status: 'pending',
+    const newMovement: Omit<StockMovement, 'id'> = { 
+      ...movementData, 
+      date: new Date(), // Will be converted to Firestore Timestamp
+      productName: product.name 
     };
-    setPurchaseOrders(prev => [newOrder, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-    toast({ title: "Bon de commande créé", description: `Le bon de commande ${newOrder.orderNumber} a été généré.` });
-  }, [products, toast]);
 
-  const deletePurchaseOrder = useCallback((orderId: string) => {
+    const batch = writeBatch(firestore);
+    const productDocRef = doc(firestore, "inventoryProducts", product.id);
+    batch.update(productDocRef, { quantity: newQuantity });
+    const movementDocRef = doc(collection(firestore, "inventoryStockMovements")); // Auto-generate ID
+    batch.set(movementDocRef, newMovement);
+
+    try {
+      await batch.commit();
+      fetchProducts();
+      fetchStockMovements();
+      toast({ title: "Mouvement de stock enregistré", description: `${movementData.quantity} ${product.name} (${movementData.type === 'entry' ? 'entrée' : 'sortie'}) enregistré dans Firestore.` });
+    } catch (e) {
+      console.error("Error adding stock movement and updating product in Firestore: ", e);
+      toast({ title: "Erreur lors de l'enregistrement du mouvement", variant: "destructive" });
+    }
+  }, [products, toast, fetchProducts, fetchStockMovements]);
+
+  const handleDeleteAllStockMovements = useCallback(async () => {
+    try {
+      const movementsCollectionRef = collection(firestore, 'inventoryStockMovements');
+      const querySnapshot = await getDocs(movementsCollectionRef);
+      const batch = writeBatch(firestore);
+      querySnapshot.docs.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+      fetchStockMovements(); // Re-fetch to update UI
+      toast({ title: "Historique des Mouvements Supprimé", description: "Tous les mouvements de stock ont été effacés de Firestore.", variant: "destructive" });
+    } catch (e) {
+      console.error("Error deleting all stock movements from Firestore:", e);
+      toast({ title: "Erreur de suppression de l'historique", variant: "destructive"});
+    }
+  }, [toast, fetchStockMovements]);
+
+  const addPurchaseOrder = useCallback(async (orderItems: PurchaseOrderItem[]) => {
+    const productDetails = orderItems.map(item => {
+      const product = products.find(p => p.id === item.productId);
+      return {
+        ...item,
+        productName: product?.name || 'Produit Inconnu',
+        reference: product?.reference || 'N/A'
+      };
+    });
+    const newOrder: Omit<PurchaseOrder, 'id'> = {
+      date: new Date(), // Will be converted to Firestore Timestamp
+      orderNumber: `BC-${format(new Date(), "yyyyMMdd")}-${Date.now().toString().slice(-4)}`,
+      items: productDetails,
+      status: 'pending' as PurchaseOrderStatus,
+    };
+    try {
+      await addDoc(collection(firestore, "inventoryPurchaseOrders"), newOrder);
+      fetchPurchaseOrders(); // Re-fetch
+      toast({ title: "Bon de commande créé", description: `Le bon de commande ${newOrder.orderNumber} a été généré dans Firestore.` });
+    } catch (e) {
+      console.error("Error adding purchase order to Firestore: ", e);
+      toast({ title: "Erreur de création du bon de commande", variant: "destructive" });
+    }
+  }, [products, toast, fetchPurchaseOrders]);
+
+  const deletePurchaseOrder = useCallback(async (orderId: string) => {
     const orderNumber = purchaseOrders.find(po => po.id === orderId)?.orderNumber || "Le bon de commande";
-    setPurchaseOrders(prev => prev.filter(po => po.id !== orderId));
-    toast({ title: "Bon de Commande Supprimé", description: `Le bon de commande N° ${orderNumber} a été supprimé.`, variant: "destructive" });
-  }, [purchaseOrders, toast]);
+    try {
+      await deleteDoc(doc(firestore, "inventoryPurchaseOrders", orderId));
+      fetchPurchaseOrders(); // Re-fetch
+      toast({ title: "Bon de Commande Supprimé", description: `Le bon de commande N° ${orderNumber} a été supprimé de Firestore.`, variant: "destructive" });
+    } catch (e) {
+      console.error("Error deleting purchase order from Firestore: ", e);
+      toast({ title: "Erreur de suppression", variant: "destructive" });
+    }
+  }, [purchaseOrders, toast, fetchPurchaseOrders]);
 
-  const handleReceivePurchaseOrder = useCallback((orderId: string) => {
+  const handleReceivePurchaseOrder = useCallback(async (orderId: string) => {
     const order = purchaseOrders.find(po => po.id === orderId);
     if (!order || order.status === 'received') {
       toast({ title: "Erreur", description: "Bon de commande non trouvé ou déjà reçu.", variant: "destructive"});
       return;
     }
 
+    const batch = writeBatch(firestore);
     // Update product quantities
-    let updatedProducts = [...products];
     order.items.forEach(item => {
-      updatedProducts = updatedProducts.map(p => {
-        if (p.id === item.productId) {
-          return { ...p, quantity: p.quantity + item.quantity };
-        }
-        return p;
-      });
+      const productDocRef = doc(firestore, "inventoryProducts", item.productId);
+      const product = products.find(p => p.id === item.productId);
+      if (product) {
+        batch.update(productDocRef, { quantity: product.quantity + item.quantity });
+      }
     });
-    setProducts(updatedProducts.sort((a,b) => a.name.localeCompare(b.name)));
-
     // Update PO status
-    setPurchaseOrders(prev => 
-      prev.map(po => 
-        po.id === orderId ? { ...po, status: 'received', receivedDate: new Date().toISOString() } : po
-      ).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    );
-    toast({ title: "Bon de Commande Reçu", description: `Le bon de commande ${order.orderNumber} a été marqué comme reçu et les stocks mis à jour.`});
-  }, [purchaseOrders, products, toast]);
+    const orderDocRef = doc(firestore, "inventoryPurchaseOrders", orderId);
+    batch.update(orderDocRef, { status: 'received', receivedDate: new Date().toISOString() }); // Store as ISO string
+
+    try {
+      await batch.commit();
+      fetchProducts();
+      fetchPurchaseOrders();
+      toast({ title: "Bon de Commande Reçu", description: `Le bon de commande ${order.orderNumber} a été marqué comme reçu et les stocks mis à jour dans Firestore.`});
+    } catch (e) {
+      console.error("Error receiving purchase order in Firestore: ", e);
+      toast({ title: "Erreur lors de la réception", variant: "destructive" });
+    }
+  }, [purchaseOrders, products, toast, fetchProducts, fetchPurchaseOrders]);
 
   const inventoryTabsConfig: InventoryTab[] = [
     { value: "products", label: "Gestion Produits", Icon: PackagePlusIcon, component: <ManageProducts products={products} onAddProduct={addProduct} onUpdateProduct={updateProduct} onDeleteProduct={deleteProduct} /> },
@@ -227,10 +307,11 @@ export default function InventoryPage() {
   ];
   const [activeTab, setActiveTab] = useState(inventoryTabsConfig[0].value);
 
-  if (!isClient) {
+  if (!isClient || isLoadingProducts || isLoadingMovements || isLoadingOrders) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p className="text-lg text-muted-foreground">Chargement de la gestion des stocks...</p>
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="text-lg text-muted-foreground ml-3">Chargement de la gestion des stocks...</p>
       </div>
     );
   }
@@ -288,6 +369,6 @@ export default function InventoryPage() {
     </div>
   );
 }
-
+    
 
     
