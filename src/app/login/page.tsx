@@ -12,16 +12,17 @@ import { User, LockKeyhole, ArrowLeft, Utensils } from 'lucide-react';
 import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
 import type { AppUser, RubricId, ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management';
-import { RUBRICS, TIME_TRACKING_SUB_RUBRICS, ALL_RUBRIC_IDS } from '@/app/dashboard/settings/components/user-management';
+import { ALL_RUBRIC_IDS } from '@/app/dashboard/settings/components/user-management'; // Import ALL_RUBRIC_IDS
+import { firestore } from '@/lib/firebase';
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 
-
-const APP_USERS_STORAGE_KEY = 'app_defined_users_v2';
+// APP_USERS_STORAGE_KEY removed
 const LOGGED_IN_USER_PERMISSIONS_KEY = 'loggedInUserPermissions';
 const LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY = 'loggedInUserHourViewConfig';
 const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1";
 
 const simulatedHash = (password: string): string => `sim_hashed_${password}_!`;
-
+const DEFAULT_CHEF_ID_FIRESTORE = 'chef_firestore_user';
 
 export default function LoginPage() {
   const [definedUsers, setDefinedUsers] = useState<AppUser[]>([]);
@@ -29,6 +30,7 @@ export default function LoginPage() {
   const [passwordInput, setPasswordInput] = useState('');
   const [error, setError] = useState('');
   const [isClient, setIsClient] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [appLogoUrl, setAppLogoUrl] = useState<string | null>(null);
   const router = useRouter();
   const { toast } = useToast();
@@ -48,60 +50,55 @@ export default function LoginPage() {
       if (storedAppLogo) {
           setAppLogoUrl(storedAppLogo);
       }
-
-      let users: AppUser[] = [];
-      try {
-        const storedUsersRaw = localStorage.getItem(APP_USERS_STORAGE_KEY);
-        if (storedUsersRaw) {
-          const parsedUsers = JSON.parse(storedUsersRaw);
-          if (Array.isArray(parsedUsers)) {
-            users = parsedUsers.map((u: any) => ({ 
-              id: u.id || `imported_user_${Math.random().toString(36).substring(7)}`,
-              username: u.username || "Utilisateur Inconnu",
-              brigadeMemberId: u.brigadeMemberId,
-              passwordRequired: typeof u.passwordRequired === 'boolean' ? u.passwordRequired : false,
-              simulatedStoredPassword: u.simulatedStoredPassword,
-              permissions: u.permissions || {},
-              viewableHourSummaryConfig: u.viewableHourSummaryConfig || { type: 'none' },
-            }));
-          }
-        }
-      } catch (e) {
-        console.error("Error loading users from localStorage:", e);
-        toast({ title: "Erreur de chargement des utilisateurs", variant: "destructive"});
-      }
-
-      const chefUserExists = users.some(u => u.username.toLowerCase() === 'chef');
-      const defaultChefPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => {
-          acc[rubricId] = true;
-          return acc;
-      }, {} as Partial<Record<RubricId, boolean>>);
       
+      const fetchUsersForLogin = async () => {
+        setIsLoading(true);
+        let usersFromDb: AppUser[] = [];
+        try {
+          const usersCollectionRef = collection(firestore, 'appUsers');
+          const q = query(usersCollectionRef, orderBy("username"));
+          const querySnapshot = await getDocs(q);
+          usersFromDb = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppUser));
+          console.log(`[Login Page LOAD]: Loaded ${usersFromDb.length} users from Firestore.`);
+        } catch (e) {
+          console.error("Error loading users from Firestore for login:", e);
+          toast({ title: "Erreur de chargement des utilisateurs", variant: "destructive"});
+        }
 
-      if (!chefUserExists) {
-        users.unshift({ 
-          id: 'default_chef', 
-          username: 'Chef', 
-          passwordRequired: true, 
-          simulatedStoredPassword: simulatedHash('000'),
-          permissions: defaultChefPermissions,
-          viewableHourSummaryConfig: { type: 'all' },
-        });
-      } else {
-         users = users.map(u => {
-            if (u.username.toLowerCase() === 'chef') {
-                return {
-                    ...u,
-                    passwordRequired: true, 
-                    simulatedStoredPassword: u.simulatedStoredPassword || simulatedHash('000'),
-                    permissions: defaultChefPermissions, 
-                    viewableHourSummaryConfig: { type: 'all' },
-                };
-            }
-            return u;
-        });
-      }
-      setDefinedUsers(users.sort((a,b) => a.username.localeCompare(b.username)));
+        const chefUserExists = usersFromDb.some(u => u.username.toLowerCase() === 'chef');
+        const defaultChefPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
+
+        if (!chefUserExists) {
+          console.log("[Login Page LOAD]: Chef user NOT found in Firestore. Adding default Chef for login display.");
+          // This default Chef is for display and login if no Chef exists in DB.
+          // It won't be saved back to Firestore from here unless explicitly done in UserManagement.
+          usersFromDb.unshift({ 
+            id: DEFAULT_CHEF_ID_FIRESTORE, 
+            username: 'Chef', 
+            passwordRequired: true, 
+            simulatedStoredPassword: simulatedHash('000'),
+            permissions: defaultChefPermissions,
+            viewableHourSummaryConfig: { type: 'all' },
+          });
+        } else {
+           usersFromDb = usersFromDb.map(u => {
+              if (u.username.toLowerCase() === 'chef') {
+                  return {
+                      ...u,
+                      passwordRequired: true, 
+                      simulatedStoredPassword: u.simulatedStoredPassword || simulatedHash('000'),
+                      permissions: defaultChefPermissions, 
+                      viewableHourSummaryConfig: { type: 'all' as const },
+                  };
+              }
+              return u;
+          });
+        }
+        setDefinedUsers(usersFromDb.sort((a,b) => a.username.localeCompare(b.username)));
+        setIsLoading(false);
+      };
+
+      fetchUsersForLogin();
     }
   }, [isClient, router, toast]);
 
@@ -110,13 +107,10 @@ export default function LoginPage() {
     localStorage.setItem('loggedInUsername', user.username);
     
     let permissionsToStore = { ...user.permissions };
-    let hourViewConfigToStore = user.viewableHourSummaryConfig || { type: 'none' as const };
+    let hourViewConfigToStore: ViewableHourSummaryConfig = user.viewableHourSummaryConfig || { type: 'none' as const };
 
     if (user.username.toLowerCase() === 'chef') {
-        permissionsToStore = ALL_RUBRIC_IDS.reduce((acc, rubricId) => {
-            acc[rubricId] = true;
-            return acc;
-        }, {} as Partial<Record<RubricId, boolean>>);
+        permissionsToStore = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
         hourViewConfigToStore = { type: 'all' as const };
     }
     
@@ -149,10 +143,11 @@ export default function LoginPage() {
   };
 
 
-  if (!isClient) {
+  if (!isClient || isLoading) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center p-4 md:p-8 bg-background">
-        <p className="text-muted-foreground">Chargement...</p>
+        <Loader2 className="h-8 w-8 animate-spin text-primary mr-2" />
+        <p className="text-muted-foreground">Chargement des utilisateurs...</p>
       </main>
     );
   }
@@ -210,7 +205,7 @@ export default function LoginPage() {
                     </Button>
                   ))
                 ) : (
-                  <p className="text-center text-muted-foreground col-span-full">Aucun utilisateur défini. Contactez un administrateur.</p>
+                  <p className="text-center text-muted-foreground col-span-full">Aucun utilisateur défini dans la base de données. Le compte Chef par défaut est disponible.</p>
                 )}
               </div>
             </>
@@ -256,7 +251,9 @@ export default function LoginPage() {
         </CardContent>
          <CardFooter className="text-center text-xs text-muted-foreground pt-6">
           <p>
-            {selectedUserForPassword && selectedUserForPassword.username.toLowerCase() === 'chef' && !definedUsers.find(u => u.username.toLowerCase() === 'chef')?.simulatedStoredPassword
+            {selectedUserForPassword && selectedUserForPassword.username.toLowerCase() === 'chef' && 
+             (!definedUsers.find(u => u.username.toLowerCase() === 'chef')?.simulatedStoredPassword || 
+              selectedUserForPassword.simulatedStoredPassword === simulatedHash('000'))
               ? "Mot de passe par défaut pour Chef : 000" 
               : selectedUserForPassword && selectedUserForPassword.passwordRequired && !selectedUserForPassword.simulatedStoredPassword
               ? "Aucun mot de passe défini pour cet utilisateur. Veuillez configurer dans les paramètres."
@@ -268,3 +265,4 @@ export default function LoginPage() {
     </main>
   );
 }
+

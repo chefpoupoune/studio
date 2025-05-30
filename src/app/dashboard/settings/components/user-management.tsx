@@ -8,8 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Users, AlertTriangle, PlusCircle, Edit2, Trash2, KeyRound, Eye, CalendarClock, FileClock } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Users, AlertTriangle, PlusCircle, Edit2, Trash2, KeyRound, Eye, Loader2 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -30,9 +30,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { firestore } from '@/lib/firebase';
+import { collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy } from 'firebase/firestore';
 
-const APP_USERS_STORAGE_KEY = 'app_defined_users_v2';
-const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
+// APP_USERS_STORAGE_KEY removed as we use Firestore now
 
 export const RUBRICS = [
   { id: 'dashboard', label: 'Tableau de Bord Principal' },
@@ -62,7 +63,7 @@ export interface ViewableHourSummaryConfig {
 }
 
 export interface AppUser {
-  id: string;
+  id: string; // Firestore document ID
   username: string;
   brigadeMemberId?: string;
   passwordRequired: boolean;
@@ -76,12 +77,12 @@ export const ALL_RUBRIC_IDS: RubricId[] = [
   ...TIME_TRACKING_SUB_RUBRICS.map(sr => sr.id),
 ];
 
-const basePermissionsSchema = RUBRICS.reduce((acc, rubric) => {
+const basePermissionsSchemaObject = RUBRICS.reduce((acc, rubric) => {
   acc[rubric.id] = z.boolean().default(false);
   return acc;
 }, {} as Record<typeof RUBRICS[number]['id'], z.ZodBoolean>);
 
-const timeTrackingPermissionsSchema = TIME_TRACKING_SUB_RUBRICS.reduce((acc, subRubric) => {
+const timeTrackingPermissionsSchemaObject = TIME_TRACKING_SUB_RUBRICS.reduce((acc, subRubric) => {
   acc[subRubric.id] = z.boolean().default(false);
   return acc;
 }, {} as Record<typeof TIME_TRACKING_SUB_RUBRICS[number]['id'], z.ZodBoolean>);
@@ -92,8 +93,8 @@ const userFormSchema = z.object({
   newPassword: z.string().optional(),
   confirmNewPassword: z.string().optional(),
   permissions: z.object({
-    ...basePermissionsSchema,
-    ...timeTrackingPermissionsSchema,
+    ...basePermissionsSchemaObject,
+    ...timeTrackingPermissionsSchemaObject,
   }).default(ALL_RUBRIC_IDS.reduce((acc, id) => ({ ...acc, [id]: false }), {})),
   viewableHourSummary_type: z.enum(['none', 'own', 'all', 'specific']).default('none'),
   viewableHourSummary_specificMemberId: z.string().optional(),
@@ -121,7 +122,7 @@ const userFormSchema = z.object({
 type UserFormData = z.infer<typeof userFormSchema>;
 
 const simulatedHash = (password: string): string => `sim_hashed_${password}_!`;
-const DEFAULT_CHEF_ID = 'default_chef_user_id';
+const DEFAULT_CHEF_ID_FIRESTORE = 'chef_firestore_user'; // Use a distinct ID if needed, or use Firestore's auto-ID
 
 export default function UserManagement() {
   const [appUsers, setAppUsers] = useState<AppUser[]>([]);
@@ -130,7 +131,7 @@ export default function UserManagement() {
   const [isUserFormOpen, setIsUserFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
   const [isClient, setIsClient] = useState(false);
-  const [dataLoaded, setDataLoaded] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
   const form = useForm<UserFormData>({
@@ -146,117 +147,107 @@ export default function UserManagement() {
     },
   });
 
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isClient) return;
-    console.log("UserManagement [EFFECT LOAD]: Attempting to load initial data from localStorage.");
-    let loadedUsers: AppUser[] = [];
-    let loadedMembers: BrigadeMember[] = [];
-    
+  const fetchBrigadeMembers = useCallback(async () => {
+    if (!isClient) return [];
     try {
-      const storedUsersRaw = localStorage.getItem(APP_USERS_STORAGE_KEY);
-      if (storedUsersRaw) {
-        const parsedUsers = JSON.parse(storedUsersRaw);
-        if (Array.isArray(parsedUsers)) {
-          loadedUsers = parsedUsers.map((u: any) => ({ // Basic mapping
-            id: u.id || `imported_user_${Math.random().toString(36).substring(7)}`,
-            username: u.username || "Utilisateur Inconnu",
-            brigadeMemberId: u.brigadeMemberId,
-            passwordRequired: typeof u.passwordRequired === 'boolean' ? u.passwordRequired : false,
-            simulatedStoredPassword: u.simulatedStoredPassword,
-            permissions: u.permissions || {},
-            viewableHourSummaryConfig: u.viewableHourSummaryConfig || { type: 'none' },
-          }));
-        }
-        console.log(`UserManagement [EFFECT LOAD]: Loaded ${loadedUsers.length} users from localStorage.`);
-      } else {
-        console.log("UserManagement [EFFECT LOAD]: No users found in localStorage, will create default Chef if needed.");
-      }
-
-      // Ensure Chef user exists and has correct defaults
-      const chefUserIndex = loadedUsers.findIndex(u => u.username.toLowerCase() === 'chef');
-      const defaultChefPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => {
-        acc[rubricId] = true;
-        return acc;
-      }, {} as Partial<Record<RubricId, boolean>>);
-
-      if (chefUserIndex !== -1) {
-        console.log("UserManagement [EFFECT LOAD]: Chef user found, standardizing.");
-        loadedUsers[chefUserIndex] = {
-          ...loadedUsers[chefUserIndex],
-          id: loadedUsers[chefUserIndex].id || DEFAULT_CHEF_ID,
-          username: 'Chef', // Normalize case
-          passwordRequired: true,
-          simulatedStoredPassword: loadedUsers[chefUserIndex].simulatedStoredPassword || simulatedHash('000'),
-          permissions: defaultChefPermissions,
-          viewableHourSummaryConfig: { type: 'all' as const },
-        };
-      } else {
-        console.log("UserManagement [EFFECT LOAD]: Chef user NOT found, creating default Chef.");
-        loadedUsers.unshift({
-          id: DEFAULT_CHEF_ID,
-          username: 'Chef',
-          passwordRequired: true,
-          simulatedStoredPassword: simulatedHash('000'),
-          permissions: defaultChefPermissions,
-          viewableHourSummaryConfig: { type: 'all' as const },
-        });
-      }
-      setAppUsers(loadedUsers.sort((a,b) => a.username.localeCompare(b.username)));
-      console.log(`UserManagement [EFFECT LOAD]: Final appUsers state set. Count: ${loadedUsers.length}`);
-
-
-      const storedBrigadeMembersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
-      if (storedBrigadeMembersRaw) {
-        loadedMembers = JSON.parse(storedBrigadeMembersRaw);
-      }
-      setBrigadeMembers(loadedMembers);
-      console.log(`UserManagement [EFFECT LOAD]: Loaded ${loadedMembers.length} brigade members.`);
-
+      const membersCollectionRef = collection(firestore, 'brigadeMembers');
+      const q = query(membersCollectionRef, orderBy("name"));
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BrigadeMember));
     } catch (error) {
-      console.error("UserManagement [EFFECT LOAD]: Error loading data:", error);
-      toast({ title: "Erreur de chargement des données utilisateurs/brigade", variant: "destructive" });
-      // Fallback: Ensure at least Chef user exists if everything fails
+      console.error("Error fetching brigade members:", error);
+      toast({ title: "Erreur de chargement des membres de la brigade", variant: "destructive" });
+      return [];
+    }
+  }, [isClient, toast]);
+
+  const fetchAppUsers = useCallback(async () => {
+    if (!isClient) return [];
+    setIsLoading(true);
+    console.log("UserManagement [FETCH USERS]: Fetching app users from Firestore.");
+    try {
+      const usersCollectionRef = collection(firestore, 'appUsers');
+      const q = query(usersCollectionRef, orderBy("username"));
+      const querySnapshot = await getDocs(q);
+      let loadedUsers = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppUser));
+      
       const defaultChefPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
-      setAppUsers([{
-        id: DEFAULT_CHEF_ID, username: 'Chef', passwordRequired: true,
-        simulatedStoredPassword: simulatedHash('000'), permissions: defaultChefPermissions,
-        viewableHourSummaryConfig: { type: 'all' }
-      }]);
-      setBrigadeMembers([]);
+      let chefUser = loadedUsers.find(u => u.username.toLowerCase() === 'chef');
+
+      if (!chefUser) {
+        console.log("UserManagement [FETCH USERS]: Chef user not found in Firestore. Creating default Chef for this session.");
+        // If Chef user doesn't exist in Firestore, we create a temporary one for the UI to ensure forms can open.
+        // This user won't be saved unless explicitly edited/saved.
+        // Or, we could add it to Firestore if it's the very first run. For simplicity, we'll make it available in UI.
+        // A better approach for first run: check if 'appUsers' collection is empty, if so, add Chef.
+        // For now, this default is mostly for the UI to not break if Chef is missing.
+        const chefData: AppUser = {
+            id: DEFAULT_CHEF_ID_FIRESTORE, // Special ID
+            username: 'Chef',
+            passwordRequired: true,
+            simulatedStoredPassword: simulatedHash('000'),
+            permissions: defaultChefPermissions,
+            viewableHourSummaryConfig: { type: 'all' },
+        };
+        // We won't add this to loadedUsers directly unless we decide to auto-create Chef in Firestore.
+        // Instead, handleOpenUserForm will use this if editingUser is null and target is Chef.
+        // And the list will show it if it's in Firestore.
+        // The login page should handle the "Chef not found" case by creating/allowing default login.
+        
+        // Let's check if the collection is empty and add Chef if so.
+        if (loadedUsers.length === 0) {
+            console.log("UserManagement [FETCH USERS]: appUsers collection is empty. Adding default Chef to Firestore.");
+            const { id, ...chefDataToSave } = chefData; // Don't save our local ID if Firestore auto-generates
+            try {
+                const chefDocRef = await addDoc(collection(firestore, "appUsers"), chefDataToSave);
+                loadedUsers.push({ ...chefDataToSave, id: chefDocRef.id });
+                toast({title: "Utilisateur Chef Initialisé", description: "Le compte Chef par défaut a été créé."});
+            } catch (addError) {
+                console.error("Error creating default Chef user in Firestore:", addError);
+            }
+        }
+
+      } else {
+        console.log("UserManagement [FETCH USERS]: Chef user found. Standardizing permissions.");
+        loadedUsers = loadedUsers.map(u => u.id === chefUser!.id ? {
+          ...chefUser!,
+          username: 'Chef', // Normalize case
+          passwordRequired: true, // Always required for Chef
+          permissions: defaultChefPermissions,
+          viewableHourSummaryConfig: { type: 'all' as const },
+        } : u);
+      }
+      
+      setAppUsers(loadedUsers.sort((a, b) => a.username.localeCompare(b.username)));
+      console.log(`UserManagement [FETCH USERS]: Fetched and set ${loadedUsers.length} app users.`);
+    } catch (error) {
+      console.error("UserManagement [FETCH USERS]: Error fetching app users:", error);
+      toast({ title: "Erreur de chargement des utilisateurs", variant: "destructive" });
+      setAppUsers([]);
     } finally {
-      setDataLoaded(true);
-      console.log("UserManagement [EFFECT LOAD]: Initial data load process finished. dataLoaded set to true.");
+      setIsLoading(false);
     }
   }, [isClient, toast]);
 
 
   useEffect(() => {
-    if (isClient && dataLoaded && appUsers.length > 0) { // Only save if there's something to save
-      console.log(`UserManagement [EFFECT SAVE Users]: Attempting to save ${appUsers.length} appUsers to localStorage.`);
-      try {
-        localStorage.setItem(APP_USERS_STORAGE_KEY, JSON.stringify(appUsers));
-        console.log("UserManagement [EFFECT SAVE Users]: appUsers successfully saved to localStorage.");
-      } catch (error) {
-        console.error("UserManagement [EFFECT SAVE Users]: Error saving appUsers to localStorage:", error);
-        toast({ title: "Erreur de sauvegarde des utilisateurs", variant: "destructive" });
-      }
-    } else if (isClient && dataLoaded && appUsers.length === 0) {
-      console.log("UserManagement [EFFECT SAVE Users]: appUsers is empty, removing from localStorage.");
-      localStorage.removeItem(APP_USERS_STORAGE_KEY); // Clean up if all users are deleted
+    setIsClient(true);
+    async function loadInitialData() {
+      const members = await fetchBrigadeMembers();
+      setBrigadeMembers(members);
+      await fetchAppUsers(); // This sets isLoading to false
     }
-  }, [appUsers, isClient, dataLoaded, toast]);
+    loadInitialData();
+  }, [fetchBrigadeMembers, fetchAppUsers]);
+
 
   useEffect(() => {
-    if (isClient && dataLoaded) {
+    if (isClient && !isLoading) {
       const linkedMemberIds = appUsers.map(user => user.brigadeMemberId).filter(id => !!id);
       const updatedAvailableMembers = brigadeMembers.filter(member => !linkedMemberIds.includes(member.id));
       setAvailableBrigadeMembers(updatedAvailableMembers);
     }
-  }, [appUsers, brigadeMembers, isClient, dataLoaded]);
+  }, [appUsers, brigadeMembers, isClient, isLoading]);
 
 
   const handleOpenUserForm = (user?: AppUser) => {
@@ -283,7 +274,7 @@ export default function UserManagement() {
     setIsUserFormOpen(true);
   };
 
-  const handleUserFormSubmit = (data: UserFormData) => {
+  const handleUserFormSubmit = async (data: UserFormData) => {
     let passwordToStore: string | undefined = undefined;
     if (data.passwordRequired && data.newPassword) {
         passwordToStore = simulatedHash(data.newPassword);
@@ -294,18 +285,15 @@ export default function UserManagement() {
         specificMemberId: data.viewableHourSummary_type === 'specific' ? data.viewableHourSummary_specificMemberId : undefined,
     };
     
-    let permissionsToSave = data.permissions;
     const isCurrentEditingUserChef = editingUser?.username.toLowerCase() === 'chef';
+    let permissionsToSave = data.permissions;
 
     if (isCurrentEditingUserChef) {
-        permissionsToSave = ALL_RUBRIC_IDS.reduce((acc, rubricId) => {
-            acc[rubricId] = true;
-            return acc;
-        }, {} as Partial<Record<RubricId, boolean>>);
+        permissionsToSave = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
         summaryConfig = { type: 'all' };
     }
     
-    const baseUserData: Omit<AppUser, 'id' | 'username' | 'brigadeMemberId'> = {
+    const userCommonData = {
       passwordRequired: isCurrentEditingUserChef ? true : data.passwordRequired,
       permissions: permissionsToSave,
       viewableHourSummaryConfig: summaryConfig,
@@ -313,23 +301,29 @@ export default function UserManagement() {
 
     if (editingUser) {
       const updatedSimulatedPassword = 
-        (baseUserData.passwordRequired && passwordToStore) 
+        (userCommonData.passwordRequired && passwordToStore) 
           ? passwordToStore 
-          : baseUserData.passwordRequired 
-            ? editingUser.simulatedStoredPassword // Keep old if not changing and still required
-            : undefined; // No password if not required
+          : userCommonData.passwordRequired 
+            ? editingUser.simulatedStoredPassword 
+            : undefined;
 
-      setAppUsers(prev => prev.map(u => u.id === editingUser.id ? { 
-          ...editingUser, 
-          ...baseUserData,
-          simulatedStoredPassword: updatedSimulatedPassword,
+      const userToUpdate: Omit<AppUser, 'id'> = {
           username: editingUser.username, 
           brigadeMemberId: editingUser.brigadeMemberId,
-        } : u).sort((a,b) => a.username.localeCompare(b.username)));
-      toast({ title: "Utilisateur Modifié", description: `L'utilisateur "${editingUser.username}" a été mis à jour.` });
+          ...userCommonData,
+          simulatedStoredPassword: updatedSimulatedPassword,
+      };
+      try {
+        const userDocRef = doc(firestore, "appUsers", editingUser.id);
+        await setDoc(userDocRef, userToUpdate);
+        fetchAppUsers(); // Re-fetch to update UI
+        toast({ title: "Utilisateur Modifié", description: `L'utilisateur "${editingUser.username}" a été mis à jour.` });
+      } catch (e) {
+        console.error("Error updating user in Firestore:", e);
+        toast({ title: "Erreur de modification", variant: "destructive"});
+      }
     } else {
       if (!data.selectedBrigadeMemberId) {
-        toast({ title: "Erreur", description: "Veuillez sélectionner un membre de la brigade pour le nouvel utilisateur.", variant: "destructive" });
         form.setError("selectedBrigadeMemberId", {message: "Sélection requise."});
         return;
       }
@@ -343,48 +337,54 @@ export default function UserManagement() {
         return;
       }
 
-      const newUser: AppUser = { 
-        id: `user_${Date.now()}_${Math.random().toString(36).substring(2,7)}`, 
+      const newUserToSave: Omit<AppUser, 'id'> = { 
         username: selectedMember.name,
         brigadeMemberId: selectedMember.id,
-        ...baseUserData,
+        ...userCommonData,
         simulatedStoredPassword: passwordToStore,
       };
-      setAppUsers(prev => [...prev, newUser].sort((a,b) => a.username.localeCompare(b.username)));
-      toast({ title: "Utilisateur Créé", description: `L'utilisateur "${newUser.username}" a été créé.` });
+      try {
+        await addDoc(collection(firestore, "appUsers"), newUserToSave);
+        fetchAppUsers(); // Re-fetch
+        toast({ title: "Utilisateur Créé", description: `L'utilisateur "${newUserToSave.username}" a été créé.` });
+      } catch (e) {
+        console.error("Error adding user to Firestore:", e);
+        toast({ title: "Erreur de création", variant: "destructive"});
+      }
     }
     setIsUserFormOpen(false);
   };
 
-  const handleDeleteUser = (userId: string) => {
+  const handleDeleteUser = async (userId: string) => {
     const userToDelete = appUsers.find(u => u.id === userId);
-    if (userToDelete?.username.toLowerCase() === 'chef') {
+    if (!userToDelete) return;
+    if (userToDelete.username.toLowerCase() === 'chef') {
       toast({ title: "Suppression Interdite", description: "L'utilisateur 'Chef' ne peut pas être supprimé.", variant: "destructive" });
       return;
     }
-    setAppUsers(prev => prev.filter(u => u.id !== userId));
-    toast({ title: "Utilisateur Supprimé", description: `L'utilisateur "${userToDelete?.username || 'ID: '+userId}" a été supprimé.`, variant: "destructive" });
+    try {
+      await deleteDoc(doc(firestore, "appUsers", userId));
+      fetchAppUsers(); // Re-fetch
+      toast({ title: "Utilisateur Supprimé", description: `L'utilisateur "${userToDelete.username}" a été supprimé.`, variant: "destructive" });
+    } catch (e) {
+      console.error("Error deleting user from Firestore:", e);
+      toast({ title: "Erreur de suppression", variant: "destructive" });
+    }
   };
 
   const currentSelectedSummaryType = form.watch('viewableHourSummary_type');
-  
-  const hasAnyTimeTrackingPermission = (permissions: Partial<Record<RubricId, boolean>> | undefined) => {
-    if (!permissions) return false;
-    return TIME_TRACKING_SUB_RUBRICS.some(sr => !!permissions[sr.id]);
-  };
-  
   const formTimeTrackingPermissions = form.watch('permissions');
-  const currentFormHasTimeTrackingPermission = hasAnyTimeTrackingPermission(formTimeTrackingPermissions);
+  const currentFormHasTimeTrackingPermission = TIME_TRACKING_SUB_RUBRICS.some(sr => !!formTimeTrackingPermissions[sr.id]);
   const isEditingChef = editingUser?.username.toLowerCase() === 'chef';
 
-  if (!isClient || !dataLoaded) { // Check dataLoaded here
+  if (!isClient || isLoading) {
     return (
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Users className="w-6 h-6 text-primary"/>Gestion des Utilisateurs</CardTitle>
         </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground text-center py-6">Chargement des données utilisateurs...</p>
+        <CardContent className="flex justify-center items-center py-10">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mr-2"/> Chargement des données utilisateurs...
         </CardContent>
       </Card>
     );
@@ -398,7 +398,7 @@ export default function UserManagement() {
           Gestion des Utilisateurs
         </CardTitle>
         <CardDescription>
-          Définissez des utilisateurs en les liant aux membres de la brigade, leurs mots de passe (simulés) et leurs permissions d'accès aux différentes sections de l'application.
+          Définissez des utilisateurs en les liant aux membres de la brigade, leurs mots de passe (simulés) et leurs permissions d'accès.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -406,15 +406,15 @@ export default function UserManagement() {
           <AlertTriangle className="h-5 w-5 text-destructive" />
           <AlertTitle className="text-destructive font-semibold">Avertissement de Sécurité</AlertTitle>
           <AlertDescription className="text-destructive/90">
-            Ce système est pour la démonstration. Les mots de passe ne sont pas stockés de manière sécurisée (simulation).
-            L'utilisateur 'Chef' est le compte administrateur avec tous les accès. Son mot de passe par défaut est '000' s'il n'a pas été modifié.
+            Ce système utilise un stockage de mot de passe simulé et non sécurisé. Ne pas utiliser pour des mots de passe réels en production.
+            Le compte 'Chef' est administrateur avec tous les accès. Son mot de passe par défaut est '000' (s'il est créé par défaut).
           </AlertDescription>
         </Alert>
 
-        <Button onClick={() => handleOpenUserForm()} disabled={availableBrigadeMembers.length === 0 && !appUsers.some(u => u.username.toLowerCase() === 'chef' && !u.brigadeMemberId)}>
+        <Button onClick={() => handleOpenUserForm()} disabled={availableBrigadeMembers.length === 0 && !editingUser}>
           <PlusCircle className="mr-2 h-4 w-4" /> Créer un Nouvel Utilisateur
         </Button>
-        {availableBrigadeMembers.length === 0 && !appUsers.some(u => u.username.toLowerCase() === 'chef' && !u.brigadeMemberId) && (
+        {availableBrigadeMembers.length === 0 && !editingUser && (
              <p className="text-sm text-muted-foreground">Veuillez d'abord ajouter des membres à la brigade dans "Suivi des Heures &gt; Gestion Personnel" pour pouvoir créer de nouveaux utilisateurs liés.</p>
         )}
 
@@ -451,7 +451,7 @@ export default function UserManagement() {
                                   <SelectItem key={member.id} value={member.id}>{member.name} ({member.role})</SelectItem>
                                 ))
                               ) : (
-                                <SelectItem value="disabled" disabled>Aucun membre de brigade disponible pour un nouveau compte.</SelectItem>
+                                <SelectItem value="disabled" disabled>Aucun membre de brigade non lié disponible.</SelectItem>
                               )}
                             </SelectContent>
                           </Select>
@@ -477,14 +477,14 @@ export default function UserManagement() {
                          <FormField control={form.control} name="newPassword" render={({ field }) => (
                           <FormItem>
                             <FormLabel className="flex items-center gap-1"><KeyRound className="w-4 h-4" />Nouveau mot de passe {editingUser ? '(Laisser vide pour ne pas changer)' : ''}</FormLabel>
-                            <FormControl><Input type="password" placeholder="Saisir un mot de passe..." {...field} /></FormControl>
+                            <FormControl><Input type="password" placeholder="Saisir un mot de passe..." {...field} value={field.value ?? ''} /></FormControl>
                             <FormMessage />
                           </FormItem>
                         )} />
                         <FormField control={form.control} name="confirmNewPassword" render={({ field }) => (
                           <FormItem>
                             <FormLabel>Confirmer nouveau mot de passe</FormLabel>
-                            <FormControl><Input type="password" placeholder="Confirmer le mot de passe..." {...field} /></FormControl>
+                            <FormControl><Input type="password" placeholder="Confirmer le mot de passe..." {...field} value={field.value ?? ''} /></FormControl>
                             <FormMessage />
                           </FormItem>
                         )} />
@@ -514,7 +514,9 @@ export default function UserManagement() {
                           />
                         ))}
                         <div className="pl-4 border-l-2 border-muted-foreground/30 ml-2 mt-2 space-y-2">
-                            <Label className="text-sm font-semibold text-muted-foreground">Permissions détaillées pour "Suivi des Heures":</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground flex items-center gap-1">
+                                <FileClock className="w-4 h-4" /> Permissions "Suivi des Heures":
+                            </Label>
                             {TIME_TRACKING_SUB_RUBRICS.map(subRubric => (
                                 <FormField
                                 key={subRubric.id}
@@ -593,7 +595,7 @@ export default function UserManagement() {
           </DialogContent>
         </Dialog>
 
-        {!dataLoaded ? null : appUsers.length > 0 ? (
+        {appUsers.length > 0 ? (
           <div className="space-y-3">
             <h3 className="text-md font-semibold">Utilisateurs Définis :</h3>
             {appUsers.map(user => (
@@ -664,14 +666,13 @@ export default function UserManagement() {
                             }
                         </p>
                     </div>
-
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
         ) : (
-          <p className="text-muted-foreground text-center py-6">Aucun utilisateur défini (autre que 'Chef' implicite). Cliquez sur "Créer un Nouvel Utilisateur" pour commencer.</p>
+          <p className="text-muted-foreground text-center py-6">Aucun utilisateur défini. Cliquez sur "Créer un Nouvel Utilisateur" pour commencer.</p>
         )}
       </CardContent>
     </Card>
