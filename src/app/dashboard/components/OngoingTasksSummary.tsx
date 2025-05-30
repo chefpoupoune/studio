@@ -1,56 +1,86 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ClipboardList, AlertCircle, MessageSquare } from "lucide-react"; // Added MessageSquare
+import { ClipboardList, AlertCircle, MessageSquare, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { Task, TaskStatus, StatusLogEntry } from '@/app/dashboard/task-management/types';
+import type { Task, TaskStatus } from '@/app/dashboard/task-management/types';
 import { taskStatusLabels } from '@/app/dashboard/task-management/types';
-import { ScrollArea } from '@/components/ui/scroll-area'; // Added ScrollArea
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { firestore } from '@/lib/firebase';
+import { collection, query, where, orderBy, getDocs, Timestamp, limit } from 'firebase/firestore';
+import { useToast } from '@/hooks/use-toast';
 
-const TASK_STORAGE_KEY = 'task_management_tasks';
+// TASK_STORAGE_KEY removed
 
 export default function OngoingTasksSummary() {
   const [allTasks, setAllTasks] = useState<Task[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isClient, setIsClient] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
+  const fetchOngoingTasks = useCallback(async () => {
+    if (!isClient) return;
+    setIsLoading(true);
+    try {
+      const tasksCollectionRef = collection(firestore, 'taskManagementTasks');
+      // Filter out 'termine' and 'annule' directly in the query
+      const q = query(
+        tasksCollectionRef,
+        where('currentStatus', 'not-in', ['termine', 'annule']),
+        orderBy('updatedAt', 'desc'),
+        // limit(10) // Optionally limit the number of tasks fetched for the summary
+      );
+      const querySnapshot = await getDocs(q);
+      const tasksList = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          createdAt: (data.createdAt as Timestamp)?.toDate ? (data.createdAt as Timestamp).toDate() : new Date(data.createdAt),
+          updatedAt: (data.updatedAt as Timestamp)?.toDate ? (data.updatedAt as Timestamp).toDate() : new Date(data.updatedAt),
+          appointmentDate: data.appointmentDate && (data.appointmentDate as Timestamp)?.toDate ? (data.appointmentDate as Timestamp).toDate() : null,
+          statusHistory: (data.statusHistory || []).map((log: any) => ({
+            ...log,
+            date: (log.date as Timestamp)?.toDate ? (log.date as Timestamp).toDate() : new Date(log.date),
+          })),
+        } as Task;
+      });
+      setAllTasks(tasksList);
+      console.log("OngoingTasksSummary: Tasks fetched from Firestore:", tasksList.length);
+    } catch (e) {
+      console.error("Error loading tasks from Firestore for summary:", e);
+      setAllTasks([]);
+      toast({ title: "Erreur de chargement des tâches pour le résumé", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isClient, toast]);
+
   useEffect(() => {
     if (isClient) {
-      try {
-        const storedTasks = localStorage.getItem(TASK_STORAGE_KEY);
-        if (storedTasks) {
-          const parsedTasks: Task[] = JSON.parse(storedTasks).map((task: any) => ({
-            ...task,
-            createdAt: new Date(task.createdAt),
-            updatedAt: new Date(task.updatedAt),
-            appointmentDate: task.appointmentDate ? new Date(task.appointmentDate) : null,
-            statusHistory: (Array.isArray(task.statusHistory) ? task.statusHistory : []).map((log: any) => ({
-              ...log,
-              date: new Date(log.date),
-            })),
-          }));
-          setAllTasks(parsedTasks);
-        } else {
-          setAllTasks([]);
-        }
-      } catch (e) {
-        console.error("Error loading tasks from localStorage for summary:", e);
-        setAllTasks([]);
-      }
+      fetchOngoingTasks();
+
+      const handleTasksUpdated = () => {
+        console.log("OngoingTasksSummary: taskManagementTasksUpdated event received.");
+        fetchOngoingTasks();
+      };
+      window.addEventListener('taskManagementTasksUpdated', handleTasksUpdated);
+      return () => {
+        window.removeEventListener('taskManagementTasksUpdated', handleTasksUpdated);
+      };
     }
-  }, [isClient]);
+  }, [isClient, fetchOngoingTasks]);
 
-  const ongoingTasks = useMemo(() => {
-    return allTasks.filter(task => !['termine', 'annule'].includes(task.currentStatus))
-                   .sort((a,b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  }, [allTasks]);
+  // ongoingTasks is now directly `allTasks` since the query filters them
+  const ongoingTasks = allTasks;
 
-  const activeTasksCount = useMemo(() => { // Renamed from highPriorityTasksCount for clarity
+  const activeTasksCount = useMemo(() => {
     return ongoingTasks.filter(task => ['en_cours', 'rendez_vous', 'mr_dufay_prevenue', 'devis_fait', 'devis_envoye', 'devis_signature'].includes(task.currentStatus)).length;
   }, [ongoingTasks]);
   
@@ -69,8 +99,7 @@ export default function OngoingTasksSummary() {
     }
   };
 
-
-  if (!isClient) {
+  if (!isClient || isLoading) {
     return (
         <Card className="shadow-lg h-full flex flex-col">
             <CardHeader className="pb-3">
@@ -85,7 +114,7 @@ export default function OngoingTasksSummary() {
                 </CardDescription>
             </CardHeader>
             <CardContent className="flex-grow pt-2 flex items-center justify-center">
-                <p className="text-sm text-muted-foreground">Chargement...</p>
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </CardContent>
         </Card>
     );
