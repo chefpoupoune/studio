@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { Users, Clock, UserCheck, FileText, CalendarClock } from 'lucide-react';
+import { Users, Clock, UserCheck, FileText, CalendarClock, Loader2 } from 'lucide-react'; // Added Loader2
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ManageBrigadeMembers from './components/manage-brigade-members';
@@ -20,12 +20,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { firestore } from '@/lib/firebase'; // Import firestore
-import { collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy } from 'firebase/firestore'; // Import Firestore functions
+import { firestore } from '@/lib/firebase';
+import { collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy } from 'firebase/firestore';
 
-// const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2'; // No longer using localStorage for members
 const TIME_ENTRIES_STORAGE_KEY = 'time_tracking_entries';
-const WORK_SCHEDULE_CUSTOM_TEMPLATES_KEY = "time_tracking_custom_schedule_templates_v2";
+// WORK_SCHEDULE_CUSTOM_TEMPLATES_KEY removed, will be managed by ManageWorkSchedules with Firestore
 const LOGGED_IN_USER_PERMISSIONS_KEY = 'loggedInUserPermissions';
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 const LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY = 'loggedInUserHourViewConfig';
@@ -42,12 +41,13 @@ interface TimeTrackingTab {
 export default function TimeTrackingPage() {
   const [brigadeMembers, setBrigadeMembers] = useState<BrigadeMember[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
-  const [scheduleTemplates, setScheduleTemplates] = useState<WeeklyWorkSchedule[]>([]);
+  const [scheduleTemplates, setScheduleTemplates] = useState<WeeklyWorkSchedule[]>([]); // Still used to pass to ManageBrigadeMembers
   const [isClient, setIsClient] = useState(false);
   const [userPermissions, setUserPermissions] = useState<Partial<Record<RubricId, boolean>>>({});
   const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
   const [loggedInUserHourViewConfig, setLoggedInUserHourViewConfig] = useState<ViewableHourSummaryConfig | null>(null);
   const [isLoadingMembers, setIsLoadingMembers] = useState(true);
+  const [isLoadingScheduleTemplates, setIsLoadingScheduleTemplates] = useState(true); // New loading state
   const { toast } = useToast();
   const isMobile = useIsMobile();
   
@@ -74,47 +74,61 @@ export default function TimeTrackingPage() {
             const parsedEntries = JSON.parse(storedEntries).map((e: TimeEntry) => ({...e, date: new Date(e.date)}));
             setTimeEntries(parsedEntries.sort((a: TimeEntry,b: TimeEntry) => new Date(b.date).getTime() - new Date(a.date).getTime()));
         }
-
-        const storedTemplates = localStorage.getItem(WORK_SCHEDULE_CUSTOM_TEMPLATES_KEY);
-        if (storedTemplates) setScheduleTemplates(JSON.parse(storedTemplates));
-        else setScheduleTemplates([]);
-
+        // Schedule templates are now loaded from Firestore
       } catch (e) {
-        console.error("Error loading non-member data from localStorage (Time Tracking)", e);
-        // Potentially reset these states or handle error appropriately
+        console.error("Error loading non-member/non-template data from localStorage (Time Tracking)", e);
         toast({ title: "Erreur de chargement des configurations", description: "Certaines données de configuration n'ont pu être chargées.", variant: "destructive" });
       }
     }
   }, [isClient, toast]);
 
-  // Load Brigade Members from Firestore
   const fetchBrigadeMembers = useCallback(async () => {
     if (!isClient) return;
     setIsLoadingMembers(true);
     try {
       const membersCollectionRef = collection(firestore, 'brigadeMembers');
-      const q = query(membersCollectionRef, orderBy("name")); // Sort by name
+      const q = query(membersCollectionRef, orderBy("name"));
       const querySnapshot = await getDocs(q);
       const membersList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BrigadeMember));
       setBrigadeMembers(membersList.map((m: any) => ({ ...m, assignedScheduleTemplateIds: Array.isArray(m.assignedScheduleTemplateIds) ? m.assignedScheduleTemplateIds : [] })));
-      console.log("Brigade members fetched from Firestore:", membersList.length);
+      console.log("TimeTrackingPage: Brigade members fetched from Firestore:", membersList.length);
     } catch (error) {
       console.error("Error fetching brigade members from Firestore:", error);
       toast({ title: "Erreur de chargement des membres", description: "Impossible de charger les membres de la brigade depuis la base de données.", variant: "destructive" });
-      setBrigadeMembers([]); // Fallback to empty or initial
+      setBrigadeMembers([]);
     } finally {
       setIsLoadingMembers(false);
     }
   }, [isClient, toast]);
 
+  const fetchScheduleTemplates = useCallback(async () => {
+    if (!isClient) return;
+    setIsLoadingScheduleTemplates(true);
+    try {
+      const templatesCollectionRef = collection(firestore, 'timeTrackingScheduleTemplates');
+      const q = query(templatesCollectionRef, orderBy("name")); // Or any other preferred order
+      const querySnapshot = await getDocs(q);
+      const templatesList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WeeklyWorkSchedule));
+      setScheduleTemplates(templatesList);
+      console.log("TimeTrackingPage: Schedule templates fetched from Firestore:", templatesList.length);
+    } catch (error) {
+      console.error("Error fetching schedule templates from Firestore:", error);
+      toast({ title: "Erreur de chargement des modèles d'horaires", variant: "destructive" });
+      setScheduleTemplates([]);
+    } finally {
+      setIsLoadingScheduleTemplates(false);
+    }
+  }, [isClient, toast]);
+
+
   useEffect(() => {
     if (isClient) {
       fetchBrigadeMembers();
+      fetchScheduleTemplates();
     }
-  }, [isClient, fetchBrigadeMembers]);
+  }, [isClient, fetchBrigadeMembers, fetchScheduleTemplates]);
 
 
-  // Save non-Firestore data
   useEffect(() => {
     if (isClient) {
       localStorage.setItem(TIME_ENTRIES_STORAGE_KEY, JSON.stringify(timeEntries));
@@ -130,14 +144,15 @@ export default function TimeTrackingPage() {
     };
     try {
       const docRef = await addDoc(collection(firestore, "brigadeMembers"), newMember);
-      setBrigadeMembers(prev => [...prev, { ...newMember, id: docRef.id }].sort((a,b) => a.name.localeCompare(b.name)));
+      // No need to sort here, fetchBrigadeMembers does it with orderBy
+      fetchBrigadeMembers(); 
       window.dispatchEvent(new CustomEvent('brigadeMembersUpdated'));
       toast({ title: "Membre Ajouté", description: `${newMember.name} a été ajouté à Firestore.` });
     } catch (e) {
       console.error("Error adding member to Firestore: ", e);
       toast({ title: "Erreur d'ajout", description: "Le membre n'a pas pu être ajouté.", variant: "destructive" });
     }
-  }, [toast]);
+  }, [toast, fetchBrigadeMembers]);
 
   const updateMember = useCallback(async (updatedMember: BrigadeMember) => {
     const memberToUpdate = {
@@ -146,12 +161,9 @@ export default function TimeTrackingPage() {
     };
     try {
       const memberDocRef = doc(firestore, "brigadeMembers", memberToUpdate.id);
-      // Firestore's setDoc with merge:true or updateDoc can be used.
-      // For simplicity and ensuring all fields are as in updatedMember (except id):
       const { id, ...dataToSave } = memberToUpdate;
       await setDoc(memberDocRef, dataToSave); 
-
-      setBrigadeMembers(prev => prev.map(m => m.id === id ? memberToUpdate : m).sort((a,b) => a.name.localeCompare(b.name)));
+      fetchBrigadeMembers();
       setTimeEntries(prevEntries => prevEntries.map(entry => 
           entry.memberId === id ? {...entry, memberName: memberToUpdate.name} : entry
       ));
@@ -161,20 +173,20 @@ export default function TimeTrackingPage() {
       console.error("Error updating member in Firestore: ", e);
       toast({ title: "Erreur de modification", description: "Le membre n'a pas pu être modifié.", variant: "destructive" });
     }
-  }, [toast]);
+  }, [toast, fetchBrigadeMembers]);
   
   const deleteMember = useCallback(async (memberId: string) => {
     const memberName = brigadeMembers.find(m => m.id === memberId)?.name || "Le membre";
     try {
       await deleteDoc(doc(firestore, "brigadeMembers", memberId));
-      setBrigadeMembers(prev => prev.filter(m => m.id !== memberId));
+      fetchBrigadeMembers();
       window.dispatchEvent(new CustomEvent('brigadeMembersUpdated'));
       toast({ title: "Membre Supprimé", description: `${memberName} a été retiré de Firestore.`, variant: "destructive" });
     } catch (e) {
       console.error("Error deleting member from Firestore: ", e);
       toast({ title: "Erreur de suppression", description: "Le membre n'a pas pu être supprimé.", variant: "destructive" });
     }
-  }, [brigadeMembers, toast]);
+  }, [brigadeMembers, toast, fetchBrigadeMembers]);
 
   const addTimeEntry = useCallback((entry: Omit<TimeEntry, 'id' | 'memberName'>) => {
     const member = brigadeMembers.find(m => m.id === entry.memberId);
@@ -199,22 +211,24 @@ export default function TimeTrackingPage() {
     toast({ title: "Historique Effacé", description: "Toutes les saisies d'heures ont été supprimées.", variant: "destructive" });
   }, [toast]);
 
-  const handleScheduleTemplatesChange = useCallback((updatedTemplates: WeeklyWorkSchedule[]) => {
-    setScheduleTemplates(updatedTemplates);
-    if (isClient) {
-      localStorage.setItem(WORK_SCHEDULE_CUSTOM_TEMPLATES_KEY, JSON.stringify(updatedTemplates));
-    }
-  }, [isClient]);
+  // handleScheduleTemplatesChange is no longer needed here as ManageWorkSchedules will handle its own Firestore ops
+  // It will just need a way to re-trigger fetchScheduleTemplates in this parent if a template is added/deleted in child
+  // For now, passing the fetch function itself for re-fetching
+  const refreshScheduleTemplates = useCallback(() => {
+    fetchScheduleTemplates();
+  }, [fetchScheduleTemplates]);
+
 
   const timeTrackingTabsConfig: TimeTrackingTab[] = [
     { value: "personnel", label: "Gestion Personnel", Icon: Users, component: <ManageBrigadeMembers members={brigadeMembers} onAddMember={addMember} onUpdateMember={updateMember} onDeleteMember={deleteMember} scheduleTemplates={scheduleTemplates} />, permissionKey: 'timeTracking_personnel' },
     { value: "recording", label: "Saisie & Historique", Icon: Clock, component: <RecordTimeLog members={brigadeMembers} timeEntries={timeEntries} onAddTimeEntry={addTimeEntry} onDeleteAllTimeEntries={handleDeleteAllTimeEntries} loggedInUsername={loggedInUsername} userPermissions={userPermissions} />, permissionKey: 'timeTracking_recording' },
     { value: "summary", label: "Relevés & PDF", Icon: FileText, component: <MemberSummaryPdf members={brigadeMembers} timeEntries={timeEntries} loggedInUsername={loggedInUsername} userPermissions={userPermissions} />, permissionKey: 'timeTracking_summary' },
-    { value: "schedules", label: "Modèles d'Horaires", Icon: CalendarClock, component: <ManageWorkSchedules initialScheduleTemplates={scheduleTemplates} brigadeMembers={brigadeMembers} onScheduleTemplatesChange={handleScheduleTemplatesChange} loggedInUsername={loggedInUsername} viewConfig={loggedInUserHourViewConfig} />, permissionKey: 'timeTracking_schedules' },
+    { value: "schedules", label: "Modèles d'Horaires", Icon: CalendarClock, component: <ManageWorkSchedules initialScheduleTemplates={scheduleTemplates} brigadeMembers={brigadeMembers} loggedInUsername={loggedInUsername} viewConfig={loggedInUserHourViewConfig} onTemplatesUpdated={refreshScheduleTemplates} />, permissionKey: 'timeTracking_schedules' },
   ];
   
   const visibleTabs = React.useMemo(() => {
-    if (loggedInUsername?.toLowerCase() === 'chef') {
+    const isChef = loggedInUsername?.toLowerCase() === 'chef';
+    if (isChef) {
       return timeTrackingTabsConfig;
     }
     return timeTrackingTabsConfig.filter(tab => userPermissions[tab.permissionKey as RubricId]);
@@ -231,10 +245,11 @@ export default function TimeTrackingPage() {
   }, [visibleTabs, activeTab]);
 
 
-  if (!isClient || isLoadingMembers) { // Display loading until members are fetched
+  if (!isClient || isLoadingMembers || isLoadingScheduleTemplates) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p className="text-lg text-muted-foreground">Chargement du suivi des heures...</p>
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="text-lg text-muted-foreground ml-3">Chargement du suivi des heures...</p>
       </div>
     );
   }
@@ -286,4 +301,3 @@ export default function TimeTrackingPage() {
     </div>
   );
 }
-

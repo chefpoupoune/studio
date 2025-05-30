@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFoo
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Save, PlusCircle, Edit2, Trash2, Filter, Lock } from "lucide-react";
+import { Save, PlusCircle, Edit2, Trash2, Filter, Lock, Loader2 } from "lucide-react"; // Added Loader2
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -30,7 +30,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import type { RubricId, ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management'; // Added ViewableHourSummaryConfig
+import type { RubricId, ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management';
+import { firestore } from '@/lib/firebase';
+import { collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy } from 'firebase/firestore';
 
 const DAYS_OF_WEEK: string[] = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI", "DIMANCHE"];
 
@@ -50,23 +52,23 @@ const templateFormSchema = z.object({
 type TemplateFormData = z.infer<typeof templateFormSchema>;
 
 interface ManageWorkSchedulesProps {
-  initialScheduleTemplates: WeeklyWorkSchedule[];
+  // initialScheduleTemplates is no longer needed as it fetches its own data
   brigadeMembers: BrigadeMember[];
-  onScheduleTemplatesChange: (updatedTemplates: WeeklyWorkSchedule[]) => void;
   loggedInUsername: string | null;
-  viewConfig: ViewableHourSummaryConfig | null; // Changed from userPermissions
+  viewConfig: ViewableHourSummaryConfig | null;
+  onTemplatesUpdated: () => void; // Callback to refresh templates in parent if needed
 }
 
 const ALL_MODELS_FILTER_VALUE = "_ALL_MODELS_";
 
 export default function ManageWorkSchedules({ 
-  initialScheduleTemplates, 
   brigadeMembers, 
-  onScheduleTemplatesChange,
   loggedInUsername,
-  viewConfig // Changed from userPermissions
+  viewConfig,
+  onTemplatesUpdated
 }: ManageWorkSchedulesProps) {
-  const [scheduleTemplates, setScheduleTemplates] = useState<WeeklyWorkSchedule[]>(initialScheduleTemplates);
+  const [scheduleTemplates, setScheduleTemplates] = useState<WeeklyWorkSchedule[]>([]);
+  const [isLoading, setIsLoading] = useState(true); // For Firestore operations
   const [isTemplateFormOpen, setIsTemplateFormOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<WeeklyWorkSchedule | null>(null);
   const [selectedMemberIdForFilter, setSelectedMemberIdForFilter] = useState<string>(ALL_MODELS_FILTER_VALUE);
@@ -77,9 +79,27 @@ export default function ManageWorkSchedules({
     setIsClient(true);
   }, []);
 
+  const fetchTemplates = useCallback(async () => {
+    if (!isClient) return;
+    setIsLoading(true);
+    try {
+      const templatesCollectionRef = collection(firestore, 'timeTrackingScheduleTemplates');
+      const q = query(templatesCollectionRef, orderBy("name"));
+      const querySnapshot = await getDocs(q);
+      const templatesList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WeeklyWorkSchedule));
+      setScheduleTemplates(templatesList);
+    } catch (error) {
+      console.error("Error fetching schedule templates from Firestore:", error);
+      toast({ title: "Erreur de chargement des modèles", variant: "destructive" });
+      setScheduleTemplates([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isClient, toast]);
+
   useEffect(() => {
-    setScheduleTemplates(initialScheduleTemplates);
-  }, [initialScheduleTemplates]);
+    fetchTemplates();
+  }, [fetchTemplates]);
 
   const isChef = useMemo(() => loggedInUsername?.toLowerCase() === 'chef', [loggedInUsername]);
   const canManageTemplates = useMemo(() => isChef, [isChef]);
@@ -124,10 +144,25 @@ export default function ManageWorkSchedules({
     );
   };
 
-  const handleSaveAllTemplates = () => {
+  const handleSaveAllTemplates = async () => {
     if (!isClient || !canManageTemplates) return;
-    onScheduleTemplatesChange(scheduleTemplates); 
-    toast({ title: "Modèles d'Horaires Sauvegardés", description: "Vos modifications ont été enregistrées." });
+    setIsLoading(true);
+    try {
+      const batch = []; // Using a simple array for promises, not Firestore batch for multiple docs
+      for (const template of scheduleTemplates) {
+        const { id, ...dataToSave } = template;
+        const templateDocRef = doc(firestore, 'timeTrackingScheduleTemplates', id);
+        batch.push(setDoc(templateDocRef, dataToSave, { merge: true })); // Merge to avoid overwriting if structure changed elsewhere
+      }
+      await Promise.all(batch);
+      toast({ title: "Modèles d'Horaires Sauvegardés", description: "Vos modifications ont été enregistrées dans Firestore." });
+      onTemplatesUpdated(); // Notify parent to re-fetch if necessary
+    } catch (error) {
+        console.error("Error saving templates to Firestore:", error);
+        toast({ title: "Erreur de sauvegarde des modèles", variant: "destructive"});
+    } finally {
+        setIsLoading(false);
+    }
   };
 
   const templateForm = useForm<TemplateFormData>({
@@ -146,105 +181,117 @@ export default function ManageWorkSchedules({
     setIsTemplateFormOpen(true);
   };
 
-  const handleTemplateFormSubmit = (data: TemplateFormData) => {
+  const handleTemplateFormSubmit = async (data: TemplateFormData) => {
     if (!canManageTemplates) return;
-    let updatedTemplates;
-    if (editingTemplate) {
-      updatedTemplates = scheduleTemplates.map(t => {
-        if (t.id === editingTemplate.id) {
-          const daysToUse = data.includesSaturday ? DAYS_OF_WEEK.slice(0, 6) : DAYS_OF_WEEK.slice(0, 5);
-          const existingDaysData = t.includesSaturday === data.includesSaturday 
-            ? t.days 
-            : daysToUse.map(dayName => createInitialDailyEntry(dayName));
-          
-          const filteredDays = existingDaysData.filter(d => daysToUse.includes(d.dayName));
-          daysToUse.forEach(dayName => {
-            if (!filteredDays.find(d => d.dayName === dayName)) {
-              filteredDays.push(createInitialDailyEntry(dayName));
-            }
-          });
-          filteredDays.sort((a, b) => DAYS_OF_WEEK.indexOf(a.dayName) - DAYS_OF_WEEK.indexOf(b.dayName));
+    setIsLoading(true);
+    try {
+      if (editingTemplate) {
+        const daysToUse = data.includesSaturday ? DAYS_OF_WEEK.slice(0, 6) : DAYS_OF_WEEK.slice(0, 5);
+        const existingDaysData = editingTemplate.includesSaturday === data.includesSaturday 
+          ? editingTemplate.days 
+          : daysToUse.map(dayName => createInitialDailyEntry(dayName));
+        
+        const filteredDays = existingDaysData.filter(d => daysToUse.includes(d.dayName));
+        daysToUse.forEach(dayName => {
+          if (!filteredDays.find(d => d.dayName === dayName)) {
+            filteredDays.push(createInitialDailyEntry(dayName));
+          }
+        });
+        filteredDays.sort((a, b) => DAYS_OF_WEEK.indexOf(a.dayName) - DAYS_OF_WEEK.indexOf(b.dayName));
+        const totalWeeklyMinutes = filteredDays.reduce((acc, day) => acc + timeToMinutes(day.plannedTotal), 0);
 
-          const totalWeeklyMinutes = filteredDays.reduce((acc, day) => acc + timeToMinutes(day.plannedTotal), 0);
-
-          return { 
-            ...t, 
-            name: data.name, 
-            includesSaturday: data.includesSaturday,
-            days: filteredDays,
-            weeklyTotal: minutesToTime(totalWeeklyMinutes),
-          };
-        }
-        return t;
-      });
-      toast({ title: "Modèle Modifié", description: `Le modèle "${data.name}" a été mis à jour.` });
-    } else {
-      const days = data.includesSaturday ? DAYS_OF_WEEK.slice(0, 6) : DAYS_OF_WEEK.slice(0, 5);
-      const newTemplate: WeeklyWorkSchedule = {
-        id: `schedule_template_${Date.now()}`,
-        name: data.name,
-        includesSaturday: data.includesSaturday,
-        days: days.map(dayName => createInitialDailyEntry(dayName)),
-        weeklyTotal: "00:00",
-        applicationNotes: "",
-      };
-      updatedTemplates = [...scheduleTemplates, newTemplate];
-      toast({ title: "Modèle Créé", description: `Le modèle "${data.name}" a été créé.` });
+        const updatedTemplateData = { 
+          name: data.name, 
+          includesSaturday: data.includesSaturday,
+          days: filteredDays,
+          weeklyTotal: minutesToTime(totalWeeklyMinutes),
+          applicationNotes: editingTemplate.applicationNotes || "", // Preserve existing notes
+        };
+        const templateDocRef = doc(firestore, 'timeTrackingScheduleTemplates', editingTemplate.id);
+        await setDoc(templateDocRef, updatedTemplateData);
+        toast({ title: "Modèle Modifié", description: `Le modèle "${data.name}" a été mis à jour dans Firestore.` });
+      } else {
+        const days = data.includesSaturday ? DAYS_OF_WEEK.slice(0, 6) : DAYS_OF_WEEK.slice(0, 5);
+        const newTemplateData: Omit<WeeklyWorkSchedule, 'id'> = {
+          name: data.name,
+          includesSaturday: data.includesSaturday,
+          days: days.map(dayName => createInitialDailyEntry(dayName)),
+          weeklyTotal: "00:00",
+          applicationNotes: "",
+        };
+        await addDoc(collection(firestore, 'timeTrackingScheduleTemplates'), newTemplateData);
+        toast({ title: "Modèle Créé", description: `Le modèle "${data.name}" a été créé dans Firestore.` });
+      }
+      fetchTemplates(); // Re-fetch all templates
+      onTemplatesUpdated();
+    } catch (error) {
+        console.error("Error submitting template form to Firestore:", error);
+        toast({ title: "Erreur de soumission du modèle", variant: "destructive"});
+    } finally {
+        setIsLoading(false);
+        setIsTemplateFormOpen(false);
     }
-    setScheduleTemplates(updatedTemplates);
-    onScheduleTemplatesChange(updatedTemplates); 
-    setIsTemplateFormOpen(false);
   };
 
-  const handleDeleteTemplate = (templateId: string, templateName: string) => {
+  const handleDeleteTemplate = async (templateId: string, templateName: string) => {
     if (!canManageTemplates) return;
-    const updatedTemplates = scheduleTemplates.filter(t => t.id !== templateId);
-    setScheduleTemplates(updatedTemplates);
-    onScheduleTemplatesChange(updatedTemplates); 
-    toast({ title: "Modèle Supprimé", description: `Le modèle "${templateName}" a été supprimé.`, variant: "destructive" });
+    setIsLoading(true);
+    try {
+        await deleteDoc(doc(firestore, 'timeTrackingScheduleTemplates', templateId));
+        toast({ title: "Modèle Supprimé", description: `Le modèle "${templateName}" a été supprimé de Firestore.`, variant: "destructive" });
+        fetchTemplates();
+        onTemplatesUpdated();
+    } catch (error) {
+        console.error("Error deleting template from Firestore:", error);
+        toast({ title: "Erreur de suppression du modèle", variant: "destructive"});
+    } finally {
+        setIsLoading(false);
+    }
   };
 
   const displayedScheduleTemplates = useMemo(() => {
-    console.log("ManageWorkSchedules: Calculating displayedScheduleTemplates. IsChef:", isChef, "ViewConfig:", viewConfig);
+    if (isLoading) return []; // Return empty if still loading global templates
+    console.log("ManageWorkSchedules: Calculating displayedScheduleTemplates. IsChef:", isChef, "ViewConfig:", viewConfig, "SelectedMemberFilter:", selectedMemberIdForFilter, "All Templates Count:", scheduleTemplates.length);
+    
     if (isChef || viewConfig?.type === 'all') {
         if (selectedMemberIdForFilter === ALL_MODELS_FILTER_VALUE || !selectedMemberIdForFilter) {
-            console.log("ManageWorkSchedules: Chef/All view, no filter. Showing all templates:", scheduleTemplates.length);
+            console.log("ManageWorkSchedules: Chef/All view, no filter. Showing all templates:", scheduleTemplates.map(t => t.name));
             return scheduleTemplates;
         }
         const selectedMember = brigadeMembers.find(m => m.id === selectedMemberIdForFilter);
+        console.log("ManageWorkSchedules: Chef/All view, filtering for member:", selectedMember?.name, "Assigned IDs:", selectedMember?.assignedScheduleTemplateIds);
         if (!selectedMember || !selectedMember.assignedScheduleTemplateIds || selectedMember.assignedScheduleTemplateIds.length === 0) {
-            console.log("ManageWorkSchedules: Chef/All view, specific member filter but no assigned schedules for:", selectedMember?.name);
             return [];
         }
         const filtered = scheduleTemplates.filter(st => selectedMember.assignedScheduleTemplateIds?.includes(st.id));
-        console.log("ManageWorkSchedules: Chef/All view, filtered by member", selectedMember.name, "Found templates:", filtered.length);
+        console.log("ManageWorkSchedules: Chef/All view, filtered result:", filtered.map(t => t.name));
         return filtered;
     } else if (viewConfig?.type === 'own' && loggedInUsername) {
         const currentUserBrigadeMember = brigadeMembers.find(bm => bm.name.toLowerCase() === loggedInUsername.toLowerCase());
+        console.log("ManageWorkSchedules: Own view for:", loggedInUsername, "Found member:", currentUserBrigadeMember?.name, "Assigned IDs:", currentUserBrigadeMember?.assignedScheduleTemplateIds);
         if (!currentUserBrigadeMember || !currentUserBrigadeMember.assignedScheduleTemplateIds || currentUserBrigadeMember.assignedScheduleTemplateIds.length === 0) {
-            console.log("ManageWorkSchedules: Own view, no assigned schedules for:", loggedInUsername);
             return [];
         }
         const filtered = scheduleTemplates.filter(st => currentUserBrigadeMember.assignedScheduleTemplateIds?.includes(st.id));
-        console.log("ManageWorkSchedules: Own view for", loggedInUsername, "Found templates:", filtered.length);
+         console.log("ManageWorkSchedules: Own view, filtered result:", filtered.map(t => t.name));
         return filtered;
     } else if (viewConfig?.type === 'specific' && viewConfig.specificMemberId) {
         const targetMember = brigadeMembers.find(m => m.id === viewConfig.specificMemberId);
+        console.log("ManageWorkSchedules: Specific view for target member:", targetMember?.name, "Assigned IDs:", targetMember?.assignedScheduleTemplateIds);
         if (!targetMember || !targetMember.assignedScheduleTemplateIds || targetMember.assignedScheduleTemplateIds.length === 0) {
-            console.log("ManageWorkSchedules: Specific view, no assigned schedules for target member:", targetMember?.name);
             return [];
         }
         const filtered = scheduleTemplates.filter(st => targetMember.assignedScheduleTemplateIds?.includes(st.id));
-        console.log("ManageWorkSchedules: Specific view for target", targetMember.name, "Found templates:", filtered.length);
+        console.log("ManageWorkSchedules: Specific view, filtered result:", filtered.map(t => t.name));
         return filtered;
     }
-    console.log("ManageWorkSchedules: No specific view condition met, returning empty list.");
+    console.log("ManageWorkSchedules: No view condition met, returning empty list.");
     return [];
-  }, [scheduleTemplates, selectedMemberIdForFilter, brigadeMembers, isChef, loggedInUsername, viewConfig]);
+  }, [scheduleTemplates, selectedMemberIdForFilter, brigadeMembers, isChef, loggedInUsername, viewConfig, isLoading]);
 
 
   if (!isClient) {
-    return <div className="flex justify-center items-center p-8">Chargement des modèles d'horaires...</div>;
+    return <div className="flex justify-center items-center p-8"><Loader2 className="h-6 w-6 animate-spin text-primary"/> Chargement des modèles d'horaires...</div>;
   }
   
   const showFilter = isChef || viewConfig?.type === 'all';
@@ -300,20 +347,22 @@ export default function ManageWorkSchedules({
                         )} />
                         <DialogFooter>
                         <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                        <Button type="submit">{editingTemplate ? "Enregistrer" : "Créer Modèle"}</Button>
+                        <Button type="submit" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingTemplate ? "Enregistrer" : "Créer Modèle"}</Button>
                         </DialogFooter>
                     </form>
                     </Form>
                 </DialogContent>
                 </Dialog>
-                <Button onClick={handleSaveAllTemplates} className="w-full sm:w-auto">
-                    <Save className="mr-2 h-4 w-4" /> Sauvegarder Modèles
+                <Button onClick={handleSaveAllTemplates} className="w-full sm:w-auto" disabled={isLoading}>
+                   {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} <Save className="mr-2 h-4 w-4" /> Sauvegarder Modèles
                 </Button>
             </div>
         )}
       </div>
 
-      {scheduleTemplates.length === 0 && canManageTemplates ? (
+      {isLoading && scheduleTemplates.length === 0 ? (
+         <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /> Chargement des modèles...</div>
+      ) : scheduleTemplates.length === 0 && canManageTemplates ? (
         <p className="text-muted-foreground text-center py-6">Aucun modèle d'horaire créé. Cliquez sur "Ajouter un Modèle" pour commencer.</p>
       ) : displayedScheduleTemplates.length === 0 && (isChef || viewConfig?.type === 'all') && selectedMemberIdForFilter !== ALL_MODELS_FILTER_VALUE ? (
          <p className="text-muted-foreground text-center py-6">
@@ -355,12 +404,12 @@ export default function ManageWorkSchedules({
                   </div>
                   {canManageTemplates && (
                     <div className="space-x-1 flex-shrink-0">
-                        <Button variant="ghost" size="icon" onClick={() => handleOpenTemplateForm(schedule)} className="h-8 w-8">
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenTemplateForm(schedule)} className="h-8 w-8" disabled={isLoading}>
                             <Edit2 className="h-4 w-4"/>
                         </Button>
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive">
+                                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive" disabled={isLoading}>
                                     <Trash2 className="h-4 w-4"/>
                                 </Button>
                             </AlertDialogTrigger>
@@ -373,8 +422,8 @@ export default function ManageWorkSchedules({
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                     <AlertDialogCancel>Annuler</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => handleDeleteTemplate(schedule.id, schedule.name)}>
-                                    Supprimer
+                                    <AlertDialogAction onClick={() => handleDeleteTemplate(schedule.id, schedule.name)} disabled={isLoading}>
+                                     {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Supprimer
                                     </AlertDialogAction>
                                 </AlertDialogFooter>
                             </AlertDialogContent>
@@ -395,7 +444,7 @@ export default function ManageWorkSchedules({
                   onChange={(e) => handleApplicationNotesChange(schedule.id, e.target.value)}
                   placeholder="Ex: Septembre à Mai, sauf jours fériés"
                   className="mt-1"
-                  disabled={!canManageTemplates}
+                  disabled={!canManageTemplates || isLoading}
                 />
               </div>
               <div className="overflow-x-auto border rounded-md">
@@ -422,7 +471,7 @@ export default function ManageWorkSchedules({
                               value={day[field]}
                               onChange={(e) => updateScheduleEntry(schedule.id, dayIndex, field, e.target.value)}
                               className="h-8 text-sm w-28"
-                              disabled={!canManageTemplates}
+                              disabled={!canManageTemplates || isLoading}
                             />
                           </TableCell>
                         ))}
