@@ -12,7 +12,7 @@ export interface StockMovement {
   productName: string; 
   type: 'entry' | 'exit';
   quantity: number;
-  date: Date;
+  date: Date; // Changed from Firestore Timestamp to JS Date for app use
   notes?: string;
 }
 
@@ -32,10 +32,10 @@ export type PurchaseOrderStatus = 'pending' | 'received';
 
 export interface PurchaseOrder {
   id: string;
-  date: Date;
+  date: Date; // Changed from Firestore Timestamp to JS Date for app use
   orderNumber: string; 
   items: PurchaseOrderItem[];
   status: PurchaseOrderStatus;
-  receivedDate?: string; 
+  receivedDate?: string; // Kept as ISO string, will be parsed if needed
 }
 
