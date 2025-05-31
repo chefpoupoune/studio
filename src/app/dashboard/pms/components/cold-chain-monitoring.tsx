@@ -31,20 +31,21 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { firestore } from '@/lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
 }
 
 const todayKey = format(new Date(), 'yyyy-MM-dd');
-const COOLDOWN_LOG_STORAGE_KEY_PREFIX = "pms_cold_chain_cooldown_v2_"; // Versioned key
-const DELIVERY_LOG_STORAGE_KEY_PREFIX = "pms_cold_chain_delivery_v2_"; 
+// COOLDOWN_LOG_STORAGE_KEY_PREFIX and DELIVERY_LOG_STORAGE_KEY_PREFIX removed
 
 // Schemas
 const coolDownEntrySchema = z.object({
   productName: z.string().min(1, "Nom du produit requis."),
   quantity: z.string().min(1, "Quantité requise."),
-  piecesOrPlats: z.string().optional(), // New field
+  piecesOrPlats: z.string().optional(),
   startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: "Format HH:MM requis." }).optional().or(z.literal('')),
   startTemp: z.string().optional(),
   endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: "Format HH:MM requis." }).optional().or(z.literal('')),
@@ -78,39 +79,94 @@ export default function ColdChainMonitoring() {
   const [editingDeliveryEntry, setEditingDeliveryEntry] = useState<DailyDeliveryEntry | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
   const coolDownForm = useForm<CoolDownFormData>({ resolver: zodResolver(coolDownEntrySchema) });
   const deliveryForm = useForm<DeliveryFormData>({ resolver: zodResolver(deliveryEntrySchema) });
 
-  const getCoolDownStorageKey = useCallback(() => `${COOLDOWN_LOG_STORAGE_KEY_PREFIX}${todayKey}`, []);
-  const getDeliveryStorageKey = useCallback(() => `${DELIVERY_LOG_STORAGE_KEY_PREFIX}${todayKey}`, []);
+  const coolDownDocRef = useCallback(() => doc(firestore, 'pmsColdChainCooldown', todayKey), []);
+  const deliveryDocRef = useCallback(() => doc(firestore, 'pmsColdChainDelivery', todayKey), []);
 
   useEffect(() => {
-    setIsLoading(true);
-    try {
-      const storedCoolDown = localStorage.getItem(getCoolDownStorageKey());
-      if (storedCoolDown) setCoolDownEntries(JSON.parse(storedCoolDown));
-      else setCoolDownEntries([]);
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        const coolDownSnap = await getDoc(coolDownDocRef());
+        if (coolDownSnap.exists()) {
+          setCoolDownEntries(coolDownSnap.data().entries || []);
+        } else {
+          setCoolDownEntries([]);
+        }
 
-      const storedDelivery = localStorage.getItem(getDeliveryStorageKey());
-      if (storedDelivery) setDeliveryEntries(JSON.parse(storedDelivery));
-      else setDeliveryEntries([]);
+        const deliverySnap = await getDoc(deliveryDocRef());
+        if (deliverySnap.exists()) {
+          setDeliveryEntries(deliverySnap.data().entries || []);
+        } else {
+          setDeliveryEntries([]);
+        }
+      } catch (error) {
+        console.error("Error loading cold chain data from Firestore:", error);
+        toast({ title: "Erreur de chargement", description: "Données de liaison froide corrompues.", variant: "destructive" });
+        setCoolDownEntries([]);
+        setDeliveryEntries([]);
+      }
+      setIsLoading(false);
+    };
+    loadData();
+  }, [toast, coolDownDocRef, deliveryDocRef]);
 
-    } catch (error) {
-      console.error("Error loading cold chain data:", error);
-      toast({ title: "Erreur de chargement", description: "Données de liaison froide corrompues.", variant: "destructive" });
+  useEffect(() => {
+    if (!isLoading && !isSaving) {
+      const saveCoolDown = async () => {
+        setIsSaving(true);
+        try {
+          await setDoc(coolDownDocRef(), { entries: coolDownEntries });
+        } catch (error) {
+          console.error("Error saving cooldown entries to Firestore:", error);
+          toast({ title: "Erreur sauvegarde (baisse temp.)", variant: "destructive" });
+        }
+        setIsSaving(false);
+      };
+      // Debounce or save on specific actions if needed, for now direct save.
+      // saveCoolDown(); // This would save on every change, might be too frequent.
+      // A button or a debounced effect is better. For now, we'll rely on explicit save via PDF button or dialog close.
     }
-    setIsLoading(false);
-  }, [toast, getCoolDownStorageKey, getDeliveryStorageKey]);
+  }, [coolDownEntries, isLoading, isSaving, coolDownDocRef, toast]);
 
   useEffect(() => {
-    if (!isLoading) localStorage.setItem(getCoolDownStorageKey(), JSON.stringify(coolDownEntries));
-  }, [coolDownEntries, isLoading, getCoolDownStorageKey]);
+    if (!isLoading && !isSaving) {
+      const saveDelivery = async () => {
+        setIsSaving(true);
+        try {
+          await setDoc(deliveryDocRef(), { entries: deliveryEntries });
+        } catch (error) {
+          console.error("Error saving delivery entries to Firestore:", error);
+          toast({ title: "Erreur sauvegarde (livraison)", variant: "destructive" });
+        }
+        setIsSaving(false);
+      };
+      // saveDelivery(); // Similar to cooldown, direct save might be too frequent.
+    }
+  }, [deliveryEntries, isLoading, isSaving, deliveryDocRef, toast]);
 
-  useEffect(() => {
-    if (!isLoading) localStorage.setItem(getDeliveryStorageKey(), JSON.stringify(deliveryEntries));
-  }, [deliveryEntries, isLoading, getDeliveryStorageKey]);
+  const saveDataToFirestore = async (type: 'cooldown' | 'delivery') => {
+    setIsSaving(true);
+    try {
+      if (type === 'cooldown') {
+        await setDoc(coolDownDocRef(), { entries: coolDownEntries });
+      } else {
+        await setDoc(deliveryDocRef(), { entries: deliveryEntries });
+      }
+      // Toast for individual saves can be too noisy, consider removing or making it less frequent.
+      // toast({ title: `Données ${type} sauvegardées` }); 
+    } catch (error) {
+      console.error(`Error saving ${type} entries to Firestore:`, error);
+      toast({ title: `Erreur sauvegarde (${type})`, variant: "destructive" });
+    }
+    setIsSaving(false);
+  };
+
 
   const handleOpenCoolDownDialog = (entry?: DailyCoolDownEntry) => {
     setEditingCoolDownEntry(entry || null);
@@ -119,19 +175,26 @@ export default function ColdChainMonitoring() {
   };
 
   const handleCoolDownFormSubmit = (data: CoolDownFormData) => {
+    let updatedEntries;
     if (editingCoolDownEntry) {
-      setCoolDownEntries(prev => prev.map(e => e.id === editingCoolDownEntry.id ? { ...editingCoolDownEntry, ...data } : e));
+      updatedEntries = coolDownEntries.map(e => e.id === editingCoolDownEntry.id ? { ...editingCoolDownEntry, ...data } : e);
       toast({ title: "Modification Enregistrée", description: "L'entrée de baisse en température a été mise à jour." });
     } else {
       const newEntry: DailyCoolDownEntry = { ...data, id: `cd_${Date.now()}` };
-      setCoolDownEntries(prev => [newEntry, ...prev]);
+      updatedEntries = [newEntry, ...coolDownEntries];
       toast({ title: "Nouvelle Entrée Ajoutée", description: "Baisse en température enregistrée." });
     }
+    setCoolDownEntries(updatedEntries);
+    saveDataToFirestore('cooldown');
     setIsCoolDownDialogOpen(false);
   };
 
   const handleDeleteCoolDownEntry = (entryId: string) => {
-    setCoolDownEntries(prev => prev.filter(e => e.id !== entryId));
+    setCoolDownEntries(prev => {
+      const newEntries = prev.filter(e => e.id !== entryId);
+      saveDataToFirestore('cooldown'); // Save immediately after setting state (or before)
+      return newEntries;
+    });
     toast({ title: "Entrée Supprimée", variant: "destructive" });
   };
 
@@ -142,24 +205,31 @@ export default function ColdChainMonitoring() {
   };
 
   const handleDeliveryFormSubmit = (data: DeliveryFormData) => {
+    let updatedEntries;
     if (editingDeliveryEntry) {
-      setDeliveryEntries(prev => prev.map(e => e.id === editingDeliveryEntry.id ? { ...editingDeliveryEntry, ...data } : e));
+      updatedEntries = deliveryEntries.map(e => e.id === editingDeliveryEntry.id ? { ...editingDeliveryEntry, ...data } : e);
       toast({ title: "Modification Enregistrée", description: "L'entrée de livraison a été mise à jour." });
     } else {
       const newEntry: DailyDeliveryEntry = { ...data, id: `del_${Date.now()}` };
-      setDeliveryEntries(prev => [newEntry, ...prev]);
+      updatedEntries = [newEntry, ...deliveryEntries];
       toast({ title: "Nouvelle Entrée Ajoutée", description: "Livraison enregistrée." });
     }
+    setDeliveryEntries(updatedEntries);
+    saveDataToFirestore('delivery');
     setIsDeliveryDialogOpen(false);
   };
 
   const handleDeleteDeliveryEntry = (entryId: string) => {
-    setDeliveryEntries(prev => prev.filter(e => e.id !== entryId));
+    setDeliveryEntries(prev => {
+      const newEntries = prev.filter(e => e.id !== entryId);
+      saveDataToFirestore('delivery');
+      return newEntries;
+    });
     toast({ title: "Entrée Supprimée", variant: "destructive" });
   };
   
   const generatePdf = (dataType: 'cooldown' | 'delivery') => {
-    setIsLoading(true);
+    setIsLoading(true); // Use general isLoading for PDF generation to disable buttons
     try {
       const isCooldown = dataType === 'cooldown';
       const dataToExport = isCooldown ? coolDownEntries : deliveryEntries;
@@ -193,14 +263,13 @@ export default function ColdChainMonitoring() {
 
       let head: any[], body: any[][], columnStyles: any = {}, cellStyles: any = {};
       
-      const orangeBg = [239, 121, 40]; // Orange
-      const blueBg = [155, 194, 230];   // Light Blue
-      const greyBg = [200, 200, 200];   // Light Grey
+      const orangeBg = [239, 121, 40]; 
+      const blueBg = [155, 194, 230];   
+      const greyBg = [200, 200, 200];   
       const whiteText: [number, number, number] = [255,255,255];
       const blackText: [number, number, number] = [0,0,0];
 
       const coloredHeadStyle = (bgColor: [number,number,number], textColor: [number,number,number]) => ({ ...baseHeadStyles, fillColor: bgColor, textColor: textColor, fontSize: 8 });
-
 
       if (isCooldown) {
         head = [
@@ -210,7 +279,7 @@ export default function ColdChainMonitoring() {
             { content: 'Pièces / Plats', rowSpan: 2, styles: baseHeadStyles },
             { content: 'Debut', colSpan: 2, styles: coloredHeadStyle(orangeBg, whiteText) },
             { content: 'Fin', colSpan: 2, styles: coloredHeadStyle(blueBg, blackText) },
-            { content: 'VISA', colSpan: 1, styles: coloredHeadStyle(greyBg, blackText) }, // Adjusted colSpan
+            { content: 'VISA', colSpan: 1, styles: coloredHeadStyle(greyBg, blackText) }, 
           ],
           [ 
             { content: 'heure', styles: coloredHeadStyle(orangeBg, whiteText) },
@@ -230,7 +299,7 @@ export default function ColdChainMonitoring() {
             { content: e.endTemp || '-', styles: { fillColor: blueBg } }, 
             { content: e.visa || '-', styles: { fillColor: greyBg } }
         ]);
-      } else { // Delivery
+      } else { 
         const greenBg = [209, 250, 229]; const yellowBg = [254, 249, 195]; 
         head = [
           [ 
@@ -266,7 +335,17 @@ export default function ColdChainMonitoring() {
       doc.autoTable({
         head, body, startY: currentY, theme: 'grid', 
         styles: { fontSize: 8, cellPadding: 1.5, valign: 'middle', halign: 'center' },
-        didDrawPage: (hookData) => { /* Footer logic */ }
+        didDrawPage: (hookData) => { 
+             const pageCount = doc.internal.getNumberOfPages();
+             if (pdfSettings.footerText) {
+                let footerStr = pdfSettings.footerText
+                .replace('{date}', generationDateFormatted)
+                .replace('{pageNumber}', hookData.pageNumber.toString())
+                .replace('{totalPages}', pageCount.toString());
+                doc.setFontSize(9);
+                doc.text(footerStr, hookData.settings.margin.left, doc.internal.pageSize.height - 10);
+            }
+        }
       });
       doc.save(`Suivi_${filenameSuffix}_${todayKey}.pdf`);
       toast({ title: "PDF Généré", description: `Le PDF pour ${title.toLowerCase()} a été téléchargé.` });
@@ -326,7 +405,7 @@ export default function ColdChainMonitoring() {
           <CardDescription>Suivi des produits mis en refroidissement rapide pour la journée en cours.</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : coolDownEntries.length === 0 ? <p className="text-center text-muted-foreground">Aucun produit en refroidissement.</p> : (
+          {(isLoading && !isSaving) ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : coolDownEntries.length === 0 ? <p className="text-center text-muted-foreground">Aucun produit en refroidissement.</p> : (
             <div className="overflow-x-auto border rounded-md">
               <Table>
                 <TableHeader>
@@ -370,7 +449,7 @@ export default function ColdChainMonitoring() {
               </Table>
             </div>
           )}
-          {coolDownEntries.length > 0 && <div className="mt-4 flex justify-end"><Button onClick={() => generatePdf('cooldown')} size="sm" disabled={isLoading}>{isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/>:<FileText className="mr-2 h-4 w-4"/>} Générer PDF</Button></div>}
+          {coolDownEntries.length > 0 && <div className="mt-4 flex justify-end"><Button onClick={() => generatePdf('cooldown')} size="sm" disabled={isLoading || isSaving}>{ (isLoading || isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/>:<FileText className="mr-2 h-4 w-4"/>} Générer PDF</Button></div>}
         </CardContent>
       </Card>
 
@@ -414,7 +493,7 @@ export default function ColdChainMonitoring() {
           <CardDescription>Suivi des livraisons pour la journée en cours.</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : deliveryEntries.length === 0 ? <p className="text-center text-muted-foreground">Aucune livraison enregistrée.</p> : (
+          {(isLoading && !isSaving) ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : deliveryEntries.length === 0 ? <p className="text-center text-muted-foreground">Aucune livraison enregistrée.</p> : (
             <div className="overflow-x-auto border rounded-md">
               <Table>
                 <TableHeader>
@@ -460,7 +539,7 @@ export default function ColdChainMonitoring() {
               </Table>
             </div>
           )}
-          {deliveryEntries.length > 0 && <div className="mt-4 flex justify-end"><Button onClick={() => generatePdf('delivery')} size="sm" disabled={isLoading}>{isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/>:<FileText className="mr-2 h-4 w-4"/>} Générer PDF</Button></div>}
+          {deliveryEntries.length > 0 && <div className="mt-4 flex justify-end"><Button onClick={() => generatePdf('delivery')} size="sm" disabled={isLoading || isSaving}>{ (isLoading || isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/>:<FileText className="mr-2 h-4 w-4"/>} Générer PDF</Button></div>}
         </CardContent>
       </Card>
     </div>
