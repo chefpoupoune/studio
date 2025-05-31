@@ -9,10 +9,10 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Save, CalendarDays, Trash2, Loader2, CheckCircle, PlusCircle } from 'lucide-react'; // Added PlusCircle
+import { Save, CalendarDays, Trash2, Loader2, CheckCircle, PlusCircle } from 'lucide-react';
 import type { StoredPicnicMenuTemplate, DisplayedPicnicMenuWeek, PicnicMenuDayKey } from '../types';
 import { PICNIC_MENU_MONTHS, PICNIC_MENU_DAY_KEYS, NUM_PICNIC_ITEM_SLOTS, PICNIC_MENU_DAYS_LABELS } from '../types';
-import { format, getYear, startOfMonth, startOfWeek, addDays, endOfWeek, getMonth, endOfMonth } from 'date-fns'; // Added endOfWeek, getMonth, endOfMonth
+import { format, getYear, startOfMonth, startOfWeek, addDays, endOfWeek, getMonth, endOfMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -27,9 +27,11 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { cn } from '@/lib/utils';
+import { firestore } from '@/lib/firebase';
+import { doc, getDoc, setDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
 
-const PICNIC_MONTHLY_MENU_TEMPLATES_KEY = "picnic_monthly_menu_templates_v1";
-const PICNIC_SELECTED_TEMPLATE_INDEX_KEY = "picnic_selected_template_index_v1"; 
+// PICNIC_MONTHLY_MENU_TEMPLATES_KEY replaced by Firestore collection 'picnicMenuTemplates'
+// PICNIC_SELECTED_TEMPLATE_INDEX_KEY replaced by Firestore document in 'picnicMenuSelections'
 const DISPLAY_CONTEXT_YEAR = getYear(new Date()); 
 
 const createEmptyDailyItems = (): string[] => Array(NUM_PICNIC_ITEM_SLOTS).fill('');
@@ -46,13 +48,16 @@ const createInitialMonthlyTemplates = (): StoredPicnicMenuTemplate[] => {
   return Array(5).fill(null).map(() => createEmptyStoredTemplate());
 };
 
+const FIRESTORE_SELECTIONS_DOC_ID = "globalPicnicRecapSelections";
+
 export default function PicnicMenu() {
   const [selectedMonthTab, setSelectedMonthTab] = useState<string>(PICNIC_MENU_MONTHS[0].value.toString());
   const [allMonthlyTemplates, setAllMonthlyTemplates] = useState<Record<string, StoredPicnicMenuTemplate[]>>({});
   const [selectedTemplateIndices, setSelectedTemplateIndices] = useState<Record<string, number | null>>({});
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
-  const [dataLoaded, setDataLoaded] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false); // Tracks if initial load from Firestore is complete
+  const [isSaving, setIsSaving] = useState(false); // Tracks if a save operation is in progress
 
   useEffect(() => {
     setIsClient(true);
@@ -60,93 +65,117 @@ export default function PicnicMenu() {
 
   useEffect(() => {
     if (!isClient) return;
-    console.log("[PicnicMenu LOAD] Attempting to load all monthly templates and selections from localStorage...");
-    setDataLoaded(false);
-    try {
-      // Load menu templates
-      const storedTemplates = localStorage.getItem(PICNIC_MONTHLY_MENU_TEMPLATES_KEY);
-      const initialTemplatesData: Record<string, StoredPicnicMenuTemplate[]> = {};
-      PICNIC_MENU_MONTHS.forEach(monthConfig => {
-        initialTemplatesData[monthConfig.value.toString()] = createInitialMonthlyTemplates();
-      });
+    
+    const loadInitialData = async () => {
+      console.log("[PicnicMenu LOAD] Attempting to load all monthly templates and selections from Firestore...");
+      setDataLoaded(false); // Set to false before loading
+      setIsSaving(true); // Use isSaving to block UI during initial load/setup
 
-      if (storedTemplates) {
-        const parsedTemplates = JSON.parse(storedTemplates);
-        Object.keys(initialTemplatesData).forEach(monthKey => {
-          if (parsedTemplates[monthKey] && Array.isArray(parsedTemplates[monthKey])) {
-            initialTemplatesData[monthKey] = parsedTemplates[monthKey].map((template: any) => ({
-              days: PICNIC_MENU_DAY_KEYS.reduce((acc, dayKey) => {
-                const items = template?.days?.[dayKey] || [];
-                acc[dayKey] = Array.from({ length: NUM_PICNIC_ITEM_SLOTS }, (_, i) => items[i] || '');
-                return acc;
-              }, {} as Record<PicnicMenuDayKey, string[]>),
-              weeklyNote: template?.weeklyNote || '',
-            })).slice(0, 5); // Ensure only 5 templates per month
-             // Ensure each month always has 5 templates, padding with empty if necessary
-            while (initialTemplatesData[monthKey].length < 5) {
-              initialTemplatesData[monthKey].push(createEmptyStoredTemplate());
-            }
+      try {
+        // Load menu templates
+        const templatesCollectionRef = collection(firestore, 'picnicMenuTemplates');
+        const templatesSnapshot = await getDocs(templatesCollectionRef);
+        const loadedTemplates: Record<string, StoredPicnicMenuTemplate[]> = {};
+        
+        templatesSnapshot.forEach(docSnap => {
+          const monthKey = docSnap.id;
+          const data = docSnap.data();
+          if (data.templates && Array.isArray(data.templates)) {
+             loadedTemplates[monthKey] = data.templates.map((template: any) => ({
+                days: PICNIC_MENU_DAY_KEYS.reduce((acc, dayKey) => {
+                    const items = template?.days?.[dayKey] || [];
+                    acc[dayKey] = Array.from({ length: NUM_PICNIC_ITEM_SLOTS }, (_, i) => items[i] || '');
+                    return acc;
+                }, {} as Record<PicnicMenuDayKey, string[]>),
+                weeklyNote: template?.weeklyNote || '',
+            }));
           }
         });
-        setAllMonthlyTemplates(initialTemplatesData);
-        console.log("[PicnicMenu LOAD] Loaded menu templates. Keys:", Object.keys(initialTemplatesData));
-      } else {
-        setAllMonthlyTemplates(initialTemplatesData);
-        console.log("[PicnicMenu LOAD] No menu templates in localStorage, initialized all months.");
+
+        // Ensure all defined months have templates, create if not found in Firestore
+        const batch = writeBatch(firestore);
+        let needsBatchCommit = false;
+
+        PICNIC_MENU_MONTHS.forEach(monthConfig => {
+          const monthKey = monthConfig.value.toString();
+          if (!loadedTemplates[monthKey] || loadedTemplates[monthKey].length < 5) {
+            const initialTemplates = createInitialMonthlyTemplates();
+            loadedTemplates[monthKey] = initialTemplates;
+            // Save new/missing templates to Firestore
+            const monthDocRef = doc(firestore, 'picnicMenuTemplates', monthKey);
+            batch.set(monthDocRef, { templates: initialTemplates });
+            needsBatchCommit = true;
+            console.log(`[PicnicMenu LOAD] Initialized empty templates for month ${monthKey} and added to Firestore batch.`);
+          }
+        });
+
+        if (needsBatchCommit) {
+          await batch.commit();
+          console.log("[PicnicMenu LOAD] Firestore batch for initial templates committed.");
+        }
+        
+        setAllMonthlyTemplates(loadedTemplates);
+        console.log("[PicnicMenu LOAD] Loaded menu templates. Keys:", Object.keys(loadedTemplates));
+
+        // Load selected template indices
+        const selectionsDocRef = doc(firestore, 'picnicMenuSelections', FIRESTORE_SELECTIONS_DOC_ID);
+        const selectionsDocSnap = await getDoc(selectionsDocRef);
+        if (selectionsDocSnap.exists()) {
+          setSelectedTemplateIndices(selectionsDocSnap.data() as Record<string, number | null>);
+          console.log("[PicnicMenu LOAD] Loaded selected template indices from Firestore.");
+        } else {
+          setSelectedTemplateIndices({}); // Initialize as empty object if not found
+          console.log("[PicnicMenu LOAD] No selected template indices in Firestore, initialized empty.");
+          // Optionally save empty selections: await setDoc(selectionsDocRef, {});
+        }
+
+      } catch (e) {
+        console.error("[PicnicMenu LOAD] Failed to load data from Firestore:", e);
+        const fallbackTemplates: Record<string, StoredPicnicMenuTemplate[]> = {};
+        PICNIC_MENU_MONTHS.forEach(monthConfig => {
+          fallbackTemplates[monthConfig.value.toString()] = createInitialMonthlyTemplates();
+        });
+        setAllMonthlyTemplates(fallbackTemplates);
+        setSelectedTemplateIndices({});
+        toast({ title: "Erreur de chargement des Menus Pique Nique", description: "Les modèles ont été réinitialisés.", variant: "destructive" });
+      } finally {
+        setDataLoaded(true);
+        setIsSaving(false); 
+        console.log("[PicnicMenu LOAD] Data loading finished, dataLoaded set to true, isSaving set to false.");
       }
-
-      // Load selected template indices
-      const storedSelectedIndices = localStorage.getItem(PICNIC_SELECTED_TEMPLATE_INDEX_KEY);
-      if (storedSelectedIndices) {
-        setSelectedTemplateIndices(JSON.parse(storedSelectedIndices));
-        console.log("[PicnicMenu LOAD] Loaded selected template indices.");
-      } else {
-        setSelectedTemplateIndices({}); // Initialize as empty object
-        console.log("[PicnicMenu LOAD] No selected template indices in localStorage.");
-      }
-
-    } catch (e) {
-      console.error("[PicnicMenu LOAD] Failed to load data from localStorage:", e);
-      const fallbackTemplates: Record<string, StoredPicnicMenuTemplate[]> = {};
-      PICNIC_MENU_MONTHS.forEach(monthConfig => {
-        fallbackTemplates[monthConfig.value.toString()] = createInitialMonthlyTemplates();
-      });
-      setAllMonthlyTemplates(fallbackTemplates);
-      setSelectedTemplateIndices({});
-      toast({ title: "Erreur de chargement des Menus Pique Nique", description: "Les modèles ont été réinitialisés.", variant: "destructive" });
-    } finally {
-      setDataLoaded(true);
-      console.log("[PicnicMenu LOAD] Data loading finished, dataLoaded set to true.");
-    }
-  }, [isClient, toast]);
-
-
-  useEffect(() => {
-    if (!isClient || !dataLoaded) return;
-    if (Object.keys(allMonthlyTemplates).length > 0) {
-        console.log(`[PicnicMenu SAVE Templates] Saving all monthly templates to localStorage. Months: ${Object.keys(allMonthlyTemplates).length}`);
-        localStorage.setItem(PICNIC_MONTHLY_MENU_TEMPLATES_KEY, JSON.stringify(allMonthlyTemplates));
-    }
-  }, [allMonthlyTemplates, isClient, dataLoaded]);
-
-  useEffect(() => {
-    if (!isClient || !dataLoaded) return;
-    // Save even if it's an empty object, to clear it if all selections are removed,
-    // or to initialize it if it was never saved before.
-    console.log(`[PicnicMenu SAVE Selections] Saving selected template indices to localStorage.`);
-    localStorage.setItem(PICNIC_SELECTED_TEMPLATE_INDEX_KEY, JSON.stringify(selectedTemplateIndices));
+    };
     
-  }, [selectedTemplateIndices, isClient, dataLoaded]);
+    loadInitialData();
+
+  }, [isClient, toast]);
   
-  const handleSaveAllData = () => {
-    if (!isClient || !dataLoaded) return;
+  const handleSaveAllData = async () => {
+    if (!isClient || !dataLoaded || isSaving) return;
+    setIsSaving(true);
+    console.log("[PicnicMenu SAVE] Attempting to Save All Data to Firestore...");
     try {
-      localStorage.setItem(PICNIC_MONTHLY_MENU_TEMPLATES_KEY, JSON.stringify(allMonthlyTemplates));
-      localStorage.setItem(PICNIC_SELECTED_TEMPLATE_INDEX_KEY, JSON.stringify(selectedTemplateIndices));
-      toast({ title: "Menus Pique Nique Enregistrés", description: "Vos modifications ont été sauvegardées avec succès." });
+      const batch = writeBatch(firestore);
+
+      // Save all monthly templates
+      Object.entries(allMonthlyTemplates).forEach(([monthKey, templates]) => {
+        const monthDocRef = doc(firestore, 'picnicMenuTemplates', monthKey);
+        batch.set(monthDocRef, { templates });
+      });
+      console.log(`[PicnicMenu SAVE] Added ${Object.keys(allMonthlyTemplates).length} monthly templates to batch.`);
+
+      // Save selected template indices
+      const selectionsDocRef = doc(firestore, 'picnicMenuSelections', FIRESTORE_SELECTIONS_DOC_ID);
+      batch.set(selectionsDocRef, selectedTemplateIndices);
+      console.log("[PicnicMenu SAVE] Added selected template indices to batch.");
+
+      await batch.commit();
+      toast({ title: "Menus Pique Nique Enregistrés", description: "Vos modifications ont été sauvegardées avec succès dans Firestore." });
+      console.log("[PicnicMenu SAVE] Firestore batch commit successful.");
     } catch (e) {
-      console.error("Failed to save picnic menus and selections:", e);
+      console.error("Failed to save picnic menus and selections to Firestore:", e);
       toast({ title: "Erreur de sauvegarde des menus", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
     }
   };
   
@@ -154,156 +183,126 @@ export default function PicnicMenu() {
     if (!isClient) return [];
     const monthIndex = parseInt(selectedMonthTab, 10);
     const monthStartDate = startOfMonth(new Date(DISPLAY_CONTEXT_YEAR, monthIndex));
-    const monthEndDate = endOfMonth(monthStartDate); // Get the actual end of the selected month
+    const monthEndDate = endOfMonth(monthStartDate); 
     
     const weeks: Array<{ weekInMonth: number; dateRangeDisplay: string; startDate: Date; id: string }> = [];
     let currentWeekIterStartDate = startOfWeek(monthStartDate, { weekStartsOn: 1 });
     let weekCounter = 1;
 
-    // Generate up to 5 weeks, ensuring they are relevant to the selected month
     while (currentWeekIterStartDate <= monthEndDate && weeks.length < 5) {
         const actualDisplayStartDate = currentWeekIterStartDate < monthStartDate ? monthStartDate : currentWeekIterStartDate;
         let actualDisplayEndDate = endOfWeek(currentWeekIterStartDate, { weekStartsOn: 1 });
         actualDisplayEndDate = actualDisplayEndDate > monthEndDate ? monthEndDate : actualDisplayEndDate;
 
-        if (actualDisplayStartDate <= monthEndDate) { // Ensure the week starts within the month
+        if (actualDisplayStartDate <= monthEndDate) { 
             weeks.push({
                 weekInMonth: weekCounter,
-                startDate: actualDisplayStartDate, // Store the actual start date of the week portion in month
+                startDate: actualDisplayStartDate, 
                 dateRangeDisplay: `${format(actualDisplayStartDate, 'dd/MM')} au ${format(actualDisplayEndDate, 'dd/MM')}`,
-                id: `${DISPLAY_CONTEXT_YEAR}-${monthIndex}-week${weekCounter}`, // Unique ID for React key
+                id: `${DISPLAY_CONTEXT_YEAR}-${monthIndex}-week${weekCounter}`, 
             });
             weekCounter++;
         }
         currentWeekIterStartDate = addDays(currentWeekIterStartDate, 7);
-        if (getMonth(currentWeekIterStartDate) !== monthIndex && weeks.length < 5 && currentWeekIterStartDate <= monthEndDate) {
-           // If next week starts in next month but we still need to fill 5 weeks AND it's still within reasonable bounds.
-           // This logic might need refinement if strict 5 weeks for display means showing days of next month.
-           // For simplicity now, we only show weeks that START in the current month or parts of weeks overlapping.
-        }
     }
-     // If fewer than 5 weeks were generated (e.g., February), pad with placeholder weeks
     while (weeks.length < 5 && weekCounter <= 5) {
         const placeholderStartDate = addDays(weeks.length > 0 ? weeks[weeks.length - 1].startDate : monthStartDate, weeks.length > 0 ? 7 * (weekCounter - weeks.length) : (weekCounter -1) * 7 );
         weeks.push({
             weekInMonth: weekCounter,
             startDate: placeholderStartDate,
-            dateRangeDisplay: `Sem. ${weekCounter} (Placeholder)`,
+            dateRangeDisplay: `Sem. ${weekCounter} (Modèle ${weekCounter})`,
             id: `${DISPLAY_CONTEXT_YEAR}-${monthIndex}-week${weekCounter}-placeholder`,
         });
         weekCounter++;
     }
-
     return weeks.slice(0, 5);
   }, [selectedMonthTab, isClient]);
 
   const displayedWeeklyMenus: DisplayedPicnicMenuWeek[] = useMemo(() => {
-    if (!isClient || Object.keys(allMonthlyTemplates).length === 0 || !weeksForSelectedMonth.length) return [];
+    if (!isClient || !dataLoaded || Object.keys(allMonthlyTemplates).length === 0 || !weeksForSelectedMonth.length) return [];
     
     const currentMonthKey = selectedMonthTab;
-    const templatesForCurrentMonth = allMonthlyTemplates[currentMonthKey] || createInitialMonthlyTemplates(); // Fallback if month not in allMonthlyTemplates
+    const templatesForCurrentMonth = allMonthlyTemplates[currentMonthKey] || createInitialMonthlyTemplates(); 
     
     return weeksForSelectedMonth.map((weekMeta, index) => {
-      // The index (0-4) directly corresponds to the template index for that month's week position
-      const templateContent = templatesForCurrentMonth[index] || createEmptyStoredTemplate(); // Fallback for template
+      const templateContent = templatesForCurrentMonth[index] || createEmptyStoredTemplate(); 
       return {
         id: weekMeta.id, 
         year: DISPLAY_CONTEXT_YEAR, 
         monthIndex: parseInt(currentMonthKey, 10),
         weekInMonth: weekMeta.weekInMonth,
-        startDate: weekMeta.startDate.toISOString(), // Store as ISO string
+        startDate: weekMeta.startDate.toISOString(), 
         dateRangeDisplay: weekMeta.dateRangeDisplay,
         days: templateContent.days,
         weeklyNote: templateContent.weeklyNote,
       };
     });
-  }, [weeksForSelectedMonth, allMonthlyTemplates, selectedMonthTab, isClient]);
+  }, [weeksForSelectedMonth, allMonthlyTemplates, selectedMonthTab, isClient, dataLoaded]);
 
   const handleItemChange = useCallback((monthKey: string, templateIndex: number, day: PicnicMenuDayKey, itemIndex: number, value: string) => {
     if (!isClient || !dataLoaded) return;
-    console.log(`[PicnicMenu handleItemChange] monthKey: ${monthKey}, templateIndex: ${templateIndex}, day: ${day}, itemIndex: ${itemIndex}, value: ${value}`);
-    
     setAllMonthlyTemplates(prevAllMonthly => {
-      console.log(`[PicnicMenu handleItemChange] prevAllMonthly length for month ${monthKey}:`, prevAllMonthly[monthKey]?.length);
-      const newAllMonthly = JSON.parse(JSON.stringify(prevAllMonthly)); // Deep copy
+      const newAllMonthly = JSON.parse(JSON.stringify(prevAllMonthly)); 
       
       if (!newAllMonthly[monthKey]) {
-        console.log(`[PicnicMenu handleItemChange] Month ${monthKey} not found, initializing.`);
         newAllMonthly[monthKey] = createInitialMonthlyTemplates();
       }
-      
       const monthTemplates = newAllMonthly[monthKey];
-      
       if (!monthTemplates[templateIndex]) {
-        console.log(`[PicnicMenu handleItemChange] Template index ${templateIndex} not found for month ${monthKey}, creating.`);
         monthTemplates[templateIndex] = createEmptyStoredTemplate();
       }
-      
       const templateToUpdate = monthTemplates[templateIndex];
-      
       if (!templateToUpdate.days[day]) {
         templateToUpdate.days[day] = createEmptyDailyItems();
       }
-      
       const dayItems = templateToUpdate.days[day];
-      while (dayItems.length <= itemIndex) { // Ensure array is long enough
+      while (dayItems.length <= itemIndex) { 
         dayItems.push('');
       }
       dayItems[itemIndex] = value;
-      console.log(`[PicnicMenu handleItemChange] newAllMonthly length for month ${monthKey} after update:`, newAllMonthly[monthKey]?.length);
       return newAllMonthly;
     });
   }, [isClient, dataLoaded]);
 
   const handleWeeklyNoteChange = useCallback((monthKey: string, templateIndex: number, value: string) => {
     if (!isClient || !dataLoaded) return;
-    console.log(`[PicnicMenu handleWeeklyNoteChange] monthKey: ${monthKey}, templateIndex: ${templateIndex}, value: ${value}`);
-
     setAllMonthlyTemplates(prevAllMonthly => {
-      console.log(`[PicnicMenu handleWeeklyNoteChange] prevAllMonthly length for month ${monthKey}:`, prevAllMonthly[monthKey]?.length);
-      const newAllMonthly = JSON.parse(JSON.stringify(prevAllMonthly)); // Deep copy
-
+      const newAllMonthly = JSON.parse(JSON.stringify(prevAllMonthly)); 
       if (!newAllMonthly[monthKey]) {
-        console.log(`[PicnicMenu handleWeeklyNoteChange] Month ${monthKey} not found, initializing.`);
         newAllMonthly[monthKey] = createInitialMonthlyTemplates();
       }
-      
       const monthTemplates = newAllMonthly[monthKey];
-
       if (!monthTemplates[templateIndex]) {
-        console.log(`[PicnicMenu handleWeeklyNoteChange] Template index ${templateIndex} not found for month ${monthKey}, creating.`);
         monthTemplates[templateIndex] = createEmptyStoredTemplate();
       }
-      
       monthTemplates[templateIndex].weeklyNote = value;
-      console.log(`[PicnicMenu handleWeeklyNoteChange] newAllMonthly length for month ${monthKey} after update:`, newAllMonthly[monthKey]?.length);
       return newAllMonthly;
     });
   }, [isClient, dataLoaded]);
   
   const handleResetMonthTemplates = (monthKeyToReset: string) => {
-    if (!isClient) return;
+    if (!isClient || isSaving) return;
     setAllMonthlyTemplates(prevAllMonthly => {
         const newAllMonthly = { ...prevAllMonthly };
         newAllMonthly[monthKeyToReset] = createInitialMonthlyTemplates();
         return newAllMonthly;
     });
-    // Also reset selection for this month if it was set
     setSelectedTemplateIndices(prev => ({ ...prev, [monthKeyToReset]: null }));
     const monthLabel = PICNIC_MENU_MONTHS.find(m => m.value.toString() === monthKeyToReset)?.label || monthKeyToReset;
-    toast({ title: `Modèles pour ${monthLabel} Réinitialisés`, description:"N'oubliez pas de sauvegarder toutes les modifications.", variant: "destructive" });
+    toast({ title: `Modèles pour ${monthLabel} Réinitialisés`, description:"N'oubliez pas de sauvegarder pour appliquer les changements.", variant: "destructive" });
   };
 
   const handleSelectTemplateForRecap = (monthKey: string, templateIndex: number) => {
+    if(isSaving) return;
     setSelectedTemplateIndices(prev => ({
       ...prev,
-      [monthKey]: prev[monthKey] === templateIndex ? null : templateIndex, // Toggle selection
+      [monthKey]: prev[monthKey] === templateIndex ? null : templateIndex, 
     }));
   };
 
 
   if (!isClient || !dataLoaded) {
-    return <div className="flex justify-center items-center p-8"><Loader2 className="h-6 w-6 animate-spin text-primary"/> Chargement des menus...</div>;
+    return <div className="flex justify-center items-center p-8"><Loader2 className="h-6 w-6 animate-spin text-primary"/> Chargement des modèles de menus...</div>;
   }
 
   return (
@@ -312,14 +311,15 @@ export default function PicnicMenu() {
         <CardTitle>Planification des Menus Pique Nique (Modèles Mensuels)</CardTitle>
         <CardDescription>
           Définissez jusqu'à 5 modèles de semaine pour chaque mois (Mars à Novembre). Les dates affichées s'adaptent au mois sélectionné pour donner un contexte.
-          Sélectionnez un modèle par mois (bouton "Utiliser pour Récap") pour qu'il soit repris dans l'onglet "Recap".
+          Sélectionnez un modèle par mois (bouton "Utiliser pour Récap") pour qu'il soit repris dans l'onglet "Recap". Les données sont sauvegardées dans Firestore.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="flex flex-col sm:flex-row gap-4 items-end">
           <div className="flex-grow sm:flex-grow-0">
-            <Button onClick={handleSaveAllData} className="w-full sm:w-auto">
-              <Save className="mr-2 h-4 w-4" /> Sauvegarder Tous les Menus & Sélections
+            <Button onClick={handleSaveAllData} className="w-full sm:w-auto" disabled={isSaving}>
+              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} 
+              Sauvegarder Menus & Sélections
             </Button>
           </div>
         </div>
@@ -328,7 +328,7 @@ export default function PicnicMenu() {
           <ScrollArea className="whitespace-nowrap pb-2">
             <TabsList>
               {PICNIC_MENU_MONTHS.map(month => (
-                <TabsTrigger key={month.value} value={month.value.toString()}>{month.label}</TabsTrigger>
+                <TabsTrigger key={month.value} value={month.value.toString()} disabled={isSaving}>{month.label}</TabsTrigger>
               ))}
             </TabsList>
           </ScrollArea>
@@ -338,7 +338,7 @@ export default function PicnicMenu() {
               <div className="flex justify-end">
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button variant="destructive" size="sm">
+                    <Button variant="destructive" size="sm" disabled={isSaving}>
                       <Trash2 className="mr-2 h-4 w-4" /> Réinitialiser les Modèles pour {monthConfig.label}
                     </Button>
                   </AlertDialogTrigger>
@@ -374,6 +374,7 @@ export default function PicnicMenu() {
                             variant={isSelectedForRecap ? "default" : "outline"}
                             onClick={() => handleSelectTemplateForRecap(monthConfig.value.toString(), templateIdx)}
                             className="text-xs"
+                            disabled={isSaving}
                         >
                             {isSelectedForRecap ? <CheckCircle className="mr-2 h-4 w-4"/> : <PlusCircle className="mr-2 h-4 w-4"/>}
                             {isSelectedForRecap ? "Sélectionné pour Récap" : "Utiliser pour Récap"}
@@ -399,9 +400,10 @@ export default function PicnicMenu() {
                                 <TableCell key={`${dayKey}-${itemIndex}`} className="p-1">
                                   <Input
                                     type="text"
-                                    value={weeklyMenu.days[dayKey]?.[itemIndex] || ''}
+                                    value={allMonthlyTemplates[monthConfig.value.toString()]?.[templateIdx]?.days[dayKey]?.[itemIndex] || ''}
                                     onChange={(e) => handleItemChange(monthConfig.value.toString(), templateIdx, dayKey, itemIndex, e.target.value)}
                                     className="h-8 text-xs"
+                                    disabled={isSaving}
                                   />
                                 </TableCell>
                               ))}
@@ -415,10 +417,11 @@ export default function PicnicMenu() {
                       <Input
                         id={`weekly-note-${monthConfig.value}-${templateIdx}`}
                         type="text"
-                        value={weeklyMenu.weeklyNote || ''}
+                        value={allMonthlyTemplates[monthConfig.value.toString()]?.[templateIdx]?.weeklyNote || ''}
                         onChange={(e) => handleWeeklyNoteChange(monthConfig.value.toString(), templateIdx, e.target.value)}
                         className="h-8 text-xs mt-1"
                         placeholder="Ex: Spécial Pâques, Semaine allégée"
+                        disabled={isSaving}
                       />
                     </div>
                   </CardContent>
