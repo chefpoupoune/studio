@@ -23,6 +23,8 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { firestore } from '@/lib/firebase';
+import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 
 
 interface jsPDFWithAutoTable extends jsPDF {
@@ -47,11 +49,11 @@ export default function MenuPlanningPage() {
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().getMonth().toString());
   const [menuData, setMenuData] = useState<DailyMenu[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false); // Added for Firestore save operations
   const [isGeneratingMonthlyPdf, setIsGeneratingMonthlyPdf] = useState(false);
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState(menuPlanningTabsConfig[0].value);
-
 
   const generateMonthData = useCallback((year: number, month: number): DailyMenu[] => {
     const daysInSelectedMonth = getDaysInMonth(new Date(year, month));
@@ -80,45 +82,82 @@ export default function MenuPlanningPage() {
     return data;
   }, []);
 
-  const getLocalStorageKey = useCallback(() => `menu_planning_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
+  const getFirestoreDocId = useCallback(() => `menu_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
 
   useEffect(() => {
-    setIsLoading(true);
-    let storedData: DailyMenu[] | null = null;
-    try {
-      const rawStoredData = localStorage.getItem(getLocalStorageKey());
-      if (rawStoredData) {
-        storedData = JSON.parse(rawStoredData);
-      }
-    } catch (error) {
-      console.error("Error parsing menu data from localStorage:", error);
-      toast({ title: "Erreur de chargement", description: "Données de menu corrompues.", variant: "destructive"});
-    }
+    const loadMenuData = async () => {
+      setIsLoading(true);
+      const docId = getFirestoreDocId();
+      const docRef = doc(firestore, "menuPlanning", docId);
+      const yearNum = parseInt(selectedYear, 10);
+      const monthNum = parseInt(selectedMonth, 10);
 
-    const yearNum = parseInt(selectedYear, 10);
-    const monthNum = parseInt(selectedMonth, 10);
-    
-    if (storedData && storedData.length > 0) {
-        const expectedDays = getDaysInMonth(new Date(yearNum, monthNum));
-        if (storedData.length === expectedDays && 
-            storedData[0].date.startsWith(`${yearNum}-${(monthNum + 1).toString().padStart(2, '0')}`)) {
-            setMenuData(storedData.map(d => ({...initialMenuItem, ...d, theme: d.theme || '' })));
+      try {
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const firestoreData = docSnap.data();
+          // Ensure data structure is correct and dates are properly parsed if stored as Timestamps
+          const loadedMenuData = (firestoreData.menus as any[] || []).map(d => ({
+             ...initialMenuItem, 
+             ...d,
+             date: d.date, // Assuming date is stored as 'YYYY-MM-DD' string
+             theme: d.theme || '',
+          }));
+          // Validate against current month structure
+          const expectedDays = getDaysInMonth(new Date(yearNum, monthNum));
+            if (loadedMenuData.length === expectedDays && 
+                loadedMenuData[0].date.startsWith(`${yearNum}-${(monthNum + 1).toString().padStart(2, '0')}`)) {
+                setMenuData(loadedMenuData);
+            } else {
+                // Data mismatch, regenerate and save
+                const freshData = generateMonthData(yearNum, monthNum);
+                setMenuData(freshData);
+                await setDoc(docRef, { menus: freshData });
+            }
         } else {
-            const freshData = generateMonthData(yearNum, monthNum);
-            setMenuData(freshData);
+          // Document doesn't exist, generate fresh data and save it
+          const freshData = generateMonthData(yearNum, monthNum);
+          setMenuData(freshData);
+          await setDoc(docRef, { menus: freshData }); // Save the newly generated data
+          toast({ title: "Nouveau mois initialisé", description: `Les données pour ${months[monthNum].label} ${yearNum} ont été créées.`});
         }
-    } else {
-      const freshData = generateMonthData(yearNum, monthNum);
-      setMenuData(freshData);
-    }
-    setIsLoading(false);
-  }, [selectedYear, selectedMonth, generateMonthData, getLocalStorageKey, toast]);
+      } catch (error) {
+        console.error("Error loading menu data from Firestore:", error);
+        toast({ title: "Erreur de chargement des menus", description: "Impossible de charger les données. Utilisation des données par défaut.", variant: "destructive"});
+        setMenuData(generateMonthData(yearNum, monthNum)); // Fallback to fresh data
+      }
+      setIsLoading(false);
+    };
 
+    loadMenuData();
+  }, [selectedYear, selectedMonth, generateMonthData, getFirestoreDocId, toast]);
+
+  // Debounced save to Firestore
   useEffect(() => {
-    if (!isLoading && menuData.length > 0) {
-      localStorage.setItem(getLocalStorageKey(), JSON.stringify(menuData));
+    if (isLoading || menuData.length === 0) { // Don't save while loading or if data is empty (could be during initial generation)
+      return;
     }
-  }, [menuData, isLoading, getLocalStorageKey]);
+    
+    const saveToFirestore = async () => {
+      setIsSaving(true);
+      const docId = getFirestoreDocId();
+      const docRef = doc(firestore, "menuPlanning", docId);
+      try {
+        // Convert DailyMenu[] to a structure Firestore can save, e.g., an object with a 'menus' array field
+        await setDoc(docRef, { menus: menuData });
+        // No toast on every save to avoid being too noisy
+      } catch (error) {
+        console.error("Error saving menu data to Firestore:", error);
+        toast({ title: "Erreur de Sauvegarde", description: "Les modifications n'ont pas pu être enregistrées dans Firestore.", variant: "destructive" });
+      }
+      setIsSaving(false);
+    };
+
+    const timeoutId = setTimeout(saveToFirestore, 1500); // Debounce for 1.5 seconds
+    return () => clearTimeout(timeoutId);
+
+  }, [menuData, isLoading, getFirestoreDocId, toast]);
+
 
   const handleUpdateMenuEntry = useCallback((date: string, field: MenuField, value: StoredMenuThemeValue) => {
     setMenuData(prevData =>
@@ -341,10 +380,11 @@ export default function MenuPlanningPage() {
             <CardDescription>
               Choisissez une année et un mois pour afficher et modifier les menus. Les samedis et dimanches sont en gris, les jours fériés en jaune.
               Les thèmes colorient la ligne : Bleu (Froid), Vert (Végé), Jaune (SAM), Rose (Poisson), Orange (Fête).
+              Les données sont sauvegardées automatiquement dans Firestore.
             </CardDescription>
           </div>
-          <Button onClick={generateMonthlyMenuPdf} disabled={isLoading || isGeneratingMonthlyPdf} className="w-full sm:w-auto">
-            {isGeneratingMonthlyPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileTextIcon className="mr-2 h-4 w-4" />}
+          <Button onClick={generateMonthlyMenuPdf} disabled={isLoading || isGeneratingMonthlyPdf || isSaving} className="w-full sm:w-auto">
+            {(isGeneratingMonthlyPdf || isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileTextIcon className="mr-2 h-4 w-4" />}
             Générer PDF Mensuel
           </Button>
         </div>
@@ -404,7 +444,7 @@ export default function MenuPlanningPage() {
             Fiches de Commande Hebdomadaires
           </CardTitle>
           <CardDescription>
-            Générez les fiches de commande pour chaque semaine du mois sélectionné.
+            Générez les fiches de commande pour chaque semaine du mois sélectionné. Les données des menus sont issues de Firestore.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -426,7 +466,8 @@ export default function MenuPlanningPage() {
             Fiches de Température Hebdomadaires
           </CardTitle>
           <CardDescription>
-            Consultez et remplissez les fiches de température pour chaque semaine du mois sélectionné, basées sur les plats planifiés.
+            Consultez et remplissez les fiches de température pour chaque semaine du mois sélectionné, basées sur les plats planifiés (issus de Firestore). 
+            Les données spécifiques aux températures sont sauvegardées dans localStorage.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -501,3 +542,5 @@ export default function MenuPlanningPage() {
     </div>
   );
 }
+
+    
