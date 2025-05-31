@@ -13,7 +13,6 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"; // Assuming this is not used based on previous changes
 import { FileText, Loader2, Trash2, Users } from 'lucide-react';
 import { format, getDaysInMonth, getDate, getDay, startOfMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -35,6 +34,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { firestore } from '@/lib/firebase';
+import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -58,35 +59,66 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().getMonth().toString());
   const [benefitData, setBenefitData] = useState<FullMonthlyBenefitData>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
-  const getLocalStorageKey = useCallback(
-    () => `benefits_tracking_${selectedYear}_${selectedMonth}`,
+  const getFirestoreDocId = useCallback(
+    () => `benefit_tracking_${selectedYear}_${selectedMonth}`,
     [selectedYear, selectedMonth]
   );
 
+  // Load data from Firestore
   useEffect(() => {
-    setIsLoading(true);
-    try {
-      const storedData = localStorage.getItem(getLocalStorageKey());
-      if (storedData) {
-        setBenefitData(JSON.parse(storedData));
-      } else {
+    const loadData = async () => {
+      setIsLoading(true);
+      const docId = getFirestoreDocId();
+      const docRef = doc(firestore, "monthlyBenefitData", docId);
+      try {
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setBenefitData(docSnap.data() as FullMonthlyBenefitData);
+        } else {
+          setBenefitData({});
+        }
+      } catch (error) {
+        console.error("Error loading benefit data from Firestore:", error);
         setBenefitData({});
+        toast({ title: "Erreur de chargement", description: "Données d'avantages non chargées depuis Firestore.", variant: "destructive" });
       }
-    } catch (error) {
-      console.error("Error loading benefit data:", error);
-      setBenefitData({});
-      toast({ title: "Erreur de chargement", description: "Données d'avantages corrompues.", variant: "destructive" });
-    }
-    setIsLoading(false);
-  }, [selectedYear, selectedMonth, getLocalStorageKey, toast]);
+      setIsLoading(false);
+    };
+    loadData();
+  }, [selectedYear, selectedMonth, getFirestoreDocId, toast]);
 
+  // Save data to Firestore
   useEffect(() => {
-    if (!isLoading) {
-      localStorage.setItem(getLocalStorageKey(), JSON.stringify(benefitData));
-    }
-  }, [benefitData, isLoading, getLocalStorageKey]);
+    const saveData = async () => {
+      if (isLoading || Object.keys(benefitData).length === 0 && !localStorage.getItem(getFirestoreDocId() + "_hasBeenSet")) { 
+        // Avoid saving initial empty state unless it was explicitly cleared
+        return;
+      }
+      setIsSaving(true);
+      const docId = getFirestoreDocId();
+      const docRef = doc(firestore, "monthlyBenefitData", docId);
+      try {
+        await setDoc(docRef, benefitData);
+        localStorage.setItem(getFirestoreDocId() + "_hasBeenSet", "true"); // Mark as set for logic above
+        // Optional: Toast for successful save, but can be too frequent
+        // toast({ title: "Données Sauvegardées", description: "Modifications enregistrées dans Firestore." });
+      } catch (error) {
+        console.error("Error saving benefit data to Firestore:", error);
+        toast({ title: "Erreur de sauvegarde", description: "Impossible d'enregistrer les données dans Firestore.", variant: "destructive" });
+      }
+      setIsSaving(false);
+    };
+
+    // Debounce saving
+    const timeoutId = setTimeout(() => {
+      saveData();
+    }, 1000); // Save 1 second after the last change
+
+    return () => clearTimeout(timeoutId);
+  }, [benefitData, isLoading, getFirestoreDocId, toast]);
 
   const daysInSelectedMonth = useMemo(() => {
     const year = parseInt(selectedYear);
@@ -129,13 +161,24 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
     return Object.values(employeeEntries).reduce((sum, entry) => sum + (entry[type] === "X" ? 1 : 0), 0);
   };
 
-  const handleConfirmClearMonthData = () => {
-    setBenefitData({});
-    toast({ title: "Données Effacées", description: `Les données pour ${months[parseInt(selectedMonth)].label} ${selectedYear} ont été effacées.` });
+  const handleConfirmClearMonthData = async () => {
+    setIsSaving(true);
+    const docId = getFirestoreDocId();
+    const docRef = doc(firestore, "monthlyBenefitData", docId);
+    try {
+      await deleteDoc(docRef);
+      setBenefitData({});
+      localStorage.removeItem(getFirestoreDocId() + "_hasBeenSet"); 
+      toast({ title: "Données Effacées", description: `Les données pour ${months[parseInt(selectedMonth)].label} ${selectedYear} ont été effacées de Firestore.` });
+    } catch (error) {
+      console.error("Error deleting benefit data from Firestore:", error);
+      toast({ title: "Erreur de suppression", description: "Impossible de supprimer les données de Firestore.", variant: "destructive" });
+    }
+    setIsSaving(false);
   };
 
   const generatePdf = () => {
-    setIsLoading(true);
+    setIsLoading(true); // Use general isLoading for PDF generation as well
     try {
       const pdfSettings = getPdfLayoutSettings('benefits');
       const doc = new jsPDF({
@@ -319,13 +362,13 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
           </Select>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 md:col-span-1 md:justify-self-end pt-2">
-            <Button onClick={generatePdf} disabled={isLoading || employeesToRender.length === 0} className="w-full sm:w-auto">
-                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+            <Button onClick={generatePdf} disabled={isLoading || isSaving || employeesToRender.length === 0} className="w-full sm:w-auto">
+                {(isLoading || isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
                 Générer PDF
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="destructive" disabled={isLoading || Object.keys(benefitData).length === 0} className="w-full sm:w-auto">
+                <Button variant="destructive" disabled={isLoading || isSaving || Object.keys(benefitData).length === 0} className="w-full sm:w-auto">
                     <Trash2 className="mr-2 h-4 w-4" />
                     Effacer Données Mois
                 </Button>
@@ -418,6 +461,7 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
                           <Select
                             value={cellValue === "" ? SELECT_EMPTY_VALUE_PLACEHOLDER : cellValue}
                             onValueChange={(value) => handleStatusChange(employee.id, day.dayNumber, type, value)}
+                            disabled={isSaving}
                           >
                             <SelectTrigger className={cn(
                               "h-7 text-xs min-w-[45px] p-1 justify-center",
@@ -444,15 +488,15 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
                     return (
                       <TableRow key={`${employee.id}-${type}`} className={typeIndex === 0 ? "border-t-2 border-primary/50" : ""}>
                         {typeIndex === 0 && (
-                          <TableCell rowSpan={2} className="font-medium align-middle sticky left-0 z-10 bg-card"> {/* Removed backdrop-blur */}
+                          <TableCell rowSpan={2} className="font-medium align-middle sticky left-0 z-10 bg-card">
                             {employee.name}
                           </TableCell>
                         )}
-                        <TableCell className="text-xs sticky left-[180px] z-10 bg-card"> {/* Removed backdrop-blur */}
+                        <TableCell className="text-xs sticky left-[180px] z-10 bg-card">
                           {type === 'planning' ? 'Planning' : 'Repas Pris'}
                         </TableCell>
                         {dayRow}
-                        <TableCell className="text-center font-bold sticky right-0 z-10 bg-card"> {/* Removed backdrop-blur */}
+                        <TableCell className="text-center font-bold sticky right-0 z-10 bg-card">
                           {calculateTotal(employee.id, type)}
                         </TableCell>
                       </TableRow>
@@ -468,3 +512,4 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
   );
 }
 
+    
