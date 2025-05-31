@@ -19,6 +19,9 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 import { PICNIC_MENU_DAY_KEYS, PICNIC_MENU_DAYS_LABELS, NUM_PICNIC_ITEM_SLOTS } from '../types';
+import { firestore } from '@/lib/firebase';
+import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
+
 
 const DAYS_OF_WEEK_KEYS: DayOfWeekKey[] = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'];
 const DAY_LABELS: Record<DayOfWeekKey, string> = {
@@ -29,11 +32,14 @@ const DAY_LABELS: Record<DayOfWeekKey, string> = {
   vendredi: 'Vendredi',
 };
 
-const PICNIC_DATA_STORAGE_KEY_PREFIX = "picnic_nb_pn_data_v1_";
-const PICNIC_CLIENT_ORDERS_KEY_PREFIX = "picnic_client_orders_data_v3_";
-const PICNIC_BASE_BREAD_KEY_PREFIX = "picnic_base_bread_v1_";
-const PICNIC_MONTHLY_MENU_TEMPLATES_KEY = "picnic_monthly_menu_templates_v1";
-const PICNIC_SELECTED_TEMPLATE_INDEX_KEY = "picnic_selected_template_index_v1";
+// Firestore collection names (ensure consistency)
+const PICNIC_WEEK_DATA_COLLECTION = "picnicWeekData";
+const PICNIC_CLIENT_ORDERS_COLLECTION = "picnicClientOrders";
+const PICNIC_BASE_BREAD_COLLECTION = "picnicBaseBreadNumbers";
+const PICNIC_MENU_TEMPLATES_COLLECTION = "picnicMenuTemplates";
+const PICNIC_MENU_SELECTIONS_COLLECTION = "picnicMenuSelections";
+const GLOBAL_PICNIC_RECAP_SELECTIONS_DOC_ID = "globalPicnicRecapSelections";
+
 
 const initialRowDataForRecap = (): PicnicRowData => ({
   lundi: '', mardi: '', mercredi: '', jeudi: '', vendredi: '', weeklyObservation: ''
@@ -55,19 +61,19 @@ const createInitialPicnicWeekDataForRecap = (): PicnicWeekData => ({
 });
 
 const DISPLAY_ROWS_CONFIG_NB_PN_RECAP: Array<DisplayRowConfig & { pdfBgColor?: [number,number,number]}> = [
-  { id: 'gatien', label: 'Gatien', bgColor: 'bg-yellow-300', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: [253, 224, 71] }, // yellow-300
-  { id: 'cedric', label: 'Cedric', bgColor: 'bg-green-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [34, 197, 94] },    // green-500
-  { id: 'dominique', label: 'Dominique', bgColor: 'bg-white', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: [255, 255, 255] },// white
-  { id: 'maxime_l', label: 'Maxime L', bgColor: 'bg-red-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [239, 68, 68] },    // red-500
-  { id: 'nicolas', label: 'Nicolas', bgColor: 'bg-black', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [0,0,0] },        // black
-  { id: 'maxime_h', label: 'Maxime H', bgColor: 'bg-blue-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [59, 130, 246] },  // blue-500
-  { id: 'philipe', label: 'Philipe', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: [249, 115, 22] }, // orange-500
-  { id: 'plus', label: 'PLUS', bgColor: 'bg-pink-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [236, 72, 153] },    // pink-500
-  { id: 'autre', label: 'autre', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [147, 51, 234] }, // purple-600
-  { id: 'total_global', label: 'TOTAL', bgColor: 'bg-orange-300', textColor: 'text-black', isInputRow: false, pdfBgColor: [253, 186, 116] }, // orange-300
-  { id: 'nb_bagette', label: 'NB de bagette', bgColor: 'bg-gray-300', textColor: 'text-black', isInputRow: false, pdfBgColor: [209, 213, 219] }, // gray-300
-  { id: 'nb_faluche', label: 'NB de Faluche', bgColor: 'bg-gray-300', textColor: 'text-black', isInputRow: false, pdfBgColor: [209, 213, 219] },// gray-300
-  { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: false, pdfBgColor: [249, 115, 22] },// orange-500
+  { id: 'gatien', label: 'Gatien', bgColor: 'bg-yellow-300', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: [253, 224, 71] },
+  { id: 'cedric', label: 'Cedric', bgColor: 'bg-green-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [34, 197, 94] },
+  { id: 'dominique', label: 'Dominique', bgColor: 'bg-white', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: [255, 255, 255] },
+  { id: 'maxime_l', label: 'Maxime L', bgColor: 'bg-red-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [239, 68, 68] },
+  { id: 'nicolas', label: 'Nicolas', bgColor: 'bg-black', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [0,0,0] },
+  { id: 'maxime_h', label: 'Maxime H', bgColor: 'bg-blue-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [59, 130, 246] },
+  { id: 'philipe', label: 'Philipe', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: true, isTotalContributor: true, pdfBgColor: [249, 115, 22] },
+  { id: 'plus', label: 'PLUS', bgColor: 'bg-pink-500', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [236, 72, 153] },
+  { id: 'autre', label: 'autre', bgColor: 'bg-purple-600', textColor: 'text-white', isInputRow: true, isTotalContributor: true, pdfBgColor: [147, 51, 234] },
+  { id: 'total_global', label: 'TOTAL', bgColor: 'bg-orange-300', textColor: 'text-black', isInputRow: false, pdfBgColor: [253, 186, 116] },
+  { id: 'nb_bagette', label: 'NB de bagette', bgColor: 'bg-gray-300', textColor: 'text-black', isInputRow: false, pdfBgColor: [209, 213, 219] },
+  { id: 'nb_faluche', label: 'NB de Faluche', bgColor: 'bg-gray-300', textColor: 'text-black', isInputRow: false, pdfBgColor: [209, 213, 219] },
+  { id: 'total_glaciere', label: 'total glacière', bgColor: 'bg-orange-500', textColor: 'text-black', isInputRow: false, pdfBgColor: [249, 115, 22] },
 ];
 
 interface jsPDFWithAutoTable extends jsPDF {
@@ -96,7 +102,7 @@ export default function PicnicRecap() {
 
   const weekIdentifier = useMemo(() => {
     const monday = startOfWeek(selectedDate, { weekStartsOn: 1 });
-    return format(monday, 'yyyy-MM-dd');
+    return format(monday, 'yyyy-MM-dd'); // Using YYYY-MM-DD as a more standard week ID format
   }, [selectedDate]);
 
   const weekDisplayString = useMemo(() => {
@@ -105,135 +111,125 @@ export default function PicnicRecap() {
     return `Semaine du : ${format(monday, 'dd MMMM', { locale: fr })} au ${format(friday, 'dd MMMM yyyy', { locale: fr })}`;
   }, [selectedDate]);
 
-  const getPicnicDataStorageKey = useCallback(() => `${PICNIC_DATA_STORAGE_KEY_PREFIX}${weekIdentifier}`, [weekIdentifier]);
-  const getClientOrdersStorageKey = useCallback(() => `${PICNIC_CLIENT_ORDERS_KEY_PREFIX}${weekIdentifier}`, [weekIdentifier]);
-  const getBaseBreadStorageKey = useCallback(() => `${PICNIC_BASE_BREAD_KEY_PREFIX}${weekIdentifier}`, [weekIdentifier]);
-
+  // Load all necessary data from Firestore
   useEffect(() => {
-    if (!isClient) return;
-    console.log("[Recap Effect 1] Loading ALL monthly templates and selections.");
-    setIsLoading(true); 
-    try {
-      const storedTemplates = localStorage.getItem(PICNIC_MONTHLY_MENU_TEMPLATES_KEY);
-      setAllMonthlyTemplates(storedTemplates ? JSON.parse(storedTemplates) : {});
+    if (!isClient || !weekIdentifier) return;
 
-      const storedSelectedIndices = localStorage.getItem(PICNIC_SELECTED_TEMPLATE_INDEX_KEY);
-      setSelectedTemplateIndices(storedSelectedIndices ? JSON.parse(storedSelectedIndices) : {});
-    } catch (e) {
-      console.error("Failed to load global picnic menu templates/selections:", e);
-      setAllMonthlyTemplates({});
-      setSelectedTemplateIndices({});
-      toast({ title: "Erreur de chargement des modèles de menu", variant: "destructive" });
-    }
-    // Defer setIsLoading(false) to the next effect that loads week-specific data
-  }, [isClient, toast]);
-
-
-  useEffect(() => {
-    if (!isClient || Object.keys(allMonthlyTemplates).length === 0 && Object.keys(selectedTemplateIndices).length === 0 && !isLoading) { // Ensure global templates are loaded or isLoading is still true
-        // This condition might be too restrictive if we want to load weekly data even if global templates are empty.
-        // For now, it assumes global templates are a prerequisite for determining activeMenuTemplateForRecap.
-        return;
-    }
-
-    setInitialDataLoaded(false); 
-    // setIsLoading(true) is implicitly true from previous effect or should be managed if previous one finishes early
-
-    try {
-      const currentMonth = getMonth(selectedDate).toString();
-      const templateIndex = selectedTemplateIndices[currentMonth];
-      const templateForMonth = (templateIndex !== null && templateIndex !== undefined && allMonthlyTemplates[currentMonth]) 
-                                ? allMonthlyTemplates[currentMonth][templateIndex] 
-                                : null;
-      
-      const storedPicnicDataRaw = localStorage.getItem(getPicnicDataStorageKey());
-      if (storedPicnicDataRaw) {
-        const parsedData = JSON.parse(storedPicnicDataRaw);
-        const completeData: Partial<PicnicWeekData> = {};
-        (Object.keys(createInitialPicnicWeekDataForRecap()) as PicnicRowKey[]).forEach(key => {
-          completeData[key] = { ...(initialRowDataForRecap()), ...parsedData[key] };
-          const config = DISPLAY_ROWS_CONFIG_NB_PN_RECAP.find(rc => rc.id === key);
-          if (config?.isInputRow && templateForMonth?.weeklyNote && !parsedData[key]?.weeklyObservation) {
-            (completeData[key] as PicnicRowData).weeklyObservation = templateForMonth.weeklyNote;
-          }
-        });
-        setPicnicData(completeData as PicnicWeekData);
-      } else {
-        setPicnicData(prevPicnicData => {
-            const freshDataForNewWeek = createInitialPicnicWeekDataForRecap();
-            (Object.keys(freshDataForNewWeek) as PicnicRowKey[]).forEach(key => {
-                 const config = DISPLAY_ROWS_CONFIG_NB_PN_RECAP.find(rc => rc.id === key);
-                 if (config?.isInputRow) {
-                    freshDataForNewWeek[key].weeklyObservation = templateForMonth?.weeklyNote || prevPicnicData[key]?.weeklyObservation || '';
-                 } else {
-                    freshDataForNewWeek[key].weeklyObservation = prevPicnicData[key]?.weeklyObservation || '';
-                 }
+    const loadAllDataForRecap = async () => {
+      setIsLoading(true);
+      setInitialDataLoaded(false);
+      console.log(`[Recap LOAD ALL] For week: ${weekIdentifier}`);
+      try {
+        // 1. Load Picnic Week Data (NB PN)
+        const picnicDataDocRef = doc(firestore, PICNIC_WEEK_DATA_COLLECTION, weekIdentifier);
+        const picnicDataSnap = await getDoc(picnicDataDocRef);
+        if (picnicDataSnap.exists()) {
+          const dataFromDb = picnicDataSnap.data() as PicnicWeekData;
+           const completeData: Partial<PicnicWeekData> = {};
+            (Object.keys(createInitialPicnicWeekDataForRecap()) as PicnicRowKey[]).forEach(key => {
+              completeData[key] = { ...(initialRowDataForRecap()), ...dataFromDb[key] };
             });
-            return freshDataForNewWeek;
+          setPicnicData(completeData as PicnicWeekData);
+        } else {
+          setPicnicData(createInitialPicnicWeekDataForRecap());
+        }
+
+        // 2. Load Client Orders
+        const clientOrdersDocRef = doc(firestore, PICNIC_CLIENT_ORDERS_COLLECTION, weekIdentifier);
+        const clientOrdersSnap = await getDoc(clientOrdersDocRef);
+        if (clientOrdersSnap.exists()) {
+          const data = clientOrdersSnap.data();
+          setClientOrders(data.orders || []);
+        } else {
+          setClientOrders([]);
+        }
+
+        // 3. Load Base Bread Number
+        const baseBreadDocRef = doc(firestore, PICNIC_BASE_BREAD_COLLECTION, weekIdentifier);
+        const baseBreadSnap = await getDoc(baseBreadDocRef);
+        setBaseBreadNumber(baseBreadSnap.exists() ? (baseBreadSnap.data().baseBreadNumber as string) : '');
+
+        // 4. Load All Monthly Menu Templates (if not already loaded or stale)
+        // For simplicity, assuming they are relatively static and loaded once by PicnicMenu.tsx
+        // If not, this component would need to fetch them too. Here, we'll re-fetch for robustness.
+        const templatesCollectionRef = collection(firestore, PICNIC_MENU_TEMPLATES_COLLECTION);
+        const templatesSnapshot = await getDocs(templatesCollectionRef);
+        const loadedTemplates: Record<string, StoredPicnicMenuTemplate[]> = {};
+        templatesSnapshot.forEach(docSnap => {
+          loadedTemplates[docSnap.id] = (docSnap.data().templates as StoredPicnicMenuTemplate[]) || [];
         });
-      }
+        setAllMonthlyTemplates(loadedTemplates);
 
-      const storedClientOrders = localStorage.getItem(getClientOrdersStorageKey());
-      if (storedClientOrders) {
-        const parsedClientOrders: ClientPicnicOrder[] = JSON.parse(storedClientOrders);
-        setClientOrders(parsedClientOrders.map(order => ({
-          ...order,
-          id: order.id || `client_order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          days: {
-            lundi: { nbPn: order.days?.lundi?.nbPn || '', breadChoice: order.days?.lundi?.breadChoice || 'none' },
-            mardi: { nbPn: order.days?.mardi?.nbPn || '', breadChoice: order.days?.mardi?.breadChoice || 'none' },
-            mercredi: { nbPn: order.days?.mercredi?.nbPn || '', breadChoice: order.days?.mercredi?.breadChoice || 'none' },
-            jeudi: { nbPn: order.days?.jeudi?.nbPn || '', breadChoice: order.days?.jeudi?.breadChoice || 'none' },
-            vendredi: { nbPn: order.days?.vendredi?.nbPn || '', breadChoice: order.days?.vendredi?.breadChoice || 'none' },
-          }
-        })));
-      } else {
+        // 5. Load Selected Template Indices
+        const selectionsDocRef = doc(firestore, PICNIC_MENU_SELECTIONS_COLLECTION, GLOBAL_PICNIC_RECAP_SELECTIONS_DOC_ID);
+        const selectionsDocSnap = await getDoc(selectionsDocRef);
+        setSelectedTemplateIndices(selectionsDocSnap.exists() ? (selectionsDocSnap.data() as Record<string, number | null>) : {});
+
+      } catch (e) {
+        console.error(`[Recap LOAD ALL] Failed to load data for week ${weekIdentifier}`, e);
+        toast({ title: "Erreur de chargement du récapitulatif", variant: "destructive" });
+        // Reset to defaults in case of error
+        setPicnicData(createInitialPicnicWeekDataForRecap());
         setClientOrders([]);
+        setBaseBreadNumber('');
+        setAllMonthlyTemplates({});
+        setSelectedTemplateIndices({});
+      } finally {
+        setInitialDataLoaded(true);
+        setIsLoading(false);
+         console.log(`[Recap LOAD ALL] Finished loading for week ${weekIdentifier}. InitialDataLoaded: true`);
       }
+    };
 
-      const storedBaseBread = localStorage.getItem(getBaseBreadStorageKey());
-      setBaseBreadNumber(storedBaseBread || '');
+    loadAllDataForRecap();
+  }, [isClient, weekIdentifier, toast]);
 
-    } catch (e) {
-      console.error("Failed to load picnic recap data for week " + weekIdentifier, e);
-      toast({ title: "Erreur de chargement", description: "Données de récapitulatif pique-nique corrompues pour la semaine.", variant: "destructive" });
-      setPicnicData(createInitialPicnicWeekDataForRecap());
-      setClientOrders([]);
-      setBaseBreadNumber('');
-    } finally {
-      setInitialDataLoaded(true);
-      setIsLoading(false); 
-    }
-  }, [isClient, weekIdentifier, getPicnicDataStorageKey, getClientOrdersStorageKey, getBaseBreadStorageKey, toast, allMonthlyTemplates, selectedTemplateIndices, selectedDate]);
 
-  useEffect(() => {
-    if (!isClient) {
+  // Determine active menu template for the current week based on loaded global selections
+   useEffect(() => {
+    if (!isClient || !initialDataLoaded) {
         setActiveMenuTemplateForRecap(null);
         return;
     }
-    // This effect should run after allMonthlyTemplates and selectedTemplateIndices are confirmed loaded.
-    // The isLoading check helps here.
-    if (!isLoading && Object.keys(allMonthlyTemplates).length > 0) {
-        const currentMonthIndex = getMonth(selectedDate).toString();
-        const templateIndexForMonth = selectedTemplateIndices[currentMonthIndex];
+    console.log("[Recap EFFECT ActiveMenuTemplate] Calculating. initialDataLoaded:", initialDataLoaded, "allMonthlyTemplates keys:", Object.keys(allMonthlyTemplates).length);
 
-        if (templateIndexForMonth !== null && templateIndexForMonth !== undefined && allMonthlyTemplates[currentMonthIndex]?.[templateIndexForMonth]) {
-            setActiveMenuTemplateForRecap(allMonthlyTemplates[currentMonthIndex][templateIndexForMonth]);
-        } else {
-            setActiveMenuTemplateForRecap(null);
-        }
-    } else if (!isLoading && Object.keys(allMonthlyTemplates).length === 0) {
-        // Handle case where templates might be empty but loading is finished
+    const currentMonthIndex = getMonth(selectedDate).toString();
+    const templateIndexForMonth = selectedTemplateIndices[currentMonthIndex];
+    
+    console.log(`[Recap EFFECT ActiveMenuTemplate] Month: ${currentMonthIndex}, SelectedIndex: ${templateIndexForMonth}`);
+
+    if (templateIndexForMonth !== null && templateIndexForMonth !== undefined && allMonthlyTemplates[currentMonthIndex]?.[templateIndexForMonth]) {
+        const template = allMonthlyTemplates[currentMonthIndex][templateIndexForMonth];
+        setActiveMenuTemplateForRecap(template);
+        console.log("[Recap EFFECT ActiveMenuTemplate] Active template set:", template.weeklyNote || "No note");
+    } else {
         setActiveMenuTemplateForRecap(null);
+        console.log("[Recap EFFECT ActiveMenuTemplate] No active template found or set for this month/week.");
     }
-  }, [isClient, selectedDate, allMonthlyTemplates, selectedTemplateIndices, isLoading]);
+  }, [isClient, selectedDate, allMonthlyTemplates, selectedTemplateIndices, initialDataLoaded]);
 
 
+  // Save baseBreadNumber to Firestore
   useEffect(() => {
-    if (!isLoading && initialDataLoaded && isClient) {
-      localStorage.setItem(getBaseBreadStorageKey(), baseBreadNumber);
-    }
-  }, [baseBreadNumber, isLoading, initialDataLoaded, isClient, getBaseBreadStorageKey]);
+    if (!isClient || isLoading || !initialDataLoaded || !weekIdentifier) return; // Do not save during initial load or if weekIdentifier is not ready
+
+    const saveBaseBread = async () => {
+      try {
+        const baseBreadDocRef = doc(firestore, PICNIC_BASE_BREAD_COLLECTION, weekIdentifier);
+        await setDoc(baseBreadDocRef, { baseBreadNumber });
+        // Optional: toast for successful save, can be too noisy
+      } catch (e) {
+        console.error(`Failed to save base bread number for week ${weekIdentifier}:`, e);
+        toast({ title: "Erreur sauvegarde pain de base", variant: "destructive" });
+      }
+    };
+    
+    // Debounce saving for baseBreadNumber
+    const timeoutId = setTimeout(saveBaseBread, 1000);
+    return () => clearTimeout(timeoutId);
+
+  }, [baseBreadNumber, isClient, isLoading, initialDataLoaded, weekIdentifier, toast]);
+
 
   const handleRecapObservationChange = (rowId: PicnicRowKey, value: string) => {
     setPicnicData(prevData => ({
@@ -245,16 +241,17 @@ export default function PicnicRecap() {
     }));
   };
 
-  const saveRecapObservations = useCallback(() => {
-    if (!isClient) return;
+  const saveRecapObservations = useCallback(async () => {
+    if (!isClient || !weekIdentifier) return;
     try {
-      localStorage.setItem(getPicnicDataStorageKey(), JSON.stringify(picnicData));
-      toast({ title: "Observations du Récapitulatif Sauvegardées", description: "Les observations ont été enregistrées." });
+      const picnicDataDocRef = doc(firestore, PICNIC_WEEK_DATA_COLLECTION, weekIdentifier);
+      await setDoc(picnicDataDocRef, picnicData); // This will overwrite the document with current state including observations
+      toast({ title: "Observations du Récapitulatif Sauvegardées", description: "Les observations ont été enregistrées dans Firestore." });
     } catch (e) {
-      console.error("Failed to save picnic recap observations to localStorage", e);
+      console.error("Failed to save picnic recap observations to Firestore", e);
       toast({ title: "Erreur de sauvegarde des observations", variant: "destructive" });
     }
-  }, [picnicData, toast, getPicnicDataStorageKey, isClient]);
+  }, [picnicData, toast, weekIdentifier, isClient]);
 
   const calculateDailyTotal = useCallback((day: DayOfWeekKey): number => {
     let sum = 0;
@@ -742,7 +739,7 @@ export default function PicnicRecap() {
           <CardHeader>
             <CardTitle>Menu Pique Nique Sélectionné pour Récapitulatif</CardTitle>
             <CardDescription>
-              Menu du modèle de semaine sélectionné dans l'onglet "Menu" pour {format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'MMMM', {locale: fr})}, appliqué à la semaine du {weekDisplayString}.
+              Menu du modèle de semaine sélectionné dans l'onglet "Menu" pour {format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'MMMM', {locale:fr})}, appliqué à la semaine du {weekDisplayString}.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -1016,4 +1013,3 @@ export default function PicnicRecap() {
 }
     
 
-    
