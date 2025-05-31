@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import type { DefrostingEntry } from '../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+// Textarea not used in this form after review
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -16,7 +16,7 @@ import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { format, parse, parseISO, isValid } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -34,12 +34,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { firestore } from '@/lib/firebase';
+import { collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy, Timestamp } from 'firebase/firestore';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
 }
 
-const DEFROSTING_LOG_STORAGE_KEY = "pms_defrosting_log_v1";
+// DEFROSTING_LOG_STORAGE_KEY removed
 
 const defrostingEntrySchema = z.object({
   defrostStartDate: z.date({ required_error: "Date de début de décongélation requise." }),
@@ -77,25 +79,33 @@ export default function DefrostingMonitoring() {
     },
   });
 
-  useEffect(() => {
+  const fetchDefrostingEntries = useCallback(async () => {
     setIsLoading(true);
     try {
-      const storedEntries = localStorage.getItem(DEFROSTING_LOG_STORAGE_KEY);
-      if (storedEntries) {
-        setEntries(JSON.parse(storedEntries));
-      }
+      const entriesCollectionRef = collection(firestore, 'pmsDefrostingLog');
+      const q = query(entriesCollectionRef, orderBy("defrostStartDate", "desc"));
+      const querySnapshot = await getDocs(q);
+      const loadedEntries = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          defrostStartDate: (data.defrostStartDate as Timestamp).toDate().toISOString(),
+          useDate: data.useDate ? (data.useDate as Timestamp).toDate().toISOString() : null,
+        } as DefrostingEntry;
+      });
+      setEntries(loadedEntries);
     } catch (error) {
-      console.error("Error loading defrosting entries:", error);
-      toast({ title: "Erreur de chargement", description: "Données de décongélation corrompues.", variant: "destructive" });
+      console.error("Error loading defrosting entries from Firestore:", error);
+      toast({ title: "Erreur de chargement", description: "Données de décongélation non chargées.", variant: "destructive" });
+      setEntries([]);
     }
     setIsLoading(false);
   }, [toast]);
 
   useEffect(() => {
-    if (!isLoading) {
-      localStorage.setItem(DEFROSTING_LOG_STORAGE_KEY, JSON.stringify(entries));
-    }
-  }, [entries, isLoading]);
+    fetchDefrostingEntries();
+  }, [fetchDefrostingEntries]);
 
   const handleOpenDialog = (entry?: DefrostingEntry) => {
     setEditingEntry(entry || null);
@@ -117,27 +127,49 @@ export default function DefrostingMonitoring() {
     setIsDialogOpen(true);
   };
 
-  const handleFormSubmit = (data: DefrostingFormData) => {
-    const entryData = { 
+  const handleFormSubmit = async (data: DefrostingFormData) => {
+    setIsLoading(true);
+    const entryDataForFirestore = { 
       ...data, 
-      defrostStartDate: data.defrostStartDate.toISOString(),
-      useDate: data.useDate ? data.useDate.toISOString() : null,
-      useTime: data.useTime || null,
+      defrostStartDate: Timestamp.fromDate(data.defrostStartDate),
+      useDate: data.useDate ? Timestamp.fromDate(data.useDate) : null,
+      useTime: data.useTime || null, // Ensure null if empty string
     };
-    if (editingEntry) {
-      setEntries(prev => prev.map(e => e.id === editingEntry.id ? { ...editingEntry, ...entryData } : e));
-      toast({ title: "Enregistrement Modifié", description: "L'entrée de décongélation a été mise à jour." });
-    } else {
-      const newEntry: DefrostingEntry = { ...entryData, id: `defrost_${Date.now()}` };
-      setEntries(prev => [newEntry, ...prev].sort((a,b) => new Date(b.defrostStartDate).getTime() - new Date(a.defrostStartDate).getTime()));
-      toast({ title: "Enregistrement Ajouté", description: "Une nouvelle entrée de décongélation a été ajoutée." });
+
+    try {
+      if (editingEntry) {
+        const entryDocRef = doc(firestore, 'pmsDefrostingLog', editingEntry.id);
+        await setDoc(entryDocRef, entryDataForFirestore);
+        toast({ title: "Enregistrement Modifié", description: "L'entrée de décongélation a été mise à jour." });
+      } else {
+        // Add new entry to Firestore (id will be auto-generated by Firestore)
+        // Remove id field if it exists from form data before adding new doc.
+        const { id, ...dataWithoutId } = entryDataForFirestore as any; 
+        await addDoc(collection(firestore, 'pmsDefrostingLog'), dataWithoutId);
+        toast({ title: "Enregistrement Ajouté", description: "Une nouvelle entrée de décongélation a été ajoutée." });
+      }
+      fetchDefrostingEntries(); // Re-fetch to update UI
+    } catch (error) {
+      console.error("Error saving defrosting entry to Firestore:", error);
+      toast({ title: "Erreur de Sauvegarde", variant: "destructive"});
+    } finally {
+      setIsLoading(false);
+      setIsDialogOpen(false);
     }
-    setIsDialogOpen(false);
   };
 
-  const handleDeleteEntry = (entryId: string) => {
-    setEntries(prev => prev.filter(e => e.id !== entryId));
-    toast({ title: "Enregistrement Supprimé", variant: "destructive" });
+  const handleDeleteEntry = async (entryId: string) => {
+    setIsLoading(true);
+    try {
+      await deleteDoc(doc(firestore, 'pmsDefrostingLog', entryId));
+      toast({ title: "Enregistrement Supprimé", variant: "destructive" });
+      fetchDefrostingEntries(); // Re-fetch
+    } catch (error) {
+      console.error("Error deleting defrosting entry from Firestore:", error);
+      toast({ title: "Erreur de Suppression", variant: "destructive"});
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   const generatePdf = () => {
@@ -154,7 +186,7 @@ export default function DefrostingMonitoring() {
       doc.setFontSize(16); doc.text("Suivi de Décongélation", 14, currentY); currentY += 8;
       doc.setFontSize(10); doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY); currentY += 7;
 
-      const headStylesBase = { fontSize: 8, fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1, textColor: [0,0,0] }; // Changed text color to black
+      const headStylesBase = { fontSize: 8, fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1, textColor: [0,0,0] }; 
       
       const head: any[] = [
         [
@@ -253,8 +285,8 @@ export default function DefrostingMonitoring() {
                     <FormField control={form.control} name="defrostStartTime" render={({ field }) => (<FormItem><FormLabel>Heure Décongélation</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
                     <FormField control={form.control} name="productName" render={({ field }) => (<FormItem><FormLabel>Produit</FormLabel><FormControl><Input placeholder="Ex: Filet de Saumon" {...field} /></FormControl><FormMessage /></FormItem>)} />
                     <FormField control={form.control} name="quantity" render={({ field }) => (<FormItem><FormLabel>Quantité</FormLabel><FormControl><Input placeholder="Ex: 2 kg" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={form.control} name="tempOnRemoval" render={({ field }) => (<FormItem><FormLabel>T° Sortie Cong.</FormLabel><FormControl><Input placeholder="Ex: -18°C" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={form.control} name="initialsStart" render={({ field }) => (<FormItem><FormLabel>Initial Dém.</FormLabel><FormControl><Input placeholder="Ex: JD" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="tempOnRemoval" render={({ field }) => (<FormItem><FormLabel>T° Sortie Cong.</FormLabel><FormControl><Input placeholder="Ex: -18°C" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="initialsStart" render={({ field }) => (<FormItem><FormLabel>Initial Dém.</FormLabel><FormControl><Input placeholder="Ex: JD" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
                   </div>
                   
                   <h4 className="text-md font-semibold pt-2 border-t mt-3">Informations d'Utilisation (Optionnel)</h4>
@@ -268,14 +300,14 @@ export default function DefrostingMonitoring() {
                       <PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr} /></PopoverContent></Popover><FormMessage />
                       </FormItem>
                     )} />
-                    <FormField control={form.control} name="useTime" render={({ field }) => (<FormItem><FormLabel>Heure Utilisation</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={form.control} name="tempOnUse" render={({ field }) => (<FormItem><FormLabel>T° Utilisation</FormLabel><FormControl><Input placeholder="Ex: 4°C" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={form.control} name="initialsEnd" render={({ field }) => (<FormItem><FormLabel>Visa Fin</FormLabel><FormControl><Input placeholder="Ex: JD" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="useTime" render={({ field }) => (<FormItem><FormLabel>Heure Utilisation</FormLabel><FormControl><Input type="time" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="tempOnUse" render={({ field }) => (<FormItem><FormLabel>T° Utilisation</FormLabel><FormControl><Input placeholder="Ex: 4°C" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="initialsEnd" render={({ field }) => (<FormItem><FormLabel>Visa Fin</FormLabel><FormControl><Input placeholder="Ex: JD" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
                   </div>
                   
                   <DialogFooter className="pt-4">
                     <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                    <Button type="submit">{editingEntry ? "Enregistrer Modifications" : "Ajouter Entrée"}</Button>
+                    <Button type="submit" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingEntry ? "Enregistrer Modifications" : "Ajouter Entrée"}</Button>
                   </DialogFooter>
                 </form>
               </Form>
@@ -287,9 +319,9 @@ export default function DefrostingMonitoring() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
+        {isLoading && entries.length === 0 ? ( // Show loading only if initially loading and no entries yet
           <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Chargement...</div>
-        ) : entries.length === 0 ? (
+        ) : !isLoading && entries.length === 0 ? ( // Show no entries message only after loading is done
           <p className="text-muted-foreground text-center py-8">Aucun enregistrement. Cliquez sur "Ajouter Enregistrement" pour commencer.</p>
         ) : (
           <div className="overflow-x-auto border rounded-md">
@@ -365,3 +397,4 @@ export default function DefrostingMonitoring() {
   );
 }
 
+    
