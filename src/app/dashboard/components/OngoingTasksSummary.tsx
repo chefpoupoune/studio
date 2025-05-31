@@ -11,6 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { firestore } from '@/lib/firebase';
 import { collection, query, where, orderBy, getDocs, Timestamp, limit } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
+import { format } from 'date-fns'; // For formatting appointmentDate
 
 // TASK_STORAGE_KEY removed
 
@@ -29,12 +30,11 @@ export default function OngoingTasksSummary() {
     setIsLoading(true);
     try {
       const tasksCollectionRef = collection(firestore, 'taskManagementTasks');
-      // Filter out 'termine' and 'annule' directly in the query
       const q = query(
         tasksCollectionRef,
         where('currentStatus', 'not-in', ['termine', 'annule']),
         orderBy('updatedAt', 'desc'),
-        // limit(10) // Optionally limit the number of tasks fetched for the summary
+        // limit(10) // Optionally limit for summary if performance becomes an issue
       );
       const querySnapshot = await getDocs(q);
       const tasksList = querySnapshot.docs.map(docSnap => {
@@ -42,6 +42,7 @@ export default function OngoingTasksSummary() {
         return {
           id: docSnap.id,
           ...data,
+          // Ensure dates are JavaScript Date objects
           createdAt: (data.createdAt as Timestamp)?.toDate ? (data.createdAt as Timestamp).toDate() : new Date(data.createdAt),
           updatedAt: (data.updatedAt as Timestamp)?.toDate ? (data.updatedAt as Timestamp).toDate() : new Date(data.updatedAt),
           appointmentDate: data.appointmentDate && (data.appointmentDate as Timestamp)?.toDate ? (data.appointmentDate as Timestamp).toDate() : null,
@@ -56,7 +57,7 @@ export default function OngoingTasksSummary() {
     } catch (e) {
       console.error("Error loading tasks from Firestore for summary:", e);
       setAllTasks([]);
-      toast({ title: "Erreur de chargement des tâches pour le résumé", variant: "destructive" });
+      toast({ title: "Erreur de chargement des tâches pour le résumé", description: "Les données des tâches n'ont pu être chargées depuis Firestore.", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -64,21 +65,32 @@ export default function OngoingTasksSummary() {
 
   useEffect(() => {
     if (isClient) {
-      fetchOngoingTasks();
+      fetchOngoingTasks(); // Initial fetch
 
+      // Listener for updates from other components
       const handleTasksUpdated = () => {
-        console.log("OngoingTasksSummary: taskManagementTasksUpdated event received.");
+        console.log("OngoingTasksSummary: taskManagementTasksUpdated event received. Re-fetching tasks.");
         fetchOngoingTasks();
       };
       window.addEventListener('taskManagementTasksUpdated', handleTasksUpdated);
+      
+      // Re-fetch on tab visibility change
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          console.log("OngoingTasksSummary: Tab became visible, re-fetching tasks.");
+          fetchOngoingTasks();
+        }
+      };
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+
       return () => {
         window.removeEventListener('taskManagementTasksUpdated', handleTasksUpdated);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
     }
   }, [isClient, fetchOngoingTasks]);
 
-  // ongoingTasks is now directly `allTasks` since the query filters them
-  const ongoingTasks = allTasks;
+  const ongoingTasks = allTasks; // `allTasks` is already filtered by the Firestore query
 
   const activeTasksCount = useMemo(() => {
     return ongoingTasks.filter(task => ['en_cours', 'rendez_vous', 'mr_dufay_prevenue', 'devis_fait', 'devis_envoye', 'devis_signature'].includes(task.currentStatus)).length;
@@ -166,7 +178,7 @@ export default function OngoingTasksSummary() {
                     )}
                     {task.currentStatus === 'rendez_vous' && task.appointmentDate && (
                        <p className="text-xs text-primary/80 mt-1">
-                         RDV: {new Date(task.appointmentDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                         RDV: {format(new Date(task.appointmentDate), "dd/MM/yyyy", { locale: 'fr-FR' })}
                        </p>
                     )}
                   </li>

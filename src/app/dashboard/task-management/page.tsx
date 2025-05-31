@@ -22,10 +22,10 @@ import {
   setDoc,
   deleteDoc,
   Timestamp,
-  serverTimestamp,
+  // serverTimestamp, // Not strictly necessary if we set updatedAt client-side before save
 } from 'firebase/firestore';
 
-// Removed initialTasks as data will come from Firestore
+// Removed TASK_STORAGE_KEY as data will come from Firestore
 
 export default function TaskManagementPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -62,7 +62,7 @@ export default function TaskManagementPage() {
       console.log("Tasks fetched from Firestore:", tasksList.length);
     } catch (e) {
       console.error("Error fetching tasks from Firestore:", e);
-      setTasks([]); // Fallback to empty or handle differently
+      setTasks([]);
       toast({ title: "Erreur de chargement des tâches", description: "Les tâches n'ont pu être chargées depuis la base de données.", variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -78,7 +78,7 @@ export default function TaskManagementPage() {
   const handleAddTask = useCallback(async (taskData: { title: string; description: string }) => {
     if (!isClient) return;
     const now = new Date();
-    const newTask FirestoreData = {
+    const newTaskFirestoreData = {
       ...taskData,
       createdAt: Timestamp.fromDate(now),
       updatedAt: Timestamp.fromDate(now),
@@ -87,12 +87,10 @@ export default function TaskManagementPage() {
       appointmentDate: null,
     };
     try {
-      const docRef = await addDoc(collection(firestore, 'taskManagementTasks'), newTaskFirestoreData);
-      // Optimistically update UI or re-fetch
-      // For simplicity, re-fetch after add
+      await addDoc(collection(firestore, 'taskManagementTasks'), newTaskFirestoreData);
       fetchTasks();
       window.dispatchEvent(new CustomEvent('taskManagementTasksUpdated'));
-      toast({ title: "Tâche Ajoutée", description: `La tâche "${taskData.title}" a été créée dans Firestore.` });
+      toast({ title: "Tâche Ajoutée", description: `La tâche "${taskData.title}" a été créée.` });
     } catch (e) {
       console.error("Error adding task to Firestore:", e);
       toast({ title: "Erreur d'ajout de tâche", variant: "destructive" });
@@ -105,28 +103,17 @@ export default function TaskManagementPage() {
     const taskToUpdate = tasks.find(t => t.id === taskId);
     if (!taskToUpdate) return;
 
-    const updatedData = {
-      ...taskToUpdate, // Keep existing fields not being edited
+    const dataToSave = {
       title: taskData.title,
       description: taskData.description,
       updatedAt: Timestamp.fromDate(new Date()),
-      // Convert existing dates back to Timestamps if necessary, but setDoc should handle it
-      createdAt: Timestamp.fromDate(new Date(taskToUpdate.createdAt)),
-      appointmentDate: taskToUpdate.appointmentDate ? Timestamp.fromDate(new Date(taskToUpdate.appointmentDate)) : null,
-      statusHistory: taskToUpdate.statusHistory.map(log => ({
-        ...log,
-        date: Timestamp.fromDate(new Date(log.date)),
-      })),
     };
-    // Remove id from data to save as it's the document ID
-    const { id, ...dataToSave } = updatedData;
-
 
     try {
-      await setDoc(taskDocRef, dataToSave);
+      await setDoc(taskDocRef, dataToSave, { merge: true }); // Use merge:true to only update specified fields
       fetchTasks();
       window.dispatchEvent(new CustomEvent('taskManagementTasksUpdated'));
-      toast({ title: "Tâche Modifiée", description: "Les détails de la tâche ont été mis à jour dans Firestore." });
+      toast({ title: "Tâche Modifiée", description: "Les détails de la tâche ont été mis à jour." });
     } catch (e) {
       console.error("Error updating task in Firestore:", e);
       toast({ title: "Erreur de modification de tâche", variant: "destructive" });
@@ -140,7 +127,7 @@ export default function TaskManagementPage() {
       await deleteDoc(doc(firestore, 'taskManagementTasks', taskId));
       fetchTasks();
       window.dispatchEvent(new CustomEvent('taskManagementTasksUpdated'));
-      toast({ title: "Tâche Supprimée", description: `La tâche "${taskTitle}" a été supprimée de Firestore.`, variant: "destructive" });
+      toast({ title: "Tâche Supprimée", description: `La tâche "${taskTitle}" a été supprimée.`, variant: "destructive" });
     } catch (e) {
       console.error("Error deleting task from Firestore:", e);
       toast({ title: "Erreur de suppression de tâche", variant: "destructive" });
@@ -162,22 +149,20 @@ export default function TaskManagementPage() {
       notes: statusData.notes,
     };
 
-    const updatedData = {
-      ...taskToUpdate,
+    const updatedStatusHistory = [...taskToUpdate.statusHistory.map(log => ({...log, date: Timestamp.fromDate(new Date(log.date))})), newStatusEntry];
+
+    const dataToSave = {
       currentStatus: statusData.newStatus,
       appointmentDate: statusData.newStatus === 'rendez_vous' && statusData.appointmentDate ? Timestamp.fromDate(statusData.appointmentDate) : null,
-      statusHistory: [...taskToUpdate.statusHistory.map(log => ({...log, date: Timestamp.fromDate(new Date(log.date))})), newStatusEntry],
+      statusHistory: updatedStatusHistory,
       updatedAt: Timestamp.fromDate(new Date()),
-      createdAt: Timestamp.fromDate(new Date(taskToUpdate.createdAt)), // Ensure createdAt remains a Timestamp
     };
-     // Remove id from data to save as it's the document ID
-    const { id, ...dataToSave } = updatedData;
 
     try {
-      await setDoc(taskDocRef, dataToSave);
+      await setDoc(taskDocRef, dataToSave, { merge: true }); // Use merge:true
       fetchTasks();
       window.dispatchEvent(new CustomEvent('taskManagementTasksUpdated'));
-      toast({ title: "Statut Mis à Jour", description: `Le statut de "${taskToUpdate.title}" est maintenant "${statusData.newStatus}" dans Firestore.` });
+      toast({ title: "Statut Mis à Jour", description: `Le statut de "${taskToUpdate.title}" est maintenant "${statusData.newStatus}".` });
     } catch (e) {
       console.error("Error updating task status in Firestore:", e);
       toast({ title: "Erreur de mise à jour du statut", variant: "destructive" });
