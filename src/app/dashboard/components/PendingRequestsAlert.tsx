@@ -8,9 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { BellRing, Loader2, ChevronsRight } from 'lucide-react';
 import type { OvertimeRequest, AbsenceRequest } from '@/app/dashboard/declaration-heure/types';
+import { firestore } from '@/lib/firebase';
+import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 
-const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v5';
-const ABSENCE_REQUESTS_STORAGE_KEY = 'declaration_heure_absence_requests_v5';
+// OVERTIME_REQUESTS_STORAGE_KEY and ABSENCE_REQUESTS_STORAGE_KEY removed
 
 interface PendingRequestsAlertProps {
   loggedInUsername: string | null;
@@ -26,28 +27,30 @@ export default function PendingRequestsAlert({ loggedInUsername }: PendingReques
     setIsClient(true);
   }, []);
 
-  const loadPendingCounts = useCallback(() => {
+  const loadPendingCounts = useCallback(async () => {
     if (!isClient) return;
     setIsLoading(true);
+    let overtimeCount = 0;
+    let absenceCount = 0;
     try {
-      const storedOvertimeRaw = localStorage.getItem(OVERTIME_REQUESTS_STORAGE_KEY);
-      let overtimeCount = 0;
-      if (storedOvertimeRaw) {
-        const parsedOvertime: OvertimeRequest[] = JSON.parse(storedOvertimeRaw);
-        overtimeCount = parsedOvertime.filter(req => req.approvalStatus === 'pending').length;
-      }
+      // Fetch pending overtime requests
+      const overtimeCollectionRef = collection(firestore, 'overtimeRequests');
+      const overtimeQuery = query(overtimeCollectionRef, where('approvalStatus', '==', 'pending'));
+      const overtimeSnapshot = await getDocs(overtimeQuery);
+      overtimeCount = overtimeSnapshot.size;
       setPendingOvertimeCount(overtimeCount);
 
-      const storedAbsenceRaw = localStorage.getItem(ABSENCE_REQUESTS_STORAGE_KEY);
-      let absenceCount = 0;
-      if (storedAbsenceRaw) {
-        const parsedAbsence: AbsenceRequest[] = JSON.parse(storedAbsenceRaw);
-        absenceCount = parsedAbsence.filter(req => req.approvalStatus === 'pending').length;
-      }
+      // Fetch pending absence requests
+      const absenceCollectionRef = collection(firestore, 'absenceRequests');
+      const absenceQuery = query(absenceCollectionRef, where('approvalStatus', '==', 'pending'));
+      const absenceSnapshot = await getDocs(absenceQuery);
+      absenceCount = absenceSnapshot.size;
       setPendingAbsenceCount(absenceCount);
 
+      console.log(`[PendingAlerts] Fetched counts - Overtime: ${overtimeCount}, Absence: ${absenceCount}`);
+
     } catch (e) {
-      console.error("Error loading pending requests counts:", e);
+      console.error("Error loading pending requests counts from Firestore:", e);
       setPendingOvertimeCount(0);
       setPendingAbsenceCount(0);
     } finally {
@@ -56,7 +59,7 @@ export default function PendingRequestsAlert({ loggedInUsername }: PendingReques
   }, [isClient]);
 
   useEffect(() => {
-    if (isClient) {
+    if (isClient && loggedInUsername?.toLowerCase() === 'chef') { // Only load for chef
       loadPendingCounts(); // Initial load
 
       const handleOvertimeUpdate = () => {
@@ -83,18 +86,19 @@ export default function PendingRequestsAlert({ loggedInUsername }: PendingReques
         window.removeEventListener('absenceRequestsUpdated', handleAbsenceUpdate);
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
+    } else {
+      // If not chef, or not client-side yet, ensure counts are 0 and not loading
+      setPendingOvertimeCount(0);
+      setPendingAbsenceCount(0);
+      setIsLoading(false);
     }
-  }, [isClient, loadPendingCounts]);
+  }, [isClient, loggedInUsername, loadPendingCounts]);
 
   if (!isClient || loggedInUsername?.toLowerCase() !== 'chef') {
     return null;
   }
 
   if (isLoading) {
-    // Optionally, you might want to show a subtle loader or nothing during initial load
-    // For now, it will show the loading alert, then disappear if totalPending is 0.
-    // If you want it to be completely invisible until there's something to show,
-    // you could return null here as well, but then the user wouldn't know it's checking.
     return (
       <Alert className="mb-6 bg-muted/30 border-muted-foreground/20">
         <BellRing className="h-5 w-5 text-muted-foreground animate-pulse" />
@@ -109,7 +113,6 @@ export default function PendingRequestsAlert({ loggedInUsername }: PendingReques
   const totalPending = pendingOvertimeCount + pendingAbsenceCount;
 
   if (totalPending === 0) {
-    // If loading is complete and there are no pending requests, render nothing.
     return null; 
   }
 
@@ -141,3 +144,5 @@ export default function PendingRequestsAlert({ loggedInUsername }: PendingReques
     </Alert>
   );
 }
+
+    

@@ -35,14 +35,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+import { firestore } from '@/lib/firebase';
+import {
+  collection,
+  query,
+  orderBy,
+  getDocs,
+  addDoc,
+  doc,
+  setDoc,
+  deleteDoc,
+  Timestamp,
+  serverTimestamp, // For server-side timestamping if needed, though client-side is fine for updatedAt
+} from 'firebase/firestore';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
 }
 
-const OVERTIME_REQUESTS_STORAGE_KEY = 'declaration_heure_overtime_requests_v5';
-const ABSENCE_REQUESTS_STORAGE_KEY = 'declaration_heure_absence_requests_v5';
-const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2';
+// OVERTIME_REQUESTS_STORAGE_KEY and ABSENCE_REQUESTS_STORAGE_KEY removed
+const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2'; // Still needed to get user info for display
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
 
@@ -78,102 +90,115 @@ export default function DeclarationHeurePage() {
     setIsClient(true);
   }, []);
 
+  // Fetch Brigade Members and LoggedInUsername (from localStorage)
   useEffect(() => {
     if (!isClient) return;
-    console.log("[DeclarationHeurePage LOAD] Attempting to load initial data from localStorage.");
+    
+    const fetchInitialLocalData = async () => {
+        try {
+            const storedBrigadeMembersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
+            if (storedBrigadeMembersRaw) {
+                setBrigadeMembers(JSON.parse(storedBrigadeMembersRaw));
+            } else {
+                // Fallback: try fetching from Firestore if not in local storage
+                const membersCollectionRef = collection(firestore, 'brigadeMembers');
+                const q = query(membersCollectionRef, orderBy("name"));
+                const querySnapshot = await getDocs(q);
+                const membersList = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as BrigadeMember));
+                setBrigadeMembers(membersList);
+                // Optionally save to local storage if needed by other parts (though better to centralize to Firestore)
+                // localStorage.setItem(BRIGADE_MEMBERS_STORAGE_KEY, JSON.stringify(membersList));
+            }
+            
+            const usernameFromStorage = localStorage.getItem(LOGGED_IN_USERNAME_KEY);
+            setLoggedInUsername(usernameFromStorage);
+        } catch (e) {
+            console.error("[DeclarationHeurePage LOAD Local] Error loading brigade members or username from localStorage", e);
+            setBrigadeMembers([]); 
+            setLoggedInUsername(null);
+            toast({ title: "Erreur de chargement initial (local)", variant: "destructive" });
+        }
+    };
+    fetchInitialLocalData();
+  }, [isClient, toast]);
+
+  // Fetch Overtime Requests from Firestore
+  const fetchOvertimeRequests = useCallback(async () => {
+    if (!isClient) return;
     setDataLoaded(false);
-    let usernameFromStorage: string | null = null;
-
     try {
-      const storedOvertimeRaw = localStorage.getItem(OVERTIME_REQUESTS_STORAGE_KEY);
-      if (storedOvertimeRaw) {
-        const parsedOvertime = JSON.parse(storedOvertimeRaw).map((req: any) => ({
-          ...req, 
-          id: req.id || `or_${Date.now()}_${Math.random().toString(36).substring(2,9)}`, 
-          requestDate: req.requestDate || new Date().toISOString(), 
-          updatedAt: req.updatedAt || new Date().toISOString(),
-          overtimeDetails: Array.isArray(req.overtimeDetails) ? req.overtimeDetails.map((d:any) => ({...d, date: d.date || new Date().toISOString(), id: d.id || `detail_${Date.now()}_${Math.random().toString(36).substring(2,9)}` })) : [],
-          approvalStatus: req.approvalStatus || 'pending', 
-          prestationTypes: Array.isArray(req.prestationTypes) ? req.prestationTypes : ['logistique'],
-          prestationTypeAutresDetail: req.prestationTypeAutresDetail || '', 
-          rejectionReason: req.rejectionReason || '',
-          decisionDate: req.decisionDate || null, 
-          employeeSignatureDate: req.employeeSignatureDate || null,
-          directManagerSignatureDate: req.directManagerSignatureDate || null, 
-          directorSignatureDate: req.directorSignatureDate || null,
-          compensationType: null, // Ensure compensationType is handled if it was previously stored
-        }));
-        setOvertimeRequests(parsedOvertime.sort((a:OvertimeRequest,b:OvertimeRequest) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()));
-        console.log(`[DeclarationHeurePage LOAD] Loaded ${parsedOvertime.length} overtime requests.`);
-      } else { 
-        setOvertimeRequests([]); 
-        console.log("[DeclarationHeurePage LOAD] No overtime requests found in localStorage.");
-      }
-
-      const storedAbsenceRaw = localStorage.getItem(ABSENCE_REQUESTS_STORAGE_KEY);
-      if (storedAbsenceRaw) {
-        const parsedAbsence = JSON.parse(storedAbsenceRaw).map((req: any) => ({
-          ...req, 
-          id: req.id || `abs_${Date.now()}_${Math.random().toString(36).substring(2,9)}`, 
-          requestDate: req.requestDate || new Date().toISOString(), 
-          updatedAt: req.updatedAt || new Date().toISOString(),
-          startDate: req.startDate || new Date().toISOString(), 
-          endDate: req.endDate || new Date(new Date().setDate(new Date().getDate() + 1)).toISOString(),
-          approvalStatus: req.approvalStatus || 'pending', 
-          position: req.position || '',
-          hoursPerDay: req.hoursPerDay ?? undefined,
-          totalAbsenceHours: req.totalAbsenceHours ?? 0,
-          numberOfDays: req.numberOfDays || (req.startDate && req.endDate && isValid(parseISO(req.startDate)) && isValid(parseISO(req.endDate)) ? differenceInCalendarDays(parseISO(req.endDate), parseISO(req.startDate)) + 1 : 1),
-          prestationTypes: Array.isArray(req.prestationTypes) ? req.prestationTypes : ['logistique'],
-          prestationTypeAutresDetail: req.prestationTypeAutresDetail || '',
-          employeeSignatureDate: req.employeeSignatureDate || null,
-          directManagerSignatureDate: req.directManagerSignatureDate || null,
-          directorSignatureDate: req.directorSignatureDate || null,
-          rejectionReason: req.rejectionReason || '',
-          decisionDate: req.decisionDate || null,
-        }));
-        setAbsenceRequests(parsedAbsence.sort((a:AbsenceRequest,b:AbsenceRequest) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()));
-         console.log(`[DeclarationHeurePage LOAD] Loaded ${parsedAbsence.length} absence requests.`);
-      } else { 
-        setAbsenceRequests([]); 
-        console.log("[DeclarationHeurePage LOAD] No absence requests found in localStorage.");
-      }
-
-      const storedBrigadeMembersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
-      if (storedBrigadeMembersRaw) {
-        setBrigadeMembers(JSON.parse(storedBrigadeMembersRaw));
-      } else {
-        setBrigadeMembers([]);
-      }
-      
-      usernameFromStorage = localStorage.getItem(LOGGED_IN_USERNAME_KEY);
-      setLoggedInUsername(usernameFromStorage);
-
+      const overtimeCollectionRef = collection(firestore, 'overtimeRequests');
+      const q = query(overtimeCollectionRef, orderBy('requestDate', 'desc'));
+      const querySnapshot = await getDocs(q);
+      const requestsList = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          requestDate: (data.requestDate as Timestamp)?.toDate ? (data.requestDate as Timestamp).toDate().toISOString() : new Date(data.requestDate).toISOString(),
+          updatedAt: (data.updatedAt as Timestamp)?.toDate ? (data.updatedAt as Timestamp).toDate().toISOString() : new Date(data.updatedAt).toISOString(),
+          employeeSignatureDate: data.employeeSignatureDate && (data.employeeSignatureDate as Timestamp)?.toDate ? (data.employeeSignatureDate as Timestamp).toDate().toISOString() : null,
+          directManagerSignatureDate: data.directManagerSignatureDate && (data.directManagerSignatureDate as Timestamp)?.toDate ? (data.directManagerSignatureDate as Timestamp).toDate().toISOString() : null,
+          directorSignatureDate: data.directorSignatureDate && (data.directorSignatureDate as Timestamp)?.toDate ? (data.directorSignatureDate as Timestamp).toDate().toISOString() : null,
+          decisionDate: data.decisionDate && (data.decisionDate as Timestamp)?.toDate ? (data.decisionDate as Timestamp).toDate().toISOString() : null,
+          overtimeDetails: (data.overtimeDetails || []).map((detail: any) => ({
+            ...detail,
+            date: detail.date && (detail.date as Timestamp)?.toDate ? (detail.date as Timestamp).toDate().toISOString() : new Date(detail.date).toISOString(),
+          })),
+        } as OvertimeRequest;
+      });
+      setOvertimeRequests(requestsList);
+      console.log(`[DeclarationHeurePage LOAD OT] Loaded ${requestsList.length} overtime requests from Firestore.`);
     } catch (e) {
-      console.error("[DeclarationHeurePage LOAD] Error loading data from localStorage", e);
-      setOvertimeRequests([]); setAbsenceRequests([]); setBrigadeMembers([]); setLoggedInUsername(null);
-      toast({ title: "Erreur de chargement des données de déclaration", variant: "destructive" });
+      console.error("[DeclarationHeurePage LOAD OT] Error loading overtime requests from Firestore", e);
+      setOvertimeRequests([]);
+      toast({ title: "Erreur chargement demandes dépassement", variant: "destructive" });
     } finally {
       setDataLoaded(true);
-      console.log("[DeclarationHeurePage LOAD] Data loading complete, dataLoaded set to true.");
+    }
+  }, [isClient, toast]);
+
+  // Fetch Absence Requests from Firestore
+  const fetchAbsenceRequests = useCallback(async () => {
+    if (!isClient) return;
+    setDataLoaded(false);
+    try {
+      const absenceCollectionRef = collection(firestore, 'absenceRequests');
+      const q = query(absenceCollectionRef, orderBy('requestDate', 'desc'));
+      const querySnapshot = await getDocs(q);
+      const requestsList = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          requestDate: (data.requestDate as Timestamp)?.toDate ? (data.requestDate as Timestamp).toDate().toISOString() : new Date(data.requestDate).toISOString(),
+          updatedAt: (data.updatedAt as Timestamp)?.toDate ? (data.updatedAt as Timestamp).toDate().toISOString() : new Date(data.updatedAt).toISOString(),
+          startDate: data.startDate && (data.startDate as Timestamp)?.toDate ? (data.startDate as Timestamp).toDate().toISOString() : new Date(data.startDate).toISOString(),
+          endDate: data.endDate && (data.endDate as Timestamp)?.toDate ? (data.endDate as Timestamp).toDate().toISOString() : new Date(data.endDate).toISOString(),
+          employeeSignatureDate: data.employeeSignatureDate && (data.employeeSignatureDate as Timestamp)?.toDate ? (data.employeeSignatureDate as Timestamp).toDate().toISOString() : null,
+          directManagerSignatureDate: data.directManagerSignatureDate && (data.directManagerSignatureDate as Timestamp)?.toDate ? (data.directManagerSignatureDate as Timestamp).toDate().toISOString() : null,
+          directorSignatureDate: data.directorSignatureDate && (data.directorSignatureDate as Timestamp)?.toDate ? (data.directorSignatureDate as Timestamp).toDate().toISOString() : null,
+          decisionDate: data.decisionDate && (data.decisionDate as Timestamp)?.toDate ? (data.decisionDate as Timestamp).toDate().toISOString() : null,
+        } as AbsenceRequest;
+      });
+      setAbsenceRequests(requestsList);
+      console.log(`[DeclarationHeurePage LOAD ABS] Loaded ${requestsList.length} absence requests from Firestore.`);
+    } catch (e) {
+      console.error("[DeclarationHeurePage LOAD ABS] Error loading absence requests from Firestore", e);
+      setAbsenceRequests([]);
+      toast({ title: "Erreur chargement demandes d'absence", variant: "destructive" });
+    } finally {
+      setDataLoaded(true);
     }
   }, [isClient, toast]);
 
   useEffect(() => {
-    if (isClient && dataLoaded) { 
-      console.log("[DeclarationHeurePage SAVE OT] Attempting to save overtimeRequests to localStorage. Count:", overtimeRequests.length);
-      localStorage.setItem(OVERTIME_REQUESTS_STORAGE_KEY, JSON.stringify(overtimeRequests));
-      window.dispatchEvent(new CustomEvent('overtimeRequestsUpdated'));
+    if (isClient) {
+      fetchOvertimeRequests();
+      fetchAbsenceRequests();
     }
-  }, [overtimeRequests, isClient, dataLoaded]);
+  }, [isClient, fetchOvertimeRequests, fetchAbsenceRequests]);
 
-  useEffect(() => {
-    if (isClient && dataLoaded) {
-      console.log("[DeclarationHeurePage SAVE ABS] Attempting to save absenceRequests to localStorage. Count:", absenceRequests.length);
-      localStorage.setItem(ABSENCE_REQUESTS_STORAGE_KEY, JSON.stringify(absenceRequests));
-      window.dispatchEvent(new CustomEvent('absenceRequestsUpdated'));
-    }
-  }, [absenceRequests, isClient, dataLoaded]);
 
   const currentBrigadeMember = useMemo(() => {
     if (loggedInUsername && brigadeMembers.length > 0) {
@@ -182,63 +207,61 @@ export default function DeclarationHeurePage() {
     return null;
   }, [loggedInUsername, brigadeMembers]);
 
-  const handleAddOrUpdateOvertimeRequest = useCallback((
+  const handleAddOrUpdateOvertimeRequest = useCallback(async (
     data: Partial<Omit<OvertimeRequest, 'id' | 'employeeName' | 'requestDate' | 'updatedAt' >>
   ) => {
-    if (!dataLoaded) {
-      toast({ title: "Données non prêtes", description: "Veuillez attendre la fin du chargement.", variant: "default" });
-      return;
-    }
+    if (!dataLoaded) { toast({ title: "Données non prêtes", variant: "default" }); return; }
+    
     const employeeNameToUse = editingOvertimeRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername || "Système";
     const positionToUse = data.position || (editingOvertimeRequest ? editingOvertimeRequest.position : (currentBrigadeMember?.role || ''));
-    const nowISO = new Date().toISOString();
-    let updatedRequestsList;
+    const now = new Date();
 
-    if (editingOvertimeRequest) {
-      updatedRequestsList = overtimeRequests.map(req => 
-        req.id === editingOvertimeRequest.id
-        ? { 
-            ...req, 
-            ...data, 
-            employeeName: employeeNameToUse, 
-            position: positionToUse, 
-            updatedAt: nowISO, 
-            reasonStub: data.reasonStub || req.reasonStub || "Non spécifié",
-            prestationTypes: data.prestationTypes && data.prestationTypes.length > 0 ? data.prestationTypes : ['logistique'],
-            prestationTypeAutresDetail: data.prestationTypes?.includes('autres') ? (data.prestationTypeAutresDetail || '') : '',
-            approvalStatus: data.approvalStatus || req.approvalStatus || 'pending',
-            compensationType: null, // Explicitly setting to null as it's removed
-          } as OvertimeRequest
-        : req
-      );
-      toast({ title: "Demande Dépassement Modifiée" });
-    } else {
-      const newRequest: OvertimeRequest = {
-        id: `or_${Date.now()}_${Math.random().toString(36).substring(2,9)}`, 
-        employeeName: employeeNameToUse, 
-        requestDate: nowISO, 
-        updatedAt: nowISO,
-        reasonStub: data.reasonStub || "Non spécifié", 
-        approvalStatus: data.approvalStatus || 'pending',
-        prestationTypes: data.prestationTypes && data.prestationTypes.length > 0 ? data.prestationTypes : ['logistique'],
-        prestationTypeAutresDetail: data.prestationTypes?.includes('autres') ? (data.prestationTypeAutresDetail || '') : '',
-        ...data, 
-        position: positionToUse, 
-        overtimeDetails: data.overtimeDetails || [],
-        compensationType: null, // Explicitly setting to null
-      } as OvertimeRequest; 
-      updatedRequestsList = [newRequest, ...overtimeRequests];
-      toast({ title: "Demande Dépassement Soumise" });
+    const requestDataToSave = {
+      ...data,
+      employeeName: employeeNameToUse,
+      position: positionToUse,
+      requestDate: editingOvertimeRequest ? Timestamp.fromDate(new Date(editingOvertimeRequest.requestDate)) : Timestamp.fromDate(now),
+      updatedAt: Timestamp.fromDate(now),
+      employeeSignatureDate: data.employeeSignatureDate ? Timestamp.fromDate(new Date(data.employeeSignatureDate)) : null,
+      directManagerSignatureDate: data.directManagerSignatureDate ? Timestamp.fromDate(new Date(data.directManagerSignatureDate)) : null,
+      directorSignatureDate: data.directorSignatureDate ? Timestamp.fromDate(new Date(data.directorSignatureDate)) : null,
+      decisionDate: data.decisionDate ? Timestamp.fromDate(new Date(data.decisionDate)) : null,
+      overtimeDetails: (data.overtimeDetails || []).map(detail => ({
+        ...detail,
+        date: detail.date ? Timestamp.fromDate(new Date(detail.date)) : Timestamp.fromDate(new Date()), // Ensure date is Timestamp
+      })),
+      compensationType: null,
+    };
+
+    try {
+      if (editingOvertimeRequest) {
+        const docRef = doc(firestore, 'overtimeRequests', editingOvertimeRequest.id);
+        await setDoc(docRef, requestDataToSave);
+        toast({ title: "Demande Dépassement Modifiée" });
+      } else {
+        await addDoc(collection(firestore, 'overtimeRequests'), requestDataToSave);
+        toast({ title: "Demande Dépassement Soumise" });
+      }
+      fetchOvertimeRequests();
+      window.dispatchEvent(new CustomEvent('overtimeRequestsUpdated'));
+    } catch (e) {
+      console.error("Error saving overtime request to Firestore:", e);
+      toast({ title: "Erreur sauvegarde demande dépassement", variant: "destructive"});
     }
-    updatedRequestsList.sort((a,b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
-    setOvertimeRequests(updatedRequestsList);
     setEditingOvertimeRequest(null); 
-  }, [overtimeRequests, editingOvertimeRequest, loggedInUsername, currentBrigadeMember, toast, dataLoaded]);
+  }, [editingOvertimeRequest, loggedInUsername, currentBrigadeMember, toast, dataLoaded, fetchOvertimeRequests]);
   
-  const handleDeleteOvertimeRequest = (requestId: string) => {
+  const handleDeleteOvertimeRequest = async (requestId: string) => {
     if (!dataLoaded) return;
-    setOvertimeRequests(prev => prev.filter(req => req.id !== requestId));
-    toast({ title: "Demande Dépassement Supprimée", variant: "destructive" });
+    try {
+      await deleteDoc(doc(firestore, 'overtimeRequests', requestId));
+      fetchOvertimeRequests();
+      window.dispatchEvent(new CustomEvent('overtimeRequestsUpdated'));
+      toast({ title: "Demande Dépassement Supprimée", variant: "destructive" });
+    } catch (e) {
+      console.error("Error deleting overtime request from Firestore:", e);
+      toast({ title: "Erreur suppression demande dépassement", variant: "destructive" });
+    }
   };
 
   const handleOpenOvertimeForm = (request?: OvertimeRequest, approverMode: boolean = false) => {
@@ -247,67 +270,58 @@ export default function DeclarationHeurePage() {
     setIsOvertimeFormOpen(true);
   };
 
-  const handleAddOrUpdateAbsenceRequest = useCallback((
+  const handleAddOrUpdateAbsenceRequest = useCallback(async (
     data: Partial<Omit<AbsenceRequest, 'id' | 'employeeName' | 'requestDate' | 'updatedAt'>>
   ) => {
     if (!dataLoaded) { toast({ title: "Données non prêtes", variant: "default"}); return; }
+    
     const employeeNameToUse = editingAbsenceRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername || "Système";
     const positionToUse = data.position || (editingAbsenceRequest ? editingAbsenceRequest.position : (currentBrigadeMember?.role || ''));
-    const nowISO = new Date().toISOString();
-    let updatedList;
+    const now = new Date();
 
-    if (editingAbsenceRequest) {
-        updatedList = absenceRequests.map(req => 
-            req.id === editingAbsenceRequest.id 
-            ? { 
-                ...req, 
-                ...data, 
-                employeeName: employeeNameToUse, 
-                position: positionToUse, 
-                updatedAt: nowISO, 
-                approvalStatus: data.approvalStatus || req.approvalStatus || 'pending',
-                hoursPerDay: data.hoursPerDay,
-                totalAbsenceHours: data.totalAbsenceHours,
-                prestationTypes: data.prestationTypes && data.prestationTypes.length > 0 ? data.prestationTypes : ['logistique'],
-                prestationTypeAutresDetail: data.prestationTypes?.includes('autres') ? (data.prestationTypeAutresDetail || '') : '',
-              } as AbsenceRequest
-            : req
-        );
-        toast({ title: "Demande d'Absence Modifiée" });
-    } else {
-        const newRequest: AbsenceRequest = {
-            id: `abs_${Date.now()}_${Math.random().toString(36).substring(2,9)}`,
-            employeeName: employeeNameToUse, 
-            position: positionToUse, 
-            requestDate: nowISO, 
-            updatedAt: nowISO,
-            approvalStatus: data.approvalStatus || 'pending',
-            hoursPerDay: data.hoursPerDay,
-            totalAbsenceHours: data.totalAbsenceHours,
-            prestationTypes: data.prestationTypes && data.prestationTypes.length > 0 ? data.prestationTypes : ['logistique'],
-            prestationTypeAutresDetail: data.prestationTypes?.includes('autres') ? (data.prestationTypeAutresDetail || '') : '',
-            startDate: data.startDate!, 
-            endDate: data.endDate!, 
-            reason: data.reason || '', 
-            numberOfDays: data.numberOfDays, 
-            employeeSignatureDate: data.employeeSignatureDate || null,
-            directManagerSignatureDate: data.directManagerSignatureDate || null,
-            directorSignatureDate: data.directorSignatureDate || null,
-            rejectionReason: data.rejectionReason || '',
-            decisionDate: data.decisionDate || null,
-        };
-        updatedList = [newRequest, ...absenceRequests];
-        toast({ title: "Demande d'Absence Soumise" });
+    const requestDataToSave = {
+      ...data,
+      employeeName: employeeNameToUse,
+      position: positionToUse,
+      requestDate: editingAbsenceRequest ? Timestamp.fromDate(new Date(editingAbsenceRequest.requestDate)) : Timestamp.fromDate(now),
+      updatedAt: Timestamp.fromDate(now),
+      startDate: data.startDate ? Timestamp.fromDate(new Date(data.startDate)) : Timestamp.fromDate(new Date()),
+      endDate: data.endDate ? Timestamp.fromDate(new Date(data.endDate)) : Timestamp.fromDate(new Date()),
+      employeeSignatureDate: data.employeeSignatureDate ? Timestamp.fromDate(new Date(data.employeeSignatureDate)) : null,
+      directManagerSignatureDate: data.directManagerSignatureDate ? Timestamp.fromDate(new Date(data.directManagerSignatureDate)) : null,
+      directorSignatureDate: data.directorSignatureDate ? Timestamp.fromDate(new Date(data.directorSignatureDate)) : null,
+      decisionDate: data.decisionDate ? Timestamp.fromDate(new Date(data.decisionDate)) : null,
+    };
+    
+    try {
+      if (editingAbsenceRequest) {
+          const docRef = doc(firestore, 'absenceRequests', editingAbsenceRequest.id);
+          await setDoc(docRef, requestDataToSave);
+          toast({ title: "Demande d'Absence Modifiée" });
+      } else {
+          await addDoc(collection(firestore, 'absenceRequests'), requestDataToSave);
+          toast({ title: "Demande d'Absence Soumise" });
+      }
+      fetchAbsenceRequests();
+      window.dispatchEvent(new CustomEvent('absenceRequestsUpdated'));
+    } catch (e) {
+      console.error("Error saving absence request to Firestore:", e);
+      toast({ title: "Erreur sauvegarde demande d'absence", variant: "destructive"});
     }
-    updatedList.sort((a,b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
-    setAbsenceRequests(updatedList);
     setEditingAbsenceRequest(null);
-  }, [absenceRequests, editingAbsenceRequest, loggedInUsername, currentBrigadeMember, toast, dataLoaded]);
+  }, [editingAbsenceRequest, loggedInUsername, currentBrigadeMember, toast, dataLoaded, fetchAbsenceRequests]);
 
-  const handleDeleteAbsenceRequest = (requestId: string) => {
+  const handleDeleteAbsenceRequest = async (requestId: string) => {
     if (!dataLoaded) return;
-    setAbsenceRequests(prev => prev.filter(req => req.id !== requestId));
-    toast({ title: "Demande d'Absence Supprimée", variant: "destructive" });
+     try {
+      await deleteDoc(doc(firestore, 'absenceRequests', requestId));
+      fetchAbsenceRequests();
+      window.dispatchEvent(new CustomEvent('absenceRequestsUpdated'));
+      toast({ title: "Demande d'Absence Supprimée", variant: "destructive" });
+    } catch (e) {
+      console.error("Error deleting absence request from Firestore:", e);
+      toast({ title: "Erreur suppression demande d'absence", variant: "destructive" });
+    }
   };
 
   const handleOpenAbsenceForm = (request?: AbsenceRequest, approverMode: boolean = false) => {
@@ -666,3 +680,5 @@ export default function DeclarationHeurePage() {
     </div>
   );
 }
+
+    
