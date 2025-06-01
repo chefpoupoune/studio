@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react'; // Added useCallback
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -9,43 +9,78 @@ import { ShoppingCart, AlertCircle, Loader2 } from "lucide-react";
 import type { PurchaseOrder, PurchaseOrderItem } from '@/app/dashboard/inventory/types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { firestore } from '@/lib/firebase'; // Firestore import
+import { collection, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore'; // Firestore query imports
+import { useToast } from '@/hooks/use-toast'; // Toast import
 
-const PURCHASE_ORDERS_STORAGE_KEY = 'inventory_purchase_orders';
+// PURCHASE_ORDERS_STORAGE_KEY removed
 
 export default function PendingPurchaseOrdersSummary() {
   const [pendingOrders, setPendingOrders] = useState<PurchaseOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isClient, setIsClient] = useState(false);
+  const { toast } = useToast(); // Toast hook
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
+  const fetchPendingOrders = useCallback(async () => {
+    if (!isClient) return;
+    setIsLoading(true);
+    try {
+      const ordersCollectionRef = collection(firestore, 'inventoryPurchaseOrders');
+      const q = query(
+        ordersCollectionRef,
+        where('status', '==', 'pending'),
+        orderBy('date', 'desc')
+      );
+      const querySnapshot = await getDocs(q);
+      const ordersList = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          date: (data.date as Timestamp).toDate(),
+          items: Array.isArray(data.items) ? data.items : [],
+        } as PurchaseOrder;
+      });
+      setPendingOrders(ordersList);
+      console.log("PendingPurchaseOrdersSummary: Orders fetched from Firestore:", ordersList.length);
+    } catch (e) {
+      console.error("Error loading pending purchase orders from Firestore for summary:", e);
+      setPendingOrders([]);
+      toast({ title: "Erreur chargement Bons de Commande (Résumé)", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isClient, toast]);
+
   useEffect(() => {
     if (isClient) {
-      setIsLoading(true);
-      try {
-        const storedOrders = localStorage.getItem(PURCHASE_ORDERS_STORAGE_KEY);
-        if (storedOrders) {
-          const allOrders: PurchaseOrder[] = JSON.parse(storedOrders).map((order: any) => ({
-            ...order,
-            date: new Date(order.date),
-            status: order.status || 'pending', 
-            items: Array.isArray(order.items) ? order.items : [], // Ensure items is an array
-          }));
-          const filteredPending = allOrders.filter(order => order.status === 'pending');
-          setPendingOrders(filteredPending.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-        } else {
-          setPendingOrders([]);
+      fetchPendingOrders(); // Initial fetch
+
+      const handleInventoryUpdate = () => {
+        console.log("PendingPurchaseOrdersSummary: inventoryPurchaseOrdersUpdated event received. Re-fetching orders.");
+        fetchPendingOrders();
+      };
+      window.addEventListener('inventoryPurchaseOrdersUpdated', handleInventoryUpdate);
+      
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          console.log("PendingPurchaseOrdersSummary: Tab became visible, re-fetching orders.");
+          fetchPendingOrders();
         }
-      } catch (e) {
-        console.error("Error loading purchase orders from localStorage for summary:", e);
-        setPendingOrders([]);
-      } finally {
-        setIsLoading(false);
-      }
+      };
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+
+      return () => {
+        window.removeEventListener('inventoryPurchaseOrdersUpdated', handleInventoryUpdate);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
     }
-  }, [isClient]);
+  }, [isClient, fetchPendingOrders]);
+
 
   if (!isClient || isLoading) {
     return (
@@ -120,7 +155,6 @@ export default function PendingPurchaseOrdersSummary() {
                    )}
                 </li>
               ))}
-              {/* Removed the "et X autres" from the main list level as it's now per order */}
             </ul>
           </ScrollArea>
         ) : (
@@ -133,3 +167,4 @@ export default function PendingPurchaseOrdersSummary() {
     </Card>
   );
 }
+
