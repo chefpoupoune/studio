@@ -8,11 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { User, LockKeyhole, ArrowLeft, Utensils, Loader2 } from 'lucide-react'; // Added Loader2
+import { User, LockKeyhole, ArrowLeft, Utensils, Loader2 } from 'lucide-react';
 import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
 import type { AppUser, RubricId, ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management';
-import { RUBRICS, TIME_TRACKING_SUB_RUBRICS, ALL_RUBRIC_IDS } from '@/app/dashboard/settings/components/user-management'; // Import ALL_RUBRIC_IDS
+import { ALL_RUBRIC_IDS } from '@/app/dashboard/settings/components/user-management'; // Import ALL_RUBRIC_IDS
 import { firestore } from '@/lib/firebase';
 import { collection, getDocs, query, orderBy, doc, setDoc, addDoc } from 'firebase/firestore';
 
@@ -51,7 +51,7 @@ export default function LoginPage() {
       }
       
       const fetchUsersForLogin = async () => {
-        setIsLoading(true);
+        // setIsLoading(true); // Already default
         let usersFromDb: AppUser[] = [];
         try {
           const usersCollectionRef = collection(firestore, 'appUsers');
@@ -68,25 +68,47 @@ export default function LoginPage() {
         let chefUserInDb = usersFromDb.find(u => u.username.toLowerCase() === 'chef');
 
         if (!chefUserInDb) {
-          console.log("[Login Page LOAD]: Chef user NOT found in Firestore. Using session-only default Chef for login display.");
-          const defaultChefForDisplay: AppUser = { 
-            id: DEFAULT_CHEF_ID_FIRESTORE, 
+          console.log("[Login Page LOAD]: Chef user NOT found in Firestore. Attempting to create default Chef.");
+          const defaultChefForCreation: Omit<AppUser, 'id'> = {
             username: 'Chef', 
             passwordRequired: true, 
             simulatedStoredPassword: simulatedHash('000'),
             permissions: defaultChefPermissions,
             viewableHourSummaryConfig: { type: 'all' },
           };
-          // Add to the list for display if not found in DB
-          setDefinedUsers([defaultChefForDisplay, ...usersFromDb.filter(u => u.username.toLowerCase() !== 'chef')].sort((a,b) => a.username.localeCompare(b.username)));
-        } else {
-           // Ensure Chef from DB has full permissions and correct settings for the session
-           const updatedUsers = usersFromDb.map(u => {
+          try {
+            const chefDocRef = await addDoc(collection(firestore, "appUsers"), defaultChefForCreation);
+            console.log("[Login Page LOAD]: Default Chef created in Firestore with ID:", chefDocRef.id);
+            const newChefUser = { ...defaultChefForCreation, id: chefDocRef.id };
+            usersFromDb.push(newChefUser); // Add to current list
+            chefUserInDb = newChefUser; // Update reference
+            toast({ title: "Compte Chef Initialisé", description: "Le compte Chef par défaut (mdp: 000) a été créé."});
+          } catch (createError) {
+            console.error("Error creating default Chef user in Firestore:", createError);
+            toast({ title: "Erreur Initialisation Chef", description: "Impossible de créer le compte Chef par défaut.", variant: "destructive"});
+            // Fallback to a display-only Chef if Firestore creation fails, so login page doesn't break
+            const defaultChefForDisplay: AppUser = { 
+              id: DEFAULT_CHEF_ID_FIRESTORE, 
+              username: 'Chef', 
+              passwordRequired: true, 
+              simulatedStoredPassword: simulatedHash('000'), // Ensures password check logic works for this display-only user
+              permissions: defaultChefPermissions,
+              viewableHourSummaryConfig: { type: 'all' },
+            };
+            if (!usersFromDb.find(u => u.username.toLowerCase() === 'chef')) { // Only add if truly not there
+                 usersFromDb.push(defaultChefForDisplay);
+            }
+            chefUserInDb = defaultChefForDisplay; // Set for display if creation failed
+          }
+        }
+        
+        // Standardize Chef user if found or created
+        if (chefUserInDb) {
+           usersFromDb = usersFromDb.map(u => {
               if (u.username.toLowerCase() === 'chef') {
                   return {
                       ...u,
                       passwordRequired: true, 
-                      // If Chef in DB has no password, default to '000' for this session, but don't save it back here
                       simulatedStoredPassword: u.simulatedStoredPassword || simulatedHash('000'),
                       permissions: defaultChefPermissions, 
                       viewableHourSummaryConfig: { type: 'all' as const },
@@ -94,8 +116,8 @@ export default function LoginPage() {
               }
               return u;
           });
-          setDefinedUsers(updatedUsers.sort((a,b) => a.username.localeCompare(b.username)));
         }
+        setDefinedUsers(usersFromDb.sort((a,b) => a.username.localeCompare(b.username)));
         setIsLoading(false);
       };
 
@@ -125,18 +147,12 @@ export default function LoginPage() {
     if (!user.passwordRequired) {
       performLogin(user);
     } else {
-      // For Chef, if it's the default one (not from DB or from DB without a password), use '000'
-      // This logic primarily ensures the default "000" works if Chef in DB has no password set yet.
-      const effectivePassword = user.username.toLowerCase() === 'chef' && !user.simulatedStoredPassword 
-                                ? simulatedHash('000') 
-                                : user.simulatedStoredPassword;
-      
-      if (!effectivePassword && user.username.toLowerCase() !== 'chef') {
-          // Should not happen if User Management correctly requires password setup
+      // The simulatedStoredPassword for Chef (or any user) is now expected to be set correctly by the useEffect
+      if (!user.simulatedStoredPassword) { 
           setError(`Aucun mot de passe n'est configuré pour ${user.username}. Veuillez contacter l'administrateur.`);
           return;
       }
-      setSelectedUserForPassword({...user, simulatedStoredPassword: effectivePassword });
+      setSelectedUserForPassword(user); 
       setPasswordInput(''); 
     }
   };
@@ -201,14 +217,14 @@ export default function LoginPage() {
                       variant="outline"
                       className="w-full justify-start text-left py-3 h-auto"
                       onClick={() => handleUserButtonClick(user)}
-                      disabled={user.passwordRequired && !user.simulatedStoredPassword && user.username.toLowerCase() !== 'chef'}
+                      disabled={user.passwordRequired && !user.simulatedStoredPassword}
                     >
                       <User className="mr-3 h-5 w-5 text-muted-foreground" />
                       <span className="flex flex-col">
                         <span className="font-medium">{user.username}</span>
                         <span className="text-xs text-muted-foreground">
                           {user.passwordRequired ? "Mot de passe requis" : "Accès direct"}
-                          {user.passwordRequired && !user.simulatedStoredPassword && user.username.toLowerCase() !== 'chef' && 
+                          {user.passwordRequired && !user.simulatedStoredPassword && 
                            <span className="text-destructive text-xs">(Aucun mdp configuré)</span>
                           }
                         </span>
@@ -217,8 +233,7 @@ export default function LoginPage() {
                   ))
                 ) : (
                   <p className="text-center text-muted-foreground col-span-full">
-                    Chargement des utilisateurs ou aucun utilisateur défini.
-                    Le compte Chef par défaut devrait être disponible.
+                    Aucun utilisateur défini.
                   </p>
                 )}
               </div>
@@ -277,4 +292,3 @@ export default function LoginPage() {
     </main>
   );
 }
-
