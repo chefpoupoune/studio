@@ -15,6 +15,8 @@ import { useToast } from '@/hooks/use-toast';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+import { firestore } from '@/lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -39,57 +41,77 @@ const mealPartDisplayNames: Record<MenuField, string> = {
   legume: "Légume",
   sauce: "Sauce",
   dessert: "Dessert",
-  theme: "Thème" // Should not appear in temperature sheet table body but needed for type completeness
+  theme: "Thème" 
 };
 
 interface TemperatureSheetProps {
   year: number;
   month: number; // 0-indexed
   menuData: DailyMenu[];
-  isLoading: boolean;
+  isLoading: boolean; // isLoading from parent (page.tsx)
 }
 
-export default function TemperatureSheet({ year, month, menuData, isLoading: pageLoading }: TemperatureSheetProps) {
+export default function TemperatureSheet({ year, month, menuData, isLoading: pageIsLoading }: TemperatureSheetProps) {
   const [mealItemTemperatures, setMealItemTemperatures] = useState<Record<string, MealItemTemperatureInput>>({}); 
   const [dailyLogData, setDailyLogData] = useState<Record<string, DailyLogInput>>({}); 
-  const [isComponentLoading, setIsComponentLoading] = useState(true);
+  const [isLoadingInitialData, setIsLoadingInitialData] = useState(true); // For this component's initial data load
+  const [isSavingData, setIsSavingData] = useState(false); // For Firestore save operations
   const [isGeneratingMonthlyPdf, setIsGeneratingMonthlyPdf] = useState(false);
   const { toast } = useToast();
 
-  const getMealItemTempsKey = useCallback(() => `temperature_sheet_meal_item_temps_${year}_${month}`, [year, month]);
-  const getDailyLogKey = useCallback(() => `temperature_sheet_daily_log_data_${year}_${month}`, [year, month]);
+  const getFirestoreDocId = useCallback(() => `temps_${year}_${month}`, [year, month]);
 
   useEffect(() => {
-    setIsComponentLoading(true);
-    try {
-      const storedMealTemps = localStorage.getItem(getMealItemTempsKey());
-      if (storedMealTemps) setMealItemTemperatures(JSON.parse(storedMealTemps));
-      else setMealItemTemperatures({});
-
-      const storedDailyLog = localStorage.getItem(getDailyLogKey());
-      if (storedDailyLog) setDailyLogData(JSON.parse(storedDailyLog));
-      else setDailyLogData({});
-
-    } catch (error) {
-      console.error("Error loading temperature data from localStorage:", error);
-      toast({ title: "Erreur de chargement", description: "Données de température corrompues.", variant: "destructive" });
-      setMealItemTemperatures({});
-      setDailyLogData({});
-    }
-    setIsComponentLoading(false);
-  }, [year, month, getMealItemTempsKey, getDailyLogKey, toast]);
+    const loadData = async () => {
+      setIsLoadingInitialData(true);
+      const docId = getFirestoreDocId();
+      const docRef = doc(firestore, "menuTemperatureLogs", docId);
+      try {
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setMealItemTemperatures(data.mealItemTemperatures || {});
+          setDailyLogData(data.dailyLogData || {});
+        } else {
+          setMealItemTemperatures({});
+          setDailyLogData({});
+        }
+      } catch (error) {
+        console.error("Error loading temperature data from Firestore:", error);
+        toast({ title: "Erreur de chargement (Températures)", description: "Données de température corrompues.", variant: "destructive" });
+        setMealItemTemperatures({});
+        setDailyLogData({});
+      } finally {
+        setIsLoadingInitialData(false);
+      }
+    };
+    loadData();
+  }, [year, month, getFirestoreDocId, toast]);
 
   useEffect(() => {
-    if (!isComponentLoading) {
-      localStorage.setItem(getMealItemTempsKey(), JSON.stringify(mealItemTemperatures));
-    }
-  }, [mealItemTemperatures, isComponentLoading, getMealItemTempsKey]);
+    if (pageIsLoading || isLoadingInitialData || isSavingData) return;
 
-  useEffect(() => {
-    if (!isComponentLoading) {
-      localStorage.setItem(getDailyLogKey(), JSON.stringify(dailyLogData));
-    }
-  }, [dailyLogData, isComponentLoading, getDailyLogKey]);
+    const saveOperation = async () => {
+      setIsSavingData(true);
+      const docId = getFirestoreDocId();
+      const docRef = doc(firestore, "menuTemperatureLogs", docId);
+      try {
+        await setDoc(docRef, { 
+          mealItemTemperatures: mealItemTemperatures, 
+          dailyLogData: dailyLogData 
+        });
+      } catch (error) {
+        console.error("Error saving temperature sheet data to Firestore:", error);
+        toast({ title: "Erreur de Sauvegarde (Températures)", description: "Les modifications n'ont pas pu être enregistrées.", variant: "destructive" });
+      } finally {
+        setIsSavingData(false);
+      }
+    };
+
+    const timeoutId = setTimeout(saveOperation, 1500); 
+    return () => clearTimeout(timeoutId);
+
+  }, [mealItemTemperatures, dailyLogData, pageIsLoading, isLoadingInitialData, isSavingData, getFirestoreDocId, toast]);
 
 
   const weeklyGroupedMenus = useMemo(() => {
@@ -135,7 +157,6 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
         currentY += 10;
       }
 
-      // Add Logo URL if available
       if (pdfSettings.logoUrl) {
         doc.setFontSize(8); 
         doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY);
@@ -262,7 +283,7 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
     }
   };
   
-  const currentCombinedLoadingState = pageLoading || isComponentLoading;
+  const currentCombinedLoadingState = pageIsLoading || isLoadingInitialData;
 
   if (currentCombinedLoadingState) {
     return (
@@ -280,10 +301,10 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
        <div className="flex justify-end">
         <Button 
           onClick={generateMonthlyPdf} 
-          disabled={isGeneratingMonthlyPdf || currentCombinedLoadingState || noDataForMonth}
+          disabled={isGeneratingMonthlyPdf || isSavingData || currentCombinedLoadingState || noDataForMonth}
           size="sm"
         >
-          {isGeneratingMonthlyPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+          {(isGeneratingMonthlyPdf || isSavingData) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
           Générer PDF Mensuel
         </Button>
       </div>
@@ -349,7 +370,7 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
                                         className="text-xs h-10" 
                                         value={dailyInputs.personnel || ''}
                                         onChange={(e) => handleDailyLogChange(menu.date, 'personnel', e.target.value)}
-                                        disabled={menu.isWeekend}
+                                        disabled={menu.isWeekend || isSavingData}
                                     />
                                 </TableCell>
                             </TableRow>
@@ -385,7 +406,7 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
                                   className="text-xs h-10 text-center" 
                                   value={itemTempInputs.tempService1 || ''}
                                   onChange={(e) => handleMealItemTempChange(menu.date, mealPartKey, 'tempService1', e.target.value)}
-                                  disabled={menu.isWeekend}
+                                  disabled={menu.isWeekend || isSavingData}
                                 />
                               </TableCell>
                               <TableCell className="p-1 align-top">
@@ -395,7 +416,7 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
                                   className="text-xs h-10 text-center"
                                   value={itemTempInputs.tempService2 || ''}
                                   onChange={(e) => handleMealItemTempChange(menu.date, mealPartKey, 'tempService2', e.target.value)}
-                                  disabled={menu.isWeekend}
+                                  disabled={menu.isWeekend || isSavingData}
                                 />
                               </TableCell>
                                <TableCell className="p-1 align-top">
@@ -405,7 +426,7 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
                                   className="text-xs h-10 text-center"
                                   value={itemTempInputs.tempService3 || ''}
                                   onChange={(e) => handleMealItemTempChange(menu.date, mealPartKey, 'tempService3', e.target.value)}
-                                  disabled={menu.isWeekend}
+                                  disabled={menu.isWeekend || isSavingData}
                                 />
                               </TableCell>
                               {isFirstMealPartForRowSpan && (
@@ -417,7 +438,7 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
                                       className="text-xs h-10" 
                                       value={dailyInputs.personnel || ''}
                                       onChange={(e) => handleDailyLogChange(menu.date, 'personnel', e.target.value)}
-                                      disabled={menu.isWeekend}
+                                      disabled={menu.isWeekend || isSavingData}
                                     />
                                   </TableCell>
                                 </>
@@ -441,6 +462,5 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
     </div>
   );
 }
-
 
     
