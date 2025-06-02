@@ -2,21 +2,23 @@
 "use client";
 
 import Link from 'next/link';
-import { FileSpreadsheet, Users } from 'lucide-react';
+import { FileSpreadsheet, Users, Loader2 } from 'lucide-react'; // Added Loader2
 import { Button } from '@/components/ui/button';
 import BenefitTrackingTable from './components/excel-benefit-manager';
-// ManageBenefitEmployees component is removed
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
 import React, { useState, useEffect, useCallback } from 'react'; 
 import type { BenefitEmployee } from './types'; 
-import type { BrigadeMember } from '@/app/dashboard/time-tracking/types'; // Import BrigadeMember
+import type { BrigadeMember } from '@/app/dashboard/time-tracking/types'; 
 import { useToast } from '@/hooks/use-toast'; 
+import { firestore } from '@/lib/firebase'; // Firestore import
+import { collection, query, orderBy, getDocs } from 'firebase/firestore'; // Firestore query imports
 
-const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2'; // Use the key from Time Tracking
+// BRIGADE_MEMBERS_STORAGE_KEY removed
 
 export default function BenefitsPage() {
   const [employeesForBenefits, setEmployeesForBenefits] = useState<BenefitEmployee[]>([]);
+  const [isLoadingEmployees, setIsLoadingEmployees] = useState(true); // New loading state
   const [isClient, setIsClient] = useState(false);
   const { toast } = useToast();
 
@@ -24,35 +26,39 @@ export default function BenefitsPage() {
     setIsClient(true);
   }, []);
 
-  useEffect(() => {
-    if (isClient) {
-      try {
-        const storedBrigadeMembers = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
-        if (storedBrigadeMembers) {
-          const parsedMembers: BrigadeMember[] = JSON.parse(storedBrigadeMembers);
-          // Map BrigadeMember to BenefitEmployee (if needed, current structure is compatible)
-          setEmployeesForBenefits(parsedMembers.map(member => ({
-            id: member.id,
-            name: member.name,
-            // role: member.role // if BenefitEmployee had a role
-          })).sort((a,b) => a.name.localeCompare(b.name)));
-        } else {
-          setEmployeesForBenefits([]); 
-        }
-      } catch (e) {
-        console.error("Error loading brigade members for benefits from localStorage", e);
-        setEmployeesForBenefits([]);
-        toast({ title: "Erreur de chargement", description: "Les données des membres de la brigade n'ont pu être chargées.", variant: "destructive" });
-      }
+  const fetchBrigadeMembersForBenefits = useCallback(async () => {
+    if (!isClient) return;
+    setIsLoadingEmployees(true);
+    try {
+      const membersCollectionRef = collection(firestore, 'brigadeMembers'); // Firestore collection
+      const q = query(membersCollectionRef, orderBy("name"));
+      const querySnapshot = await getDocs(q);
+      const membersList = querySnapshot.docs.map(docSnap => ({
+        id: docSnap.id,
+        name: docSnap.data().name,
+        // role: docSnap.data().role // if BenefitEmployee had a role
+      } as BenefitEmployee));
+      setEmployeesForBenefits(membersList.sort((a,b) => a.name.localeCompare(b.name)));
+    } catch (e) {
+      console.error("Error loading brigade members for benefits from Firestore", e);
+      setEmployeesForBenefits([]);
+      toast({ title: "Erreur de chargement des employés", description: "Les données des membres de la brigade n'ont pu être chargées.", variant: "destructive" });
+    } finally {
+      setIsLoadingEmployees(false);
     }
   }, [isClient, toast]);
 
-  // Employee management functions (add, update, delete) are removed from here.
-  // They are now centralized in the Time Tracking module.
+  useEffect(() => {
+    if (isClient) {
+      fetchBrigadeMembersForBenefits();
+    }
+  }, [isClient, fetchBrigadeMembersForBenefits]);
 
-  if (!isClient) {
+
+  if (!isClient || isLoadingEmployees) { // Check new loading state
     return (
       <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mr-2" />
         <p className="text-lg text-muted-foreground">Chargement des avantages en nature...</p>
       </div>
     );
@@ -73,12 +79,11 @@ export default function BenefitsPage() {
       </div>
       
       <div className="space-y-8">
-        {/* ManageBenefitEmployees component is removed */}
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle>Suivi Mensuel des Avantages en Nature</CardTitle>
             <CardDescription>
-              Sélectionnez un mois et une année, puis remplissez le tableau de suivi pour les employés de la brigade. Les données sont sauvegardées automatiquement.
+              Sélectionnez un mois et une année, puis remplissez le tableau de suivi pour les employés de la brigade. Les données sont sauvegardées automatiquement dans Firestore.
               Les employés sont gérés dans la section "Suivi des Heures" &gt; "Gestion Personnel".
             </CardDescription>
           </CardHeader>
@@ -90,3 +95,5 @@ export default function BenefitsPage() {
     </div>
   );
 }
+
+    

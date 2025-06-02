@@ -60,6 +60,7 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
   const [benefitData, setBenefitData] = useState<FullMonthlyBenefitData>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [initialDocExists, setInitialDocExists] = useState<boolean | null>(null); // Track if doc existed on load
   const { toast } = useToast();
 
   const getFirestoreDocId = useCallback(
@@ -71,18 +72,22 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
+      setInitialDocExists(null); // Reset for new month/year
       const docId = getFirestoreDocId();
       const docRef = doc(firestore, "monthlyBenefitData", docId);
       try {
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           setBenefitData(docSnap.data() as FullMonthlyBenefitData);
+          setInitialDocExists(true);
         } else {
           setBenefitData({});
+          setInitialDocExists(false);
         }
       } catch (error) {
         console.error("Error loading benefit data from Firestore:", error);
         setBenefitData({});
+        setInitialDocExists(false);
         toast({ title: "Erreur de chargement", description: "Données d'avantages non chargées depuis Firestore.", variant: "destructive" });
       }
       setIsLoading(false);
@@ -90,20 +95,22 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
     loadData();
   }, [selectedYear, selectedMonth, getFirestoreDocId, toast]);
 
-  // Save data to Firestore
+  // Save data to Firestore (debounced)
   useEffect(() => {
     const saveData = async () => {
-      if (isLoading || Object.keys(benefitData).length === 0 && !localStorage.getItem(getFirestoreDocId() + "_hasBeenSet")) { 
-        // Avoid saving initial empty state unless it was explicitly cleared
+      if (isLoading || isSaving) return; // Don't save if loading or already saving
+
+      // Avoid saving initial empty state if doc didn't exist on load
+      if (initialDocExists === false && Object.keys(benefitData).length === 0) {
         return;
       }
+
       setIsSaving(true);
       const docId = getFirestoreDocId();
       const docRef = doc(firestore, "monthlyBenefitData", docId);
       try {
         await setDoc(docRef, benefitData);
-        localStorage.setItem(getFirestoreDocId() + "_hasBeenSet", "true"); // Mark as set for logic above
-        // Optional: Toast for successful save, but can be too frequent
+        // Optional: Toast for successful save, can be too frequent for auto-save
         // toast({ title: "Données Sauvegardées", description: "Modifications enregistrées dans Firestore." });
       } catch (error) {
         console.error("Error saving benefit data to Firestore:", error);
@@ -114,11 +121,14 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
 
     // Debounce saving
     const timeoutId = setTimeout(() => {
-      saveData();
-    }, 1000); // Save 1 second after the last change
+      // Only save if initialDocExists is not null (meaning initial load is complete)
+      if (initialDocExists !== null) {
+        saveData();
+      }
+    }, 1500); // Save 1.5 seconds after the last change
 
     return () => clearTimeout(timeoutId);
-  }, [benefitData, isLoading, getFirestoreDocId, toast]);
+  }, [benefitData, isLoading, isSaving, initialDocExists, getFirestoreDocId, toast]);
 
   const daysInSelectedMonth = useMemo(() => {
     const year = parseInt(selectedYear);
@@ -168,7 +178,7 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
     try {
       await deleteDoc(docRef);
       setBenefitData({});
-      localStorage.removeItem(getFirestoreDocId() + "_hasBeenSet"); 
+      setInitialDocExists(false); // After deleting, the doc doesn't exist
       toast({ title: "Données Effacées", description: `Les données pour ${months[parseInt(selectedMonth)].label} ${selectedYear} ont été effacées de Firestore.` });
     } catch (error) {
       console.error("Error deleting benefit data from Firestore:", error);
@@ -368,7 +378,7 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="destructive" disabled={isLoading || isSaving || Object.keys(benefitData).length === 0} className="w-full sm:w-auto">
+                <Button variant="destructive" disabled={isLoading || isSaving || initialDocExists === false && Object.keys(benefitData).length === 0} className="w-full sm:w-auto">
                     <Trash2 className="mr-2 h-4 w-4" />
                     Effacer Données Mois
                 </Button>
@@ -405,7 +415,7 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
         </div>
       </div>
 
-      {isLoading ? (
+      {isLoading && initialDocExists === null ? ( // Show loading only if initialDocExists is not yet determined
         <div className="flex justify-center items-center py-10">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <span className="ml-2 text-muted-foreground">Chargement des données...</span>
@@ -511,5 +521,6 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
     </div>
   );
 }
+    
 
     
