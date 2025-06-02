@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import type { TempChangeEntry } from '../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea'; 
+// Textarea might be used if notes were a field, but not in current schema
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -34,26 +34,28 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { firestore } from '@/lib/firebase';
+import { collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy, Timestamp } from 'firebase/firestore';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
 }
 
-const TEMP_CHANGE_LOG_STORAGE_KEY = "pms_temp_change_log_v1";
+// TEMP_CHANGE_LOG_STORAGE_KEY removed
 
 const tempChangeEntrySchema = z.object({
   coolingDate: z.date({ required_error: "Date de refroidissement requise." }),
   productName: z.string().min(1, "Nom du produit requis."),
   quantity: z.string().min(1, "Quantité requise."),
-  coolingHotProductTime: z.string().optional(),
+  coolingHotProductTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Format HH:MM requis.").optional().or(z.literal('')),
   coolingHotProductTemp: z.string().optional(),
-  coolingColdProductTime: z.string().optional(),
+  coolingColdProductTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Format HH:MM requis.").optional().or(z.literal('')),
   coolingColdProductTemp: z.string().optional(),
   coolingVisa: z.string().optional(),
   reheatingDate: z.date().optional().nullable(),
-  reheatingColdProductTime: z.string().optional(),
+  reheatingColdProductTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Format HH:MM requis.").optional().or(z.literal('')),
   reheatingColdProductTemp: z.string().optional(),
-  reheatingHotProductTime: z.string().optional(),
+  reheatingHotProductTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Format HH:MM requis.").optional().or(z.literal('')),
   reheatingHotProductTemp: z.string().optional(),
   reheatingVisa: z.string().optional(),
 });
@@ -76,32 +78,40 @@ export default function TempChangeMonitoring() {
     },
   });
 
-  useEffect(() => {
+  const fetchEntries = useCallback(async () => {
     setIsLoading(true);
     try {
-      const storedEntries = localStorage.getItem(TEMP_CHANGE_LOG_STORAGE_KEY);
-      if (storedEntries) {
-        setEntries(JSON.parse(storedEntries));
-      }
+      const entriesCollectionRef = collection(firestore, 'pmsTempChangeLog');
+      const q = query(entriesCollectionRef, orderBy("coolingDate", "desc"));
+      const querySnapshot = await getDocs(q);
+      const loadedEntries = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          coolingDate: (data.coolingDate as Timestamp).toDate().toISOString(),
+          reheatingDate: data.reheatingDate ? (data.reheatingDate as Timestamp).toDate().toISOString() : null,
+        } as TempChangeEntry;
+      });
+      setEntries(loadedEntries);
     } catch (error) {
-      console.error("Error loading temp change entries:", error);
-      toast({ title: "Erreur de chargement", description: "Données de baisse/remise T° corrompues.", variant: "destructive" });
+      console.error("Error loading temp change entries from Firestore:", error);
+      toast({ title: "Erreur de chargement", description: "Données de baisse/remise T° non chargées.", variant: "destructive" });
+      setEntries([]);
     }
     setIsLoading(false);
   }, [toast]);
 
   useEffect(() => {
-    if (!isLoading) {
-      localStorage.setItem(TEMP_CHANGE_LOG_STORAGE_KEY, JSON.stringify(entries));
-    }
-  }, [entries, isLoading]);
+    fetchEntries();
+  }, [fetchEntries]);
 
   const handleOpenDialog = (entry?: TempChangeEntry) => {
     setEditingEntry(entry || null);
     if (entry) {
       form.reset({
         ...entry,
-        coolingDate: parseISO(entry.coolingDate),
+        coolingDate: entry.coolingDate ? parseISO(entry.coolingDate) : new Date(),
         reheatingDate: entry.reheatingDate ? parseISO(entry.reheatingDate) : null,
       });
     } else {
@@ -114,26 +124,55 @@ export default function TempChangeMonitoring() {
     setIsDialogOpen(true);
   };
 
-  const handleFormSubmit = (data: TempChangeFormData) => {
-    const entryData = { 
+  const handleFormSubmit = async (data: TempChangeFormData) => {
+    setIsLoading(true); // Use isLoading for submit operation as well
+    const entryDataForFirestore = { 
       ...data, 
-      coolingDate: data.coolingDate.toISOString(),
-      reheatingDate: data.reheatingDate ? data.reheatingDate.toISOString() : undefined,
+      coolingDate: Timestamp.fromDate(data.coolingDate),
+      reheatingDate: data.reheatingDate ? Timestamp.fromDate(data.reheatingDate) : null,
+      coolingHotProductTime: data.coolingHotProductTime || null,
+      coolingHotProductTemp: data.coolingHotProductTemp || null,
+      coolingColdProductTime: data.coolingColdProductTime || null,
+      coolingColdProductTemp: data.coolingColdProductTemp || null,
+      coolingVisa: data.coolingVisa || null,
+      reheatingColdProductTime: data.reheatingColdProductTime || null,
+      reheatingColdProductTemp: data.reheatingColdProductTemp || null,
+      reheatingHotProductTime: data.reheatingHotProductTime || null,
+      reheatingHotProductTemp: data.reheatingHotProductTemp || null,
+      reheatingVisa: data.reheatingVisa || null,
     };
-    if (editingEntry) {
-      setEntries(prev => prev.map(e => e.id === editingEntry.id ? { ...editingEntry, ...entryData } : e));
-      toast({ title: "Enregistrement Modifié", description: "L'entrée a été mise à jour." });
-    } else {
-      const newEntry: TempChangeEntry = { ...entryData, id: `tc_${Date.now()}` };
-      setEntries(prev => [newEntry, ...prev].sort((a,b) => new Date(b.coolingDate).getTime() - new Date(a.coolingDate).getTime()));
-      toast({ title: "Enregistrement Ajouté", description: "Une nouvelle entrée a été ajoutée." });
+
+    try {
+      if (editingEntry) {
+        const entryDocRef = doc(firestore, 'pmsTempChangeLog', editingEntry.id);
+        await setDoc(entryDocRef, entryDataForFirestore);
+        toast({ title: "Enregistrement Modifié", description: "L'entrée a été mise à jour." });
+      } else {
+        await addDoc(collection(firestore, 'pmsTempChangeLog'), entryDataForFirestore);
+        toast({ title: "Enregistrement Ajouté", description: "Une nouvelle entrée a été ajoutée." });
+      }
+      fetchEntries(); 
+    } catch (error) {
+      console.error("Error saving temp change entry to Firestore:", error);
+      toast({ title: "Erreur de Sauvegarde", variant: "destructive"});
+    } finally {
+      setIsLoading(false);
+      setIsDialogOpen(false);
     }
-    setIsDialogOpen(false);
   };
 
-  const handleDeleteEntry = (entryId: string) => {
-    setEntries(prev => prev.filter(e => e.id !== entryId));
-    toast({ title: "Enregistrement Supprimé", variant: "destructive" });
+  const handleDeleteEntry = async (entryId: string) => {
+    setIsLoading(true);
+    try {
+      await deleteDoc(doc(firestore, 'pmsTempChangeLog', entryId));
+      toast({ title: "Enregistrement Supprimé", variant: "destructive" });
+      fetchEntries();
+    } catch (error) {
+      console.error("Error deleting temp change entry from Firestore:", error);
+      toast({ title: "Erreur de Suppression", variant: "destructive"});
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   const generatePdf = () => {
@@ -158,8 +197,8 @@ export default function TempChangeMonitoring() {
         headStylesBase.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
       }
 
-      const orangeColor = [255, 165, 0]; 
-      const blueColor = [173, 216, 230]; 
+      const orangeColor = hexToRgb('#FFA500') || [255, 165, 0]; 
+      const blueColor = hexToRgb('#ADD8E6') || [173, 216, 230]; 
 
       const head: any[] = [
         [
@@ -265,17 +304,17 @@ export default function TempChangeMonitoring() {
                   <div className="pt-3">
                     <h4 className="text-md font-semibold mb-1 border-b pb-1">REFROIDISSEMENT RAPIDE</h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mt-2">
-                      <FormField control={form.control} name="coolingHotProductTime" render={({ field }) => (<FormItem><FormLabel>P. Chauds Heure</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                      <FormField control={form.control} name="coolingHotProductTemp" render={({ field }) => (<FormItem><FormLabel>P. Chauds T°C</FormLabel><FormControl><Input placeholder="Ex: 65°C" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                      <FormField control={form.control} name="coolingColdProductTime" render={({ field }) => (<FormItem><FormLabel>P. Froids Heure</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                      <FormField control={form.control} name="coolingColdProductTemp" render={({ field }) => (<FormItem><FormLabel>P. Froids T°C</FormLabel><FormControl><Input placeholder="Ex: 8°C" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                      <FormField control={form.control} name="coolingVisa" render={({ field }) => (<FormItem><FormLabel>Visa</FormLabel><FormControl><Input placeholder="Initiales" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={form.control} name="coolingHotProductTime" render={({ field }) => (<FormItem><FormLabel>P. Chauds Heure</FormLabel><FormControl><Input type="time" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={form.control} name="coolingHotProductTemp" render={({ field }) => (<FormItem><FormLabel>P. Chauds T°C</FormLabel><FormControl><Input placeholder="Ex: 65°C" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={form.control} name="coolingColdProductTime" render={({ field }) => (<FormItem><FormLabel>P. Froids Heure</FormLabel><FormControl><Input type="time" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={form.control} name="coolingColdProductTemp" render={({ field }) => (<FormItem><FormLabel>P. Froids T°C</FormLabel><FormControl><Input placeholder="Ex: 8°C" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={form.control} name="coolingVisa" render={({ field }) => (<FormItem><FormLabel>Visa</FormLabel><FormControl><Input placeholder="Initiales" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
                     </div>
                   </div>
 
                   <div className="pt-3">
                     <h4 className="text-md font-semibold mb-1 border-b pb-1">REMISE EN TEMPERATURE</h4>
-                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-2">
+                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mt-2">
                        <FormField control={form.control} name="reheatingDate" render={({ field }) => (
                         <FormItem className="flex flex-col"><FormLabel>Date Remise</FormLabel>
                         <Popover><PopoverTrigger asChild><FormControl><Button variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
@@ -285,17 +324,17 @@ export default function TempChangeMonitoring() {
                         <PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr} /></PopoverContent></Popover><FormMessage />
                         </FormItem>
                       )} />
-                      <FormField control={form.control} name="reheatingColdProductTime" render={({ field }) => (<FormItem><FormLabel>P. Froids Heure</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                      <FormField control={form.control} name="reheatingColdProductTemp" render={({ field }) => (<FormItem><FormLabel>P. Froids T°C</FormLabel><FormControl><Input placeholder="Ex: 10°C" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                      <FormField control={form.control} name="reheatingHotProductTime" render={({ field }) => (<FormItem><FormLabel>P. Chauds Heure</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                      <FormField control={form.control} name="reheatingHotProductTemp" render={({ field }) => (<FormItem><FormLabel>P. Chauds T°C</FormLabel><FormControl><Input placeholder="Ex: 70°C" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                      <FormField control={form.control} name="reheatingVisa" render={({ field }) => (<FormItem><FormLabel>Visa</FormLabel><FormControl><Input placeholder="Initiales" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={form.control} name="reheatingColdProductTime" render={({ field }) => (<FormItem><FormLabel>P. Froids Heure</FormLabel><FormControl><Input type="time" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={form.control} name="reheatingColdProductTemp" render={({ field }) => (<FormItem><FormLabel>P. Froids T°C</FormLabel><FormControl><Input placeholder="Ex: 10°C" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={form.control} name="reheatingHotProductTime" render={({ field }) => (<FormItem><FormLabel>P. Chauds Heure</FormLabel><FormControl><Input type="time" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={form.control} name="reheatingHotProductTemp" render={({ field }) => (<FormItem><FormLabel>P. Chauds T°C</FormLabel><FormControl><Input placeholder="Ex: 70°C" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={form.control} name="reheatingVisa" render={({ field }) => (<FormItem><FormLabel>Visa</FormLabel><FormControl><Input placeholder="Initiales" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
                     </div>
                   </div>
                   
                   <DialogFooter className="pt-4">
                     <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                    <Button type="submit">{editingEntry ? "Enregistrer Modifications" : "Ajouter Entrée"}</Button>
+                    <Button type="submit" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingEntry ? "Enregistrer Modifications" : "Ajouter Entrée"}</Button>
                   </DialogFooter>
                 </form>
               </Form>
@@ -307,9 +346,9 @@ export default function TempChangeMonitoring() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
+        {isLoading && entries.length === 0 ? (
           <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Chargement...</div>
-        ) : entries.length === 0 ? (
+        ) : !isLoading && entries.length === 0 ? (
           <p className="text-muted-foreground text-center py-8">Aucun enregistrement. Cliquez sur "Ajouter Enregistrement" pour commencer.</p>
         ) : (
           <div className="overflow-x-auto border rounded-md">
@@ -355,7 +394,7 @@ export default function TempChangeMonitoring() {
                     <TableCell className="border-r text-center">{entry.reheatingHotProductTemp || '-'}</TableCell>
                     <TableCell className="text-center">{entry.reheatingVisa || '-'}</TableCell>
                     <TableCell className="text-center sticky right-0 bg-card group-hover:bg-muted/50 transition-colors">
-                      <AlertDialog>
+                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                            <Button variant="destructive" size="icon" className="h-7 w-7">
                             <Trash2 className="h-3.5 w-3.5"/>
@@ -397,3 +436,4 @@ export default function TempChangeMonitoring() {
   );
 }
 
+    
