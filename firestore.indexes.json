@@ -1,0 +1,12 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "taskManagementTasks",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "updatedAt", "order": "ASCENDING" },
+        { "fieldPath": "currentStatus", "order": "ASCENDING" }
+      ]
+    }
+  ]
+}
