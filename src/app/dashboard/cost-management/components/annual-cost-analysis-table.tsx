@@ -5,10 +5,11 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { CostEntry, MonthlySummary } from '../types';
 import { months as monthLabels, years as yearOptions, currentYear, calculateRowTotal, calculateRowEffectif } from '../types';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { Label } from '@/components/ui/label';
-import { FileText, Loader2, CalendarRange } from 'lucide-react';
+import { FileText, Loader2, CalendarRange, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -17,42 +18,49 @@ import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 import { firestore } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
 }
 
-const FIXED_MONTHLY_EMARKET = 62.50;
-const FIXED_MONTHLY_FRAIS_FONCTIONNEMENT = 278.04;
-const FIXED_MONTHLY_FRAIS_GESTION = 210.00;
+const FIXED_MONTHLY_EMARKET_DEFAULT = 62.50;
+const FIXED_MONTHLY_FRAIS_FONCTIONNEMENT_DEFAULT = 278.04;
+const FIXED_MONTHLY_FRAIS_GESTION_DEFAULT = 210.00;
 
 export default function AnnualCostAnalysisTable() {
   const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
   const [annualData, setAnnualData] = useState<MonthlySummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
+
+  const getFirestoreDocId = useCallback((year: number, monthIndex: number) => 
+    `entry_${year}_${monthIndex}`, 
+  []);
 
   const loadAnnualData = useCallback(async () => {
     setIsLoading(true);
     const year = parseInt(selectedYear);
-    const monthlySummaries: MonthlySummary[] = [];
-
-    for (let monthIndex = 0; monthIndex < 12; monthIndex++) {
-      const firestoreDocId = `entry_${year}_${monthIndex}`;
+    const monthlySummariesPromises = monthLabels.map(async (monthInfo, monthIndex) => {
+      const firestoreDocId = getFirestoreDocId(year, monthIndex);
       let summary: MonthlySummary = {
-        month: monthLabels[monthIndex].label,
+        month: monthInfo.label,
         monthIndex: monthIndex,
         totalHt: 0,
         totalTva: 0,
         totalAvoir: 0,
-        emarket: FIXED_MONTHLY_EMARKET,
-        fraisFonctionnement: FIXED_MONTHLY_FRAIS_FONCTIONNEMENT,
-        fraisGestion: FIXED_MONTHLY_FRAIS_GESTION,
+        emarket: FIXED_MONTHLY_EMARKET_DEFAULT, // Default, will be overwritten by manual if exists
+        fraisFonctionnement: FIXED_MONTHLY_FRAIS_FONCTIONNEMENT_DEFAULT, // Default
+        fraisGestion: FIXED_MONTHLY_FRAIS_GESTION_DEFAULT, // Default
+        manualEmarket: undefined,
+        manualFraisFonctionnement: undefined,
+        manualFraisGestion: undefined,
         totalEffectifSum: 0,
         prixDeRevient: 0,
         totalLigne: 0,
         dataFound: false,
+        hasManualAdjustments: false,
       };
 
       try {
@@ -60,56 +68,119 @@ export default function AnnualCostAnalysisTable() {
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
-          const monthCostEntries: CostEntry[] = docSnap.data().entries || [];
-          if (monthCostEntries.length > 0) {
-            summary.dataFound = true;
-            monthCostEntries.forEach(entry => {
-              summary.totalHt += entry.ht || 0;
-              summary.totalTva += entry.tva || 0;
-              summary.totalAvoir += entry.avoir || 0;
-              const rowTotal = calculateRowTotal(entry);
-              summary.totalEffectifSum += calculateRowEffectif(entry, rowTotal);
-            });
-          }
+          const data = docSnap.data();
+          summary.totalHt = data.totalHtSum || 0; // Assuming these are stored from monthly table
+          summary.totalTva = data.totalTvaSum || 0;
+          summary.totalAvoir = data.totalAvoirSum || 0;
+          summary.totalEffectifSum = data.totalEffectifSumForMonth || 0; // Assuming this is stored too
+          summary.dataFound = true; // If doc exists, assume data was processed for detailed entries
+
+          summary.manualEmarket = data.manualEmarket !== undefined ? data.manualEmarket : FIXED_MONTHLY_EMARKET_DEFAULT;
+          summary.manualFraisFonctionnement = data.manualFraisFonctionnement !== undefined ? data.manualFraisFonctionnement : FIXED_MONTHLY_FRAIS_FONCTIONNEMENT_DEFAULT;
+          summary.manualFraisGestion = data.manualFraisGestion !== undefined ? data.manualFraisGestion : FIXED_MONTHLY_FRAIS_GESTION_DEFAULT;
+          summary.hasManualAdjustments = data.manualEmarket !== undefined || data.manualFraisFonctionnement !== undefined || data.manualFraisGestion !== undefined;
+        } else {
+          // If doc doesn't exist, use defaults for display
+          summary.manualEmarket = FIXED_MONTHLY_EMARKET_DEFAULT;
+          summary.manualFraisFonctionnement = FIXED_MONTHLY_FRAIS_FONCTIONNEMENT_DEFAULT;
+          summary.manualFraisGestion = FIXED_MONTHLY_FRAIS_GESTION_DEFAULT;
         }
       } catch (error) {
-        console.error(`Error loading data from Firestore for ${monthLabels[monthIndex].label} ${year}:`, error);
-        toast({ title: "Erreur de chargement Firestore", description: `Données corrompues pour ${monthLabels[monthIndex].label} ${year}.`, variant: "destructive" });
+        console.error(`Error loading data from Firestore for ${monthInfo.label} ${year}:`, error);
+        toast({ title: "Erreur de chargement Firestore", description: `Données corrompues pour ${monthInfo.label} ${year}.`, variant: "destructive" });
+         // Fallback to defaults if error
+        summary.manualEmarket = FIXED_MONTHLY_EMARKET_DEFAULT;
+        summary.manualFraisFonctionnement = FIXED_MONTHLY_FRAIS_FONCTIONNEMENT_DEFAULT;
+        summary.manualFraisGestion = FIXED_MONTHLY_FRAIS_GESTION_DEFAULT;
       }
       
-      const totalFixedCosts = summary.emarket + summary.fraisFonctionnement + summary.fraisGestion;
+      const actualEmarket = summary.manualEmarket ?? FIXED_MONTHLY_EMARKET_DEFAULT;
+      const actualFraisFonctionnement = summary.manualFraisFonctionnement ?? FIXED_MONTHLY_FRAIS_FONCTIONNEMENT_DEFAULT;
+      const actualFraisGestion = summary.manualFraisGestion ?? FIXED_MONTHLY_FRAIS_GESTION_DEFAULT;
+      const totalFixedCosts = actualEmarket + actualFraisFonctionnement + actualFraisGestion;
+
       summary.prixDeRevient = summary.totalEffectifSum !== 0 
         ? (summary.totalHt - summary.totalAvoir + totalFixedCosts) / summary.totalEffectifSum 
         : 0;
       
-      // Recalculate totalLigne. It should sum all costs including fixed ones.
-      // Original totalLigne was: summary.totalHt + summary.totalTva + summary.totalAvoir + summary.totalEffectifSum + totalFixedCosts
-      // Let's confirm the definition. If "Prix de Revient Mensuel avec Frais de Gestion" is the total *expenditure*
-      // then it could be: Total Biens (HT - Avoir) + Total TVA + Total Frais Fixes.
-      // "Prix de revient" typically refers to cost per unit.
-      // The column header is "Prix de Revient Mensuel avec Frais de Gestion (€)"
-      // So, if `prixDeRevient` is cost per `totalEffectifSum`, then `totalLigne` should be `prixDeRevient * totalEffectifSum` if `totalEffectifSum` is # of items,
-      // OR it might be the sum of all actual costs for the month.
-      // Let's assume for now it's the sum of all monetary values in the row as it was previously calculated.
-      // Total HT + Total TVA - Total Avoir (valeur d'achat réelle) + Total Effectif (valeur ajoutée par le travail) + Frais Fixes
-      // Wait, Total Effectif is a quantity, not a monetary value. It's `sum(calculateRowEffectif(entry, rowTotal))`
-      // And `rowTotal` is sum of IMP, SAJ, IME, ESAT, RepasPlus, Nous. These look like quantities.
-      // So, `totalEffectifSum` IS a sum of quantities.
-      // The column "Prix de Revient Mensuel (€)" IS `(totalHt - totalAvoir + totalFixedCosts) / totalEffectifSum`. This is correct.
-      // The column "Prix de Revient Mensuel avec Frais de Gestion (€)" implies this is the "Total Ligne"
-      // If so, it means the total expenses of the month.
-      // Total Expenses = (Total HT - Total Avoir) + Total TVA + Total Frais Fixes
       summary.totalLigne = (summary.totalHt - summary.totalAvoir) + summary.totalTva + totalFixedCosts;
         
-      monthlySummaries.push(summary);
-    }
-    setAnnualData(monthlySummaries);
+      return summary;
+    });
+
+    const resolvedSummaries = await Promise.all(monthlySummariesPromises);
+    setAnnualData(resolvedSummaries);
     setIsLoading(false);
-  }, [selectedYear, toast]);
+  }, [selectedYear, toast, getFirestoreDocId]);
 
   useEffect(() => {
     loadAnnualData();
   }, [loadAnnualData]);
+
+  const handleManualCostChange = (monthIndex: number, field: 'manualEmarket' | 'manualFraisFonctionnement' | 'manualFraisGestion', value: string) => {
+    const numericValue = parseFloat(value);
+    if (isNaN(numericValue) && value !== '') return; // Allow empty for clearing, otherwise must be number
+
+    setAnnualData(prevData =>
+      prevData.map((summary, index) => {
+        if (index === monthIndex) {
+          const newSummary = {
+            ...summary,
+            [field]: value === '' ? undefined : numericValue, // Store as undefined if empty for default fallback
+            hasManualAdjustments: true,
+          };
+          
+          // Recalculate derived values
+          const actualEmarket = newSummary.manualEmarket ?? FIXED_MONTHLY_EMARKET_DEFAULT;
+          const actualFraisFonctionnement = newSummary.manualFraisFonctionnement ?? FIXED_MONTHLY_FRAIS_FONCTIONNEMENT_DEFAULT;
+          const actualFraisGestion = newSummary.manualFraisGestion ?? FIXED_MONTHLY_FRAIS_GESTION_DEFAULT;
+          const totalFixedCosts = actualEmarket + actualFraisFonctionnement + actualFraisGestion;
+
+          newSummary.prixDeRevient = newSummary.totalEffectifSum !== 0
+            ? (newSummary.totalHt - newSummary.totalAvoir + totalFixedCosts) / newSummary.totalEffectifSum
+            : 0;
+          newSummary.totalLigne = (newSummary.totalHt - newSummary.totalAvoir) + newSummary.totalTva + totalFixedCosts;
+          
+          return newSummary;
+        }
+        return summary;
+      })
+    );
+  };
+  
+  const handleSaveAdjustments = async () => {
+    setIsSaving(true);
+    const year = parseInt(selectedYear);
+    const savePromises = annualData.map(async (summary) => {
+      if (summary.hasManualAdjustments) { // Only save if there were changes or explicit values
+        const firestoreDocId = getFirestoreDocId(year, summary.monthIndex);
+        const docRef = doc(firestore, "costAnalysisMonthlyEntries", firestoreDocId);
+        const dataToSave = {
+          manualEmarket: summary.manualEmarket,
+          manualFraisFonctionnement: summary.manualFraisFonctionnement,
+          manualFraisGestion: summary.manualFraisGestion,
+        };
+        // Remove undefined fields before saving to Firestore
+        Object.keys(dataToSave).forEach(key => dataToSave[key as keyof typeof dataToSave] === undefined && delete dataToSave[key as keyof typeof dataToSave]);
+
+        try {
+          await setDoc(docRef, dataToSave, { merge: true });
+        } catch (error) {
+          console.error(`Error saving adjustments for ${summary.month} ${year}:`, error);
+          throw error; // Re-throw to be caught by Promise.all
+        }
+      }
+    });
+
+    try {
+      await Promise.all(savePromises);
+      setAnnualData(prev => prev.map(s => ({ ...s, hasManualAdjustments: false }))); // Reset flag after save
+      toast({ title: "Ajustements Sauvegardés", description: "Les modifications des frais ont été enregistrées." });
+    } catch (error) {
+      toast({ title: "Erreur de Sauvegarde", description: "Certains ajustements n'ont pas pu être sauvegardés.", variant: "destructive" });
+    }
+    setIsSaving(false);
+  };
 
   const annualTotals = useMemo(() => {
     let grandTotalHt = 0;
@@ -118,8 +189,8 @@ export default function AnnualCostAnalysisTable() {
     let grandTotalEmarket = 0;
     let grandTotalFraisFonctionnement = 0;
     let grandTotalFraisGestion = 0;
-    let grandTotalEffectifSum = 0; // This is sum of quantities
-    let grandTotalLigne = 0; // This is sum of monthly total expenses
+    let grandTotalEffectifSum = 0;
+    let grandTotalLigne = 0;
     let monthsWithDataForPRAverage = 0;
     let sumOfPrixDeRevient = 0;
 
@@ -127,9 +198,15 @@ export default function AnnualCostAnalysisTable() {
       grandTotalHt += summary.totalHt;
       grandTotalTva += summary.totalTva;
       grandTotalAvoir += summary.totalAvoir;
-      grandTotalEmarket += summary.emarket;
-      grandTotalFraisFonctionnement += summary.fraisFonctionnement;
-      grandTotalFraisGestion += summary.fraisGestion;
+      
+      const actualEmarket = summary.manualEmarket ?? FIXED_MONTHLY_EMARKET_DEFAULT;
+      const actualFraisFonctionnement = summary.manualFraisFonctionnement ?? FIXED_MONTHLY_FRAIS_FONCTIONNEMENT_DEFAULT;
+      const actualFraisGestion = summary.manualFraisGestion ?? FIXED_MONTHLY_FRAIS_GESTION_DEFAULT;
+      
+      grandTotalEmarket += actualEmarket;
+      grandTotalFraisFonctionnement += actualFraisFonctionnement;
+      grandTotalFraisGestion += actualFraisGestion;
+      
       grandTotalEffectifSum += summary.totalEffectifSum;
       grandTotalLigne += summary.totalLigne;
       
@@ -139,10 +216,8 @@ export default function AnnualCostAnalysisTable() {
       }
     });
     
-    // Average of monthly "Prix de Revient"
     const averagePrixDeRevient = monthsWithDataForPRAverage > 0 ? sumOfPrixDeRevient / monthsWithDataForPRAverage : 0;
     
-    // Overall annual "Prix de Revient" based on annual totals
     const totalAnnualFixedCosts = grandTotalEmarket + grandTotalFraisFonctionnement + grandTotalFraisGestion;
     const overallPrixDeRevient = grandTotalEffectifSum !== 0 
       ? (grandTotalHt - grandTotalAvoir + totalAnnualFixedCosts) / grandTotalEffectifSum 
@@ -162,7 +237,7 @@ export default function AnnualCostAnalysisTable() {
       return;
     }
 
-    setIsLoading(true);
+    setIsLoading(true); // Re-use isLoading for PDF generation to disable buttons
     try {
       const pdfSettings = getPdfLayoutSettings('annual_cost');
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
@@ -170,146 +245,55 @@ export default function AnnualCostAnalysisTable() {
       
       let currentY = pdfSettings.marginTop;
       if (pdfSettings.headerText) {
-        const headerRows = pdfSettings.headerText.split('\n').map(rowText =>
-          rowText.split('|').map(cellText => cellText.trim())
-        );
+        const headerRows = pdfSettings.headerText.split('\n').map(rowText => rowText.split('|').map(cellText => cellText.trim()));
         const headerTableBody = headerRows.map(row => row.map(cell => cell === '{logo}' ? '' : cell));
-
-        doc.autoTable({
-          body: headerTableBody,
-          startY: currentY,
-          theme: 'plain',
-          styles: { fontSize: pdfSettings.headerFontSize, cellPadding: 1, font: pdfSettings.fontFamily },
-          columnStyles: { 0: { cellWidth: 'auto'} },
-          margin: { top: pdfSettings.marginTop, left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
+        doc.autoTable({ body: headerTableBody, startY: currentY, theme: 'plain', styles: { fontSize: pdfSettings.headerFontSize, cellPadding: 1, font: pdfSettings.fontFamily }, columnStyles: { 0: { cellWidth: 'auto'} }, margin: { top: pdfSettings.marginTop, left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
           didDrawCell: (data) => {
             if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image') && headerRows[data.row.index][data.column.index] === '{logo}') {
-              try {
-                const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
-                const formatType = imgProps.fileType.toUpperCase();
-                let imgWidth = data.cell.width - 4; // Padding
-                let imgHeight = data.cell.height - 4;
-                const cellAspectRatio = data.cell.width / data.cell.height;
-                const imgAspectRatio = imgProps.width / imgProps.height;
-                if (imgAspectRatio > cellAspectRatio) imgHeight = imgWidth / imgAspectRatio; else imgWidth = imgHeight * imgAspectRatio;
-                const imgX = data.cell.x + (data.cell.width - imgWidth) / 2;
-                const imgY = data.cell.y + (data.cell.height - imgHeight) / 2;
-                doc.addImage(pdfSettings.logoUrl, formatType, imgX, imgY, imgWidth, imgHeight);
-              } catch (e: any) { console.error(`Error drawing logo in PDF header table: ${e.message || e}.`);}
+              try { const imgProps = doc.getImageProperties(pdfSettings.logoUrl); const formatType = imgProps.fileType.toUpperCase(); let imgWidth = data.cell.width - 4; let imgHeight = data.cell.height - 4; const cellAspectRatio = data.cell.width / data.cell.height; const imgAspectRatio = imgProps.width / imgProps.height; if (imgAspectRatio > cellAspectRatio) imgHeight = imgWidth / imgAspectRatio; else imgWidth = imgHeight * imgAspectRatio; const imgX = data.cell.x + (data.cell.width - imgWidth) / 2; const imgY = data.cell.y + (data.cell.height - imgHeight) / 2; doc.addImage(pdfSettings.logoUrl, formatType, imgX, imgY, imgWidth, imgHeight); } catch (e: any) { console.error(`Error drawing logo in PDF header table: ${e.message || e}.`);}
             }
           },
         });
         currentY = (doc as any).lastAutoTable.finalY + 5;
       } else if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
-        try {
-            const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
-            const formatType = imgProps.fileType.toUpperCase();
-            const desiredHeight = 30;
-            const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
-            doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
-            currentY += desiredHeight + 5;
-        } catch(e: any) { console.error(`Error drawing standalone logo in PDF: ${e.message || e}.`); }
+        try { const imgProps = doc.getImageProperties(pdfSettings.logoUrl); const formatType = imgProps.fileType.toUpperCase(); const desiredHeight = 30; const imgWidth = (imgProps.width * desiredHeight) / imgProps.height; doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight); currentY += desiredHeight + 5; } catch(e: any) { console.error(`Error drawing standalone logo in PDF: ${e.message || e}.`); }
       }
       
       const baseDocTitle = pdfSettings.documentBaseTitle || "Récapitulatif Annuel Coût de Revient";
       const title = `${baseDocTitle} - ${selectedYear}`;
-      doc.setFontSize(pdfSettings.documentTitleFontSize);
-      doc.text(title, pdfSettings.marginLeft, currentY);
-      currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
-      doc.setFontSize(pdfSettings.defaultFontSize);
-      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
-      currentY += pdfSettings.defaultFontSize + 7;
+      doc.setFontSize(pdfSettings.documentTitleFontSize); doc.text(title, pdfSettings.marginLeft, currentY); currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+      doc.setFontSize(pdfSettings.defaultFontSize); doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 7;
 
-      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, fontSize?: number } = {
-        fontStyle: 'bold',
-        fontSize: pdfSettings.tableHeaderFontSize,
-      };
-
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, fontSize?: number } = { fontStyle: 'bold', fontSize: pdfSettings.tableHeaderFontSize };
       if (pdfSettings.primaryColor) {
         const primaryRgb = hexToRgb(pdfSettings.primaryColor);
-        if (primaryRgb) {
-          headStyles.fillColor = primaryRgb;
-          const brightness = (primaryRgb[0] * 299 + primaryRgb[1] * 587 + primaryRgb[2] * 114) / 1000;
-          headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
-        }
+        if (primaryRgb) { headStyles.fillColor = primaryRgb; const brightness = (primaryRgb[0] * 299 + primaryRgb[1] * 587 + primaryRgb[2] * 114) / 1000; headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255]; }
       }
 
-      const head = [['Mois', 'Total HT (€)', 'Total TVA (€)', 'Total Avoir (€)', 'Total Effectif (Quantité)', 'Prix de Revient Mensuel (€)', 'Emarket (€)', 'Frais Fonct. (€)', 'Frais Gestion (€)', 'Dépenses Mensuelles Totales (€)']];
-      
+      const head = [['Mois', 'Total HT (€)', 'Total TVA (€)', 'Total Avoir (€)', 'Total Effectif (Qté)', 'Prix de Revient Mensuel (€)', 'Emarket (€)', 'Frais Fonct. (€)', 'Frais Gestion (€)', 'Dépenses Mensuelles Totales (€)']];
       const body = annualData.map(summary => [
-        summary.month,
-        summary.totalHt.toFixed(2),
-        summary.totalTva.toFixed(2),
-        summary.totalAvoir.toFixed(2),
-        summary.totalEffectifSum.toFixed(0), // Display as integer
-        summary.prixDeRevient.toFixed(2),
-        summary.emarket.toFixed(2),
-        summary.fraisFonctionnement.toFixed(2),
-        summary.fraisGestion.toFixed(2),
-        summary.totalLigne.toFixed(2), // totalLigne is now Dépenses Mensuelles Totales
+        summary.month, summary.totalHt.toFixed(2), summary.totalTva.toFixed(2), summary.totalAvoir.toFixed(2),
+        summary.totalEffectifSum.toFixed(0), summary.prixDeRevient.toFixed(2),
+        (summary.manualEmarket ?? FIXED_MONTHLY_EMARKET_DEFAULT).toFixed(2),
+        (summary.manualFraisFonctionnement ?? FIXED_MONTHLY_FRAIS_FONCTIONNEMENT_DEFAULT).toFixed(2),
+        (summary.manualFraisGestion ?? FIXED_MONTHLY_FRAIS_GESTION_DEFAULT).toFixed(2),
+        summary.totalLigne.toFixed(2),
       ]);
-      
       const footer = [
-        [
-          { content: 'TOTAL ANNUEL', styles: { fontStyle: 'bold' } },
-          { content: annualTotals.grandTotalHt.toFixed(2), styles: { fontStyle: 'bold' } },
-          { content: annualTotals.grandTotalTva.toFixed(2), styles: { fontStyle: 'bold' } },
-          { content: annualTotals.grandTotalAvoir.toFixed(2), styles: { fontStyle: 'bold' } },
-          { content: annualTotals.grandTotalEffectifSum.toFixed(0), styles: { fontStyle: 'bold' } }, // Display as integer
-          { content: annualTotals.overallPrixDeRevient.toFixed(2), styles: { fontStyle: 'bold', description: 'Prix de revient annuel global' } }, 
-          { content: annualTotals.grandTotalEmarket.toFixed(2), styles: { fontStyle: 'bold' } },
-          { content: annualTotals.grandTotalFraisFonctionnement.toFixed(2), styles: { fontStyle: 'bold' } },
-          { content: annualTotals.grandTotalFraisGestion.toFixed(2), styles: { fontStyle: 'bold' } },
-          { content: annualTotals.grandTotalLigne.toFixed(2), styles: { fontStyle: 'bold' } }, // Dépenses Annuelles Totales
-        ],
-         [
-          { content: 'Prix de Revient Annuel Moyen (basé sur PR mensuels avec effectif > 0)', colSpan: 9, styles: { fontStyle: 'bold', halign: 'right' } },
-          { content: annualTotals.averagePrixDeRevient.toFixed(2), styles: { fontStyle: 'bold', halign: 'right' } }
-        ]
+        [ { content: 'TOTAL ANNUEL', styles: { fontStyle: 'bold' } }, annualTotals.grandTotalHt.toFixed(2), annualTotals.grandTotalTva.toFixed(2), annualTotals.grandTotalAvoir.toFixed(2), annualTotals.grandTotalEffectifSum.toFixed(0), { content: annualTotals.overallPrixDeRevient.toFixed(2), styles: { fontStyle: 'bold' } }, annualTotals.grandTotalEmarket.toFixed(2), annualTotals.grandTotalFraisFonctionnement.toFixed(2), annualTotals.grandTotalFraisGestion.toFixed(2), annualTotals.grandTotalLigne.toFixed(2) ],
+        [ { content: 'Prix de Revient Annuel Moyen (basé sur PR mensuels avec effectif > 0)', colSpan: 9, styles: { fontStyle: 'bold', halign: 'right' } }, { content: annualTotals.averagePrixDeRevient.toFixed(2), styles: { fontStyle: 'bold', halign: 'right' } } ]
       ];
-
-      doc.autoTable({
-        head: head,
-        body: body,
-        foot: footer,
-        startY: currentY,
-        theme: 'grid',
-        headStyles: headStyles, 
-        styles: { fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily },
-        footStyles: { fillColor: [220, 220, 220], textColor: [0,0,0], fontStyle: 'bold' },
-        columnStyles: {
-            0: { cellWidth: 'auto' }, 
-            1: { cellWidth: 'auto', halign: 'right' }, 
-            2: { cellWidth: 'auto', halign: 'right' }, 
-            3: { cellWidth: 'auto', halign: 'right' }, 
-            4: { cellWidth: 'auto', halign: 'right' }, 
-            5: { cellWidth: 'auto', halign: 'right' }, 
-            6: { cellWidth: 'auto', halign: 'right' }, 
-            7: { cellWidth: 'auto', halign: 'right' }, 
-            8: { cellWidth: 'auto', halign: 'right' }, 
-            9: { cellWidth: 'auto', halign: 'right' }, 
-        },
+      doc.autoTable({ head, body, foot: footer, startY: currentY, theme: 'grid', headStyles, styles: { fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily }, footStyles: { fillColor: [220, 220, 220], textColor: [0,0,0], fontStyle: 'bold' },
+        columnStyles: { 0: { cellWidth: 'auto' }, 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' }, 9: { halign: 'right' } },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
-          if (pdfSettings.footerText) {
-            let footerStr = pdfSettings.footerText
-              .replace('{date}', generationDateFormatted)
-              .replace('{pageNumber}', data.pageNumber.toString())
-              .replace('{totalPages}', pageCount.toString());
-            doc.setFontSize(pdfSettings.footerFontSize);
-            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
-          }
+          if (pdfSettings.footerText) { let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', data.pageNumber.toString()).replace('{totalPages}', pageCount.toString()); doc.setFontSize(pdfSettings.footerFontSize); doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2)); }
         }
       });
-
       doc.save(`cout_revient_annuel_${selectedYear}.pdf`);
       toast({ title: "PDF Annuel Généré", description: "Le récapitulatif PDF annuel a été téléchargé." });
-    } catch (error) {
-      console.error("Error generating annual PDF:", error);
-      toast({ title: "Erreur PDF", description: "La génération du PDF annuel a échoué.", variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
+    } catch (error) { console.error("Error generating annual PDF:", error); toast({ title: "Erreur PDF", description: "La génération du PDF annuel a échoué.", variant: "destructive" }); }
+    finally { setIsLoading(false); }
   };
 
   const noDataForYear = !isLoading && annualData.every(m => !m.dataFound && m.totalEffectifSum === 0 && m.totalHt === 0 && m.totalAvoir === 0);
@@ -324,13 +308,22 @@ export default function AnnualCostAnalysisTable() {
             <SelectContent>{yearOptions.map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}</SelectContent>
           </Select>
         </div>
-        <div className="sm:col-start-3">
+        <div className="sm:col-span-2 flex flex-col sm:flex-row gap-2 justify-end">
+           <Button 
+            onClick={handleSaveAdjustments} 
+            disabled={isLoading || isSaving || annualData.every(s => !s.hasManualAdjustments)} 
+            className="w-full sm:w-auto"
+            variant="outline"
+          >
+            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            Enregistrer Ajustements Frais
+          </Button>
            <Button 
             onClick={generatePdf} 
-            disabled={isLoading || noDataForYear} 
+            disabled={isLoading || isSaving || noDataForYear} 
             className="w-full sm:w-auto"
           >
-            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+            {(isLoading && !isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
             Générer PDF Annuel
           </Button>
         </div>
@@ -352,9 +345,9 @@ export default function AnnualCostAnalysisTable() {
               <TableHead className="text-right">Total Avoir (€)</TableHead>
               <TableHead className="text-right">Total Effectif (Qté)</TableHead>
               <TableHead className="text-right">Prix de Revient Mensuel (€)</TableHead>
-              <TableHead className="text-right">Emarket (€)</TableHead>
-              <TableHead className="text-right">Frais Fonct. (€)</TableHead>
-              <TableHead className="text-right">Frais Gestion (€)</TableHead>
+              <TableHead className="text-right w-32 min-w-[120px]">Emarket (€)</TableHead>
+              <TableHead className="text-right w-32 min-w-[120px]">Frais Fonct. (€)</TableHead>
+              <TableHead className="text-right w-32 min-w-[120px]">Frais Gestion (€)</TableHead>
               <TableHead className="text-right">Dépenses Mensuelles Totales (€)</TableHead>
             </TableRow>
           </TableHeader>
@@ -367,9 +360,33 @@ export default function AnnualCostAnalysisTable() {
                 <TableCell className="text-right">{summary.totalAvoir.toFixed(2)}</TableCell>
                 <TableCell className="text-right">{summary.totalEffectifSum.toFixed(0)}</TableCell> 
                 <TableCell className="text-right">{summary.prixDeRevient.toFixed(2)}</TableCell>
-                <TableCell className="text-right">{summary.emarket.toFixed(2)}</TableCell>
-                <TableCell className="text-right">{summary.fraisFonctionnement.toFixed(2)}</TableCell>
-                <TableCell className="text-right">{summary.fraisGestion.toFixed(2)}</TableCell>
+                <TableCell className="text-right p-1">
+                  <Input type="number" step="0.01"
+                    value={summary.manualEmarket ?? ''}
+                    placeholder={(FIXED_MONTHLY_EMARKET_DEFAULT).toFixed(2)}
+                    onChange={(e) => handleManualCostChange(index, 'manualEmarket', e.target.value)}
+                    className="h-8 text-xs text-right bg-background/50"
+                    disabled={isSaving}
+                  />
+                </TableCell>
+                <TableCell className="text-right p-1">
+                  <Input type="number" step="0.01"
+                    value={summary.manualFraisFonctionnement ?? ''}
+                     placeholder={(FIXED_MONTHLY_FRAIS_FONCTIONNEMENT_DEFAULT).toFixed(2)}
+                    onChange={(e) => handleManualCostChange(index, 'manualFraisFonctionnement', e.target.value)}
+                    className="h-8 text-xs text-right bg-background/50"
+                    disabled={isSaving}
+                  />
+                </TableCell>
+                <TableCell className="text-right p-1">
+                  <Input type="number" step="0.01"
+                    value={summary.manualFraisGestion ?? ''}
+                    placeholder={(FIXED_MONTHLY_FRAIS_GESTION_DEFAULT).toFixed(2)}
+                    onChange={(e) => handleManualCostChange(index, 'manualFraisGestion', e.target.value)}
+                    className="h-8 text-xs text-right bg-background/50"
+                    disabled={isSaving}
+                  />
+                </TableCell>
                 <TableCell className="text-right">{summary.totalLigne.toFixed(2)}</TableCell>
               </TableRow>
             ))}

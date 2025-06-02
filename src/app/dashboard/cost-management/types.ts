@@ -51,13 +51,20 @@ export interface MonthlySummary {
   totalHt: number;
   totalTva: number;
   totalAvoir: number;
-  emarket: number;
+  // Remplacés par manualEmarket, etc. ci-dessous, mais gardés pour la structure de données Firestore potentielle
+  emarket: number; 
   fraisFonctionnement: number;
   fraisGestion: number;
+
+  manualEmarket?: number; // Valeur modifiable par l'utilisateur
+  manualFraisFonctionnement?: number; // Valeur modifiable
+  manualFraisGestion?: number; // Valeur modifiable
+
   totalEffectifSum: number;
   prixDeRevient: number;
-  totalLigne: number; // Added for the new total column
-  dataFound: boolean;
+  totalLigne: number; 
+  dataFound: boolean; // Indique si des CostEntry ont été trouvées pour ce mois
+  hasManualAdjustments?: boolean; // Indique si les valeurs manuelles ont été explicitement définies
 }
 
 // Types for Pique-Nique / Salade Cost Analysis
@@ -82,4 +89,3 @@ export interface IngredientOccasional {
   unitPrice: number; // Price per unit
   quantityPerSingleMeal: number; // Quantity of this unit used for one person's meal part
 }
-
