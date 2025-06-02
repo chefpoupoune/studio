@@ -13,7 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { DEFAULT_APP_PRIMARY_COLOR } from '@/config/colors';
-import { PDF_LAYOUT_CONFIGS_KEY } from '@/lib/pdf-settings';
+// PDF_LAYOUT_CONFIGS_KEY is no longer needed here as it's Firestore managed
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,7 +32,7 @@ import {
   THEME_STORAGE_KEY, 
   ACCENT_COLOR_STORAGE_KEY 
 } from '@/lib/theme-utils';
-
+import { LOGGED_IN_USER_PERMISSIONS_KEY, LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY } from '@/app/dashboard/settings/components/user-management'; // Import existing keys
 
 const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1";
 
@@ -58,9 +58,10 @@ const DEFAULT_NOTIFICATIONS_SOUND_CHOICE = 'default';
 export type ThemeMode = 'light' | 'dark' | 'system';
 
 // Keys for data specific to this application that are stored in localStorage and should be included in export/import.
-// Keys for data migrated to Firestore should be REMOVED from here.
+// This list should ONLY contain keys for client-side settings (theme, notifications, local session info).
+// Data like users, PMS configs, PDF layouts, inventory, etc., are now in Firestore and should NOT be listed here.
 const APP_SPECIFIC_KEYS = [
-  // Settings managed by ApplicationSettingsManager
+  // Settings managed by ApplicationSettingsManager (client-side preferences)
   THEME_STORAGE_KEY,
   ACCENT_COLOR_STORAGE_KEY,
   APP_LOGO_STORAGE_KEY,
@@ -71,21 +72,17 @@ const APP_SPECIFIC_KEYS = [
   NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY,
   NOTIFICATIONS_SOUND_ENABLED_KEY,
   NOTIFICATIONS_SOUND_CHOICE_KEY,
-  // Settings managed by PdfLayoutManager
-  PDF_LAYOUT_CONFIGS_KEY,
-  // Login related info (not full user data, which is in Firestore)
-  'loggedInUsername', // Username for display or quick access
-  'isLoggedIn',       // Flag to indicate login status
-  LOGGED_IN_USER_PERMISSIONS_KEY, // User's specific permissions for UI control
-  LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY, // User's hour view config
+  // Login related info (local session state and cached permissions for UI)
+  'loggedInUsername', 
+  'isLoggedIn',       
+  LOGGED_IN_USER_PERMISSIONS_KEY, 
+  LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY, 
 ];
 
-// Prefixes for dynamically generated localStorage keys that are app-specific.
-// Keys for data migrated to Firestore should be REMOVED from here.
+// Prefixes for dynamically generated localStorage keys that are app-specific AND client-side.
+// Since most dynamic data (monthly records, etc.) has been migrated to Firestore, this list is likely empty.
 const APP_SPECIFIC_PREFIXES: string[] = [
-  // Example: If some dynamic local settings were to be kept:
-  // 'user_dashboard_widget_order_', 
-  // Currently, most dynamic data has been migrated. This list might be empty or very short.
+  // Example: 'user_dashboard_widget_order_', 
 ];
 
 
