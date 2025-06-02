@@ -37,7 +37,7 @@ import {
 const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1";
 
 // Notification settings keys
-const NOTIFICATIONS_EMAIL_KEY = "app_settings_notifications_email_v1"; // Added versioning just in case
+const NOTIFICATIONS_EMAIL_KEY = "app_settings_notifications_email_v1";
 const NOTIFICATIONS_IN_APP_GENERAL_KEY = "app_settings_notifications_in_app_general_v1";
 const NOTIFICATIONS_IN_APP_NEW_TASK_KEY = "app_settings_notifications_in_app_new_task_v1";
 const NOTIFICATIONS_IN_APP_STATUS_UPDATE_KEY = "app_settings_notifications_in_app_status_update_v1";
@@ -57,23 +57,13 @@ const DEFAULT_NOTIFICATIONS_SOUND_CHOICE = 'default';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
+// Keys for data specific to this application that are stored in localStorage and should be included in export/import.
+// Keys for data migrated to Firestore should be REMOVED from here.
 const APP_SPECIFIC_KEYS = [
-  'inventory_products',
-  'inventory_stock_movements',
-  'inventory_purchase_orders',
-  'occasional_meal_starter_ingredients',
-  'occasional_meal_main_ingredients',
-  'occasional_meal_dessert_ingredients',
-  'occasional_meal_num_people',
-  'cost_pn_picnic_ingredients',
-  'cost_pn_salad_ingredients',
-  'time_tracking_members_v2',
-  'time_tracking_entries',
-  'time_tracking_custom_schedule_templates_v2',
-  'task_management_tasks',
+  // Settings managed by ApplicationSettingsManager
   THEME_STORAGE_KEY,
   ACCENT_COLOR_STORAGE_KEY,
-  PDF_LAYOUT_CONFIGS_KEY,
+  APP_LOGO_STORAGE_KEY,
   NOTIFICATIONS_EMAIL_KEY,
   NOTIFICATIONS_IN_APP_GENERAL_KEY,
   NOTIFICATIONS_IN_APP_NEW_TASK_KEY,
@@ -81,40 +71,21 @@ const APP_SPECIFIC_KEYS = [
   NOTIFICATIONS_IN_APP_INVENTORY_LOW_KEY,
   NOTIFICATIONS_SOUND_ENABLED_KEY,
   NOTIFICATIONS_SOUND_CHOICE_KEY,
-  APP_LOGO_STORAGE_KEY,
-  'app_defined_users_v2',
-  'loggedInUserPermissions',
-  'loggedInUserHourViewConfig',
-  // PMS settings
-  'pms_module_configurations_v6',
-  // Declaration heure
-  'declaration_heure_overtime_requests_v5',
-  'declaration_heure_absence_requests_v5',
+  // Settings managed by PdfLayoutManager
+  PDF_LAYOUT_CONFIGS_KEY,
+  // Login related info (not full user data, which is in Firestore)
+  'loggedInUsername', // Username for display or quick access
+  'isLoggedIn',       // Flag to indicate login status
+  LOGGED_IN_USER_PERMISSIONS_KEY, // User's specific permissions for UI control
+  LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY, // User's hour view config
 ];
 
-const APP_SPECIFIC_PREFIXES = [
-  'cost_analysis_',
-  'menu_planning_',
-  'temperature_sheet_meal_item_temps_',
-  'temperature_sheet_daily_log_data_',
-  'pms_kitchen_cleaning_records_v3_',
-  'pms_restaurant_cleaning_records_v2_',
-  'pms_temperature_records_grid_v3_',
-  'pms_reception_log_v1',
-  'pms_temp_change_log_v1',
-  'pms_defrosting_log_v1',
-  'pms_fryer_maintenance_log_v1',
-  'pms_fryer_oil_tpm_log_v1',
-  'benefits_employees_list_v1', 
-  'benefits_tracking_',
-  'picnic_nb_pn_data_v1_',
-  'picnic_client_orders_data_v3_',
-  'picnic_base_bread_v1_',
-  'picnic_master_weekly_menu_templates_v1',
-  'picnic_selected_template_index_v1',
-  // Added missing pms_cold_chain prefixes
-  'pms_cold_chain_cooldown_v2_',
-  'pms_cold_chain_delivery_v2_',
+// Prefixes for dynamically generated localStorage keys that are app-specific.
+// Keys for data migrated to Firestore should be REMOVED from here.
+const APP_SPECIFIC_PREFIXES: string[] = [
+  // Example: If some dynamic local settings were to be kept:
+  // 'user_dashboard_widget_order_', 
+  // Currently, most dynamic data has been migrated. This list might be empty or very short.
 ];
 
 
@@ -426,13 +397,13 @@ export default function ApplicationSettingsManager() {
             const isRecognizedKey = APP_SPECIFIC_KEYS.includes(key) || APP_SPECIFIC_PREFIXES.some(prefix => key.startsWith(prefix));
             if (isRecognizedKey) {
                 const valueToStore = importedData[key];
-                if (valueToStore === null) { // Handle explicit nulls in backup to remove item
+                if (valueToStore === null) { 
                     localStorage.removeItem(key);
                     console.log(`[Import Data] Removed key: ${key} (was null in backup)`);
-                } else if (typeof valueToStore === 'object') { // If it's an object (like some settings might be)
+                } else if (typeof valueToStore === 'object') { 
                     localStorage.setItem(key, JSON.stringify(valueToStore));
                      console.log(`[Import Data] Imported key (object): ${key}`);
-                } else { // Primitives (string, number, boolean)
+                } else { 
                     localStorage.setItem(key, String(valueToStore));
                     console.log(`[Import Data] Imported key (primitive): ${key}`);
                 }
@@ -669,7 +640,7 @@ export default function ApplicationSettingsManager() {
                 <h3 className="text-lg font-semibold text-foreground">Gestion des Données</h3>
             </div>
              <p className="text-sm text-muted-foreground mb-3">
-                Options pour sauvegarder ou restaurer les données de l'application stockées localement. Utile pour les migrations ou la récupération après incident.
+                Options pour sauvegarder ou restaurer les données de l'application stockées localement (paramètres d'affichage, préférences, etc.). Les données métier (stocks, menus, etc.) sont sur Firestore.
             </p>
             <div className="flex flex-col sm:flex-row gap-3">
                 <Button 
@@ -679,7 +650,7 @@ export default function ApplicationSettingsManager() {
                   className="w-full sm:w-auto"
                 >
                     <Download className="mr-2 h-4 w-4" />
-                    Exporter Toutes les Données Locales
+                    Exporter Données Locales
                 </Button>
                 
                 <AlertDialog open={isImportAlertOpen} onOpenChange={setIsImportAlertOpen}>
@@ -688,10 +659,10 @@ export default function ApplicationSettingsManager() {
                       variant="outline" 
                       disabled={!isClient}
                       className="w-full sm:w-auto"
-                      onClick={() => setIsImportAlertOpen(true)} // Manually trigger dialog open
+                      onClick={() => setIsImportAlertOpen(true)} 
                     >
                         <Upload className="mr-2 h-4 w-4" />
-                        Importer des Données Locales
+                        Importer Données Locales
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
@@ -700,8 +671,8 @@ export default function ApplicationSettingsManager() {
                         <AlertTriangle className="text-destructive" /> Confirmer l'Importation
                       </AlertDialogTitle>
                       <AlertDialogDescription>
-                        L'importation de données écrasera toutes les données existantes spécifiques à l'application qui portent le même nom. 
-                        Êtes-vous sûr de vouloir continuer ? Il est recommandé d'exporter vos données actuelles avant d'importer.
+                        L'importation de données écrasera toutes les données locales existantes spécifiques à l'application qui portent le même nom. 
+                        Êtes-vous sûr de vouloir continuer ? Il est recommandé d'exporter vos données locales actuelles avant d'importer.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -722,7 +693,7 @@ export default function ApplicationSettingsManager() {
                 />
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-                L'importation écrasera les données existantes avec le même nom. Sauvegardez vos données actuelles avant d'importer si nécessaire.
+                L'importation écrasera les données locales existantes avec le même nom. Sauvegardez vos données locales actuelles avant d'importer si nécessaire.
             </p>
         </div>
       </CardContent>
