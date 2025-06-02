@@ -7,13 +7,13 @@ import {
   PMS_KITCHEN_CLEANING_KEY, 
   PMS_RESTAURANT_CLEANING_KEY, 
   PMS_TEMPERATURE_MONITORING_KEY, 
-  PMS_CONFIG_STORAGE_KEY 
+  // PMS_CONFIG_STORAGE_KEY is removed as we now use Firestore
 } from '../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { PlusCircle, Edit2, Trash2, ShieldAlert, ClipboardEdit, SprayCan, Sparkles, Thermometer, Flame } from 'lucide-react'; 
+import { PlusCircle, Edit2, Trash2, ShieldAlert, ClipboardEdit, SprayCan, Sparkles, Thermometer, Flame, Loader2 } from 'lucide-react'; 
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -32,6 +32,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { firestore } from '@/lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+
+const FIRESTORE_COLLECTION_NAME = "pmsConfigurations";
+const FIRESTORE_DOCUMENT_ID = "mainConfig";
 
 const baseZoneSchema = z.object({
   name: z.string().min(1, "Le nom de la zone/équipement est requis."),
@@ -74,6 +79,8 @@ export default function PmsConfigManager() {
   const [currentZoneForTask, setCurrentZoneForTask] = useState<PmsZone | null>(null);
   const [editingTask, setEditingTask] = useState<PmsTaskDefinition | null>(null);
 
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   
   const form = useForm<ZoneFormData | TemperatureEquipmentFormData>({
@@ -81,36 +88,42 @@ export default function PmsConfigManager() {
   });
   const taskForm = useForm<TaskFormData>({ resolver: zodResolver(taskSchema), defaultValues: { name: '' } });
   
-  useEffect(() => {
-    try {
-      const storedData = localStorage.getItem(PMS_CONFIG_STORAGE_KEY);
-      const initialConfigs: PmsConfigurations = {
-        [PMS_KITCHEN_CLEANING_KEY]: [],
-        [PMS_RESTAURANT_CLEANING_KEY]: [],
-        [PMS_TEMPERATURE_MONITORING_KEY]: [],
-        // Add future PMS categories here with default empty arrays
-      };
+  const initialConfigsStructure: PmsConfigurations = {
+    [PMS_KITCHEN_CLEANING_KEY]: [],
+    [PMS_RESTAURANT_CLEANING_KEY]: [],
+    [PMS_TEMPERATURE_MONITORING_KEY]: [],
+  };
 
-      if (storedData) {
-        const parsedData = JSON.parse(storedData);
-        // Ensure all known keys exist in pmsConfigs
-        Object.keys(initialConfigs).forEach(key => {
-          initialConfigs[key] = parsedData[key] || [];
-        });
-        setPmsConfigs(initialConfigs);
-      } else {
-        setPmsConfigs(initialConfigs);
+  useEffect(() => {
+    const loadConfigsFromFirestore = async () => {
+      setIsLoading(true);
+      const docRef = doc(firestore, FIRESTORE_COLLECTION_NAME, FIRESTORE_DOCUMENT_ID);
+      try {
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const firestoreData = docSnap.data() as PmsConfigurations;
+          const loadedConfigs = { ...initialConfigsStructure };
+          Object.keys(initialConfigsStructure).forEach(key => {
+            if (firestoreData[key]) {
+              loadedConfigs[key] = firestoreData[key];
+            }
+          });
+          setPmsConfigs(loadedConfigs);
+        } else {
+          setPmsConfigs(initialConfigsStructure);
+          // Optionally create the document with initial structure if it doesn't exist
+          // await setDoc(docRef, initialConfigsStructure);
+        }
+      } catch (error) {
+        console.error("Error loading PMS configs from Firestore:", error);
+        setPmsConfigs(initialConfigsStructure);
+        toast({ title: "Erreur de chargement", description: "Configurations PMS corrompues. Réinitialisation.", variant: "destructive" });
       }
-    } catch (error) {
-      console.error("Error loading PMS configs:", error);
-      setPmsConfigs({ 
-          [PMS_KITCHEN_CLEANING_KEY]: [], 
-          [PMS_RESTAURANT_CLEANING_KEY]: [],
-          [PMS_TEMPERATURE_MONITORING_KEY]: [],
-      });
-      toast({ title: "Erreur de chargement", description: "Configurations PMS corrompues. Réinitialisation.", variant: "destructive" });
-    }
-  }, [toast]);
+      setIsLoading(false);
+    };
+    loadConfigsFromFirestore();
+  }, [toast]); // initialConfigsStructure is stable
+
 
   useEffect(() => {
     if (isZoneDialogOpen) {
@@ -146,10 +159,21 @@ export default function PmsConfigManager() {
     }
   }, [isZoneDialogOpen, currentCategoryKey, editingZone, form]);
 
-  const saveConfigs = useCallback((updatedConfigs: PmsConfigurations) => {
-    setPmsConfigs(updatedConfigs);
-    localStorage.setItem(PMS_CONFIG_STORAGE_KEY, JSON.stringify(updatedConfigs));
-  }, []);
+  const saveConfigsToFirestore = useCallback(async (updatedConfigs: PmsConfigurations) => {
+    if (isSaving) return;
+    setIsSaving(true);
+    const docRef = doc(firestore, FIRESTORE_COLLECTION_NAME, FIRESTORE_DOCUMENT_ID);
+    try {
+      await setDoc(docRef, updatedConfigs);
+      setPmsConfigs(updatedConfigs); // Update local state after successful save
+      // toast({ title: "Configurations PMS Enregistrées", description: "Les modifications ont été sauvegardées." }); // Can be too noisy
+    } catch (error) {
+      console.error("Error saving PMS configs to Firestore:", error);
+      toast({ title: "Erreur de Sauvegarde", description: "Impossible d'enregistrer les configurations PMS.", variant: "destructive"});
+    } finally {
+      setIsSaving(false);
+    }
+  }, [isSaving, toast]);
 
   const handleOpenZoneDialog = (categoryKey: string, zone?: PmsZone) => {
     setCurrentCategoryKey(categoryKey);
@@ -163,6 +187,7 @@ export default function PmsConfigManager() {
     const itemLabel = currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone";
     
     let updatedItemData: PmsZone;
+    let newItems: PmsZone[];
 
     if (editingZone) {
       updatedItemData = { ...editingZone, name: data.name, id: editingZone.id, tasks: editingZone.tasks || [] };
@@ -179,8 +204,7 @@ export default function PmsConfigManager() {
             tolerance2TempMax: tempData.tolerance2TempMax,
         } as PmsEquipmentDefinition;
       }
-      const updatedItems = currentItems.map(item => item.id === editingZone.id ? updatedItemData : item);
-      saveConfigs({ ...pmsConfigs, [currentCategoryKey]: updatedItems });
+      newItems = currentItems.map(item => item.id === editingZone.id ? updatedItemData : item);
       toast({ title: `${itemLabel} Modifié(e)`, description: `Le/La ${itemLabel.toLowerCase()} "${data.name}" a été mis(e) à jour.` });
     } else {
       const newItemId = `${currentCategoryKey}_item_${Date.now()}`;
@@ -201,19 +225,20 @@ export default function PmsConfigManager() {
       } else {
         updatedItemData = { ...baseNewItem };
       }
-      saveConfigs({ ...pmsConfigs, [currentCategoryKey]: [...currentItems, updatedItemData] });
+      newItems = [...currentItems, updatedItemData];
       toast({ title: `${itemLabel} Ajouté(e)`, description: `Le/La ${itemLabel.toLowerCase()} "${data.name}" a été ajouté(e).` });
     }
+    saveConfigsToFirestore({ ...pmsConfigs, [currentCategoryKey]: newItems });
     setIsZoneDialogOpen(false);
   };
 
   const handleDeleteZone = (categoryKey: string, itemId: string, itemName: string) => {
-    if (!currentCategoryKey) return; // Should not happen if button is displayed
+    if (!currentCategoryKey) return; 
     const itemLabelSingular = categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "cet équipement" : "cette zone";
     
     const currentItems = pmsConfigs[categoryKey] || [];
     const updatedItems = currentItems.filter(item => item.id !== itemId);
-    saveConfigs({ ...pmsConfigs, [categoryKey]: updatedItems }); 
+    saveConfigsToFirestore({ ...pmsConfigs, [categoryKey]: updatedItems }); 
     toast({ title: `${categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone"} Supprimé(e)`, description: `L'élément "${itemName}" a été supprimé.`, variant: "destructive" });
   };
 
@@ -244,12 +269,12 @@ export default function PmsConfigManager() {
       }
       return item;
     });
-    saveConfigs({ ...pmsConfigs, [currentCategoryKey]: updatedItems });
+    saveConfigsToFirestore({ ...pmsConfigs, [currentCategoryKey]: updatedItems });
     setIsTaskDialogOpen(false);
   };
 
   const handleDeleteTask = (categoryKey: string, zoneId: string, taskId: string, taskName: string) => {
-    if (!currentCategoryKey) return; // Should not happen if button is displayed
+    if (!currentCategoryKey) return; 
     const currentItems = pmsConfigs[categoryKey] || [];
     const updatedItems = currentItems.map(item => {
       if (item.id === zoneId) {
@@ -257,7 +282,7 @@ export default function PmsConfigManager() {
       }
       return item;
     });
-    saveConfigs({ ...pmsConfigs, [categoryKey]: updatedItems });
+    saveConfigsToFirestore({ ...pmsConfigs, [currentCategoryKey]: updatedItems });
     toast({ title: "Tâche Supprimée", description: `L'élément "${taskName}" a été supprimé.`, variant: "destructive" });
   };
 
@@ -295,7 +320,7 @@ export default function PmsConfigManager() {
         </CardHeader>
         <CardContent>
           <div className="mb-4">
-            <Button onClick={() => handleOpenZoneDialog(categoryKey)}>
+            <Button onClick={() => handleOpenZoneDialog(categoryKey)} disabled={isLoading || isSaving}>
               <PlusCircle className="mr-2 h-4 w-4" /> Ajouter {itemLabel === "Zone" ? "une" : "un"} {itemLabel.toLowerCase()}
             </Button>
           </div>
@@ -323,12 +348,12 @@ export default function PmsConfigManager() {
                       </div>
                     </AccordionTrigger>
                     <div className="pl-2 pr-2 space-x-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
-                      <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleOpenZoneDialog(categoryKey, item);}} className="h-7 w-7">
+                      <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleOpenZoneDialog(categoryKey, item);}} className="h-7 w-7" disabled={isLoading || isSaving}>
                         <Edit2 className="h-4 w-4" />
                       </Button>
                        <AlertDialog>
                         <AlertDialogTrigger asChild>
-                           <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()} className="h-7 w-7 hover:text-destructive">
+                           <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()} className="h-7 w-7 hover:text-destructive" disabled={isLoading || isSaving}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </AlertDialogTrigger>
@@ -341,8 +366,8 @@ export default function PmsConfigManager() {
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Annuler</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDeleteZone(categoryKey, item.id, item.name)}>
-                              Supprimer
+                            <AlertDialogAction onClick={() => handleDeleteZone(categoryKey, item.id, item.name)} disabled={isLoading || isSaving}>
+                              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Supprimer
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
@@ -352,7 +377,7 @@ export default function PmsConfigManager() {
                   {showTasksForThisCategory && (item.tasks || []).length > 0 && (
                     <AccordionContent className="pl-6 pr-2 pt-0 pb-3">
                       <div className="mb-2 mt-1">
-                        <Button variant="outline" size="xs" onClick={() => handleOpenTaskDialog(categoryKey, item)}>
+                        <Button variant="outline" size="xs" onClick={() => handleOpenTaskDialog(categoryKey, item)} disabled={isLoading || isSaving}>
                           <PlusCircle className="mr-1.5 h-3 w-3" /> Ajouter {taskItemLabel}
                         </Button>
                       </div>
@@ -361,12 +386,12 @@ export default function PmsConfigManager() {
                             <li key={task.id} className="flex justify-between items-center p-1.5 rounded hover:bg-muted/30 text-sm">
                               <span>{task.name}</span>
                               <div className="space-x-0.5">
-                                <Button variant="ghost" size="icon" onClick={() => handleOpenTaskDialog(categoryKey, item, task)} className="h-6 w-6">
+                                <Button variant="ghost" size="icon" onClick={() => handleOpenTaskDialog(categoryKey, item, task)} className="h-6 w-6" disabled={isLoading || isSaving}>
                                   <Edit2 className="h-3.5 w-3.5" />
                                 </Button>
                                 <AlertDialog>
                                   <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-6 w-6 hover:text-destructive">
+                                    <Button variant="ghost" size="icon" className="h-6 w-6 hover:text-destructive" disabled={isLoading || isSaving}>
                                       <Trash2 className="h-3.5 w-3.5" />
                                     </Button>
                                   </AlertDialogTrigger>
@@ -379,8 +404,8 @@ export default function PmsConfigManager() {
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
                                       <AlertDialogCancel>Annuler</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleDeleteTask(categoryKey, item.id, task.id, task.name)}>
-                                        Supprimer {taskItemLabel}
+                                      <AlertDialogAction onClick={() => handleDeleteTask(categoryKey, item.id, task.id, task.name)} disabled={isLoading || isSaving}>
+                                        {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Supprimer {taskItemLabel}
                                       </AlertDialogAction>
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
@@ -394,7 +419,7 @@ export default function PmsConfigManager() {
                    {showTasksForThisCategory && (!item.tasks || item.tasks.length === 0) && (
                      <AccordionContent className="pl-6 pr-2 pt-0 pb-3">
                        <div className="mb-2 mt-1">
-                          <Button variant="outline" size="xs" onClick={() => handleOpenTaskDialog(categoryKey, item)}>
+                          <Button variant="outline" size="xs" onClick={() => handleOpenTaskDialog(categoryKey, item)} disabled={isLoading || isSaving}>
                             <PlusCircle className="mr-1.5 h-3 w-3" /> Ajouter {taskItemLabel}
                           </Button>
                         </div>
@@ -409,6 +434,17 @@ export default function PmsConfigManager() {
       </Card>
     );
   }
+  
+  if (isLoading && Object.keys(pmsConfigs).length === 0) { // Show loader only on initial full load
+    return (
+      <Card className="shadow-lg">
+        <CardHeader><CardTitle>Configuration PMS</CardTitle></CardHeader>
+        <CardContent className="flex justify-center items-center p-8">
+          <Loader2 className="h-6 w-6 animate-spin text-primary mr-2"/> Chargement des configurations PMS...
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -417,7 +453,7 @@ export default function PmsConfigManager() {
       {renderCategoryConfig(PMS_TEMPERATURE_MONITORING_KEY, "Suivi des Températures", Thermometer, "Équipement")}
       
       <Dialog open={isZoneDialogOpen} onOpenChange={setIsZoneDialogOpen}>
-        <DialogContent className="sm:max-w-lg md:max-w-xl"> {/* Adjusted width */}
+        <DialogContent className="sm:max-w-lg md:max-w-xl">
           <DialogHeader>
             <DialogTitle>{editingZone ? "Modifier" : "Nouvel"} {currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone"}</DialogTitle>
             {currentCategoryKey && <CardDescription>Pour: {
@@ -489,7 +525,7 @@ export default function PmsConfigManager() {
 
               <DialogFooter>
                 <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                <Button type="submit">{editingZone ? "Enregistrer" : "Ajouter"}</Button>
+                <Button type="submit" disabled={isSaving}>{isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingZone ? "Enregistrer" : "Ajouter"}</Button>
               </DialogFooter>
             </form>
           </Form>
@@ -515,7 +551,7 @@ export default function PmsConfigManager() {
                 )} />
                 <DialogFooter>
                     <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                    <Button type="submit">{editingTask ? "Enregistrer" : "Ajouter"}</Button>
+                    <Button type="submit" disabled={isSaving}>{isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingTask ? "Enregistrer" : "Ajouter"}</Button>
                 </DialogFooter>
                 </form>
             </Form>
@@ -536,3 +572,5 @@ export default function PmsConfigManager() {
   );
 }
 
+
+    
