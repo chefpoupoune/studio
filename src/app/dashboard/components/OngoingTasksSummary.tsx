@@ -11,9 +11,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { firestore } from '@/lib/firebase';
 import { collection, query, where, orderBy, getDocs, Timestamp, limit } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
-import { format } from 'date-fns'; // For formatting appointmentDate
-
-// TASK_STORAGE_KEY removed
+import { format } from 'date-fns'; 
+import { fr } from 'date-fns/locale'; // Ensure french locale is imported
 
 export default function OngoingTasksSummary() {
   const [allTasks, setAllTasks] = useState<Task[]>([]);
@@ -27,6 +26,7 @@ export default function OngoingTasksSummary() {
 
   const fetchOngoingTasks = useCallback(async () => {
     if (!isClient) return;
+    console.log("OngoingTasksSummary: Attempting to fetch tasks...");
     setIsLoading(true);
     try {
       const tasksCollectionRef = collection(firestore, 'taskManagementTasks');
@@ -34,30 +34,36 @@ export default function OngoingTasksSummary() {
         tasksCollectionRef,
         where('currentStatus', 'not-in', ['termine', 'annule']),
         orderBy('updatedAt', 'desc'),
-        // limit(10) // Optionally limit for summary if performance becomes an issue
+        // limit(10) // Optionally limit for summary
       );
       const querySnapshot = await getDocs(q);
       const tasksList = querySnapshot.docs.map(docSnap => {
         const data = docSnap.data();
+        // Robust Timestamp conversion
+        const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : new Date());
+        const updatedAt = data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : new Date());
+        const appointmentDate = data.appointmentDate instanceof Timestamp ? data.appointmentDate.toDate() : (data.appointmentDate ? new Date(data.appointmentDate) : null);
+        
+        const statusHistory = (data.statusHistory || []).map((log: any) => ({
+          ...log,
+          date: log.date instanceof Timestamp ? log.date.toDate() : (log.date ? new Date(log.date) : new Date()),
+        }));
+
         return {
           id: docSnap.id,
           ...data,
-          // Ensure dates are JavaScript Date objects
-          createdAt: (data.createdAt as Timestamp)?.toDate ? (data.createdAt as Timestamp).toDate() : new Date(data.createdAt),
-          updatedAt: (data.updatedAt as Timestamp)?.toDate ? (data.updatedAt as Timestamp).toDate() : new Date(data.updatedAt),
-          appointmentDate: data.appointmentDate && (data.appointmentDate as Timestamp)?.toDate ? (data.appointmentDate as Timestamp).toDate() : null,
-          statusHistory: (data.statusHistory || []).map((log: any) => ({
-            ...log,
-            date: (log.date as Timestamp)?.toDate ? (log.date as Timestamp).toDate() : new Date(log.date),
-          })),
+          createdAt,
+          updatedAt,
+          appointmentDate,
+          statusHistory,
         } as Task;
       });
       setAllTasks(tasksList);
-      console.log("OngoingTasksSummary: Tasks fetched from Firestore:", tasksList.length);
-    } catch (e) {
-      console.error("Error loading tasks from Firestore for summary:", e);
+      console.log("OngoingTasksSummary: Tasks fetched successfully:", tasksList.length);
+    } catch (e: any) {
+      console.error("OngoingTasksSummary: Error loading tasks from Firestore:", e.message, e.stack);
       setAllTasks([]);
-      toast({ title: "Erreur de chargement des tâches pour le résumé", description: "Les données des tâches n'ont pu être chargées depuis Firestore.", variant: "destructive" });
+      toast({ title: "Erreur chargement Tâches (Résumé)", description: e.message || "Détails dans la console.", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -65,16 +71,14 @@ export default function OngoingTasksSummary() {
 
   useEffect(() => {
     if (isClient) {
-      fetchOngoingTasks(); // Initial fetch
+      fetchOngoingTasks(); 
 
-      // Listener for updates from other components
       const handleTasksUpdated = () => {
         console.log("OngoingTasksSummary: taskManagementTasksUpdated event received. Re-fetching tasks.");
         fetchOngoingTasks();
       };
       window.addEventListener('taskManagementTasksUpdated', handleTasksUpdated);
       
-      // Re-fetch on tab visibility change
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
           console.log("OngoingTasksSummary: Tab became visible, re-fetching tasks.");
@@ -90,7 +94,7 @@ export default function OngoingTasksSummary() {
     }
   }, [isClient, fetchOngoingTasks]);
 
-  const ongoingTasks = allTasks; // `allTasks` is already filtered by the Firestore query
+  const ongoingTasks = allTasks; 
 
   const activeTasksCount = useMemo(() => {
     return ongoingTasks.filter(task => ['en_cours', 'rendez_vous', 'mr_dufay_prevenue', 'devis_fait', 'devis_envoye', 'devis_signature'].includes(task.currentStatus)).length;
@@ -147,14 +151,14 @@ export default function OngoingTasksSummary() {
           )}
         </div>
         <CardDescription className="text-xs">
-          Suivi rapide des problèmes et tâches actives.
+          Suivi rapide des problèmes et tâches actives. (Max. 5 affichées)
         </CardDescription>
       </CardHeader>
       <CardContent className="flex-grow pt-2">
         {ongoingTasks.length > 0 ? (
           <ScrollArea className="h-[220px] sm:h-[240px] pr-3">
             <ul className="space-y-2.5">
-              {ongoingTasks.slice(0, 4).map((task) => {
+              {ongoingTasks.slice(0, 5).map((task) => { // Display up to 5 tasks
                 const lastStatusEntry = task.statusHistory.length > 0 ? task.statusHistory[task.statusHistory.length - 1] : null;
                 const lastNotes = lastStatusEntry?.notes;
                 return (
@@ -178,13 +182,13 @@ export default function OngoingTasksSummary() {
                     )}
                     {task.currentStatus === 'rendez_vous' && task.appointmentDate && (
                        <p className="text-xs text-primary/80 mt-1">
-                         RDV: {format(new Date(task.appointmentDate), "dd/MM/yyyy", { locale: 'fr-FR' })}
+                         RDV: {format(new Date(task.appointmentDate), "dd/MM/yyyy", { locale: fr })}
                        </p>
                     )}
                   </li>
                 );
               })}
-              {ongoingTasks.length > 4 && <li className="text-xs text-muted-foreground text-center pt-1">... et {ongoingTasks.length - 4} autre(s).</li>}
+              {ongoingTasks.length > 5 && <li className="text-xs text-muted-foreground text-center pt-1">... et {ongoingTasks.length - 5} autre(s).</li>}
             </ul>
           </ScrollArea>
         ) : (
