@@ -35,42 +35,57 @@ export default function PendingPurchaseOrdersSummary() {
         orderBy('date', 'desc')
       );
       const querySnapshot = await getDocs(q);
-      const ordersList = querySnapshot.docs.map(docSnap => {
+      const ordersList = querySnapshot.docs.map((docSnap, index) => {
         const data = docSnap.data();
-        let orderDate = new Date(); // Default to now if date is missing/invalid
-        if (data.date instanceof Timestamp) {
+        
+        let orderDate = new Date(); 
+        if (data?.date instanceof Timestamp) {
           orderDate = data.date.toDate();
-        } else if (data.date) {
-          console.warn(`PendingPurchaseOrdersSummary: Order ${docSnap.id} has an invalid date format. Falling back to current date.`);
+        } else if (data?.date) {
+          const parsed = new Date(data.date);
+          if (!isNaN(parsed.getTime())) {
+            orderDate = parsed;
+          } else {
+            console.warn(`PendingPurchaseOrdersSummary: Order ${docSnap.id} has an invalid date format. Falling back to current date.`);
+          }
         } else {
            console.warn(`PendingPurchaseOrdersSummary: Order ${docSnap.id} is missing a date. Falling back to current date.`);
         }
         
         let receivedDateString: string | undefined = undefined;
-        if (data.receivedDate) {
+        if (data?.receivedDate) {
             if (data.receivedDate instanceof Timestamp) {
                 receivedDateString = data.receivedDate.toDate().toISOString();
-            } else if (typeof data.receivedDate === 'string') {
-                receivedDateString = data.receivedDate; // Assume it's already ISO string
-            } else if (data.receivedDate._seconds) { // Handle Firestore-like Timestamp objects if not properly casted
+            } else if (typeof data.receivedDate === 'string' && !isNaN(new Date(data.receivedDate).getTime())) {
+                receivedDateString = new Date(data.receivedDate).toISOString();
+            } else if (typeof data.receivedDate === 'object' && data.receivedDate._seconds) { 
                  receivedDateString = new Date(data.receivedDate._seconds * 1000).toISOString();
+            } else {
+                console.warn(`PendingPurchaseOrdersSummary: Order ${docSnap.id} has an invalid receivedDate format.`);
             }
         }
 
+        const items: PurchaseOrderItem[] = Array.isArray(data?.items) ? data.items.map((item: any, itemIndex: number) => ({
+          productId: item?.productId || `unknown_item_${docSnap.id}_${itemIndex}`,
+          productName: item?.productName || 'Produit inconnu',
+          reference: item?.reference || 'N/A',
+          quantity: typeof item?.quantity === 'number' ? item.quantity : 0,
+          unit: item?.unit || 'unité',
+        })) : [];
 
         return {
           id: docSnap.id,
-          orderNumber: data.orderNumber || 'N/A',
+          orderNumber: data?.orderNumber || `BC_INCONNU_${index}`,
           date: orderDate,
-          items: Array.isArray(data.items) ? data.items : [],
-          status: data.status || 'pending',
+          items: items,
+          status: data?.status || 'pending',
           receivedDate: receivedDateString,
         } as PurchaseOrder;
       });
       setPendingOrders(ordersList);
       console.log("PendingPurchaseOrdersSummary: Orders fetched successfully:", ordersList.length);
     } catch (e: any) {
-      console.error("PendingPurchaseOrdersSummary: Error loading pending purchase orders:", e.message, e.stack);
+      console.error("PendingPurchaseOrdersSummary: Error loading pending purchase orders:", e.message, e.stack, e);
       setPendingOrders([]);
       toast({ title: "Erreur Chargement Bons de Commande (Résumé)", description: e.message || "Détails dans la console.", variant: "destructive" });
     } finally {
@@ -145,7 +160,7 @@ export default function PendingPurchaseOrdersSummary() {
         {pendingOrders.length > 0 ? (
           <ScrollArea className="h-[220px] sm:h-[240px] pr-3"> 
             <ul className="space-y-3 text-sm"> 
-              {pendingOrders.slice(0, 3).map((order) => ( // Display up to 3 orders
+              {pendingOrders.slice(0, 3).map((order) => (
                 <li key={order.id} className="p-2.5 border rounded-md bg-card/60 hover:bg-muted/30">
                   <div className="flex justify-between items-center mb-1">
                     <span className="font-medium truncate pr-2 text-foreground" title={order.orderNumber}>
@@ -161,9 +176,9 @@ export default function PendingPurchaseOrdersSummary() {
                     <div className="mt-1.5 text-xs">
                       <p className="font-semibold text-foreground/90 mb-0.5">Aperçu articles :</p>
                       <ul className="list-disc list-inside pl-3 space-y-0.5 text-muted-foreground">
-                        {order.items.slice(0, 2).map(item => ( 
-                          <li key={item.productId} className="text-xs">
-                            {item.productName} - {item.quantity} {item.unit}
+                        {order.items.slice(0, 2).map((item, itemIdx) => ( 
+                          <li key={item.productId || `item-${order.id}-${itemIdx}`} className="text-xs">
+                            {item.productName || 'Article inconnu'} - {item.quantity || 0} {item.unit || 'unité'}
                           </li>
                         ))}
                         {order.items.length > 2 && (
