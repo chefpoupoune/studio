@@ -13,7 +13,6 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { DEFAULT_APP_PRIMARY_COLOR } from '@/config/colors';
-// PDF_LAYOUT_CONFIGS_KEY is no longer needed here as it's Firestore managed
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,7 +31,7 @@ import {
   THEME_STORAGE_KEY, 
   ACCENT_COLOR_STORAGE_KEY 
 } from '@/lib/theme-utils';
-import { LOGGED_IN_USER_PERMISSIONS_KEY, LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY } from '@/app/dashboard/settings/components/user-management'; // Import existing keys
+import { LOGGED_IN_USER_PERMISSIONS_KEY, LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY } from '@/app/dashboard/settings/components/user-management'; 
 
 const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1";
 
@@ -57,11 +56,9 @@ const DEFAULT_NOTIFICATIONS_SOUND_CHOICE = 'default';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
-// Keys for data specific to this application that are stored in localStorage and should be included in export/import.
-// This list should ONLY contain keys for client-side settings (theme, notifications, local session info).
-// Data like users, PMS configs, PDF layouts, inventory, etc., are now in Firestore and should NOT be listed here.
+// Client-side settings to be included in export/import.
+// Data related to users, PMS configs, PDF layouts are Firestore-managed and NOT listed here.
 const APP_SPECIFIC_KEYS = [
-  // Settings managed by ApplicationSettingsManager (client-side preferences)
   THEME_STORAGE_KEY,
   ACCENT_COLOR_STORAGE_KEY,
   APP_LOGO_STORAGE_KEY,
@@ -77,12 +74,18 @@ const APP_SPECIFIC_KEYS = [
   'isLoggedIn',       
   LOGGED_IN_USER_PERMISSIONS_KEY, 
   LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY, 
+  // Removed: PDF_LAYOUT_CONFIGS_KEY as it's Firestore managed
 ];
 
 // Prefixes for dynamically generated localStorage keys that are app-specific AND client-side.
-// Since most dynamic data (monthly records, etc.) has been migrated to Firestore, this list is likely empty.
+// Most dynamic data (monthly records, etc.) has been migrated to Firestore, so this list should be minimal or empty.
 const APP_SPECIFIC_PREFIXES: string[] = [
   // Example: 'user_dashboard_widget_order_', 
+  // Removed: 'cost_analysis_', 'menu_planning_', 'pms_kitchen_cleaning_records_v3_', 'pms_restaurant_cleaning_records_v1_', 'pms_temperature_records_grid_v3_',
+  // Removed: 'pms_fryer_maintenance_log_v1', 'pms_fryer_oil_tpm_log_v1', 'pms_picnic_departure_forms_v1', 'pms_defrosting_log_v1',
+  // Removed: 'pms_reception_log_v1', 'pms_cooldown_log_', 'pms_delivery_log_' (as prefixes)
+  // Removed: 'time_tracking_members_v2_weekly_schedules_v1_' (if this was ever a dynamic local key)
+  // Removed: 'picnic_nb_pn_data_v1_', 'picnic_client_orders_data_v3_', 'picnic_base_bread_number_v1_'
 ];
 
 
@@ -249,6 +252,7 @@ export default function ApplicationSettingsManager() {
         localStorage.removeItem(APP_LOGO_STORAGE_KEY);
         toast({ title: "Logo de l'Application Supprimé" });
       }
+      // Trigger a reload so other components (like sidebar) pick up the new logo
       window.location.reload(); 
     }
   };
@@ -263,6 +267,7 @@ export default function ApplicationSettingsManager() {
     window.location.reload();
   };
 
+  // Handlers for notification preferences
   const handleEmailNotificationsChange = (checked: boolean) => {
     console.log(`[UI Change] Email Notifications set to: ${checked}`);
     setEmailNotifications(checked);
@@ -291,8 +296,11 @@ export default function ApplicationSettingsManager() {
   const handleNotificationSoundChoiceChange = (value: string) => {
     console.log(`[UI Change] Sound Choice set to: ${value}`);
     setNotificationSoundChoice(value);
+    // Here you might want to play the selected sound for preview if sound is enabled
     if (soundNotificationsEnabled && value !== 'none' && isClient) {
+        // Placeholder for actual sound playing logic
         console.log(`[Notification Sound Preview] Playing sound: ${value}`); 
+        // Example: new Audio(`/sounds/${value}.mp3`).play();
     }
   };
 
@@ -344,14 +352,15 @@ export default function ApplicationSettingsManager() {
           keysFound++;
           console.log(`[Export Data] Exporting key: ${key}`);
         } else {
-          console.log(`[Export Data] Skipping key (not app specific): ${key}`);
+          // This is normal, localStorage contains other keys not managed by the app export.
+          // console.log(`[Export Data] Skipping key (not app specific): ${key}`);
         }
       }
     }
     console.log(`[Export Data] Total app-specific keys found for export: ${keysFound}`);
 
     if (Object.keys(dataToExport).length === 0) {
-      toast({ title: "Aucune donnée à exporter", description: "Aucune donnée spécifique à l'application n'a été trouvée dans le stockage local.", variant: "default" });
+      toast({ title: "Aucune donnée à exporter", description: "Aucune donnée locale spécifique à l'application n'a été trouvée.", variant: "default" });
       return;
     }
 
@@ -360,12 +369,12 @@ export default function ApplicationSettingsManager() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `gestion_excellence_data_backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `gestion_excellence_local_settings_backup_${new Date().toISOString().split('T')[0]}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    toast({ title: "Données Exportées", description: `Toutes les ${keysFound} données locales de l'application ont été exportées.` });
+    toast({ title: "Données Locales Exportées", description: `${keysFound} éléments de configuration locale ont été exportés.` });
   };
 
   const triggerFileInput = () => {
@@ -391,47 +400,50 @@ export default function ApplicationSettingsManager() {
         let importedCount = 0;
         for (const key in importedData) {
           if (Object.prototype.hasOwnProperty.call(importedData, key)) {
+            // Check if the key is one of the recognized app-specific keys for local settings
             const isRecognizedKey = APP_SPECIFIC_KEYS.includes(key) || APP_SPECIFIC_PREFIXES.some(prefix => key.startsWith(prefix));
+            
             if (isRecognizedKey) {
                 const valueToStore = importedData[key];
-                if (valueToStore === null) { 
+                if (valueToStore === null) { // Explicitly handle null from backup as removal
                     localStorage.removeItem(key);
                     console.log(`[Import Data] Removed key: ${key} (was null in backup)`);
-                } else if (typeof valueToStore === 'object') { 
+                } else if (typeof valueToStore === 'object') { // Should not happen for current APP_SPECIFIC_KEYS, but good practice
                     localStorage.setItem(key, JSON.stringify(valueToStore));
                      console.log(`[Import Data] Imported key (object): ${key}`);
-                } else { 
+                } else { // Primitives (strings, booleans represented as strings)
                     localStorage.setItem(key, String(valueToStore));
                     console.log(`[Import Data] Imported key (primitive): ${key}`);
                 }
                  importedCount++;
             } else {
-                console.log(`[Import Data] Skipping key (not recognized app specific): ${key}`);
+                console.log(`[Import Data] Skipping key (not recognized for local settings import): ${key}`);
             }
           }
         }
         
         if (importedCount > 0) {
           toast({
-            title: "Données Importées avec Succès",
-            description: `${importedCount} éléments de données ont été importés. Veuillez recharger la page pour appliquer tous les changements.`,
+            title: "Données Locales Importées",
+            description: `${importedCount} éléments de configuration locale ont été importés. Veuillez recharger la page pour appliquer tous les changements.`,
           });
            console.log("[Import Data] Import successful. Reloading page in 2 seconds...");
-           setTimeout(() => window.location.reload(), 2000);
+           setTimeout(() => window.location.reload(), 2000); // Reload to apply themes, etc.
 
         } else {
-            toast({ title: "Importation Vide", description: "Aucune donnée pertinente trouvée dans le fichier pour cette application.", variant: "default" });
-            console.log("[Import Data] No relevant data found in file.");
+            toast({ title: "Importation Vide", description: "Aucune configuration locale pertinente trouvée dans le fichier.", variant: "default" });
+            console.log("[Import Data] No relevant local settings data found in file.");
         }
 
       } catch (error) {
         console.error("Error importing data:", error);
-        toast({ title: "Erreur d'Importation", description: `Impossible d'importer les données. ${error instanceof Error ? error.message : 'Erreur inconnue.'}`, variant: "destructive" });
+        toast({ title: "Erreur d'Importation", description: `Impossible d'importer les configurations locales. ${error instanceof Error ? error.message : 'Erreur inconnue.'}`, variant: "destructive" });
       } finally {
+        // Reset file input
         if (fileInputRef.current) {
           fileInputRef.current.value = ""; 
         }
-        setIsImportAlertOpen(false);
+        setIsImportAlertOpen(false); // Close the confirmation dialog
       }
     };
     reader.readAsText(file);
@@ -458,6 +470,7 @@ export default function ApplicationSettingsManager() {
             </AlertDescription>
         </Alert>
 
+        {/* Section Logo */}
         <div className="p-6 border rounded-lg shadow-sm bg-card/50">
             <div className="flex items-center gap-3 mb-4">
                 <ImageIcon className="w-5 h-5 text-accent" />
@@ -465,7 +478,7 @@ export default function ApplicationSettingsManager() {
             </div>
             <div className="space-y-3">
                 <div>
-                    <Label htmlFor="app-logo-file-input">Télécharger un logo (max 1Mo)</Label>
+                    <Label htmlFor="app-logo-file-input">Télécharger un logo (max 1Mo, format PNG, JPG, SVG)</Label>
                     <Input
                         id="app-logo-file-input"
                         type="file"
@@ -501,6 +514,7 @@ export default function ApplicationSettingsManager() {
             </div>
         </div>
 
+        {/* Section Thème */}
         <div className="p-6 border rounded-lg shadow-sm bg-card/50">
             <div className="flex items-center gap-3 mb-4">
                 <Palette className="w-5 h-5 text-accent" />
@@ -566,6 +580,7 @@ export default function ApplicationSettingsManager() {
             </div>
         </div>
 
+        {/* Section Notifications */}
         <div className="p-6 border rounded-lg shadow-sm bg-card/50">
             <div className="flex items-center gap-3 mb-4">
                 <Bell className="w-5 h-5 text-accent" />
@@ -581,6 +596,7 @@ export default function ApplicationSettingsManager() {
                     <Switch id="inapp-notifications" checked={inAppGeneralNotifications} onCheckedChange={handleInAppGeneralNotificationsChange} disabled={!isClient} />
                 </div>
 
+                {/* Specific In-App Alerts */}
                 <div className="pl-6 mt-3 space-y-2 border-l-2 border-muted/30">
                     <p className="text-sm text-muted-foreground mb-2 font-medium">Alertes spécifiques (dans l'app) :</p>
                     <div className="flex items-center justify-between">
@@ -603,6 +619,7 @@ export default function ApplicationSettingsManager() {
                     </div>
                 </div>
                 
+                {/* Sound Preferences */}
                 <div className="flex items-center justify-between pt-2">
                     <Label htmlFor="sound-notifications" className="flex-grow flex items-center gap-1.5">
                         <BellRing className="w-4 h-4 text-muted-foreground/90"/> Activer les sons de notification
@@ -631,13 +648,15 @@ export default function ApplicationSettingsManager() {
             </div>
         </div>
 
+        {/* Section Gestion des Données */}
         <div className="p-6 border rounded-lg shadow-sm bg-card/50">
             <div className="flex items-center gap-3 mb-4">
                 <Database className="w-5 h-5 text-accent" />
-                <h3 className="text-lg font-semibold text-foreground">Gestion des Données</h3>
+                <h3 className="text-lg font-semibold text-foreground">Gestion des Données Locales</h3>
             </div>
              <p className="text-sm text-muted-foreground mb-3">
-                Options pour sauvegarder ou restaurer les données de l'application stockées localement (paramètres d'affichage, préférences, etc.). Les données métier (stocks, menus, etc.) sont sur Firestore.
+                Options pour sauvegarder ou restaurer les paramètres de l'application stockés localement dans votre navigateur (thème, préférences de notification, etc.).
+                Les données métier (stocks, menus, utilisateurs, etc.) sont stockées de manière centralisée dans Firestore et ne sont PAS incluses dans cet export/import local.
             </p>
             <div className="flex flex-col sm:flex-row gap-3">
                 <Button 
@@ -647,7 +666,7 @@ export default function ApplicationSettingsManager() {
                   className="w-full sm:w-auto"
                 >
                     <Download className="mr-2 h-4 w-4" />
-                    Exporter Données Locales
+                    Exporter Paramètres Locaux
                 </Button>
                 
                 <AlertDialog open={isImportAlertOpen} onOpenChange={setIsImportAlertOpen}>
@@ -659,7 +678,7 @@ export default function ApplicationSettingsManager() {
                       onClick={() => setIsImportAlertOpen(true)} 
                     >
                         <Upload className="mr-2 h-4 w-4" />
-                        Importer Données Locales
+                        Importer Paramètres Locaux
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
@@ -668,8 +687,8 @@ export default function ApplicationSettingsManager() {
                         <AlertTriangle className="text-destructive" /> Confirmer l'Importation
                       </AlertDialogTitle>
                       <AlertDialogDescription>
-                        L'importation de données écrasera toutes les données locales existantes spécifiques à l'application qui portent le même nom. 
-                        Êtes-vous sûr de vouloir continuer ? Il est recommandé d'exporter vos données locales actuelles avant d'importer.
+                        L'importation écrasera vos paramètres locaux actuels (thème, notifications, etc.) par ceux du fichier. 
+                        Cette action est irréversible pour les paramètres locaux. Êtes-vous sûr de vouloir continuer ?
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -681,6 +700,7 @@ export default function ApplicationSettingsManager() {
                   </AlertDialogContent>
                 </AlertDialog>
 
+                {/* Hidden file input */}
                 <input 
                     type="file" 
                     ref={fileInputRef} 
@@ -690,12 +710,12 @@ export default function ApplicationSettingsManager() {
                 />
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-                L'importation écrasera les données locales existantes avec le même nom. Sauvegardez vos données locales actuelles avant d'importer si nécessaire.
+                Utilisez cette fonction pour transférer vos préférences locales entre navigateurs ou comme sauvegarde personnelle de ces configurations.
             </p>
         </div>
       </CardContent>
     </Card>
   );
 }
-
+    
     

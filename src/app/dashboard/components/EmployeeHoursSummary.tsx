@@ -7,9 +7,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Users, User, Clock, AlertCircle, TrendingUp, TrendingDown, Scale } from "lucide-react";
 import type { BrigadeMember, TimeEntry } from '@/app/dashboard/time-tracking/types';
 import type { ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management';
+import { LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY } from '@/app/dashboard/settings/components/user-management'; // Import the key
 
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
-const LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY = 'loggedInUserHourViewConfig';
+// LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY removed from local definition
 const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2'; // Ensure this matches saving key
 const TIME_ENTRIES_STORAGE_KEY = 'time_tracking_entries';
 
@@ -62,7 +63,7 @@ export default function EmployeeHoursSummary() {
       setIsLoading(false);
       console.log("EmployeeHoursSummary: loadData finished, isLoading set to false.");
     }
-  }, [isClient, setIsLoading, setLoggedInUsername, setViewConfig, setAllMembers, setAllTimeEntries]); // Added missing state setters
+  }, [isClient, setIsLoading, setLoggedInUsername, setViewConfig, setAllMembers, setAllTimeEntries]);
 
   useEffect(() => {
     if (isClient) {
@@ -254,3 +255,5 @@ export default function EmployeeHoursSummary() {
     </Card>
   );
 }
+
+    

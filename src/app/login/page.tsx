@@ -12,16 +12,14 @@ import { User, LockKeyhole, ArrowLeft, Utensils, Loader2 } from 'lucide-react';
 import { CurrentDate } from '@/components/current-date';
 import { useToast } from '@/hooks/use-toast';
 import type { AppUser, RubricId, ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management';
-import { ALL_RUBRIC_IDS } from '@/app/dashboard/settings/components/user-management'; // Import ALL_RUBRIC_IDS
+import { ALL_RUBRIC_IDS, LOGGED_IN_USER_PERMISSIONS_KEY, LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY } from '@/app/dashboard/settings/components/user-management';
 import { firestore } from '@/lib/firebase';
 import { collection, getDocs, query, orderBy, doc, setDoc, addDoc } from 'firebase/firestore';
 
-const LOGGED_IN_USER_PERMISSIONS_KEY = 'loggedInUserPermissions';
-const LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY = 'loggedInUserHourViewConfig';
 const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1";
 
 const simulatedHash = (password: string): string => `sim_hashed_${password}_!`;
-const DEFAULT_CHEF_ID_FIRESTORE = 'default_chef_user_id'; // Consistent ID
+const DEFAULT_CHEF_ID_FIRESTORE = 'default_chef_user_id';
 
 export default function LoginPage() {
   const [definedUsers, setDefinedUsers] = useState<AppUser[]>([]);
@@ -51,7 +49,6 @@ export default function LoginPage() {
       }
       
       const fetchUsersForLogin = async () => {
-        // setIsLoading(true); // Already default
         let usersFromDb: AppUser[] = [];
         try {
           const usersCollectionRef = collection(firestore, 'appUsers');
@@ -80,29 +77,27 @@ export default function LoginPage() {
             const chefDocRef = await addDoc(collection(firestore, "appUsers"), defaultChefForCreation);
             console.log("[Login Page LOAD]: Default Chef created in Firestore with ID:", chefDocRef.id);
             const newChefUser = { ...defaultChefForCreation, id: chefDocRef.id };
-            usersFromDb.push(newChefUser); // Add to current list
-            chefUserInDb = newChefUser; // Update reference
+            usersFromDb.push(newChefUser); 
+            chefUserInDb = newChefUser; 
             toast({ title: "Compte Chef Initialisé", description: "Le compte Chef par défaut (mdp: 000) a été créé."});
           } catch (createError) {
             console.error("Error creating default Chef user in Firestore:", createError);
             toast({ title: "Erreur Initialisation Chef", description: "Impossible de créer le compte Chef par défaut.", variant: "destructive"});
-            // Fallback to a display-only Chef if Firestore creation fails, so login page doesn't break
             const defaultChefForDisplay: AppUser = { 
               id: DEFAULT_CHEF_ID_FIRESTORE, 
               username: 'Chef', 
               passwordRequired: true, 
-              simulatedStoredPassword: simulatedHash('000'), // Ensures password check logic works for this display-only user
+              simulatedStoredPassword: simulatedHash('000'), 
               permissions: defaultChefPermissions,
               viewableHourSummaryConfig: { type: 'all' },
             };
-            if (!usersFromDb.find(u => u.username.toLowerCase() === 'chef')) { // Only add if truly not there
+            if (!usersFromDb.find(u => u.username.toLowerCase() === 'chef')) { 
                  usersFromDb.push(defaultChefForDisplay);
             }
-            chefUserInDb = defaultChefForDisplay; // Set for display if creation failed
+            chefUserInDb = defaultChefForDisplay; 
           }
         }
         
-        // Standardize Chef user if found or created
         if (chefUserInDb) {
            usersFromDb = usersFromDb.map(u => {
               if (u.username.toLowerCase() === 'chef') {
@@ -147,7 +142,6 @@ export default function LoginPage() {
     if (!user.passwordRequired) {
       performLogin(user);
     } else {
-      // The simulatedStoredPassword for Chef (or any user) is now expected to be set correctly by the useEffect
       if (!user.simulatedStoredPassword) { 
           setError(`Aucun mot de passe n'est configuré pour ${user.username}. Veuillez contacter l'administrateur.`);
           return;
@@ -292,3 +286,5 @@ export default function LoginPage() {
     </main>
   );
 }
+
+    
