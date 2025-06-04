@@ -29,21 +29,18 @@ import {
   applyAccentColor as applyAccentColorUtil, 
   hexToHsl
 } from '@/lib/theme-utils';
-// Import keys that remain local or are related to user session state cached locally
 import { LOGGED_IN_USER_PERMISSIONS_KEY, LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY } from '@/app/dashboard/settings/components/user-management'; 
 import { firestore } from '@/lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
-// Firestore path for global app settings
 const APP_SETTINGS_COLLECTION = "appSettings";
 const GLOBAL_APP_SETTINGS_DOC_ID = "globalAppSettings";
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
-// Default values for settings if not found in Firestore
 const DEFAULT_THEME_MODE: ThemeMode = 'system';
-const DEFAULT_ACCENT_COLOR_FS = DEFAULT_APP_PRIMARY_COLOR; // Use FS for Firestore default
-const DEFAULT_APP_LOGO_URL_FS = null; // Firestore stores null if no logo
+const DEFAULT_ACCENT_COLOR_FS = DEFAULT_APP_PRIMARY_COLOR;
+const DEFAULT_APP_LOGO_URL_FS = null;
 const DEFAULT_NOTIFICATIONS_EMAIL_FS = false;
 const DEFAULT_NOTIFICATIONS_IN_APP_GENERAL_FS = true;
 const DEFAULT_NOTIFICATIONS_IN_APP_NEW_TASK_FS = true;
@@ -52,17 +49,29 @@ const DEFAULT_NOTIFICATIONS_IN_APP_INVENTORY_LOW_FS = true;
 const DEFAULT_NOTIFICATIONS_SOUND_ENABLED_FS = false;
 const DEFAULT_NOTIFICATIONS_SOUND_CHOICE_FS = 'default';
 
-// Keys that are TRULY local and will be part of export/import.
-// Theme, accent, logo, and notification keys are REMOVED as they are now Firestore-managed.
 const LOCAL_ONLY_APP_SPECIFIC_KEYS = [
   'loggedInUsername', 
   'isLoggedIn',       
   LOGGED_IN_USER_PERMISSIONS_KEY, 
   LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY,
-  // Add other purely local keys if any
 ];
-// Prefixes for dynamically generated localStorage keys that are app-specific AND client-side AND NOT in Firestore.
-const LOCAL_ONLY_APP_SPECIFIC_PREFIXES: string[] = [];
+const LOCAL_ONLY_APP_SPECIFIC_PREFIXES: string[] = [
+    'cost_analysis_',
+    'menu_planning_',
+    'time_tracking_members_v2', // Legacy, but some components might still use it directly initially
+    'time_tracking_entries',    // Legacy
+    'picnic_nb_pn_data_v1_',
+    'picnic_client_orders_data_v3_',
+    'picnic_base_bread_number_v1_',
+    // Keys for new PMS modules that were saving to localStorage
+    'pms_fryer_maintenance_log_v1',
+    'pms_fryer_oil_tpm_log_v1',
+    'pms_reception_log_v1',
+    'pms_defrosting_log_v1',
+    'pms_picnic_departure_forms_v1',
+    'pms_cooldown_log_', // Note the trailing underscore for date-based keys
+    'pms_delivery_log_',  // Note the trailing underscore for date-based keys
+];
 
 
 export default function ApplicationSettingsManager() {
@@ -95,18 +104,28 @@ export default function ApplicationSettingsManager() {
     return doc(firestore, APP_SETTINGS_COLLECTION, GLOBAL_APP_SETTINGS_DOC_ID);
   }, []);
 
-  // Effect for loading all settings from Firestore on initial client mount
   useEffect(() => {
-    if (!isClient) return;
+    setIsClient(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isClient) {
+      console.log("[ASM LoadEffect] Bypassed: !isClient.");
+      return;
+    }
+    console.log("[ASM LoadEffect] Starting settings load from Firestore.");
+    
 
     const loadSettingsFromFirestore = async () => {
-      setIsLoadingSettings(true);
-      console.log("[Settings EFFECT Load Firestore] Initializing settings from Firestore.");
+      setIsLoadingSettings(true); // Ensure it's true at the start of any attempt
+      console.log("[ASM LoadEffect FN Start] setIsLoadingSettings(true) called.");
       const docRef = getAppSettingsDocRef();
       try {
+        console.log("[ASM LoadEffect TRY] Attempting getDoc for appSettings/globalAppSettings");
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           const data = docSnap.data();
+          console.log("[ASM LoadEffect TRY] Document exists. Data:", data);
           setSelectedThemeMode(data.themeMode || DEFAULT_THEME_MODE);
           setSelectedAccentColor(data.accentColor || DEFAULT_ACCENT_COLOR_FS);
           setAppLogoDataUrl(data.appLogoUrl || DEFAULT_APP_LOGO_URL_FS);
@@ -119,10 +138,9 @@ export default function ApplicationSettingsManager() {
           setSoundNotificationsEnabled(data.notificationsSoundEnabled ?? DEFAULT_NOTIFICATIONS_SOUND_ENABLED_FS);
           setNotificationSoundChoice(data.notificationsSoundChoice || DEFAULT_NOTIFICATIONS_SOUND_CHOICE_FS);
           
-          console.log("[Settings Load Firestore] Settings loaded:", data);
+          console.log("[ASM LoadEffect TRY] States set from Firestore data.");
         } else {
-          console.log("[Settings Load Firestore] No settings document found. Initializing with defaults and saving.");
-          // Initialize with defaults and save if doc doesn't exist
+          console.log("[ASM LoadEffect TRY] Document does NOT exist. Initializing with defaults and saving to Firestore.");
           const defaultSettingsBundle = {
             themeMode: DEFAULT_THEME_MODE,
             accentColor: DEFAULT_ACCENT_COLOR_FS,
@@ -136,6 +154,7 @@ export default function ApplicationSettingsManager() {
             notificationsSoundChoice: DEFAULT_NOTIFICATIONS_SOUND_CHOICE_FS,
           };
           await setDoc(docRef, defaultSettingsBundle);
+          console.log("[ASM LoadEffect TRY] Default settings bundle saved to Firestore.");
           // Set state to defaults as well
           setSelectedThemeMode(DEFAULT_THEME_MODE);
           setSelectedAccentColor(DEFAULT_ACCENT_COLOR_FS);
@@ -147,15 +166,25 @@ export default function ApplicationSettingsManager() {
           setInAppInventoryLowNotifications(DEFAULT_NOTIFICATIONS_IN_APP_INVENTORY_LOW_FS);
           setSoundNotificationsEnabled(DEFAULT_NOTIFICATIONS_SOUND_ENABLED_FS);
           setNotificationSoundChoice(DEFAULT_NOTIFICATIONS_SOUND_CHOICE_FS);
+          console.log("[ASM LoadEffect TRY] States set to default values after Firestore init.");
         }
       } catch (error) {
-        console.error("Error loading settings from Firestore:", error);
-        toast({ title: "Erreur de chargement des paramètres", variant: "destructive" });
-        // Fallback to defaults in case of error
+        console.error("[ASM LoadEffect CATCH] Error during Firestore operation or state update:", error);
+        toast({ title: "Erreur de chargement des paramètres", variant: "destructive", description: String(error) });
+        // Fallback to defaults in case of any error during load/init
         setSelectedThemeMode(DEFAULT_THEME_MODE);
         setSelectedAccentColor(DEFAULT_ACCENT_COLOR_FS);
         setAppLogoDataUrl(DEFAULT_APP_LOGO_URL_FS);
+        setEmailNotifications(DEFAULT_NOTIFICATIONS_EMAIL_FS);
+        setInAppGeneralNotifications(DEFAULT_NOTIFICATIONS_IN_APP_GENERAL_FS);
+        setInAppNewTaskNotifications(DEFAULT_NOTIFICATIONS_IN_APP_NEW_TASK_FS);
+        setInAppStatusUpdateNotifications(DEFAULT_NOTIFICATIONS_IN_APP_STATUS_UPDATE_FS);
+        setInAppInventoryLowNotifications(DEFAULT_NOTIFICATIONS_IN_APP_INVENTORY_LOW_FS);
+        setSoundNotificationsEnabled(DEFAULT_NOTIFICATIONS_SOUND_ENABLED_FS);
+        setNotificationSoundChoice(DEFAULT_NOTIFICATIONS_SOUND_CHOICE_FS);
+        console.log("[ASM LoadEffect CATCH] States reset to default values due to error.");
       } finally {
+        console.log("[ASM LoadEffect FINALLY] Setting isLoadingSettings to false.");
         setIsLoadingSettings(false);
       }
     };
@@ -164,9 +193,8 @@ export default function ApplicationSettingsManager() {
   }, [isClient, getAppSettingsDocRef, toast]);
 
 
-  // Effect for applying visual styles (theme & accent color) when states change or on load
   useEffect(() => {
-    if (isClient && !isLoadingSettings) { // Only apply after settings are loaded
+    if (isClient && !isLoadingSettings) { 
       console.log(`[Settings EFFECT Apply Styles] Applying theme: ${selectedThemeMode}, Accent: ${selectedAccentColor}`);
       applyThemeMode(selectedThemeMode);
       applyAccentColor(selectedAccentColor);
@@ -175,14 +203,16 @@ export default function ApplicationSettingsManager() {
 
   const saveSettingToFirestore = async (key: string, value: any, successMessage: string) => {
     if (!isClient || isSaving) return;
+    console.log(`[ASM SaveSetting] Attempting to save: ${key} =`, value);
     setIsSaving(true);
     const docRef = getAppSettingsDocRef();
     try {
       await setDoc(docRef, { [key]: value }, { merge: true });
       toast({ title: "Paramètre Enregistré", description: successMessage });
+      console.log(`[ASM SaveSetting] Success for ${key}.`);
     } catch (error) {
-      console.error(`Error saving ${key} to Firestore:`, error);
-      toast({ title: "Erreur de sauvegarde", variant: "destructive" });
+      console.error(`[ASM SaveSetting] Error saving ${key} to Firestore:`, error);
+      toast({ title: "Erreur de sauvegarde", variant: "destructive", description: String(error) });
     } finally {
       setIsSaving(false);
     }
@@ -215,14 +245,14 @@ export default function ApplicationSettingsManager() {
   const handleAppLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (file.size > 1 * 1024 * 1024) { // 1MB limit
+      if (file.size > 1 * 1024 * 1024) { 
         toast({ title: "Fichier trop volumineux", description: "Max 1Mo.", variant: "destructive" });
         if (appLogoFileInputRef.current) appLogoFileInputRef.current.value = "";
         return;
       }
       const reader = new FileReader();
       reader.onloadend = () => {
-        setAppLogoDataUrl(reader.result as string); // Preview locally
+        setAppLogoDataUrl(reader.result as string); 
       };
       reader.readAsDataURL(file);
     }
@@ -230,20 +260,17 @@ export default function ApplicationSettingsManager() {
 
   const handleSaveAppLogo = () => {
     saveSettingToFirestore('appLogoUrl', appLogoDataUrl, "Logo de l'application sauvegardé.");
-    // Consider if a page reload is desired here for DashboardLayout to pick up the new logo.
-    // For now, let's assume ApplicationSettingsManager itself will reflect change, and sidebar might need a full reload on next visit.
-    // window.location.reload(); // Uncomment if immediate full-app update is needed
   };
 
   const handleDeleteAppLogo = () => {
     setAppLogoDataUrl(null);
     saveSettingToFirestore('appLogoUrl', null, "Logo de l'application supprimé.");
     if (appLogoFileInputRef.current) appLogoFileInputRef.current.value = "";
-    // window.location.reload(); // See comment in handleSaveAppLogo
   };
 
   const handleSaveNotificationPreferences = async () => {
     if (!isClient || isSaving) return;
+    console.log("[ASM SaveNotifPrefs] Saving notification preferences.");
     setIsSaving(true);
     const docRef = getAppSettingsDocRef();
     const prefsToSave = {
@@ -258,9 +285,10 @@ export default function ApplicationSettingsManager() {
     try {
       await setDoc(docRef, prefsToSave, { merge: true });
       toast({ title: "Préférences de Notification Enregistrées", description: "Vos choix ont été sauvegardés." });
+      console.log("[ASM SaveNotifPrefs] Success.");
     } catch (error) {
-      console.error("Error saving notification preferences to Firestore:", error);
-      toast({ title: "Erreur de sauvegarde des notifications", variant: "destructive" });
+      console.error("[ASM SaveNotifPrefs] Error saving notification preferences to Firestore:", error);
+      toast({ title: "Erreur de sauvegarde des notifications", variant: "destructive", description: String(error) });
     } finally {
       setIsSaving(false);
     }
@@ -328,7 +356,7 @@ export default function ApplicationSettingsManager() {
             if (isRecognizedLocalKey) {
                 const valueToStore = importedData[key];
                 if (valueToStore === null) localStorage.removeItem(key);
-                else localStorage.setItem(key, String(valueToStore)); // Stringify for localStorage
+                else localStorage.setItem(key, String(valueToStore)); 
                 console.log(`[Import Data] Imported local key: ${key}`);
                 importedCount++;
             } else {
