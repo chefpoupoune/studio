@@ -35,59 +35,78 @@ export default function PendingPurchaseOrdersSummary() {
         orderBy('date', 'desc')
       );
       const querySnapshot = await getDocs(q);
-      const ordersList = querySnapshot.docs.map((docSnap, index) => {
-        const data = docSnap.data();
-        
-        let orderDate = new Date(); 
-        if (data?.date instanceof Timestamp) {
-          orderDate = data.date.toDate();
-        } else if (data?.date) {
-          const parsed = new Date(data.date);
-          if (!isNaN(parsed.getTime())) {
-            orderDate = parsed;
-          } else {
-            console.warn(`PendingPurchaseOrdersSummary: Order ${docSnap.id} has an invalid date format. Falling back to current date.`);
-          }
-        } else {
-           console.warn(`PendingPurchaseOrdersSummary: Order ${docSnap.id} is missing a date. Falling back to current date.`);
-        }
-        
-        let receivedDateString: string | undefined = undefined;
-        if (data?.receivedDate) {
-            if (data.receivedDate instanceof Timestamp) {
-                receivedDateString = data.receivedDate.toDate().toISOString();
-            } else if (typeof data.receivedDate === 'string' && !isNaN(new Date(data.receivedDate).getTime())) {
-                receivedDateString = new Date(data.receivedDate).toISOString();
-            } else if (typeof data.receivedDate === 'object' && data.receivedDate._seconds) { 
-                 receivedDateString = new Date(data.receivedDate._seconds * 1000).toISOString();
+
+      if (querySnapshot.empty) {
+        console.log("PendingPurchaseOrdersSummary: No pending purchase orders found.");
+        setPendingOrders([]);
+      } else {
+        const ordersList = querySnapshot.docs.map((docSnap, index) => {
+          const data = docSnap.data();
+          let order: PurchaseOrder | null = null;
+          try {
+            let orderDate = new Date(); 
+            if (data?.date instanceof Timestamp) {
+              orderDate = data.date.toDate();
+            } else if (data?.date && typeof data.date === 'object' && data.date._seconds !== undefined) { // Handle Firestore Timestamp-like objects if not properly casted
+              orderDate = new Date(data.date._seconds * 1000);
+            } else if (data?.date && typeof data.date === 'string') {
+              const parsed = new Date(data.date);
+              if (!isNaN(parsed.getTime())) {
+                orderDate = parsed;
+              } else {
+                console.warn(`PendingPurchaseOrdersSummary: Order ${docSnap.id} has an invalid date string format: ${data.date}. Falling back to current date.`);
+              }
             } else {
-                console.warn(`PendingPurchaseOrdersSummary: Order ${docSnap.id} has an invalid receivedDate format.`);
+               console.warn(`PendingPurchaseOrdersSummary: Order ${docSnap.id} is missing a date or has an unexpected date type. Falling back to current date. Data.date:`, data?.date);
             }
-        }
+            
+            let receivedDateString: string | undefined = undefined;
+            if (data?.receivedDate) {
+                if (data.receivedDate instanceof Timestamp) {
+                    receivedDateString = data.receivedDate.toDate().toISOString();
+                } else if (typeof data.receivedDate === 'string' && !isNaN(new Date(data.receivedDate).getTime())) {
+                    receivedDateString = new Date(data.receivedDate).toISOString();
+                } else if (typeof data.receivedDate === 'object' && data.receivedDate._seconds !== undefined) { 
+                     receivedDateString = new Date(data.receivedDate._seconds * 1000).toISOString();
+                } else {
+                    console.warn(`PendingPurchaseOrdersSummary: Order ${docSnap.id} has an invalid receivedDate format. Type: ${typeof data.receivedDate}, Value:`, data.receivedDate);
+                }
+            }
 
-        const items: PurchaseOrderItem[] = Array.isArray(data?.items) ? data.items.map((item: any, itemIndex: number) => ({
-          productId: item?.productId || `unknown_item_${docSnap.id}_${itemIndex}`,
-          productName: item?.productName || 'Produit inconnu',
-          reference: item?.reference || 'N/A',
-          quantity: typeof item?.quantity === 'number' ? item.quantity : 0,
-          unit: item?.unit || 'unité',
-        })) : [];
+            const items: PurchaseOrderItem[] = Array.isArray(data?.items) ? data.items.map((item: any, itemIndex: number) => ({
+              productId: item?.productId || `unknown_item_${docSnap.id}_${itemIndex}`,
+              productName: typeof item?.productName === 'string' ? item.productName : 'Produit inconnu',
+              reference: typeof item?.reference === 'string' ? item.reference : 'N/A',
+              quantity: typeof item?.quantity === 'number' && !isNaN(item.quantity) ? item.quantity : 0,
+              unit: typeof item?.unit === 'string' ? item.unit : 'unité',
+            })) : [];
 
-        return {
-          id: docSnap.id,
-          orderNumber: data?.orderNumber || `BC_INCONNU_${index}`,
-          date: orderDate,
-          items: items,
-          status: data?.status || 'pending',
-          receivedDate: receivedDateString,
-        } as PurchaseOrder;
-      });
-      setPendingOrders(ordersList);
-      console.log("PendingPurchaseOrdersSummary: Orders fetched successfully:", ordersList.length);
+            order = {
+              id: docSnap.id,
+              orderNumber: typeof data?.orderNumber === 'string' ? data.orderNumber : `BC_INCONNU_${docSnap.id.substring(0,5)}`,
+              date: orderDate,
+              items: items,
+              status: typeof data?.status === 'string' ? data.status as PurchaseOrder['status'] : 'pending',
+              receivedDate: receivedDateString,
+            };
+            return order;
+          } catch (mapError: any) {
+            console.error(`PendingPurchaseOrdersSummary: Error mapping document ${docSnap.id}. Data:`, data, 'Error:', mapError.message, mapError.stack);
+            toast({ title: `Erreur Traitement Bon ${docSnap.id}`, description: `Impossible de traiter un bon de commande. Détails: ${mapError.message}`, variant: "destructive" });
+            return null; // Skip this problematic document
+          }
+        }).filter(Boolean) as PurchaseOrder[]; // Filter out nulls from problematic documents
+        setPendingOrders(ordersList);
+        console.log("PendingPurchaseOrdersSummary: Orders fetched and mapped successfully:", ordersList.length);
+      }
     } catch (e: any) {
-      console.error("PendingPurchaseOrdersSummary: Error loading pending purchase orders:", e.message, e.stack, e);
-      setPendingOrders([]);
-      toast({ title: "Erreur Chargement Bons de Commande (Résumé)", description: e.message || "Détails dans la console.", variant: "destructive" });
+      console.error("PendingPurchaseOrdersSummary: Error loading pending purchase orders from Firestore:", e.message, e.stack, e);
+      setPendingOrders([]); // Reset on error
+      toast({ 
+        title: "Erreur Chargement Bons de Commande (Résumé)", 
+        description: `Impossible de récupérer les bons de commande. ${e.code ? `Code: ${e.code}. ` : ''}Vérifiez les règles Firestore et les index. Détails dans la console.`, 
+        variant: "destructive" 
+      });
     } finally {
       setIsLoading(false);
     }
@@ -169,7 +188,7 @@ export default function PendingPurchaseOrdersSummary() {
                     <Badge variant="secondary" className="text-xs whitespace-nowrap">En attente</Badge>
                   </div>
                   <p className="text-xs text-muted-foreground mb-1.5">
-                    Date: {format(new Date(order.date), "dd/MM/yy", { locale: fr })}
+                    Date: {order.date instanceof Date && !isNaN(order.date.getTime()) ? format(order.date, "dd/MM/yy", { locale: fr }) : "Date Invalide"}
                   </p>
                    
                   {order.items && order.items.length > 0 && (
