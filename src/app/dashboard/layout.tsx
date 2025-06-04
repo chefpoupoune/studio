@@ -33,18 +33,21 @@ import {
   LogOut,
   Clock,
   ShoppingBasket,
-  FileClock 
+  FileClock,
+  Loader2 
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import type { RubricId } from '@/app/dashboard/settings/components/user-management';
-import { RUBRICS as BASE_RUBRICS, TIME_TRACKING_SUB_RUBRICS } from '@/app/dashboard/settings/components/user-management';
-import { applyThemeMode, applyAccentColor, THEME_STORAGE_KEY, ACCENT_COLOR_STORAGE_KEY } from '@/lib/theme-utils';
+import { RUBRICS as BASE_RUBRICS, TIME_TRACKING_SUB_RUBRICS, LOGGED_IN_USER_PERMISSIONS_KEY } from '@/app/dashboard/settings/components/user-management';
+import { applyThemeMode, applyAccentColor } from '@/lib/theme-utils';
 import { DEFAULT_APP_PRIMARY_COLOR } from '@/config/colors';
+import { firestore } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import type { ThemeMode } from '@/app/dashboard/settings/components/application-settings-manager';
 
-const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1";
-type ThemeMode = 'light' | 'dark' | 'system';
-
+const APP_SETTINGS_COLLECTION = "appSettings";
+const GLOBAL_APP_SETTINGS_DOC_ID = "globalAppSettings";
 
 interface NavItem {
   href: string;
@@ -67,23 +70,18 @@ const allNavItems: NavItem[] = [
   { href: "/dashboard/settings", icon: Settings, label: "Paramètres", rubricId: "settings" },
 ];
 
-function AppSidebar() {
+function AppSidebar({ appLogoUrl }: { appLogoUrl: string | null }) {
   const pathname = usePathname();
   const { openMobile, setOpenMobile } = useSidebar();
   const router = useRouter();
   const [visibleNavItems, setVisibleNavItems] = React.useState<NavItem[]>(allNavItems);
-  const [appLogoUrl, setAppLogoUrl] = React.useState<string | null>(null);
   const [loggedInUsername, setLoggedInUsername] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
-      const storedPermissionsRaw = localStorage.getItem('loggedInUserPermissions');
+      const storedPermissionsRaw = localStorage.getItem(LOGGED_IN_USER_PERMISSIONS_KEY);
       const username = localStorage.getItem('loggedInUsername');
       setLoggedInUsername(username);
-      const storedAppLogo = localStorage.getItem(APP_LOGO_STORAGE_KEY);
-      if (storedAppLogo) {
-        setAppLogoUrl(storedAppLogo);
-      }
 
       if (username?.toLowerCase() === 'chef') {
         setVisibleNavItems(allNavItems);
@@ -109,18 +107,16 @@ function AppSidebar() {
 
   React.useEffect(() => {
     if (openMobile && pathname) { 
-      // setOpenMobile(false); // Commented out to prevent auto-closing issues
+      // setOpenMobile(false); 
     }
   }, [pathname, setOpenMobile, openMobile]); 
-
-  const { isMobile } = useSidebar(); 
 
   const handleLogout = () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('isLoggedIn');
       localStorage.removeItem('loggedInUsername');
-      localStorage.removeItem('loggedInUserPermissions');
-      localStorage.removeItem('loggedInUserHourViewConfig');
+      localStorage.removeItem(LOGGED_IN_USER_PERMISSIONS_KEY);
+      localStorage.removeItem('loggedInUserHourViewConfig'); // Ensure this is also cleared
     }
     router.push('/login');
   };
@@ -210,88 +206,106 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const [isClient, setIsClient] = React.useState(false);
   const [authChecked, setAuthChecked] = React.useState(false);
+  const [settingsLoading, setSettingsLoading] = React.useState(true);
   const [appLogoUrl, setAppLogoUrl] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     setIsClient(true);
     if (typeof window !== 'undefined') {
-        console.log("[DashboardLayout EFFECT 1] Running initial setup.");
-        const storedAppLogo = localStorage.getItem(APP_LOGO_STORAGE_KEY);
-        if (storedAppLogo) {
-            setAppLogoUrl(storedAppLogo);
-            console.log("[DashboardLayout EFFECT 1] App logo loaded from localStorage.");
+        console.log("[DashboardLayout EFFECT 1] Running initial setup (Auth & Settings).");
+        
+        // Auth Check
+        if (localStorage.getItem('isLoggedIn') !== 'true') {
+            console.log("[DashboardLayout EFFECT 1] Not logged in, redirecting to /login.");
+            router.replace('/login');
+            return; // Stop further execution in this effect if not logged in
         } else {
-            console.log("[DashboardLayout EFFECT 1] No app logo in localStorage.");
+            console.log("[DashboardLayout EFFECT 1] Logged in, proceeding with settings load.");
+            setAuthChecked(true);
         }
 
-        const storedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
-        const initialThemeMode = storedTheme && ['light', 'dark', 'system'].includes(storedTheme) ? storedTheme : 'system';
-        applyThemeMode(initialThemeMode);
-        console.log("[DashboardLayout EFFECT 1] Applied theme:", initialThemeMode);
+        // Load Global App Settings from Firestore
+        const loadGlobalSettings = async () => {
+            setSettingsLoading(true);
+            const docRef = doc(firestore, APP_SETTINGS_COLLECTION, GLOBAL_APP_SETTINGS_DOC_ID);
+            try {
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    const settings = docSnap.data();
+                    const themeMode = (settings.themeMode || 'system') as ThemeMode;
+                    const accentColor = settings.accentColor || DEFAULT_APP_PRIMARY_COLOR;
+                    setAppLogoUrl(settings.appLogoUrl || null);
 
-        const storedAccentColor = localStorage.getItem(ACCENT_COLOR_STORAGE_KEY);
-        const initialAccentColor = storedAccentColor || DEFAULT_APP_PRIMARY_COLOR;
-        applyAccentColor(initialAccentColor);
-        console.log("[DashboardLayout EFFECT 1] Applied accent color:", initialAccentColor);
+                    applyThemeMode(themeMode);
+                    applyAccentColor(accentColor);
+                    console.log("[DashboardLayout EFFECT 1] Firestore settings applied:", { themeMode, accentColor, appLogoSet: !!settings.appLogoUrl });
+                } else {
+                    console.log("[DashboardLayout EFFECT 1] No global settings in Firestore, applying defaults.");
+                    applyThemeMode('system');
+                    applyAccentColor(DEFAULT_APP_PRIMARY_COLOR);
+                    setAppLogoUrl(null);
+                    // Optionally create the default settings doc here if it's critical
+                }
+            } catch (error) {
+                console.error("[DashboardLayout EFFECT 1] Error loading global settings from Firestore:", error);
+                applyThemeMode('system'); // Fallback
+                applyAccentColor(DEFAULT_APP_PRIMARY_COLOR); // Fallback
+            } finally {
+                setSettingsLoading(false);
+            }
+        };
+        
+        if (localStorage.getItem('isLoggedIn') === 'true') { // Ensure we only load settings if authenticated
+            loadGlobalSettings();
+        }
 
-
+        // System theme change listener
         const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-        const handleChange = () => {
-          const currentThemeSetting = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
-          if (currentThemeSetting === 'system' || !currentThemeSetting) {
+        const handleChange = async () => { // Make async if settings load is needed
+          const docRef = doc(firestore, APP_SETTINGS_COLLECTION, GLOBAL_APP_SETTINGS_DOC_ID);
+          const docSnap = await getDoc(docRef);
+          let currentThemeSetting: ThemeMode = 'system';
+          if (docSnap.exists()) {
+            currentThemeSetting = (docSnap.data().themeMode || 'system') as ThemeMode;
+          }
+          if (currentThemeSetting === 'system') {
              console.log("[DashboardLayout Media Query Change] System theme changed, re-applying.");
              applyThemeMode('system');
           }
         };
         mediaQuery.addEventListener('change', handleChange);
         console.log("[DashboardLayout EFFECT 1] System theme change listener added.");
+        
         return () => {
             mediaQuery.removeEventListener('change', handleChange);
             console.log("[DashboardLayout EFFECT 1 Cleanup] System theme change listener removed.");
         }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClient]); 
+  }, [isClient, router]); 
 
   React.useEffect(() => {
-    if (isClient) {
-      console.log("[DashboardLayout EFFECT 2] Checking auth status.");
-      if (localStorage.getItem('isLoggedIn') !== 'true') {
-        console.log("[DashboardLayout EFFECT 2] Not logged in, redirecting to /login.");
-        router.replace('/login');
-      } else {
-        console.log("[DashboardLayout EFFECT 2] Logged in, setting authChecked to true.");
-        setAuthChecked(true);
-      }
-    }
-  }, [isClient, router]);
-
-  React.useEffect(() => {
-    if (isClient && authChecked) {
-      console.log("[DashboardLayout EFFECT 3] Auth checked, verifying route access for pathname:", pathname);
+    if (isClient && authChecked && !settingsLoading) { // Ensure auth and settings are done
+      console.log("[DashboardLayout EFFECT Permissions] Auth & settings checked, verifying route access for pathname:", pathname);
       const username = localStorage.getItem('loggedInUsername');
       if (username?.toLowerCase() === 'chef') {
-        console.log("[DashboardLayout EFFECT 3] User is Chef, access granted.");
+        console.log("[DashboardLayout EFFECT Permissions] User is Chef, access granted.");
         return; 
       }
 
-      const storedPermissionsRaw = localStorage.getItem('loggedInUserPermissions');
+      const storedPermissionsRaw = localStorage.getItem(LOGGED_IN_USER_PERMISSIONS_KEY);
       let userPermissions: Partial<Record<RubricId, boolean>> = {};
       if (storedPermissionsRaw) {
         try {
           userPermissions = JSON.parse(storedPermissionsRaw);
-          console.log("[DashboardLayout EFFECT 3] User permissions loaded:", userPermissions);
         } catch (e) {
-          console.error("[DashboardLayout EFFECT 3] Error parsing permissions for route access control:", e);
+          console.error("[DashboardLayout EFFECT Permissions] Error parsing permissions:", e);
           router.replace('/dashboard'); 
           return;
         }
-      } else {
-        console.log("[DashboardLayout EFFECT 3] No user permissions found in localStorage.");
       }
       
       if (pathname === '/dashboard' || pathname === '/dashboard/') {
-         console.log("[DashboardLayout EFFECT 3] Accessing main dashboard page, allowed.");
+         console.log("[DashboardLayout EFFECT Permissions] Accessing main dashboard page, allowed.");
          return;
       }
       
@@ -304,39 +318,32 @@ export default function DashboardLayout({
           let hasAccessToSection = false;
           if (navItem.rubricId === 'timeTracking_parent') {
             hasAccessToSection = TIME_TRACKING_SUB_RUBRICS.some(sub => userPermissions[sub.id]);
-            console.log(`[DashboardLayout EFFECT 3] Checking timeTracking_parent access, result: ${hasAccessToSection}`);
           } else {
             hasAccessToSection = !!userPermissions[navItem.rubricId as RubricId];
-            console.log(`[DashboardLayout EFFECT 3] Checking access to ${navItem.rubricId}, result: ${hasAccessToSection}`);
           }
 
           if (!hasAccessToSection) {
-            console.log(`[DashboardLayout EFFECT 3] Access denied to ${pathname}. Redirecting to /dashboard.`);
+            console.log(`[DashboardLayout EFFECT Permissions] Access denied to ${pathname}. Redirecting.`);
             router.replace('/dashboard');
-          } else {
-            console.log(`[DashboardLayout EFFECT 3] Access granted to ${pathname}.`);
           }
-        } else {
-           if (currentTopLevelPath) {
-             // console.log(`[DashboardLayout EFFECT 3] Accessing potentially non-sidebar path: /dashboard/${currentTopLevelPath}`);
-           }
         }
       }
     }
-  }, [isClient, authChecked, pathname, router]);
+  }, [isClient, authChecked, settingsLoading, pathname, router]);
 
 
-  if (!isClient || !authChecked) {
+  if (!isClient || !authChecked || settingsLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <p className="text-muted-foreground">Vérification de l'authentification et des permissions...</p>
+        <Loader2 className="h-8 w-8 animate-spin text-primary mr-3"/>
+        <p className="text-muted-foreground">Vérification et chargement...</p>
       </div>
     );
   }
 
   return (
     <SidebarProvider defaultOpen={true}>
-      <AppSidebar />
+      <AppSidebar appLogoUrl={appLogoUrl} />
       <SidebarInset>
         <div className="min-h-screen w-full">
           <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 md:hidden">
