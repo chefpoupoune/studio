@@ -17,5 +17,6 @@
         { "fieldPath": "__name__", "order": "DESCENDING" }
       ]
     }
-  ]
+  ],
+  "fieldOverrides": []
 }
