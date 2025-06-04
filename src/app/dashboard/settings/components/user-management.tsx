@@ -61,7 +61,7 @@ export type RubricId = typeof RUBRICS[number]['id'] | typeof TIME_TRACKING_SUB_R
 
 export interface ViewableHourSummaryConfig {
   type: 'none' | 'own' | 'all' | 'specific';
-  specificMemberId?: string;
+  specificMemberId?: string | null; // Allow null
 }
 
 export interface AppUser {
@@ -69,7 +69,7 @@ export interface AppUser {
   username: string;
   brigadeMemberId?: string;
   passwordRequired: boolean;
-  simulatedStoredPassword?: string;
+  simulatedStoredPassword?: string | null; // Allow null
   permissions: Partial<Record<RubricId, boolean>>;
   viewableHourSummaryConfig?: ViewableHourSummaryConfig;
 }
@@ -195,7 +195,6 @@ export default function UserManagement() {
         } catch (createError) {
           console.error("Error creating default Chef user in Firestore:", createError);
           toast({ title: "Erreur Initialisation Chef", description: "Impossible de créer le compte Chef par défaut.", variant: "destructive"});
-          // Fallback: create a chef user in memory for display if DB creation failed
           const defaultChefForDisplay: AppUser = { 
             id: DEFAULT_CHEF_ID_FIRESTORE, 
             username: 'Chef', 
@@ -211,16 +210,15 @@ export default function UserManagement() {
         }
       }
       
-      // Ensure Chef user always has full permissions and correct config in the state
       if (chefUserInDb) {
          loadedUsers = loadedUsers.map(u => {
             if (u.username.toLowerCase() === 'chef') {
                 return {
                     ...u,
-                    passwordRequired: true, // Chef always requires password
-                    simulatedStoredPassword: u.simulatedStoredPassword || simulatedHash('000'), // Ensure Chef has a default password if missing
-                    permissions: defaultChefPermissions, // Enforce full permissions
-                    viewableHourSummaryConfig: { type: 'all' as const }, // Enforce all view
+                    passwordRequired: true, 
+                    simulatedStoredPassword: u.simulatedStoredPassword || simulatedHash('000'),
+                    permissions: defaultChefPermissions, 
+                    viewableHourSummaryConfig: { type: 'all' as const },
                 };
             }
             return u;
@@ -231,7 +229,7 @@ export default function UserManagement() {
     } catch (error) {
       console.error("UserManagement [FETCH USERS]: Error fetching app users:", error);
       toast({ title: "Erreur de chargement des utilisateurs", variant: "destructive" });
-      setAppUsers([]); // Reset to empty on error
+      setAppUsers([]); 
     } finally {
       setIsLoading(false);
     }
@@ -243,10 +241,10 @@ export default function UserManagement() {
     async function loadInitialData() {
       const members = await fetchBrigadeMembers();
       setBrigadeMembers(members);
-      await fetchAppUsers(); // Fetch app users after members
+      await fetchAppUsers(); 
     }
     loadInitialData();
-  }, [fetchBrigadeMembers, fetchAppUsers]); // Dependencies for initial load
+  }, [fetchBrigadeMembers, fetchAppUsers]); 
 
 
   useEffect(() => {
@@ -262,7 +260,6 @@ export default function UserManagement() {
     setEditingUser(user || null);
     const isCurrentUserChef = user?.username.toLowerCase() === 'chef';
     
-    // Initialize permissions: all true for Chef, otherwise from user data or all false for new user.
     let defaultPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: false }), {});
     if (user) {
       defaultPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => {
@@ -284,22 +281,19 @@ export default function UserManagement() {
   };
 
   const handleUserFormSubmit = async (data: UserFormData) => {
-    // Password logic
-    let passwordToStore: string | undefined = undefined;
+    let passwordToStore: string | null = null; // Use null for Firestore
     if (data.passwordRequired && data.newPassword) {
         passwordToStore = simulatedHash(data.newPassword);
     }
 
-    // Summary config logic
     let summaryConfig: ViewableHourSummaryConfig = {
         type: data.viewableHourSummary_type,
-        specificMemberId: data.viewableHourSummary_type === 'specific' ? data.viewableHourSummary_specificMemberId : undefined,
+        specificMemberId: data.viewableHourSummary_type === 'specific' ? (data.viewableHourSummary_specificMemberId || null) : null,
     };
     
     const isCurrentEditingUserChef = editingUser?.username.toLowerCase() === 'chef';
     let permissionsToSave = data.permissions;
 
-    // Chef overrides
     if (isCurrentEditingUserChef) {
         permissionsToSave = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
         summaryConfig = { type: 'all' };
@@ -312,32 +306,41 @@ export default function UserManagement() {
     };
 
     if (editingUser) {
-      // Determine the password: if password is required AND a new one is set, use new. If required and no new, keep old. If not required, undefined.
       const updatedSimulatedPassword = 
-        (userCommonData.passwordRequired && passwordToStore) // If required and new password given
+        (userCommonData.passwordRequired && passwordToStore) 
           ? passwordToStore 
-          : userCommonData.passwordRequired // If required but no new password given
-            ? editingUser.simulatedStoredPassword // Keep existing
-            : undefined; // Not required
+          : userCommonData.passwordRequired 
+            ? (editingUser.simulatedStoredPassword || null) 
+            : null;
 
       const userToUpdate: Omit<AppUser, 'id'> = {
-          username: editingUser.username, // Username is not editable this way
-          brigadeMemberId: editingUser.brigadeMemberId, // Brigade member link is not editable after creation here
+          username: editingUser.username, 
+          brigadeMemberId: editingUser.brigadeMemberId, 
           ...userCommonData,
           simulatedStoredPassword: updatedSimulatedPassword,
       };
+      console.log("UserManagement [UPDATE USER SUBMIT]: Attempting to update user. Data:", userToUpdate);
       try {
         const userDocRef = doc(firestore, "appUsers", editingUser.id);
         await setDoc(userDocRef, userToUpdate);
-        fetchAppUsers(); // Refresh user list
+        fetchAppUsers(); 
+        localStorage.setItem(LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY, JSON.stringify(summaryConfig));
+        window.dispatchEvent(new CustomEvent('loggedInUserHourViewConfigUpdated'));
         toast({ title: "Utilisateur Modifié", description: `L'utilisateur "${editingUser.username}" a été mis à jour.` });
-      } catch (e) {
-        console.error("Error updating user in Firestore:", e);
-        toast({ title: "Erreur de modification", variant: "destructive"});
+      } catch (e: any) {
+        let errorMessage = 'Erreur inconnue.';
+        let errorCode = 'N/A';
+        if (e instanceof Error) {
+          errorMessage = e.message;
+          if ('code' in e) errorCode = (e as any).code;
+        } else if (typeof e === 'string') {
+          errorMessage = e;
+        }
+        console.error("UserManagement [UPDATE USER SAVE]: Error updating user in Firestore. Original error object:", e, "Attempted update data:", userToUpdate);
+        toast({ title: "Erreur de Modification d'Utilisateur", description: `Erreur: ${errorMessage} ${errorCode !== 'N/A' ? `(Code: ${errorCode})` : ''}. Consultez la console.`, variant: "destructive"});
       }
-    } else { // Creating a new user
+    } else { 
       if (!data.selectedBrigadeMemberId) {
-        // This should be caught by form validation, but good to double check
         form.setError("selectedBrigadeMemberId", {message: "Sélection requise."});
         return;
       }
@@ -346,25 +349,37 @@ export default function UserManagement() {
         toast({ title: "Erreur", description: "Membre de la brigade non trouvé.", variant: "destructive" });
         return;
       }
-      // Check if a user with this brigade member's name already exists
       if (appUsers.some(u => u.username.toLowerCase() === selectedMember.name.toLowerCase())) {
         toast({ title: "Erreur", description: `Un utilisateur nommé "${selectedMember.name}" existe déjà.`, variant: "destructive" });
         return;
       }
 
       const newUserToSave: Omit<AppUser, 'id'> = { 
-        username: selectedMember.name, // Username is derived from brigade member's name
+        username: selectedMember.name, 
         brigadeMemberId: selectedMember.id,
         ...userCommonData,
-        simulatedStoredPassword: passwordToStore, // Will be undefined if passwordRequired is false or newPassword not set
+        simulatedStoredPassword: passwordToStore,
       };
+      console.log("UserManagement [CREATE USER SUBMIT]: Attempting to create user. Data:", newUserToSave);
       try {
         await addDoc(collection(firestore, "appUsers"), newUserToSave);
-        fetchAppUsers(); // Refresh user list
+        fetchAppUsers(); 
         toast({ title: "Utilisateur Créé", description: `L'utilisateur "${newUserToSave.username}" a été créé.` });
-      } catch (e) {
-        console.error("Error adding user to Firestore:", e);
-        toast({ title: "Erreur de création", variant: "destructive"});
+      } catch (e: any) {
+        let errorMessage = 'Erreur inconnue.';
+        let errorCode = 'N/A';
+        if (e instanceof Error) {
+          errorMessage = e.message;
+          if ('code' in e) errorCode = (e as any).code;
+        } else if (typeof e === 'string') {
+          errorMessage = e;
+        }
+        console.error("UserManagement [CREATE USER SAVE]: Error adding user to Firestore. Original error object:", e, "Attempted save data:", newUserToSave);
+        toast({ 
+          title: "Erreur de Création d'Utilisateur", 
+          description: `Erreur: ${errorMessage} ${errorCode !== 'N/A' ? `(Code: ${errorCode})` : ''}. Consultez la console.`, 
+          variant: "destructive"
+        });
       }
     }
     setIsUserFormOpen(false);
@@ -374,7 +389,6 @@ export default function UserManagement() {
     const userToDelete = appUsers.find(u => u.id === userId);
     if (!userToDelete) return;
 
-    // Prevent deletion of 'Chef' user
     if (userToDelete.username.toLowerCase() === 'chef') {
       toast({ title: "Suppression Interdite", description: "L'utilisateur 'Chef' ne peut pas être supprimé.", variant: "destructive" });
       return;
@@ -382,7 +396,7 @@ export default function UserManagement() {
 
     try {
       await deleteDoc(doc(firestore, "appUsers", userId));
-      fetchAppUsers(); // Refresh user list
+      fetchAppUsers(); 
       toast({ title: "Utilisateur Supprimé", description: `L'utilisateur "${userToDelete.username}" a été supprimé.`, variant: "destructive" });
     } catch (e) {
       console.error("Error deleting user from Firestore:", e);
@@ -390,7 +404,6 @@ export default function UserManagement() {
     }
   };
 
-  // For dynamic form parts
   const currentSelectedSummaryType = form.watch('viewableHourSummary_type');
   const formTimeTrackingPermissions = form.watch('permissions');
   const currentFormHasTimeTrackingPermission = TIME_TRACKING_SUB_RUBRICS.some(sr => !!formTimeTrackingPermissions[sr.id]);
@@ -399,9 +412,7 @@ export default function UserManagement() {
   if (!isClient || isLoading) {
     return (
       <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Users className="w-6 h-6 text-primary"/>Gestion des Utilisateurs</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="flex items-center gap-2"><Users className="w-6 h-6 text-primary"/>Gestion des Utilisateurs</CardTitle></CardHeader>
         <CardContent className="flex justify-center items-center py-10">
           <Loader2 className="h-8 w-8 animate-spin text-primary mr-2"/> Chargement des données utilisateurs...
         </CardContent>
@@ -433,7 +444,7 @@ export default function UserManagement() {
         <Button onClick={() => handleOpenUserForm()} disabled={availableBrigadeMembers.length === 0 && !editingUser}>
           <PlusCircle className="mr-2 h-4 w-4" /> Créer un Nouvel Utilisateur
         </Button>
-        {availableBrigadeMembers.length === 0 && !editingUser && ( // Show this message only if not editing (where available members aren't relevant)
+        {availableBrigadeMembers.length === 0 && !editingUser && ( 
              <p className="text-sm text-muted-foreground">Veuillez d'abord ajouter des membres à la brigade dans "Suivi des Heures &gt; Gestion Personnel" pour pouvoir créer de nouveaux utilisateurs liés.</p>
         )}
 
@@ -458,7 +469,7 @@ export default function UserManagement() {
                           <FormLabel>Membre de la Brigade à lier</FormLabel>
                           <Select 
                             onValueChange={field.onChange} 
-                            value={field.value || undefined} // Ensure value is string or undefined
+                            value={field.value || undefined} 
                             defaultValue={field.value || undefined}
                           >
                             <FormControl><SelectTrigger>
@@ -524,7 +535,7 @@ export default function UserManagement() {
                                   <Checkbox
                                     checked={isEditingChef ? true : field.value}
                                     onCheckedChange={field.onChange}
-                                    disabled={isEditingChef || (rubric.id === 'settings' && !isEditingChef)} // Settings always disabled for non-chef
+                                    disabled={isEditingChef || (rubric.id === 'settings' && !isEditingChef)} 
                                   />
                                 </FormControl>
                                 <FormLabel className="font-normal text-sm cursor-pointer flex-grow">{rubric.label}</FormLabel>
@@ -559,7 +570,6 @@ export default function UserManagement() {
                       </div>
                     </div>
 
-                    {/* Vue des Relevés d'Heures - Only if any time tracking permission is granted or if Chef */}
                     {(currentFormHasTimeTrackingPermission || isEditingChef) && (
                         <>
                         <div className="pt-4 border-t">
@@ -668,7 +678,7 @@ export default function UserManagement() {
                             <li key={subRubric.id} className="ml-4">{subRubric.label} (Suivi Heures)</li>
                             ))}
                             {[...RUBRICS, ...TIME_TRACKING_SUB_RUBRICS].filter(r => user.permissions[r.id]).length === 0 &&
-                             user.username.toLowerCase() !== 'chef' && ( // Chef always has permissions, so no need to check its array length
+                             user.username.toLowerCase() !== 'chef' && ( 
                                 <li className="italic text-muted-foreground">Aucune permission de rubrique.</li>
                             )}
                         </ul>
