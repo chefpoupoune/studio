@@ -15,8 +15,8 @@ import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
-import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord as SimplifiedMonthlyRestaurantCleaningRecord, PmsZoneWithTasksDefinition as PmsRestaurantZoneWithTasksDefinition } from '../types';
-import { PMS_RESTAURANT_CLEANING_KEY, PMS_CONFIG_STORAGE_KEY } from '@/app/dashboard/settings/types';
+import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord as SimplifiedMonthlyRestaurantCleaningRecord, PmsZoneWithTasksDefinition as PmsRestaurantZoneWithTasksDefinition, PmsConfigurations } from '../types';
+import { PMS_RESTAURANT_CLEANING_KEY } from '@/app/dashboard/settings/types';
 import { NO_STATUS_SELECT_VALUE } from '../types';
 import { getMonthDays, type DayData } from '../utils';
 import { cn } from '@/lib/utils';
@@ -46,75 +46,123 @@ export default function RestaurantCleaningMonitoring() {
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
-  const getFirestoreDocId = useCallback(() => `records_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
+  const getFirestoreRecordsDocId = useCallback(() => `records_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
 
-  useEffect(() => {
-    const loadInitialData = async () => {
-      setIsLoading(true);
-      try {
-        // Load PMS configurations (zones and tasks) from localStorage
-        const pmsSettingsRaw = localStorage.getItem(PMS_CONFIG_STORAGE_KEY);
-        if (pmsSettingsRaw) {
-          const pmsSettings = JSON.parse(pmsSettingsRaw);
-          const restaurantZones = pmsSettings[PMS_RESTAURANT_CLEANING_KEY] || [];
-          setConfiguredZones(restaurantZones);
-          if (!selectedZoneId && restaurantZones.length > 0) {
-            setSelectedZoneId(restaurantZones[0].id);
-          } else if (selectedZoneId && !restaurantZones.find((z: PmsRestaurantZoneWithTasksDefinition) => z.id === selectedZoneId)) {
-            setSelectedZoneId(restaurantZones.length > 0 ? restaurantZones[0].id : undefined);
+  const loadDataForPeriod = useCallback(async () => {
+    setIsLoading(true);
+    console.log(`[RestaurantClean LOAD_ALL] For period ${selectedYear}-${selectedMonth}, zone ${selectedZoneId}`);
+    
+    let newSelectedZoneId = selectedZoneId;
+
+    // Step 1: Load PMS Configurations
+    const pmsSettingsDocRef = doc(firestore, "pmsConfigurations", "mainConfig");
+    try {
+      const pmsSettingsSnap = await getDoc(pmsSettingsDocRef);
+      if (pmsSettingsSnap.exists()) {
+        const pmsSettings = pmsSettingsSnap.data() as PmsConfigurations;
+        const restaurantZonesFromFS = pmsSettings[PMS_RESTAURANT_CLEANING_KEY] || [];
+        setConfiguredZones(restaurantZonesFromFS);
+        console.log("[RestaurantClean LOAD_ALL] PMS configurations loaded:", restaurantZonesFromFS.length, "zones");
+
+        if (restaurantZonesFromFS.length > 0) {
+          const currentSelectionIsValid = newSelectedZoneId ? restaurantZonesFromFS.some(z => z.id === newSelectedZoneId) : false;
+          if (!currentSelectionIsValid) {
+            newSelectedZoneId = restaurantZonesFromFS[0].id;
+            console.log("[RestaurantClean LOAD_ALL] Selected zone was invalid or not set, defaulting to:", newSelectedZoneId);
           }
         } else {
-          setConfiguredZones([]);
-          setSelectedZoneId(undefined);
+          newSelectedZoneId = undefined;
+          console.log("[RestaurantClean LOAD_ALL] No restaurant zones configured.");
         }
+      } else {
+        setConfiguredZones([]);
+        newSelectedZoneId = undefined;
+        console.log("[RestaurantClean LOAD_ALL] No PMS configurations document found.");
+        toast({ title: "Configuration Manquante", description: "Aucune configuration PMS pour le nettoyage restaurant trouvée.", variant: "destructive" });
+      }
+    } catch (error) {
+      console.error("Error loading PMS configurations in loadDataForPeriod (Restaurant):", error);
+      toast({ title: "Erreur Chargement Config (Restaurant)", variant: "destructive" });
+      setConfiguredZones([]);
+      newSelectedZoneId = undefined;
+    }
+    
+    if (newSelectedZoneId !== selectedZoneId) {
+        setSelectedZoneId(newSelectedZoneId); 
+    }
+    
+    const zoneToLoadRecordsFor = newSelectedZoneId;
 
-        // Generate month days structure
-        const yearNum = parseInt(selectedYear, 10);
-        const monthNum = parseInt(selectedMonth, 10);
-        setMonthData(getMonthDays(yearNum, monthNum));
-
-        // Load cleaning records from Firestore
-        const docId = getFirestoreDocId();
-        const docRef = doc(firestore, "pmsRestaurantCleaningRecords", docId);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setCleaningRecords(docSnap.data() as SimplifiedMonthlyRestaurantCleaningRecord);
+    // Step 2: Load Cleaning Records
+    if (!zoneToLoadRecordsFor) {
+      setCleaningRecords({});
+      console.log("[RestaurantClean LOAD_ALL] No zone to load records for. Clearing records.");
+    } else {
+      console.log(`[RestaurantClean LOAD_ALL] Loading cleaning records for zone ${zoneToLoadRecordsFor}`);
+      const recordsDocId = `records_${selectedYear}_${selectedMonth}`;
+      const recordsDocRef = doc(firestore, "pmsRestaurantCleaningRecords", recordsDocId);
+      try {
+        const recordsSnap = await getDoc(recordsDocRef);
+        if (recordsSnap.exists()) {
+          setCleaningRecords(recordsSnap.data() as SimplifiedMonthlyRestaurantCleaningRecord);
+          console.log("[RestaurantClean LOAD_ALL] Cleaning records loaded.");
         } else {
-          setCleaningRecords({}); // No records for this month yet
+          setCleaningRecords({});
+          console.log("[RestaurantClean LOAD_ALL] No cleaning records found for this period/zone.");
         }
       } catch (error) {
-        console.error("Error loading initial data for restaurant cleaning:", error);
-        toast({ title: "Erreur de chargement", description: "Impossible de charger les configurations ou les enregistrements.", variant: "destructive" });
-        setConfiguredZones([]);
-        setSelectedZoneId(undefined);
+        console.error("Error loading restaurant cleaning records in loadDataForPeriod:", error);
         setCleaningRecords({});
       }
-      setIsLoading(false);
-    };
-    loadInitialData();
-  }, [selectedYear, selectedMonth, getFirestoreDocId, toast]);
+    }
+    
+    const yearNum = parseInt(selectedYear, 10);
+    const monthNum = parseInt(selectedMonth, 10);
+    setMonthData(getMonthDays(yearNum, monthNum));
+    console.log(`[RestaurantClean LOAD_ALL] Month data generated for ${selectedYear}-${selectedMonth}.`);
 
+    setIsLoading(false);
+    console.log("[RestaurantClean LOAD_ALL] Finished all loading. setIsLoading(false).");
+  }, [selectedYear, selectedMonth, selectedZoneId, toast]);
+
+  // Initial load and reload on period change
   useEffect(() => {
-    if (isLoading || isSaving) return;
+    loadDataForPeriod();
+  }, [loadDataForPeriod]); // loadDataForPeriod is memoized with its own dependencies
 
+  // Event listener for config updates
+  useEffect(() => {
+    const handleConfigUpdate = () => {
+      console.log(`[RestaurantCleaning] Received pmsConfigUpdated event. Refetching all data.`);
+      loadDataForPeriod();
+    };
+    window.addEventListener('pmsConfigUpdated', handleConfigUpdate);
+    return () => window.removeEventListener('pmsConfigUpdated', handleConfigUpdate);
+  }, [loadDataForPeriod]);
+
+  // Debounced save for cleaningRecords
+  useEffect(() => {
+    if (isLoading || isSaving || Object.keys(cleaningRecords).length === 0 && !doc(firestore, "pmsRestaurantCleaningRecords", getFirestoreRecordsDocId())) {
+      return;
+    }
+    
     const saveRecordsToFirestore = async () => {
       setIsSaving(true);
-      const docId = getFirestoreDocId();
+      const docId = getFirestoreRecordsDocId();
       const docRef = doc(firestore, "pmsRestaurantCleaningRecords", docId);
       try {
         await setDoc(docRef, cleaningRecords);
-        // Optional: toast for successful save
       } catch (error) {
         console.error("Error saving restaurant cleaning records to Firestore:", error);
-        toast({ title: "Erreur de Sauvegarde", description: "Impossible d'enregistrer les données de nettoyage.", variant: "destructive" });
+        toast({ title: "Erreur de Sauvegarde (Net. Restaurant)", variant: "destructive" });
       }
       setIsSaving(false);
     };
 
-    const timeoutId = setTimeout(saveRecordsToFirestore, 1500);
+    const timeoutId = setTimeout(saveRecordsToFirestore, 2000);
     return () => clearTimeout(timeoutId);
 
-  }, [cleaningRecords, isLoading, isSaving, getFirestoreDocId, toast]);
+  }, [cleaningRecords, isLoading, isSaving, getFirestoreRecordsDocId, toast]);
 
   const handleRecordChange = (date: string, zoneId: string, taskId: string, field: keyof SimplifiedTaskRecord, value: string) => {
     const recordKey = `${date}_${zoneId}_${taskId}`;
@@ -135,11 +183,11 @@ export default function RestaurantCleaningMonitoring() {
   const handleClearMonthData = async () => {
     if (confirm(`Êtes-vous sûr de vouloir effacer toutes les données de nettoyage restaurant pour ${monthsArray[parseInt(selectedMonth)].label} ${selectedYear} ? Cette action est irréversible.`)) {
       setIsSaving(true);
-      const docId = getFirestoreDocId();
+      const docId = getFirestoreRecordsDocId();
       const docRef = doc(firestore, "pmsRestaurantCleaningRecords", docId);
       try {
-        await setDoc(docRef, {});
-        setCleaningRecords({});
+        await setDoc(docRef, {}); 
+        setCleaningRecords({}); 
         toast({ title: "Données Effacées", description: `Les données de nettoyage restaurant pour ${monthsArray[parseInt(selectedMonth)].label} ${selectedYear} ont été effacées de Firestore.` });
       } catch (error) {
         console.error("Error clearing month data in Firestore for restaurant:", error);
@@ -158,7 +206,7 @@ export default function RestaurantCleaningMonitoring() {
       toast({ title: "Aucune Zone Sélectionnée", description: "Veuillez sélectionner une zone pour générer le PDF.", variant: "destructive" });
       return;
     }
-    setIsLoading(true);
+    setIsLoading(true); // Temporarily use general isLoading for PDF generation
     try {
       const pdfSettings = getPdfLayoutSettings('pms_restaurant_cleaning_monthly');
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
@@ -252,6 +300,7 @@ export default function RestaurantCleaningMonitoring() {
     }
   };
 
+
   return (
     <Card className="shadow-lg">
       <CardHeader>
@@ -260,21 +309,21 @@ export default function RestaurantCleaningMonitoring() {
           Suivi Mensuel du Nettoyage Restaurant
         </CardTitle>
         <CardDescription>
-          Sélectionnez une année, un mois, puis une zone pour enregistrer et visualiser le suivi. Les zones sont configurables dans les Paramètres PMS.
+          Sélectionnez une année et un mois, puis une zone pour enregistrer et visualiser le suivi. Les zones sont configurables dans les Paramètres PMS.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-end mb-4">
           <div>
             <Label htmlFor="year-select-resto-cleaning">Année</Label>
-            <Select value={selectedYear} onValueChange={setSelectedYear}>
+            <Select value={selectedYear} onValueChange={setSelectedYear} disabled={isLoading || isSaving}>
               <SelectTrigger id="year-select-resto-cleaning"><SelectValue placeholder="Année" /></SelectTrigger>
               <SelectContent>{yearsArray.map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div>
             <Label htmlFor="month-select-resto-cleaning">Mois</Label>
-            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+            <Select value={selectedMonth} onValueChange={setSelectedMonth} disabled={isLoading || isSaving}>
               <SelectTrigger id="month-select-resto-cleaning"><SelectValue placeholder="Mois" /></SelectTrigger>
               <SelectContent>{monthsArray.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
             </Select>
@@ -290,11 +339,11 @@ export default function RestaurantCleaningMonitoring() {
             </Button>
           </div>
         </div>
-
-        {isLoading ? (
-          <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /> Chargement...</div>
+        
+        {isLoading && configuredZones.length === 0 ? (
+          <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /> Chargement des configurations...</div>
         ) : configuredZones.length === 0 ? (
-          <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
+           <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
             <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />
             <p className="mt-2 text-sm text-muted-foreground">
                 Aucune zone de nettoyage restaurant n'a été configurée.
@@ -304,7 +353,7 @@ export default function RestaurantCleaningMonitoring() {
             </p>
           </div>
         ) : (
-           <>
+          <>
             <div className="mb-4">
               <Label className="text-sm font-medium mb-2 block">Sélectionner une Zone de Nettoyage Restaurant :</Label>
               <div className="flex flex-wrap gap-2">
@@ -314,6 +363,7 @@ export default function RestaurantCleaningMonitoring() {
                     variant={selectedZoneId === zone.id ? "default" : "outline"}
                     onClick={() => setSelectedZoneId(zone.id)}
                     size="sm"
+                    disabled={isLoading || isSaving}
                   >
                     {zone.name}
                   </Button>
@@ -321,7 +371,9 @@ export default function RestaurantCleaningMonitoring() {
               </div>
             </div>
 
-            {!selectedZoneId ? (
+            {isLoading && selectedZoneId ? ( 
+                 <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /> Chargement des enregistrements pour "{selectedZoneData?.name}"...</div>
+            ) : !selectedZoneId ? (
               <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
                   <ListFilter className="mx-auto h-12 w-12 text-muted-foreground" />
                   <p className="mt-2 text-sm text-muted-foreground">
@@ -391,7 +443,7 @@ export default function RestaurantCleaningMonitoring() {
                           );
                         }) : (
                            <TableCell className="p-1 align-top border-l text-center text-xs text-muted-foreground italic" colSpan={1}>
-                             Aucune tâche à afficher pour cette zone.
+                             Aucune tâche à afficher.
                            </TableCell>
                         )}
                       </TableRow>

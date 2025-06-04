@@ -14,11 +14,13 @@ import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
-import type { DailyTemperatureRecord, MonthlyTemperatureLog, PmsZone as PmsEquipmentDefinition } from '../types';
-import { PMS_TEMPERATURE_MONITORING_KEY, PMS_CONFIG_STORAGE_KEY } from '@/app/dashboard/settings/types';
+import type { DailyTemperatureRecord, MonthlyTemperatureLog, PmsZone as PmsEquipmentDefinition, PmsConfigurations } from '../types';
+import { PMS_TEMPERATURE_MONITORING_KEY } from '@/app/dashboard/settings/types';
 import { getMonthDays, type DayData } from '../utils';
 import { cn } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { firestore } from '@/lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -48,9 +50,10 @@ export default function TemperatureMonitoring() {
   const [monthData, setMonthData] = useState<DayData[]>([]);
   const [temperatureRecords, setTemperatureRecords] = useState<MonthlyTemperatureLog>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
-  const getLocalStorageKeyForRecords = useCallback(() => `pms_temperature_records_grid_v3_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
+  const getLocalStorageKeyForRecords = useCallback(() => `pms_temperature_records_vFirebase_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]); // Key changed to avoid conflict with old localStorage data if any
 
   const selectedEquipmentData = useMemo(() => {
     return configuredEquipments.find(eq => eq.id === selectedEquipmentId);
@@ -141,54 +144,122 @@ export default function TemperatureMonitoring() {
     return { temperatureValues: allDisplayTemps, dynamicTempZones: zones, targetLabel: finalTargetLabel };
   }, [selectedEquipmentData]);
 
-
-  useEffect(() => {
+  const loadDataForPeriod = useCallback(async () => {
     setIsLoading(true);
+    console.log(`[TempMon LOAD_ALL] For period ${selectedYear}-${selectedMonth}, equipment ${selectedEquipmentId}`);
+
+    let currentSelectedEquipmentId = selectedEquipmentId;
+
+    // Step 1: Load PMS Configurations (Equipments)
+    const pmsSettingsDocRef = doc(firestore, "pmsConfigurations", "mainConfig");
     try {
-      const pmsSettingsRaw = localStorage.getItem(PMS_CONFIG_STORAGE_KEY);
-      if (pmsSettingsRaw) {
-        const pmsSettings = JSON.parse(pmsSettingsRaw);
-        const equipments = pmsSettings[PMS_TEMPERATURE_MONITORING_KEY] || [];
-        setConfiguredEquipments(equipments);
-        if (!selectedEquipmentId && equipments.length > 0) {
-          setSelectedEquipmentId(equipments[0].id);
-        } else if (selectedEquipmentId && !equipments.find((eq: any) => eq.id === selectedEquipmentId)) {
-          setSelectedEquipmentId(equipments.length > 0 ? equipments[0].id : undefined);
+      const pmsSettingsSnap = await getDoc(pmsSettingsDocRef);
+      if (pmsSettingsSnap.exists()) {
+        const pmsSettings = pmsSettingsSnap.data() as PmsConfigurations;
+        const equipmentsFromFS = pmsSettings[PMS_TEMPERATURE_MONITORING_KEY] || [];
+        setConfiguredEquipments(equipmentsFromFS);
+        console.log("[TempMon LOAD_ALL] PMS configurations loaded:", equipmentsFromFS.length, "equipments");
+
+        if (equipmentsFromFS.length > 0) {
+          const currentSelectionIsValid = currentSelectedEquipmentId ? equipmentsFromFS.some(eq => eq.id === currentSelectedEquipmentId) : false;
+          if (!currentSelectionIsValid) {
+            currentSelectedEquipmentId = equipmentsFromFS[0].id;
+            console.log("[TempMon LOAD_ALL] Selected equipment was invalid/not set, defaulting to:", currentSelectedEquipmentId);
+          }
+        } else {
+          currentSelectedEquipmentId = undefined;
+          console.log("[TempMon LOAD_ALL] No temperature monitoring equipments configured.");
         }
       } else {
         setConfiguredEquipments([]);
-        setSelectedEquipmentId(undefined);
+        currentSelectedEquipmentId = undefined;
+        console.log("[TempMon LOAD_ALL] No PMS configurations document found.");
+        toast({ title: "Configuration Manquante", description: "Aucune configuration PMS pour le suivi des températures trouvée.", variant: "destructive" });
       }
     } catch (error) {
-      console.error("Error loading PMS configurations for temperature:", error);
+      console.error("Error loading PMS configurations in loadDataForPeriod (Temperature):", error);
+      toast({ title: "Erreur Chargement Config (Température)", variant: "destructive" });
       setConfiguredEquipments([]);
-      setSelectedEquipmentId(undefined);
+      currentSelectedEquipmentId = undefined;
+    }
+
+    if (currentSelectedEquipmentId !== selectedEquipmentId) {
+      setSelectedEquipmentId(currentSelectedEquipmentId);
+    }
+
+    const equipmentToLoadRecordsFor = currentSelectedEquipmentId;
+
+    // Step 2: Load Temperature Records
+    if (!equipmentToLoadRecordsFor) {
+      setTemperatureRecords({});
+      console.log("[TempMon LOAD_ALL] No equipment to load records for. Clearing records.");
+    } else {
+      console.log(`[TempMon LOAD_ALL] Loading temperature records for equipment ${equipmentToLoadRecordsFor}`);
+      const recordsDocId = `temp_records_${selectedYear}_${selectedMonth}`; // Naming convention for Firestore doc
+      const recordsDocRef = doc(firestore, "pmsTemperatureRecords", recordsDocId);
+      try {
+        const recordsSnap = await getDoc(recordsDocRef);
+        if (recordsSnap.exists()) {
+          setTemperatureRecords(recordsSnap.data() as MonthlyTemperatureLog);
+          console.log("[TempMon LOAD_ALL] Temperature records loaded.");
+        } else {
+          setTemperatureRecords({});
+          console.log("[TempMon LOAD_ALL] No temperature records found for this period.");
+        }
+      } catch (error) {
+        console.error("Error loading temperature records in loadDataForPeriod:", error);
+        setTemperatureRecords({});
+      }
     }
 
     const yearNum = parseInt(selectedYear, 10);
     const monthNum = parseInt(selectedMonth, 10);
     setMonthData(getMonthDays(yearNum, monthNum));
+    console.log(`[TempMon LOAD_ALL] Month data generated for ${selectedYear}-${selectedMonth}.`);
 
-    try {
-      const storedData = localStorage.getItem(getLocalStorageKeyForRecords());
-      if (storedData) {
-        setTemperatureRecords(JSON.parse(storedData));
-      } else {
-        setTemperatureRecords({});
-      }
-    } catch (error) {
-      console.error("Error loading temperature records:", error);
-      toast({ title: "Erreur de chargement", description: "Données de température corrompues.", variant: "destructive" });
-      setTemperatureRecords({});
-    }
     setIsLoading(false);
-  }, [selectedYear, selectedMonth, getLocalStorageKeyForRecords, toast, selectedEquipmentId]);
+    console.log("[TempMon LOAD_ALL] Finished all loading. setIsLoading(false).");
+  }, [selectedYear, selectedMonth, selectedEquipmentId, toast]);
 
+  // Initial load and reload on period change or equipment selection
   useEffect(() => {
-    if (!isLoading) {
-        localStorage.setItem(getLocalStorageKeyForRecords(), JSON.stringify(temperatureRecords));
+    loadDataForPeriod();
+  }, [loadDataForPeriod]);
+
+  // Event listener for config updates
+  useEffect(() => {
+    const handleConfigUpdate = () => {
+      console.log(`[TemperatureMonitoring] Received pmsConfigUpdated event. Refetching all data.`);
+      loadDataForPeriod();
+    };
+    window.addEventListener('pmsConfigUpdated', handleConfigUpdate);
+    return () => window.removeEventListener('pmsConfigUpdated', handleConfigUpdate);
+  }, [loadDataForPeriod]);
+
+  // Debounced save for temperatureRecords
+  useEffect(() => {
+    if (isLoading || isSaving || Object.keys(temperatureRecords).length === 0 && !doc(firestore, "pmsTemperatureRecords", getLocalStorageKeyForRecords())) { // getLocalStorageKeyForRecords is now the Firestore doc ID pattern
+      return;
     }
-  }, [temperatureRecords, isLoading, getLocalStorageKeyForRecords]);
+    
+    const saveRecordsToFirestore = async () => {
+      setIsSaving(true);
+      const docId = `temp_records_${selectedYear}_${selectedMonth}`;
+      const docRef = doc(firestore, "pmsTemperatureRecords", docId);
+      try {
+        await setDoc(docRef, temperatureRecords);
+      } catch (error) {
+        console.error("Error saving temperature records to Firestore:", error);
+        toast({ title: "Erreur de Sauvegarde (Températures)", variant: "destructive" });
+      }
+      setIsSaving(false);
+    };
+
+    const timeoutId = setTimeout(saveRecordsToFirestore, 2000);
+    return () => clearTimeout(timeoutId);
+
+  }, [temperatureRecords, isLoading, isSaving, selectedYear, selectedMonth, toast]);
+
 
  const handleTempCellClick = (dateStr: string, equipmentId: string, tempValue: number) => {
     const recordKey = `${dateStr}_${equipmentId}`;
@@ -230,17 +301,36 @@ export default function TemperatureMonitoring() {
     return temperatureRecords[recordKey] || { markedTemperatureValue: undefined, time: '', operator: '' };
   };
 
-  const handleClearMonthData = () => {
-    if (!selectedEquipmentId) return;
+  const handleClearMonthData = async () => {
+    if (!selectedEquipmentId || !selectedEquipmentData) return;
     if (confirm(`Êtes-vous sûr de vouloir effacer toutes les données de température pour ${selectedEquipmentData?.name} pour ${monthsArray[parseInt(selectedMonth)].label} ${selectedYear} ? Cette action est irréversible.`)) {
-      const newRecords = { ...temperatureRecords };
-      monthData.forEach(day => {
-        if (selectedEquipmentId) { 
-          delete newRecords[`${day.date}_${selectedEquipmentId}`];
+      setIsSaving(true);
+      const docId = `temp_records_${selectedYear}_${selectedMonth}`;
+      const docRef = doc(firestore, "pmsTemperatureRecords", docId);
+      try {
+        // To clear for a specific equipment, we need to filter the records object
+        const newRecordsForMonth = { ...temperatureRecords };
+        Object.keys(newRecordsForMonth).forEach(key => {
+          if (key.endsWith(`_${selectedEquipmentId}`)) {
+            delete newRecordsForMonth[key];
+          }
+        });
+        
+        // If the object becomes empty, we might want to delete the doc or save an empty object based on desired behavior
+        if (Object.keys(newRecordsForMonth).length === 0) {
+            // Consider deleting the doc if no other equipment has data for this month
+            // For now, just save the modified (potentially empty for this equipment) object
+            await setDoc(docRef, newRecordsForMonth); 
+        } else {
+            await setDoc(docRef, newRecordsForMonth);
         }
-      });
-      setTemperatureRecords(newRecords);
-      toast({ title: "Données Effacées", description: `Les données de température pour ${selectedEquipmentData?.name} pour ${monthsArray[parseInt(selectedMonth)].label} ${selectedYear} ont été effacées.` });
+        setTemperatureRecords(newRecordsForMonth);
+        toast({ title: "Données Effacées", description: `Les données de température pour ${selectedEquipmentData?.name} pour ${monthsArray[parseInt(selectedMonth)].label} ${selectedYear} ont été effacées.` });
+      } catch (error) {
+        console.error("Error clearing month data for temperature equipment:", error);
+        toast({ title: "Erreur d'effacement", variant: "destructive"});
+      }
+      setIsSaving(false);
     }
   };
 
@@ -249,7 +339,7 @@ export default function TemperatureMonitoring() {
       toast({ title: "Aucun Équipement Sélectionné", variant: "destructive" });
       return;
     }
-    setIsLoading(true);
+    setIsLoading(true); 
     try {
       const pdfSettings = getPdfLayoutSettings('pms_temperature_monitoring_monthly'); 
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
@@ -360,17 +450,17 @@ export default function TemperatureMonitoring() {
           <div><Label htmlFor="year-select-temp" className="text-xs">Année</Label><Select value={selectedYear} onValueChange={setSelectedYear}><SelectTrigger id="year-select-temp" className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent>{yearsArray.map(y => <SelectItem key={y} value={y.toString()} className="text-xs">{y}</SelectItem>)}</SelectContent></Select></div>
           <div><Label htmlFor="month-select-temp" className="text-xs">Mois</Label><Select value={selectedMonth} onValueChange={setSelectedMonth}><SelectTrigger id="month-select-temp" className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent>{monthsArray.map(m => <SelectItem key={m.value} value={m.value} className="text-xs">{m.label}</SelectItem>)}</SelectContent></Select></div>
           <div className="flex flex-col sm:flex-row gap-1.5 md:col-span-1 md:justify-self-end">
-            <Button onClick={generatePdfForEquipment} size="sm" disabled={isLoading || !selectedEquipmentData || monthData.length === 0 || configuredEquipments.length === 0} className="w-full sm:w-auto text-xs h-8">
+            <Button onClick={generatePdfForEquipment} size="sm" disabled={isLoading || isSaving || !selectedEquipmentData || monthData.length === 0 || configuredEquipments.length === 0} className="w-full sm:w-auto text-xs h-8">
               {isLoading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FileText className="mr-1.5 h-3.5 w-3.5" />}
               PDF
             </Button>
-            <Button variant="destructive" size="sm" onClick={handleClearMonthData} disabled={isLoading || !selectedEquipmentId || Object.keys(temperatureRecords).filter(k => k.endsWith(`_${selectedEquipmentId}`)).length === 0} className="w-full sm:w-auto text-xs h-8">
+            <Button variant="destructive" size="sm" onClick={handleClearMonthData} disabled={isLoading || isSaving || !selectedEquipmentId || Object.keys(temperatureRecords).filter(k => k.endsWith(`_${selectedEquipmentId}`)).length === 0} className="w-full sm:w-auto text-xs h-8">
               <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Eff. Mois
             </Button>
           </div>
         </div>
         
-        {isLoading ? (
+        {isLoading && configuredEquipments.length === 0 ? (
           <div className="flex justify-center items-center py-6"><Loader2 className="h-6 w-6 animate-spin text-primary" /> Chargement...</div>
         ) : configuredEquipments.length === 0 ? (
            <div className="text-center py-6 border-2 border-dashed border-muted-foreground/30 rounded-lg">
@@ -380,7 +470,9 @@ export default function TemperatureMonitoring() {
         ) : (
           <>
             <div className="mb-2"><Label className="text-xs font-medium mb-1 block">Sélectionner un Équipement :</Label><div className="flex flex-wrap gap-1">{configuredEquipments.map(eq => (<Button key={eq.id} variant={selectedEquipmentId === eq.id ? "default" : "outline"} onClick={() => setSelectedEquipmentId(eq.id)} size="sm" className="text-xs px-2 py-0.5 h-7">{eq.name}</Button>))}</div></div>
-            {!selectedEquipmentId ? (<div className="text-center py-6 border-2 border-dashed border-muted-foreground/30 rounded-lg"><ListFilter className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-1 text-sm text-muted-foreground">Sélectionnez un équipement.</p></div>
+            {isLoading && selectedEquipmentId ? (
+                 <div className="flex justify-center items-center py-6"><Loader2 className="h-6 w-6 animate-spin text-primary" /> Chargement des relevés pour "{selectedEquipmentData?.name}"...</div>
+            ) : !selectedEquipmentId ? (<div className="text-center py-6 border-2 border-dashed border-muted-foreground/30 rounded-lg"><ListFilter className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-1 text-sm text-muted-foreground">Sélectionnez un équipement.</p></div>
             ) : selectedEquipmentData && monthData.length > 0 ? (
               <div className="overflow-x-auto border rounded-md max-h-[calc(65vh-40px)]">
                 <Table className="min-w-full table-fixed text-[9px]">
