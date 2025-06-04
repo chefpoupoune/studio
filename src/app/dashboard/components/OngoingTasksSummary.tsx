@@ -11,8 +11,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { firestore } from '@/lib/firebase';
 import { collection, query, where, orderBy, getDocs, Timestamp, limit } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
-import { format } from 'date-fns'; 
-import { fr } from 'date-fns/locale'; // Ensure french locale is imported
+import { format, isValid, parseISO } from 'date-fns'; 
+import { fr } from 'date-fns/locale'; 
 
 export default function OngoingTasksSummary() {
   const [allTasks, setAllTasks] = useState<Task[]>([]);
@@ -32,38 +32,61 @@ export default function OngoingTasksSummary() {
       const tasksCollectionRef = collection(firestore, 'taskManagementTasks');
       const q = query(
         tasksCollectionRef,
-        where('currentStatus', 'not-in', ['termine', 'annule']),
         orderBy('updatedAt', 'desc'),
-        // limit(10) // Optionally limit for summary
+        limit(30) // Fetch 30 most recently updated tasks
       );
       const querySnapshot = await getDocs(q);
-      const tasksList = querySnapshot.docs.map(docSnap => {
-        const data = docSnap.data();
-        // Robust Timestamp conversion
-        const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : new Date());
-        const updatedAt = data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : new Date());
-        const appointmentDate = data.appointmentDate instanceof Timestamp ? data.appointmentDate.toDate() : (data.appointmentDate ? new Date(data.appointmentDate) : null);
-        
-        const statusHistory = (data.statusHistory || []).map((log: any) => ({
-          ...log,
-          date: log.date instanceof Timestamp ? log.date.toDate() : (log.date ? new Date(log.date) : new Date()),
-        }));
+      let mappedTasks: Task[] = [];
 
-        return {
-          id: docSnap.id,
-          ...data,
-          createdAt,
-          updatedAt,
-          appointmentDate,
-          statusHistory,
-        } as Task;
+      querySnapshot.docs.forEach(docSnap => {
+        const data = docSnap.data();
+        try {
+          const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : new Date());
+          const updatedAt = data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : new Date());
+          const appointmentDate = data.appointmentDate instanceof Timestamp 
+            ? data.appointmentDate.toDate() 
+            : (data.appointmentDate && typeof data.appointmentDate === 'string' && isValid(parseISO(data.appointmentDate))) 
+              ? parseISO(data.appointmentDate) 
+              : data.appointmentDate && typeof data.appointmentDate.seconds === 'number' // Handle Firestore Timestamp-like objects
+                ? new Date(data.appointmentDate.seconds * 1000)
+                : null;
+          
+          const statusHistory = (data.statusHistory || []).map((log: any) => ({
+            status: log.status || 'en_cours', // Default status if missing
+            date: log.date instanceof Timestamp 
+              ? log.date.toDate() 
+              : (log.date && typeof log.date.seconds === 'number') 
+                ? new Date(log.date.seconds * 1000) 
+                : (log.date ? new Date(log.date) : new Date()),
+            notes: log.notes || undefined,
+          }));
+
+          mappedTasks.push({
+            id: docSnap.id,
+            title: data.title || "Titre Manquant",
+            description: data.description || "Description Manquante",
+            createdAt,
+            updatedAt,
+            currentStatus: (data.currentStatus as TaskStatus) || 'en_cours',
+            statusHistory,
+            appointmentDate,
+          } as Task);
+        } catch (mapError: any) {
+          console.error(`OngoingTasksSummary: Error mapping document ${docSnap.id}. Data:`, data, 'Error:', mapError.message, mapError.stack);
+          toast({ title: `Erreur Traitement Tâche ${docSnap.id}`, description: `Impossible de traiter une tâche. Détails: ${mapError.message}`, variant: "destructive" });
+          // Continue with other tasks
+        }
       });
-      setAllTasks(tasksList);
-      console.log("OngoingTasksSummary: Tasks fetched successfully:", tasksList.length);
+      
+      // Client-side filter for ongoing tasks
+      const ongoingTasksList = mappedTasks.filter(task => !['termine', 'annule'].includes(task.currentStatus));
+      
+      setAllTasks(ongoingTasksList);
+      console.log("OngoingTasksSummary: Tasks fetched and filtered successfully:", ongoingTasksList.length);
     } catch (e: any) {
-      console.error("OngoingTasksSummary: Error loading tasks from Firestore:", e.message, e.stack);
+      console.error("OngoingTasksSummary: Error loading tasks from Firestore:", e.message, e.stack, e);
       setAllTasks([]);
-      toast({ title: "Erreur chargement Tâches (Résumé)", description: e.message || "Détails dans la console.", variant: "destructive" });
+      toast({ title: "Erreur chargement Tâches (Résumé)", description: `${e.message || 'Détails dans la console.'} Code: ${e.code || 'N/A'}`, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -158,8 +181,8 @@ export default function OngoingTasksSummary() {
         {ongoingTasks.length > 0 ? (
           <ScrollArea className="h-[220px] sm:h-[240px] pr-3">
             <ul className="space-y-2.5">
-              {ongoingTasks.slice(0, 5).map((task) => { // Display up to 5 tasks
-                const lastStatusEntry = task.statusHistory.length > 0 ? task.statusHistory[task.statusHistory.length - 1] : null;
+              {ongoingTasks.slice(0, 5).map((task) => { 
+                const lastStatusEntry = task.statusHistory && task.statusHistory.length > 0 ? task.statusHistory[task.statusHistory.length - 1] : null;
                 const lastNotes = lastStatusEntry?.notes;
                 return (
                   <li key={task.id} className="p-2 border rounded-md bg-card/60 hover:bg-muted/30 text-sm">
@@ -180,7 +203,7 @@ export default function OngoingTasksSummary() {
                         </p>
                       </div>
                     )}
-                    {task.currentStatus === 'rendez_vous' && task.appointmentDate && (
+                    {task.currentStatus === 'rendez_vous' && task.appointmentDate && isValid(new Date(task.appointmentDate)) && (
                        <p className="text-xs text-primary/80 mt-1">
                          RDV: {format(new Date(task.appointmentDate), "dd/MM/yyyy", { locale: fr })}
                        </p>

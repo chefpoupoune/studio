@@ -1,15 +1,15 @@
+
 {
   "indexes": [
     {
-      "collectionGroup": "taskManagementTasks",
-      "queryScope": "COLLECTION_GROUP",
+      "collectionId": "taskManagementTasks",
+      "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "updatedAt", "order": "ASCENDING" },
-        { "fieldPath": "currentStatus", "order": "ASCENDING" }
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "inventoryPurchaseOrders",
+      "collectionId": "inventoryPurchaseOrders",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "status", "order": "ASCENDING" },
