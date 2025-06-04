@@ -4,15 +4,15 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Users, User, Clock, AlertCircle, TrendingUp, TrendingDown, Scale } from "lucide-react";
+import { Users, User, Clock, AlertCircle, TrendingUp, TrendingDown, Scale, Loader2 } from "lucide-react";
 import type { BrigadeMember, TimeEntry } from '@/app/dashboard/time-tracking/types';
 import type { ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management';
-import { LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY } from '@/app/dashboard/settings/components/user-management'; // Import the key
+import { LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY } from '@/app/dashboard/settings/components/user-management';
+import { firestore } from '@/lib/firebase';
+import { collection, query, orderBy, getDocs, Timestamp } from 'firebase/firestore';
+import { useToast } from '@/hooks/use-toast';
 
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
-// LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY removed from local definition
-const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2'; // Ensure this matches saving key
-const TIME_ENTRIES_STORAGE_KEY = 'time_tracking_entries';
 
 interface MemberHours {
   memberId: string;
@@ -31,39 +31,61 @@ export default function EmployeeHoursSummary() {
   const [allTimeEntries, setAllTimeEntries] = useState<TimeEntry[]>([]);
   const [processedHours, setProcessedHours] = useState<MemberHours[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
-  const loadData = useCallback(() => {
+  const loadData = useCallback(async () => {
     if (!isClient) return;
     console.log("EmployeeHoursSummary: loadData triggered");
     setIsLoading(true);
     try {
       const username = localStorage.getItem(LOGGED_IN_USERNAME_KEY);
       setLoggedInUsername(username);
+      console.log(`EmployeeHoursSummary: Logged in username set to: ${username}`);
 
       const configRaw = localStorage.getItem(LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY);
-      setViewConfig(configRaw ? JSON.parse(configRaw) : { type: 'none' });
+      const parsedConfig = configRaw ? JSON.parse(configRaw) : { type: 'none' };
+      setViewConfig(parsedConfig);
+      console.log("EmployeeHoursSummary: View config set to:", parsedConfig);
 
-      const membersRaw = localStorage.getItem(BRIGADE_MEMBERS_STORAGE_KEY);
-      setAllMembers(membersRaw ? JSON.parse(membersRaw) : []);
+      console.log("EmployeeHoursSummary: Fetching brigade members from Firestore...");
+      const membersCollectionRef = collection(firestore, 'brigadeMembers');
+      const qMembers = query(membersCollectionRef, orderBy("name"));
+      const memberQuerySnapshot = await getDocs(qMembers, { source: 'server' }); // Force server read
+      const membersList = memberQuerySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as BrigadeMember));
+      setAllMembers([...membersList]); // Ensure new array reference
+      console.log(`EmployeeHoursSummary: Fetched ${membersList.length} members. First few:`, membersList.slice(0,2).map(m => m.name));
 
-      const entriesRaw = localStorage.getItem(TIME_ENTRIES_STORAGE_KEY);
-      const parsedEntries = entriesRaw ? JSON.parse(entriesRaw).map((e: any) => ({ ...e, date: new Date(e.date) })) : [];
-      setAllTimeEntries(parsedEntries);
-      console.log("EmployeeHoursSummary: Data re-loaded from localStorage.");
-    } catch (e) {
-      console.error("EmployeeHoursSummary: Error loading data for EmployeeHoursSummary:", e);
-      setViewConfig({ type: 'none' }); // Reset to safe state
+      console.log("EmployeeHoursSummary: Fetching time entries from Firestore...");
+      const entriesCollectionRef = collection(firestore, 'timeTrackingEntries');
+      const qEntries = query(entriesCollectionRef, orderBy("date", "desc"));
+      const entryQuerySnapshot = await getDocs(qEntries, { source: 'server' }); // Force server read
+      const parsedEntries = entryQuerySnapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          date: (data.date as Timestamp).toDate(), // Convert Firestore Timestamp to JS Date
+        } as TimeEntry;
+      });
+      setAllTimeEntries([...parsedEntries]); // Ensure new array reference
+      console.log(`EmployeeHoursSummary: Fetched ${parsedEntries.length} entries. First few:`, parsedEntries.slice(0,2).map(e => `${e.memberName} ${e.hours}h on ${e.date.toISOString().substring(0,10)}`));
+      
+      console.log("EmployeeHoursSummary: Data loaded from Firestore.");
+    } catch (e: any) {
+      console.error("EmployeeHoursSummary: Error loading data for EmployeeHoursSummary from Firestore:", e);
+      toast({ title: "Erreur chargement récap. heures", description: "Les données n'ont pu être récupérées.", variant: "destructive" });
+      setViewConfig({ type: 'none' }); 
       setAllMembers([]);
       setAllTimeEntries([]);
     } finally {
       setIsLoading(false);
       console.log("EmployeeHoursSummary: loadData finished, isLoading set to false.");
     }
-  }, [isClient, setIsLoading, setLoggedInUsername, setViewConfig, setAllMembers, setAllTimeEntries]);
+  }, [isClient, setIsLoading, setViewConfig, setAllMembers, setAllTimeEntries, setLoggedInUsername, toast]);
 
   useEffect(() => {
     if (isClient) {
@@ -84,24 +106,39 @@ export default function EmployeeHoursSummary() {
         console.log("EmployeeHoursSummary: timeEntriesUpdated event received, re-fetching data.");
         loadData();
       };
+      const handleHourViewConfigUpdated = () => {
+        console.log("EmployeeHoursSummary: loggedInUserHourViewConfigUpdated event received, re-fetching data.");
+        loadData();
+      };
 
       document.addEventListener('visibilitychange', handleVisibilityChange);
       window.addEventListener('brigadeMembersUpdated', handleBrigadeMembersUpdated);
       window.addEventListener('timeEntriesUpdated', handleTimeEntriesUpdated);
+      window.addEventListener('loggedInUserHourViewConfigUpdated', handleHourViewConfigUpdated);
 
       return () => {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
         window.removeEventListener('brigadeMembersUpdated', handleBrigadeMembersUpdated);
         window.removeEventListener('timeEntriesUpdated', handleTimeEntriesUpdated);
+        window.removeEventListener('loggedInUserHourViewConfigUpdated', handleHourViewConfigUpdated);
       };
     }
   }, [isClient, loadData]);
 
   useEffect(() => {
-    if (isLoading || !viewConfig || !isClient) { 
+    console.log(`EmployeeHoursSummary: Processing effect. isLoading: ${isLoading}, isClient: ${isClient}, viewConfig: ${!!viewConfig}, allMembers len: ${allMembers.length}, allTimeEntries len: ${allTimeEntries.length}`);
+    if (!isClient || !viewConfig) {
       setProcessedHours([]);
+      console.log("EmployeeHoursSummary: Bailing from processing (not client or no viewConfig).");
       return;
     }
+
+    if (isLoading) { 
+      console.log("EmployeeHoursSummary: Bailing from processing (isLoading is true).");
+      // Not clearing processedHours here to avoid flicker; old data shown while loading
+      return;
+    }
+    
     console.log("EmployeeHoursSummary: Processing hours. Members:", allMembers.length, "Entries:", allTimeEntries.length, "ViewConfig:", viewConfig);
 
     const calculateHoursForMember = (memberId: string): Omit<MemberHours, 'name' | 'role' | 'memberId'> => {
@@ -135,7 +172,8 @@ export default function EmployeeHoursSummary() {
     console.log("EmployeeHoursSummary: Processed hours:", hoursToDisplay.length > 0 ? hoursToDisplay : "None to display");
   }, [viewConfig, loggedInUsername, allMembers, allTimeEntries, isLoading, isClient]);
 
-  if (!isClient || isLoading) {
+
+  if (!isClient) { // Initial render on server or before client-side hydration
     return (
       <Card className="shadow-lg h-full flex flex-col">
         <CardHeader className="pb-3">
@@ -143,16 +181,24 @@ export default function EmployeeHoursSummary() {
             <Clock className="w-5 h-5 text-primary" />
             Récapitulatif Heures
           </CardTitle>
-          <CardDescription className="text-xs">Chargement des données...</CardDescription>
+          <CardDescription className="text-xs">Chargement initial...</CardDescription>
         </CardHeader>
         <CardContent className="flex-grow pt-2 flex items-center justify-center">
-          <p className="text-sm text-muted-foreground">Chargement...</p>
+           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </CardContent>
       </Card>
     );
   }
   
   const renderContent = () => {
+    if (isLoading && processedHours.length === 0) { // Show loading state only if there's no data to display yet
+        return (
+            <div className="flex flex-col items-center justify-center h-full py-4">
+                <Loader2 className="h-6 w-6 animate-spin text-primary mb-2" />
+                <p className="text-sm text-muted-foreground">Chargement des heures...</p>
+            </div>
+        );
+    }
     if (viewConfig?.type === 'none') {
       return <p className="text-sm text-muted-foreground text-center py-4 flex items-center justify-center gap-2"><AlertCircle className="w-4 h-4" /> Accès aux récapitulatifs d'heures non configuré.</p>;
     }
@@ -165,7 +211,7 @@ export default function EmployeeHoursSummary() {
             const memberName = allMembers.find(m => m.id === viewConfig.specificMemberId)?.name || "l'employé spécifié";
             return <p className="text-sm text-muted-foreground text-center py-4 flex items-center justify-center gap-2"><AlertCircle className="w-4 h-4" /> Aucune heure enregistrée pour {memberName}.</p>;
         }
-      return <p className="text-sm text-muted-foreground text-center py-4 flex items-center justify-center gap-2"><AlertCircle className="w-4 h-4" /> Aucune donnée d'heure à afficher.</p>;
+      return <p className="text-sm text-muted-foreground text-center py-4 flex items-center justify-center gap-2"><AlertCircle className="w-4 h-4" /> Aucune donnée d'heure à afficher pour la configuration actuelle.</p>;
     }
 
     if (viewConfig?.type === 'all') {
