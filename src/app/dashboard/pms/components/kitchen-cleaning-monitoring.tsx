@@ -4,7 +4,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-// Removed Textarea as notes are removed
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -15,7 +14,7 @@ import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
-import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord, PmsZoneWithTasksDefinition, PmsTaskDefinition } from '../types';
+import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord, PmsZoneWithTasksDefinition, PmsTaskDefinition, PmsConfigurations } from '../types';
 import { PMS_KITCHEN_CLEANING_KEY, PMS_CONFIG_STORAGE_KEY } from '@/app/dashboard/settings/types';
 import { NO_STATUS_SELECT_VALUE } from '../types';
 import { getMonthDays, type DayData } from '../utils';
@@ -46,77 +45,135 @@ export default function KitchenCleaningMonitoring() {
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
-  const getFirestoreDocId = useCallback(() => `records_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
+  const getFirestoreRecordsDocId = useCallback(() => `records_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
 
-  useEffect(() => {
-    const loadInitialData = async () => {
-      setIsLoading(true);
-      try {
-        // Load PMS configurations (zones and tasks) from localStorage
-        const pmsSettingsRaw = localStorage.getItem(PMS_CONFIG_STORAGE_KEY);
-        if (pmsSettingsRaw) {
-          const pmsSettings = JSON.parse(pmsSettingsRaw);
-          const kitchenZones = pmsSettings[PMS_KITCHEN_CLEANING_KEY] || [];
-          setConfiguredZones(kitchenZones);
-          if (!selectedZoneId && kitchenZones.length > 0) {
-            setSelectedZoneId(kitchenZones[0].id);
-          } else if (selectedZoneId && !kitchenZones.find((z: PmsZoneWithTasksDefinition) => z.id === selectedZoneId)) {
-            setSelectedZoneId(kitchenZones.length > 0 ? kitchenZones[0].id : undefined);
-          }
-        } else {
-          setConfiguredZones([]);
-          setSelectedZoneId(undefined);
-        }
-
-        // Generate month days structure
-        const yearNum = parseInt(selectedYear, 10);
-        const monthNum = parseInt(selectedMonth, 10);
-        setMonthData(getMonthDays(yearNum, monthNum));
-
-        // Load cleaning records from Firestore
-        const docId = getFirestoreDocId();
-        const docRef = doc(firestore, "pmsKitchenCleaningRecords", docId);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setCleaningRecords(docSnap.data() as SimplifiedMonthlyKitchenCleaningRecord);
-        } else {
-          setCleaningRecords({}); // No records for this month yet
-        }
-      } catch (error) {
-        console.error("Error loading initial data:", error);
-        toast({ title: "Erreur de chargement", description: "Impossible de charger les configurations ou les enregistrements.", variant: "destructive" });
+  const loadPmsConfigurations = useCallback(async () => {
+    setIsLoading(true); // Indicate loading started for configurations
+    console.log("[KitchenClean] Loading PMS configurations...");
+    const docRef = doc(firestore, "pmsConfigurations", "mainConfig");
+    try {
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const pmsSettings = docSnap.data() as PmsConfigurations;
+        const kitchenZones = pmsSettings[PMS_KITCHEN_CLEANING_KEY] || [];
+        setConfiguredZones(kitchenZones);
+        console.log("[KitchenClean] PMS configurations loaded:", kitchenZones.length, "zones");
+      } else {
         setConfiguredZones([]);
-        setSelectedZoneId(undefined);
-        setCleaningRecords({});
+        console.log("[KitchenClean] No PMS configurations found in Firestore.");
+        toast({ title: "Configuration Manquante", description: "Aucune configuration PMS trouvée. Veuillez la définir dans les paramètres.", variant: "destructive" });
       }
-      setIsLoading(false);
-    };
-    loadInitialData();
-  }, [selectedYear, selectedMonth, getFirestoreDocId, toast]);
+    } catch (error) {
+      console.error("Error loading PMS configurations for kitchen cleaning:", error);
+      toast({ title: "Erreur Chargement Config", description: "Impossible de charger les configurations des zones.", variant: "destructive" });
+      setConfiguredZones([]);
+    }
+    // setIsLoading(false) will be set after records are loaded or if no zone is selected
+  }, [toast]);
 
+  const loadCleaningRecords = useCallback(async () => {
+    if (!selectedZoneId) {
+      setCleaningRecords({});
+      setIsLoading(false); // Ensure loading is false if no zone is selected
+      console.log("[KitchenClean] No zone selected, records not loaded, loading finished.");
+      return;
+    }
+    setIsLoading(true); // Indicate loading started for records
+    console.log(`[KitchenClean] Loading cleaning records for zone ${selectedZoneId}, period ${selectedYear}-${selectedMonth}`);
+    const docId = getFirestoreRecordsDocId();
+    const docRef = doc(firestore, "pmsKitchenCleaningRecords", docId);
+    try {
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        setCleaningRecords(docSnap.data() as SimplifiedMonthlyKitchenCleaningRecord);
+        console.log("[KitchenClean] Cleaning records loaded.");
+      } else {
+        setCleaningRecords({});
+        console.log("[KitchenClean] No cleaning records found for this period.");
+      }
+    } catch (error) {
+      console.error("Error loading kitchen cleaning records:", error);
+      toast({ title: "Erreur Chargement Enregistrements", description: "Impossible de charger les enregistrements de nettoyage.", variant: "destructive" });
+      setCleaningRecords({});
+    }
+    setIsLoading(false); // Overall loading done
+    console.log("[KitchenClean] Cleaning records loading process finished.");
+  }, [selectedZoneId, selectedYear, selectedMonth, getFirestoreRecordsDocId, toast]);
+
+  // Effect 1: Load configurations on initial mount or when event 'pmsConfigUpdated' fires
   useEffect(() => {
-    if (isLoading || isSaving) return;
+    loadPmsConfigurations();
+    const handleConfigUpdate = () => {
+      console.log(`[KitchenCleaning] Received pmsConfigUpdated event. Refetching configurations.`);
+      loadPmsConfigurations();
+    };
+    window.addEventListener('pmsConfigUpdated', handleConfigUpdate);
+    return () => window.removeEventListener('pmsConfigUpdated', handleConfigUpdate);
+  }, [loadPmsConfigurations]);
+
+  // Effect 2: Update selectedZoneId when configurations change or selection becomes invalid
+  useEffect(() => {
+    console.log("[KitchenClean] Evaluating selectedZoneId. Current:", selectedZoneId, "Available zones:", configuredZones.length);
+    if (configuredZones.length > 0) {
+      const currentSelectionIsValid = selectedZoneId && configuredZones.some(z => z.id === selectedZoneId);
+      if (!currentSelectionIsValid) {
+        const newSelectedId = configuredZones[0].id;
+        console.log("[KitchenClean] Invalid or no selectedZoneId, setting to first available zone:", newSelectedId);
+        setSelectedZoneId(newSelectedId);
+      } else {
+        console.log("[KitchenClean] selectedZoneId is still valid:", selectedZoneId);
+      }
+    } else {
+      console.log("[KitchenClean] No configured zones, clearing selectedZoneId.");
+      setSelectedZoneId(undefined);
+    }
+  }, [configuredZones, selectedZoneId]); // Re-evaluate if selectedZoneId itself changes elsewhere, or configs change.
+
+  // Effect 3: Load/reload cleaning records when selectedZoneId or period (year/month) changes
+  useEffect(() => {
+    const yearNum = parseInt(selectedYear, 10);
+    const monthNum = parseInt(selectedMonth, 10);
+    setMonthData(getMonthDays(yearNum, monthNum));
+    console.log(`[KitchenClean] Month data (days structure) generated for ${selectedYear}-${selectedMonth}.`);
+
+    if (selectedZoneId) {
+      console.log(`[KitchenClean] Triggering record load for zone: ${selectedZoneId}`);
+      loadCleaningRecords();
+    } else {
+      console.log("[KitchenClean] No zone selected. Clearing records and setting loading to false.");
+      setCleaningRecords({}); // Clear records if no zone is selected
+      setIsLoading(false); 
+    }
+  }, [selectedZoneId, selectedYear, selectedMonth, loadCleaningRecords]);
+
+  // Effect 4: Debounced save for cleaningRecords
+  useEffect(() => {
+    if (isLoading || isSaving) return; // Don't save if initial loading or already saving
 
     const saveRecordsToFirestore = async () => {
+      if (Object.keys(cleaningRecords).length === 0 && !doc(firestore, "pmsKitchenCleaningRecords", getFirestoreRecordsDocId())) {
+        console.log("[KitchenClean SaveDebounce] No records to save and no existing document, skipping save.");
+        return;
+      }
+      
       setIsSaving(true);
-      const docId = getFirestoreDocId();
+      console.log("[KitchenClean SaveDebounce] Attempting to save cleaning records to Firestore for doc:", getFirestoreRecordsDocId());
+      const docId = getFirestoreRecordsDocId();
       const docRef = doc(firestore, "pmsKitchenCleaningRecords", docId);
       try {
         await setDoc(docRef, cleaningRecords);
-        // Optional: toast for successful save, can be very frequent
-        // toast({ title: "Données sauvegardées", description: "Les enregistrements de nettoyage ont été sauvegardés."});
+        console.log("[KitchenClean SaveDebounce] Records saved successfully.");
       } catch (error) {
         console.error("Error saving kitchen cleaning records to Firestore:", error);
-        toast({ title: "Erreur de Sauvegarde", description: "Impossible d'enregistrer les données de nettoyage.", variant: "destructive" });
+        toast({ title: "Erreur de Sauvegarde (Net. Cuisine)", description: "Impossible d'enregistrer les données.", variant: "destructive" });
       }
       setIsSaving(false);
     };
 
-    // Debounce saving
-    const timeoutId = setTimeout(saveRecordsToFirestore, 1500);
+    const timeoutId = setTimeout(saveRecordsToFirestore, 2000); // Increased debounce time
     return () => clearTimeout(timeoutId);
+  }, [cleaningRecords, isLoading, isSaving, getFirestoreRecordsDocId, toast]);
 
-  }, [cleaningRecords, isLoading, isSaving, getFirestoreDocId, toast]);
 
   const handleRecordChange = (date: string, zoneId: string, taskId: string, field: keyof SimplifiedTaskRecord, value: string) => {
     const recordKey = `${date}_${zoneId}_${taskId}`;
@@ -137,11 +194,11 @@ export default function KitchenCleaningMonitoring() {
   const handleClearMonthData = async () => {
     if (confirm(`Êtes-vous sûr de vouloir effacer toutes les données de nettoyage cuisine pour ${monthsArray[parseInt(selectedMonth)].label} ${selectedYear} ? Cette action est irréversible.`)) {
       setIsSaving(true);
-      const docId = getFirestoreDocId();
+      const docId = getFirestoreRecordsDocId();
       const docRef = doc(firestore, "pmsKitchenCleaningRecords", docId);
       try {
-        await setDoc(docRef, {}); // Overwrite with an empty object
-        setCleaningRecords({}); // Update local state
+        await setDoc(docRef, {}); 
+        setCleaningRecords({}); 
         toast({ title: "Données Effacées", description: `Les données de nettoyage cuisine pour ${monthsArray[parseInt(selectedMonth)].label} ${selectedYear} ont été effacées de Firestore.` });
       } catch (error) {
         console.error("Error clearing month data in Firestore:", error);
@@ -160,7 +217,7 @@ export default function KitchenCleaningMonitoring() {
       toast({ title: "Aucune Zone Sélectionnée", description: "Veuillez sélectionner une zone pour générer le PDF.", variant: "destructive" });
       return;
     }
-    setIsLoading(true); // Use global isLoading for PDF generation to indicate activity
+    setIsLoading(true); 
     try {
       const pdfSettings = getPdfLayoutSettings('pms_kitchen_cleaning_monthly');
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
@@ -228,14 +285,13 @@ export default function KitchenCleaningMonitoring() {
         columnStyles[currentColumnIndex++] = { cellWidth: 30, halign: 'center' }; // Opérateur
       });
 
-
       doc.autoTable({
         startY: currentY,
         head: head,
         body: body,
         theme: 'grid',
-        headStyles: { ...headStyles, halign: 'center', fontSize: 8, cellPadding: 1 }, // Smaller font for header
-        styles: { fontSize: 7, cellPadding: 1 }, // Smaller font for body
+        headStyles: { ...headStyles, halign: 'center', fontSize: 8, cellPadding: 1 },
+        styles: { fontSize: 7, cellPadding: 1 },
         columnStyles: columnStyles,
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
@@ -270,14 +326,14 @@ export default function KitchenCleaningMonitoring() {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-end mb-4">
           <div>
             <Label htmlFor="year-select-kitchen-cleaning">Année</Label>
-            <Select value={selectedYear} onValueChange={setSelectedYear}>
+            <Select value={selectedYear} onValueChange={setSelectedYear} disabled={isLoading || isSaving}>
               <SelectTrigger id="year-select-kitchen-cleaning"><SelectValue placeholder="Année" /></SelectTrigger>
               <SelectContent>{yearsArray.map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div>
             <Label htmlFor="month-select-kitchen-cleaning">Mois</Label>
-            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+            <Select value={selectedMonth} onValueChange={setSelectedMonth} disabled={isLoading || isSaving}>
               <SelectTrigger id="month-select-kitchen-cleaning"><SelectValue placeholder="Mois" /></SelectTrigger>
               <SelectContent>{monthsArray.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
             </Select>
@@ -294,8 +350,8 @@ export default function KitchenCleaningMonitoring() {
           </div>
         </div>
         
-        {isLoading ? (
-          <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /> Chargement...</div>
+        {isLoading && configuredZones.length === 0 ? ( // Show loader only when initially loading configs
+          <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /> Chargement des configurations...</div>
         ) : configuredZones.length === 0 ? (
            <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
             <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -317,6 +373,7 @@ export default function KitchenCleaningMonitoring() {
                     variant={selectedZoneId === zone.id ? "default" : "outline"}
                     onClick={() => setSelectedZoneId(zone.id)}
                     size="sm"
+                    disabled={isLoading || isSaving}
                   >
                     {zone.name}
                   </Button>
@@ -324,7 +381,9 @@ export default function KitchenCleaningMonitoring() {
               </div>
             </div>
 
-            {!selectedZoneId ? (
+            {isLoading && selectedZoneId ? ( // Show loader when records for a selected zone are loading
+                 <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /> Chargement des enregistrements pour "{selectedZoneData?.name}"...</div>
+            ) : !selectedZoneId ? (
               <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
                   <ListFilter className="mx-auto h-12 w-12 text-muted-foreground" />
                   <p className="mt-2 text-sm text-muted-foreground">
@@ -394,7 +453,7 @@ export default function KitchenCleaningMonitoring() {
                           );
                         }) : (
                            <TableCell className="p-1 align-top border-l text-center text-xs text-muted-foreground italic" colSpan={1}>
-                             Aucune tâche à afficher pour cette zone.
+                             Aucune tâche à afficher.
                            </TableCell>
                         )}
                       </TableRow>
@@ -422,4 +481,3 @@ export default function KitchenCleaningMonitoring() {
   );
 }
 
-    
