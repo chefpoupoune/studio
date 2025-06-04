@@ -9,8 +9,8 @@
       ]
     },
     {
-      "collectionId": "inventoryPurchaseOrders",
-      "queryScope": "COLLECTION",
+      "collectionGroup": "inventoryPurchaseOrders",
+      "queryScope": "COLLECTION_GROUP",
       "fields": [
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "date", "order": "DESCENDING" },
