@@ -40,8 +40,6 @@ interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
 }
 
-// DEFROSTING_LOG_STORAGE_KEY removed
-
 const defrostingEntrySchema = z.object({
   defrostStartDate: z.date({ required_error: "Date de début de décongélation requise." }),
   defrostStartTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Format HH:MM requis."),
@@ -159,16 +157,24 @@ export default function DefrostingMonitoring() {
   };
 
   const handleDeleteEntry = async (entryId: string) => {
-    setIsLoading(true);
+    const originalEntries = [...entries];
+    setEntries(prevEntries => prevEntries.filter(e => e.id !== entryId));
+    toast({ title: "Suppression en cours...", description: "L'élément est retiré de la vue.", duration: 2000 });
+
     try {
       await deleteDoc(doc(firestore, 'pmsDefrostingLog', entryId));
-      toast({ title: "Enregistrement Supprimé", variant: "destructive" });
-      fetchDefrostingEntries();
+      toast({ title: "Enregistrement Supprimé", description: "L'élément a été supprimé de la base de données.", variant: "default" });
+      // Optionally re-fetch for absolute consistency, though optimistic update handles UI.
+      // fetchDefrostingEntries(); 
     } catch (error) {
       console.error("Error deleting defrosting entry from Firestore:", error);
-      toast({ title: "Erreur de Suppression", variant: "destructive"});
-    } finally {
-      setIsLoading(false);
+      toast({ 
+        title: "Erreur de Suppression", 
+        description: `La suppression a échoué. Restauration de l'élément. Détail: ${error instanceof Error ? error.message : String(error)}`, 
+        variant: "destructive",
+        duration: 5000,
+      });
+      setEntries(originalEntries); // Rollback UI
     }
   };
   
@@ -248,7 +254,7 @@ export default function DefrostingMonitoring() {
 
   const columnHeaderStyle = (color: string) => ({
     backgroundColor: color,
-    color: '#000000', // Black text color
+    color: '#000000', 
     fontWeight: 'bold' as 'bold',
     textAlign: 'center' as 'center',
     padding: '4px 2px',
@@ -397,4 +403,3 @@ export default function DefrostingMonitoring() {
   );
 }
 
-    
