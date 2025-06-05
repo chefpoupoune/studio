@@ -36,21 +36,21 @@ const monthsArray = Array.from({ length: 12 }, (_, i) => ({
 
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
-// --- CONFIGURABLE TABLE PARAMETERS (Pixel-like values) ---
-const ROW_HEIGHT_TEMP_PX = 4;        // Target height for temperature rows (e.g., 4px -> h-1)
-const ROW_HEIGHT_INPUT_PX = 10;       // Target height for input rows (e.g., 10px -> h-2.5)
+// --- CONFIGURABLE TABLE PARAMETERS ---
+// Adjusted for Checkbox visibility
+const ROW_HEIGHT_TEMP_PX = 16;        // h-4 Tailwind (16px)
+const ROW_HEIGHT_INPUT_PX = 16;       // h-4 Tailwind (16px) for Heure/Opérateur
 
-const FONT_SIZE_TEMP_VALUES_PX = 4;  // For T°C values in the second column
-const FONT_SIZE_X_MARK_PX = 3;       // For 'X' marks in the cells
-const FONT_SIZE_DAY_HEADER_PX = 5;   // For day headers (1 L, 2 M, etc.)
-const FONT_SIZE_INPUT_FIELDS_PX = 6; // For Heure/Opérateur inputs
-const FONT_SIZE_ZONE_LABEL_PX = 4;   // For vertical zone labels
+const FONT_SIZE_TEMP_VALUES_PX = 7;  // For T°C values
+const FONT_SIZE_X_MARK_PX = 6;       // For PDF "Oui/-" text, no longer for UI "X"
+const FONT_SIZE_DAY_HEADER_PX = 7;   // For day headers (1 L, etc.)
+const FONT_SIZE_INPUT_FIELDS_PX = 7; // For Heure/Opérateur inputs
+const FONT_SIZE_ZONE_LABEL_PX = 6;   // For vertical zone labels
 
-const COL_WIDTH_ZONE_PX = 10;        // Width for the "Zone" column (e.g., 10px -> w-2.5)
-const COL_WIDTH_TEMP_VALUE_PX = 10;   // Width for the "T°C" value column (e.g., 10px -> w-2.5)
-const COL_WIDTH_DAY_PX = 6;          // Width for each day column (e.g., 6px -> w-1.5)
+const COL_WIDTH_ZONE_PX = 16;        // w-4 Tailwind (16px)
+const COL_WIDTH_TEMP_VALUE_PX = 16;  // w-4 Tailwind (16px)
+const COL_WIDTH_DAY_PX = 16;         // w-4 Tailwind (16px)
 // --- END CONFIGURABLE TABLE PARAMETERS ---
-
 
 interface TempZoneStyle {
   label: string;
@@ -270,34 +270,46 @@ export default function TemperatureMonitoring() {
   }, [temperatureRecords, isLoading, isSaving, selectedYear, selectedMonth, toast, getFirestoreRecordsDocId]);
 
 
- const handleTempCellClick = (dateStr: string, equipmentId: string, tempValue: number) => {
+ const handleTempCellClick = (dateStr: string, equipmentId: string, tempValueToMark: number | undefined) => {
     const recordKey = `${dateStr}_${equipmentId}`;
     setTemperatureRecords(prev => {
-      const currentRecord = prev[recordKey] || { time: '', operator: '' };
-      const newMarkedValue = currentRecord.markedTemperatureValue === tempValue ? undefined : tempValue;
-      let newTime = currentRecord.time;
-      let newOperator = currentRecord.operator;
+        const currentRecordForDay = prev[recordKey] || { time: '', operator: '', markedTemperatureValue: undefined };
+        let newMarkedValue: number | undefined;
 
-      if (newMarkedValue !== undefined ) { 
-        if (!currentRecord.time || currentRecord.markedTemperatureValue === undefined ) { 
-            newTime = format(new Date(), 'HH:mm');
+        if (tempValueToMark !== undefined) { // Checkbox is being checked
+            newMarkedValue = tempValueToMark;
+        } else { // Checkbox is being unchecked (value passed as undefined)
+            newMarkedValue = undefined;
         }
-        if (!currentRecord.operator || currentRecord.markedTemperatureValue === undefined) { 
-           newOperator = loggedInUsername || '';
-        }
-      } else if (newMarkedValue === undefined && currentRecord.markedTemperatureValue === tempValue) { 
-        newTime = ''; 
-        newOperator = '';
-      }
 
-      return {
-        ...prev,
-        [recordKey]: {
-          markedTemperatureValue: newMarkedValue,
-          time: newTime,
-          operator: newOperator,
+        let newTime = currentRecordForDay.time;
+        let newOperator = currentRecordForDay.operator;
+
+        if (newMarkedValue !== undefined) { // If a temperature is now marked for the day
+            if (!newTime) { 
+                newTime = format(new Date(), 'HH:mm');
+            }
+            if (!newOperator) { 
+                newOperator = loggedInUsername || '';
+            }
+        } else { // If no temperature is marked for the day after this action
+            newTime = '';
+            newOperator = '';
         }
-      };
+        
+        if (newMarkedValue === undefined && newTime === '' && newOperator === '') {
+            const {[recordKey]: _, ...restRecords} = prev; 
+            return restRecords;
+        }
+
+        return {
+            ...prev,
+            [recordKey]: {
+                markedTemperatureValue: newMarkedValue,
+                time: newTime,
+                operator: newOperator,
+            }
+        };
     });
   };
   
@@ -395,7 +407,7 @@ export default function TemperatureMonitoring() {
           monthData.forEach(day => {
             const record = getRecord(day.date, selectedEquipmentData.id);
             row.push({
-              content: record.markedTemperatureValue === tempVal ? 'X' : '',
+              content: record.markedTemperatureValue === tempVal ? 'Oui' : '-', // Changed from 'X'
               styles: { halign: 'center', fontSize: FONT_SIZE_X_MARK_PX, cellPadding: 0.2, cellWidth: COL_WIDTH_DAY_PX, fillColor: day.isWeekend ? [230,230,230] : undefined } 
             });
           });
@@ -517,16 +529,27 @@ export default function TemperatureMonitoring() {
                                 <TableCell
                                     key={day.date}
                                     className={cn(
-                                        "text-center p-0 h-auto leading-none", 
+                                        "text-center p-0 h-auto leading-none cursor-pointer", 
                                         `w-[${COL_WIDTH_DAY_PX}px]`,
                                         `h-[${ROW_HEIGHT_TEMP_PX}px]`, 
-                                        day.isWeekend && "bg-muted/25", 
-                                        isMarked && "bg-primary text-primary-foreground"
+                                        day.isWeekend && "bg-muted/25 cursor-not-allowed",
+                                        !day.isWeekend && "hover:bg-primary/10"
                                     )}
                                     style={{ padding: '0px', height: `${ROW_HEIGHT_TEMP_PX}px` }}
-                                    onClick={() => !day.isWeekend && handleTempCellClick(day.date, selectedEquipmentData.id, tempValue)}
+                                    onClick={() => !day.isWeekend && handleTempCellClick(day.date, selectedEquipmentData.id, isMarked ? undefined : tempValue)}
                                 >
-                                    {isMarked ? <span className="font-bold align-middle leading-none" style={{fontSize: `${FONT_SIZE_X_MARK_PX}px`, lineHeight: '1'}}>X</span> : "\u00A0"}
+                                  <div className="flex items-center justify-center h-full w-full">
+                                    <Checkbox
+                                        checked={isMarked}
+                                        onCheckedChange={(checkedState) => {
+                                            if (!day.isWeekend) {
+                                                handleTempCellClick(day.date, selectedEquipmentData.id, checkedState ? tempValue : undefined);
+                                            }
+                                        }}
+                                        disabled={day.isWeekend || isSaving}
+                                        className={cn("h-3 w-3 sm:h-3.5 sm:w-3.5 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground")}
+                                    />
+                                  </div>
                                 </TableCell>
                                 );
                             })}
