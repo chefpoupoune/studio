@@ -5,18 +5,18 @@ import React, { useState, useEffect, useCallback } from 'react';
 import type { FryerMaintenanceLogEntry, FryerOilTpmLogEntry, LedTpmStatus } from '../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+// Textarea removed as it's not used in the provided schemas
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PlusCircle, Edit2, Trash2, FileText, Loader2, Flame, CalendarIcon as LucideCalendarIcon, Check } from 'lucide-react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { format, parse, parseISO, isValid } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -35,13 +35,15 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { firestore } from '@/lib/firebase';
+import { collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy, Timestamp } from 'firebase/firestore';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
 }
 
-const FRYER_MAINTENANCE_LOG_KEY = "pms_fryer_maintenance_log_v1";
-const FRYER_OIL_TPM_LOG_KEY = "pms_fryer_oil_tpm_log_v1";
+const FIRESTORE_MAINTENANCE_COLLECTION = "pmsFryerMaintenanceLog";
+const FIRESTORE_TPM_COLLECTION = "pmsFryerOilTpmLog";
 
 // Schemas
 const maintenanceLogSchema = z.object({
@@ -58,7 +60,7 @@ type MaintenanceLogFormData = z.infer<typeof maintenanceLogSchema>;
 const tpmLogSchema = z.object({
   date: z.date({ required_error: "Date requise." }),
   operator: z.string().optional(),
-  ledTpmStatus: z.custom<LedTpmStatus>((val) => ['lt_20', '20_24', 'gt_24', ''].includes(val as LedTpmStatus), "Statut LED invalide."),
+  ledTpmStatus: z.custom<LedTpmStatus>((val) => ['lt_20', '20_24', 'gt_24', ''].includes(val as LedTpmStatus), { message: "Statut LED invalide."}),
   fryerIdentifier: z.string().min(1, "Identifiant friteuse requis."),
   tpmPercentage: z.string().optional(),
 });
@@ -81,30 +83,61 @@ export default function FryerOilOverallMonitoring() {
   const tpmForm = useForm<TpmLogFormData>({ 
     resolver: zodResolver(tpmLogSchema),
     defaultValues: {
-      date: new Date(),
-      operator: '',
-      ledTpmStatus: '',
-      fryerIdentifier: '',
-      tpmPercentage: '',
+      date: new Date(), operator: '', ledTpmStatus: '', fryerIdentifier: '', tpmPercentage: '',
     }
   });
 
-  useEffect(() => {
+  const fetchMaintenanceLogEntries = useCallback(async () => {
     setIsLoading(true);
     try {
-      const storedMaintenance = localStorage.getItem(FRYER_MAINTENANCE_LOG_KEY);
-      if (storedMaintenance) setMaintenanceLog(JSON.parse(storedMaintenance));
-      const storedTpm = localStorage.getItem(FRYER_OIL_TPM_LOG_KEY);
-      if (storedTpm) setTpmLog(JSON.parse(storedTpm));
+      const entriesCollectionRef = collection(firestore, FIRESTORE_MAINTENANCE_COLLECTION);
+      const q = query(entriesCollectionRef, orderBy("useDate", "desc"));
+      const querySnapshot = await getDocs(q);
+      const loadedEntries = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id, ...data,
+          useDate: (data.useDate as Timestamp).toDate().toISOString(),
+          filterDate: data.filterDate ? (data.filterDate as Timestamp).toDate().toISOString() : null,
+          cleaningDate: data.cleaningDate ? (data.cleaningDate as Timestamp).toDate().toISOString() : null,
+          changeDate: data.changeDate ? (data.changeDate as Timestamp).toDate().toISOString() : null,
+        } as FryerMaintenanceLogEntry;
+      });
+      setMaintenanceLog(loadedEntries);
     } catch (error) {
-      console.error("Error loading fryer/oil logs:", error);
-      toast({ title: "Erreur de chargement", description: "Données friteuse/huiles corrompues.", variant: "destructive" });
+      console.error("Error loading maintenance entries:", error);
+      toast({ title: "Erreur chargement maintenance", variant: "destructive" });
+      setMaintenanceLog([]);
     }
     setIsLoading(false);
   }, [toast]);
 
-  useEffect(() => { if (!isLoading) localStorage.setItem(FRYER_MAINTENANCE_LOG_KEY, JSON.stringify(maintenanceLog)); }, [maintenanceLog, isLoading]);
-  useEffect(() => { if (!isLoading) localStorage.setItem(FRYER_OIL_TPM_LOG_KEY, JSON.stringify(tpmLog)); }, [tpmLog, isLoading]);
+  const fetchTpmLogEntries = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const entriesCollectionRef = collection(firestore, FIRESTORE_TPM_COLLECTION);
+      const q = query(entriesCollectionRef, orderBy("date", "desc"));
+      const querySnapshot = await getDocs(q);
+      const loadedEntries = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id, ...data,
+          date: (data.date as Timestamp).toDate().toISOString(),
+        } as FryerOilTpmLogEntry;
+      });
+      setTpmLog(loadedEntries);
+    } catch (error) {
+      console.error("Error loading TPM entries:", error);
+      toast({ title: "Erreur chargement TPM", variant: "destructive" });
+      setTpmLog([]);
+    }
+    setIsLoading(false);
+  }, [toast]);
+
+  useEffect(() => {
+    fetchMaintenanceLogEntries();
+    fetchTpmLogEntries();
+  }, [fetchMaintenanceLogEntries, fetchTpmLogEntries]);
 
   // Maintenance Log Handlers
   const handleOpenMaintenanceDialog = (entry?: FryerMaintenanceLogEntry) => {
@@ -116,72 +149,114 @@ export default function FryerOilOverallMonitoring() {
       cleaningDate: entry.cleaningDate ? parseISO(entry.cleaningDate) : null,
       changeDate: entry.changeDate ? parseISO(entry.changeDate) : null,
     } : { 
-      useDate: new Date(),
-      filterDate: null, filterSignature: '',
-      cleaningDate: null, cleaningSignature: '',
-      changeDate: null, changeSignature: '',
+      useDate: new Date(), filterDate: null, filterSignature: '',
+      cleaningDate: null, cleaningSignature: '', changeDate: null, changeSignature: '',
     });
     setIsMaintenanceDialogOpen(true);
   };
 
-  const handleMaintenanceFormSubmit = (data: MaintenanceLogFormData) => {
-    const entryData = { 
+  const handleMaintenanceFormSubmit = async (data: MaintenanceLogFormData) => {
+    setIsLoading(true);
+    const entryDataForFirestore = { 
       ...data, 
-      useDate: data.useDate.toISOString(),
-      filterDate: data.filterDate ? data.filterDate.toISOString() : null,
-      cleaningDate: data.cleaningDate ? data.cleaningDate.toISOString() : null,
-      changeDate: data.changeDate ? data.changeDate.toISOString() : null,
+      useDate: Timestamp.fromDate(data.useDate),
+      filterDate: data.filterDate ? Timestamp.fromDate(data.filterDate) : null,
+      cleaningDate: data.cleaningDate ? Timestamp.fromDate(data.cleaningDate) : null,
+      changeDate: data.changeDate ? Timestamp.fromDate(data.changeDate) : null,
+      filterSignature: data.filterSignature || null,
+      cleaningSignature: data.cleaningSignature || null,
+      changeSignature: data.changeSignature || null,
     };
-    if (editingMaintenanceEntry) {
-      setMaintenanceLog(prev => prev.map(e => e.id === editingMaintenanceEntry.id ? { ...editingMaintenanceEntry, ...entryData } : e));
-      toast({ title: "Maintenance Modifiée" });
-    } else {
-      setMaintenanceLog(prev => [{ ...entryData, id: `maint_${Date.now()}` }, ...prev].sort((a,b) => new Date(b.useDate).getTime() - new Date(a.useDate).getTime()));
-      toast({ title: "Maintenance Ajoutée" });
+
+    try {
+      if (editingMaintenanceEntry) {
+        const entryDocRef = doc(firestore, FIRESTORE_MAINTENANCE_COLLECTION, editingMaintenanceEntry.id);
+        await setDoc(entryDocRef, entryDataForFirestore);
+        toast({ title: "Maintenance Modifiée" });
+      } else {
+        await addDoc(collection(firestore, FIRESTORE_MAINTENANCE_COLLECTION), entryDataForFirestore);
+        toast({ title: "Maintenance Ajoutée" });
+      }
+      fetchMaintenanceLogEntries();
+    } catch (error) {
+      console.error("Error saving maintenance entry to Firestore:", error);
+      toast({ title: "Erreur Sauvegarde Maintenance", variant: "destructive"});
+    } finally {
+      setIsLoading(false);
+      setIsMaintenanceDialogOpen(false);
     }
-    setIsMaintenanceDialogOpen(false);
   };
 
-  const handleDeleteMaintenanceEntry = (id: string) => {
-    setMaintenanceLog(prev => prev.filter(e => e.id !== id));
-    toast({ title: "Entrée de Maintenance Supprimée", variant: "destructive" });
+  const handleDeleteMaintenanceEntry = async (id: string) => {
+    setIsLoading(true);
+    try {
+      await deleteDoc(doc(firestore, FIRESTORE_MAINTENANCE_COLLECTION, id));
+      toast({ title: "Entrée de Maintenance Supprimée", variant: "destructive" });
+      fetchMaintenanceLogEntries();
+    } catch (error) {
+      console.error("Error deleting maintenance entry from Firestore:", error);
+      toast({ title: "Erreur Suppression Maintenance", variant: "destructive"});
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // TPM Log Handlers
   const handleOpenTpmDialog = (entry?: FryerOilTpmLogEntry) => {
     setEditingTpmEntry(entry || null);
     tpmForm.reset(entry ? { 
-      ...entry, 
-      date: parseISO(entry.date),
+      ...entry, date: parseISO(entry.date),
       operator: entry.operator || '',
       fryerIdentifier: entry.fryerIdentifier || '',
       tpmPercentage: entry.tpmPercentage || '',
       ledTpmStatus: entry.ledTpmStatus || '',
      } : { 
-      date: new Date(), 
-      operator: '', 
-      ledTpmStatus: '', 
-      fryerIdentifier: '',
-      tpmPercentage: '',
+      date: new Date(), operator: '', ledTpmStatus: '', fryerIdentifier: '', tpmPercentage: '',
      });
     setIsTpmDialogOpen(true);
   };
 
-  const handleTpmFormSubmit = (data: TpmLogFormData) => {
-    const entryData = { ...data, date: data.date.toISOString() };
-    if (editingTpmEntry) {
-      setTpmLog(prev => prev.map(e => e.id === editingTpmEntry.id ? { ...editingTpmEntry, ...entryData } : e));
-      toast({ title: "Contrôle TPM Modifié" });
-    } else {
-      setTpmLog(prev => [{ ...entryData, id: `tpm_${Date.now()}` }, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-      toast({ title: "Contrôle TPM Ajouté" });
+  const handleTpmFormSubmit = async (data: TpmLogFormData) => {
+    setIsLoading(true);
+    const entryDataForFirestore = { 
+      ...data, 
+      date: Timestamp.fromDate(data.date),
+      operator: data.operator || null,
+      fryerIdentifier: data.fryerIdentifier,
+      tpmPercentage: data.tpmPercentage || null,
+      ledTpmStatus: data.ledTpmStatus || null,
+    };
+    try {
+      if (editingTpmEntry) {
+        const entryDocRef = doc(firestore, FIRESTORE_TPM_COLLECTION, editingTpmEntry.id);
+        await setDoc(entryDocRef, entryDataForFirestore);
+        toast({ title: "Contrôle TPM Modifié" });
+      } else {
+        await addDoc(collection(firestore, FIRESTORE_TPM_COLLECTION), entryDataForFirestore);
+        toast({ title: "Contrôle TPM Ajouté" });
+      }
+      fetchTpmLogEntries();
+    } catch (error) {
+      console.error("Error saving TPM entry to Firestore:", error);
+      toast({ title: "Erreur Sauvegarde TPM", variant: "destructive"});
+    } finally {
+      setIsLoading(false);
+      setIsTpmDialogOpen(false);
     }
-    setIsTpmDialogOpen(false);
   };
 
-  const handleDeleteTpmEntry = (id: string) => {
-    setTpmLog(prev => prev.filter(e => e.id !== id));
-    toast({ title: "Contrôle TPM Supprimé", variant: "destructive" });
+  const handleDeleteTpmEntry = async (id: string) => {
+    setIsLoading(true);
+    try {
+      await deleteDoc(doc(firestore, FIRESTORE_TPM_COLLECTION, id));
+      toast({ title: "Contrôle TPM Supprimé", variant: "destructive" });
+      fetchTpmLogEntries();
+    } catch (error) {
+      console.error("Error deleting TPM entry from Firestore:", error);
+      toast({ title: "Erreur Suppression TPM", variant: "destructive"});
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const generatePdf = (type: 'maintenance' | 'tpm') => {
@@ -221,7 +296,6 @@ export default function FryerOilOverallMonitoring() {
             headStyles.textColor = [0,0,0];
         }
 
-
         let head: any[], body: any[][], columnStyles: any = {};
         
         if (isMaintenance) {
@@ -240,19 +314,19 @@ export default function FryerOilOverallMonitoring() {
             ];
             body = (dataToExport as FryerMaintenanceLogEntry[]).map(e => [
                 format(parseISO(e.useDate), "dd/MM/yyyy", { locale: fr }),
-                e.filterDate ? format(parseISO(e.filterDate), "dd/MM/yyyy") : '-', e.filterSignature || '-',
-                e.cleaningDate ? format(parseISO(e.cleaningDate), "dd/MM/yyyy") : '-', e.cleaningSignature || '-',
-                e.changeDate ? format(parseISO(e.changeDate), "dd/MM/yyyy") : '-', e.changeSignature || '-',
+                e.filterDate ? format(parseISO(e.filterDate), "dd/MM/yy") : '-', e.filterSignature || '-',
+                e.cleaningDate ? format(parseISO(e.cleaningDate), "dd/MM/yy") : '-', e.cleaningSignature || '-',
+                e.changeDate ? format(parseISO(e.changeDate), "dd/MM/yy") : '-', e.changeSignature || '-',
             ]);
             columnStyles = { 0: {cellWidth: 40}, 1:{cellWidth:30}, 2:{cellWidth:30}, 3:{cellWidth:30}, 4:{cellWidth:30}, 5:{cellWidth:30}, 6:{cellWidth:30}};
         } else { // TPM Log
             head = [["Date", "Opérateur", "LED TPM", "Friteuse N°", "% TPM"]];
             
             const ledStatusColors: Record<LedTpmStatus, {fill: [number,number,number], text: [number,number,number]}> = {
-                'lt_20': { fill: [144, 238, 144], text: [0,0,0] }, // Light Green, Black text
-                '20_24': { fill: [255, 249, 195], text: [0,0,0] }, // Light Yellow, Black text
-                'gt_24': { fill: [254, 202, 202], text: [0,0,0] }, // Light Red, Black text
-                '': { fill: [255,255,255], text: [0,0,0] } // White, Black text (default)
+                'lt_20': { fill: [144, 238, 144], text: [0,0,0] }, 
+                '20_24': { fill: [255, 249, 195], text: [0,0,0] }, 
+                'gt_24': { fill: [254, 202, 202], text: [0,0,0] }, 
+                '': { fill: [255,255,255], text: [0,0,0] } 
             };
 
             body = (dataToExport as FryerOilTpmLogEntry[]).map(e => {
@@ -353,7 +427,7 @@ export default function FryerOilOverallMonitoring() {
                             <FormField control={maintenanceForm.control} name="changeSignature" render={({ field }) => (<FormItem><FormLabel>Emargement</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                         </div>
                     </fieldset>
-                    <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit">{editingMaintenanceEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
+                    <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingMaintenanceEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
                   </form>
                 </Form>
               </DialogContent>
@@ -361,7 +435,7 @@ export default function FryerOilOverallMonitoring() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : maintenanceLog.length === 0 ? <p className="text-center text-muted-foreground">Aucune entrée de maintenance.</p> : (
+          {isLoading && maintenanceLog.length === 0 ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : maintenanceLog.length === 0 ? <p className="text-center text-muted-foreground">Aucune entrée de maintenance.</p> : (
             <div className="overflow-x-auto border rounded-md">
               <Table>
                 <TableHeader>
@@ -387,8 +461,8 @@ export default function FryerOilOverallMonitoring() {
                       <TableCell className="text-center">{e.changeDate ? format(parseISO(e.changeDate), "dd/MM/yy") : '-'}</TableCell><TableCell className="text-center">{e.changeSignature || '-'}</TableCell>
                       <TableCell className="text-center space-x-1">
                         <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5"/></Button></AlertDialogTrigger>
-                        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Supprimer cette entrée de maintenance?</AlertDialogTitle></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annuler</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteMaintenanceEntry(e.id)}>Supprimer</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
-                        <Button variant="outline" size="icon" onClick={() => handleOpenMaintenanceDialog(e)} className="h-7 w-7"><Edit2 className="h-3.5 w-3.5"/></Button>
+                        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Supprimer cette entrée de maintenance?</AlertDialogTitle></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annuler</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteMaintenanceEntry(e.id)} disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Supprimer</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+                        <Button variant="outline" size="icon" onClick={() => handleOpenMaintenanceDialog(e)} className="h-7 w-7" disabled={isLoading}><Edit2 className="h-3.5 w-3.5"/></Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -424,7 +498,7 @@ export default function FryerOilOverallMonitoring() {
                             </RadioGroup>
                         </FormControl><FormMessage /></FormItem>
                     )} />
-                    <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit">{editingTpmEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
+                    <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingTpmEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
                   </form>
                 </Form>
               </DialogContent>
@@ -433,7 +507,7 @@ export default function FryerOilOverallMonitoring() {
           <CardDescription>Légende TPM: <span className="px-1.5 py-0.5 rounded-sm text-xs font-medium bg-green-500 text-white">Conservation</span> / <span className="px-1.5 py-0.5 rounded-sm text-xs font-medium bg-yellow-400 text-black">Surveillance</span> / <span className="px-1.5 py-0.5 rounded-sm text-xs font-medium bg-red-500 text-white">Changement</span></CardDescription>
         </CardHeader>
         <CardContent>
-           {isLoading ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : tpmLog.length === 0 ? <p className="text-center text-muted-foreground">Aucun contrôle TPM enregistré.</p> : (
+           {isLoading && tpmLog.length === 0 ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : tpmLog.length === 0 ? <p className="text-center text-muted-foreground">Aucun contrôle TPM enregistré.</p> : (
             <div className="overflow-x-auto border rounded-md">
               <Table>
                 <TableHeader>
@@ -459,8 +533,8 @@ export default function FryerOilOverallMonitoring() {
                       <TableCell className="text-center">{e.tpmPercentage || '-'}</TableCell>
                       <TableCell className="text-center space-x-1">
                         <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5"/></Button></AlertDialogTrigger>
-                        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Supprimer ce contrôle TPM?</AlertDialogTitle></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annuler</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteTpmEntry(e.id)}>Supprimer</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
-                        <Button variant="outline" size="icon" onClick={() => handleOpenTpmDialog(e)} className="h-7 w-7"><Edit2 className="h-3.5 w-3.5"/></Button>
+                        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Supprimer ce contrôle TPM?</AlertDialogTitle></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annuler</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteTpmEntry(e.id)} disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Supprimer</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+                        <Button variant="outline" size="icon" onClick={() => handleOpenTpmDialog(e)} className="h-7 w-7" disabled={isLoading}><Edit2 className="h-3.5 w-3.5"/></Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -474,5 +548,4 @@ export default function FryerOilOverallMonitoring() {
     </div>
   );
 }
-
     
