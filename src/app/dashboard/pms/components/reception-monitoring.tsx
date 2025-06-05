@@ -17,7 +17,7 @@ import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -35,12 +35,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { firestore } from '@/lib/firebase';
+import { collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy, Timestamp } from 'firebase/firestore';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
 }
-
-const RECEPTION_LOG_STORAGE_KEY = "pms_reception_log_v1";
 
 const receptionEntrySchema = z.object({
   dateTime: z.date({ required_error: "Date et heure sont requises." }),
@@ -62,6 +62,8 @@ const receptionEntrySchema = z.object({
 });
 
 type ReceptionFormData = z.infer<typeof receptionEntrySchema>;
+
+const FIRESTORE_COLLECTION = "pmsReceptionLog";
 
 export default function ReceptionMonitoring() {
   const [receptionEntries, setReceptionEntries] = useState<ReceptionEntry[]>([]);
@@ -89,25 +91,32 @@ export default function ReceptionMonitoring() {
     },
   });
 
-  useEffect(() => {
+  const fetchReceptionEntries = useCallback(async () => {
     setIsLoading(true);
     try {
-      const storedEntries = localStorage.getItem(RECEPTION_LOG_STORAGE_KEY);
-      if (storedEntries) {
-        setReceptionEntries(JSON.parse(storedEntries));
-      }
+      const entriesCollectionRef = collection(firestore, FIRESTORE_COLLECTION);
+      const q = query(entriesCollectionRef, orderBy("dateTime", "desc"));
+      const querySnapshot = await getDocs(q);
+      const loadedEntries = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          dateTime: (data.dateTime as Timestamp).toDate().toISOString(),
+        } as ReceptionEntry;
+      });
+      setReceptionEntries(loadedEntries);
     } catch (error) {
-      console.error("Error loading reception entries:", error);
-      toast({ title: "Erreur de chargement", description: "Données de réception corrompues.", variant: "destructive" });
+      console.error("Error loading reception entries from Firestore:", error);
+      toast({ title: "Erreur de chargement", description: "Données de réception non chargées.", variant: "destructive" });
+      setReceptionEntries([]);
     }
     setIsLoading(false);
   }, [toast]);
 
   useEffect(() => {
-    if (!isLoading) {
-      localStorage.setItem(RECEPTION_LOG_STORAGE_KEY, JSON.stringify(receptionEntries));
-    }
-  }, [receptionEntries, isLoading]);
+    fetchReceptionEntries();
+  }, [fetchReceptionEntries]);
 
   const handleOpenDialog = (entry?: ReceptionEntry) => {
     setEditingEntry(entry || null);
@@ -127,39 +136,76 @@ export default function ReceptionMonitoring() {
     setIsDialogOpen(true);
   };
 
-  const handleFormSubmit = (data: ReceptionFormData) => {
-    const entryData = { ...data, dateTime: data.dateTime.toISOString() }; 
-    if (editingEntry) {
-      setReceptionEntries(prev => prev.map(e => e.id === editingEntry.id ? { ...editingEntry, ...entryData } : e));
-      toast({ title: "Enregistrement Modifié", description: "La réception a été mise à jour." });
-    } else {
-      const newEntry: ReceptionEntry = { ...entryData, id: `reception_${Date.now()}` };
-      setReceptionEntries(prev => [newEntry, ...prev].sort((a,b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime()));
-      toast({ title: "Réception Enregistrée", description: "Une nouvelle réception a été ajoutée." });
+  const handleFormSubmit = async (data: ReceptionFormData) => {
+    setIsLoading(true);
+    const entryDataForFirestore = { 
+      ...data, 
+      dateTime: Timestamp.fromDate(data.dateTime),
+      // Ensure optional fields are either set or explicitly null if not provided
+      vehicleObservations: data.vehicleObservations || '',
+      productTemperature: data.productTemperature || '',
+      dlcDluo: data.dlcDluo || '',
+      lotNumber: data.lotNumber || '',
+      packagingAspect: data.packagingAspect || '',
+      quantity: data.quantity || '',
+      productLabeling: data.productLabeling || '',
+      refusalReason: data.refused ? (data.refusalReason || '') : '',
+      visa: data.visa || '',
+    };
+
+    try {
+      if (editingEntry) {
+        const entryDocRef = doc(firestore, FIRESTORE_COLLECTION, editingEntry.id);
+        await setDoc(entryDocRef, entryDataForFirestore);
+        toast({ title: "Enregistrement Modifié", description: "La réception a été mise à jour." });
+      } else {
+        await addDoc(collection(firestore, FIRESTORE_COLLECTION), entryDataForFirestore);
+        toast({ title: "Réception Enregistrée", description: "Une nouvelle réception a été ajoutée." });
+      }
+      fetchReceptionEntries(); 
+    } catch (error) {
+      console.error("Error saving reception entry to Firestore:", error);
+      toast({ title: "Erreur de Sauvegarde", variant: "destructive"});
+    } finally {
+      setIsLoading(false);
+      setIsDialogOpen(false);
     }
-    setIsDialogOpen(false);
   };
 
-  const handleDeleteEntry = (entryId: string) => {
-    setReceptionEntries(prev => prev.filter(e => e.id !== entryId));
-    toast({ title: "Enregistrement Supprimé", variant: "destructive" });
+  const handleDeleteEntry = async (entryId: string) => {
+    setIsLoading(true);
+    try {
+      await deleteDoc(doc(firestore, FIRESTORE_COLLECTION, entryId));
+      toast({ title: "Enregistrement Supprimé", variant: "destructive" });
+      fetchReceptionEntries();
+    } catch (error) {
+      console.error("Error deleting reception entry from Firestore:", error);
+      toast({ title: "Erreur de Suppression", variant: "destructive"});
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const generatePdf = () => {
+    if (receptionEntries.length === 0) {
+      toast({ title: "Aucune Donnée", description: "Aucun enregistrement de réception à exporter.", variant: "destructive"});
+      return;
+    }
     setIsLoading(true);
     try {
       const pdfSettings = getPdfLayoutSettings('pms_reception_monitoring'); 
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
+      doc.setFont(pdfSettings.fontFamily || 'helvetica');
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
-      let currentY = 15;
-      if (pdfSettings.headerText) { doc.setFontSize(10); doc.text(pdfSettings.headerText, 14, currentY); currentY += 10; }
-      if (pdfSettings.logoUrl) { doc.setFontSize(8); doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY); currentY += 5; }
+      let currentY = pdfSettings.marginTop || 40;
+      if (pdfSettings.headerText) { doc.setFontSize(pdfSettings.headerFontSize || 10); doc.text(pdfSettings.headerText, pdfSettings.marginLeft || 40, currentY); currentY += (pdfSettings.headerFontSize || 10) + 5; }
+      if (pdfSettings.logoUrl) { doc.setFontSize(8); doc.text(`Logo: ${pdfSettings.logoUrl}`, pdfSettings.marginLeft || 40, currentY); currentY += 5; }
       
-      doc.setFontSize(18); doc.text("Suivi de Réception des Marchandises", 14, currentY); currentY += 8;
-      doc.setFontSize(10); doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY); currentY += 7;
+      doc.setFontSize(pdfSettings.documentTitleFontSize || 16); doc.text("Suivi de Réception des Marchandises", pdfSettings.marginLeft || 40, currentY); currentY += (pdfSettings.documentTitleFontSize || 16) * 0.7 + 5;
+      doc.setFontSize(pdfSettings.defaultFontSize || 10); doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft || 40, currentY); currentY += (pdfSettings.defaultFontSize || 10) + 7;
 
-      const headStyles: any = { fontSize: 8, fontStyle: 'bold', halign: 'center', valign: 'middle' };
+      const headStyles: any = { fontSize: pdfSettings.tableHeaderFontSize || 8, fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1.5 };
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
         if (primaryColorRgb) {
@@ -168,7 +214,7 @@ export default function ReceptionMonitoring() {
           headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
         }
       } else {
-        headStyles.fillColor = [144, 202, 249]; 
+        headStyles.fillColor = [144, 202, 249]; // Default blueish if no primary color
         headStyles.textColor = [0,0,0];
       }
 
@@ -196,7 +242,7 @@ export default function ReceptionMonitoring() {
         format(parseISO(entry.dateTime), "dd/MM/yy HH:mm", { locale: fr }),
         entry.supplierName,
         entry.productNameControlled,
-        entry.vehicleObservations,
+        entry.vehicleObservations || '-',
         entry.productTemperature || '-',
         entry.dlcDluo || '-',
         entry.lotNumber || '-',
@@ -212,18 +258,24 @@ export default function ReceptionMonitoring() {
         body: body,
         startY: currentY,
         theme: 'grid',
-        styles: { fontSize: 7, cellPadding: 1.5, valign: 'middle' },
-        headStyles: {halign: 'center', valign: 'middle', fontStyle: 'bold', fillColor: headStyles.fillColor, textColor: headStyles.textColor, fontSize: 7}, 
+        styles: { fontSize: pdfSettings.tableBodyFontSize || 7, cellPadding: 1.5, valign: 'middle', font: pdfSettings.fontFamily || 'helvetica' },
+        headStyles: {halign: 'center', valign: 'middle', fontStyle: 'bold', fillColor: headStyles.fillColor, textColor: headStyles.textColor, fontSize: pdfSettings.tableHeaderFontSize || 7, cellPadding: 1.5}, 
         columnStyles: { 
-          0: { cellWidth: 25 }, 1: { cellWidth: 30 }, 2: { cellWidth: 35 }, 3: { cellWidth: 30 },
-          4: { cellWidth: 12 }, 5: { cellWidth: 18 }, 6: { cellWidth: 18 }, 7: { cellWidth: 30 }, 8: { cellWidth: 15 }, 9: { cellWidth: 30 },
-          10: { cellWidth: 25 }, 11: { cellWidth: 12 },
+          0: { cellWidth: 30 }, 1: { cellWidth: 40 }, 2: { cellWidth: 40 }, 3: { cellWidth: 40 },
+          4: { cellWidth: 15 }, 5: { cellWidth: 25 }, 6: { cellWidth: 25 }, 7: { cellWidth: 35 }, 8: { cellWidth: 20 }, 9: { cellWidth: 35 },
+          10: { cellWidth: 30 }, 11: { cellWidth: 15 },
+        },
+        margin: {
+          top: pdfSettings.marginTop || 40,
+          right: pdfSettings.marginRight || 40,
+          bottom: pdfSettings.marginBottom || 40,
+          left: pdfSettings.marginLeft || 40,
         },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
           if (pdfSettings.footerText) {
             let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', data.pageNumber.toString()).replace('{totalPages}', pageCount.toString());
-            doc.setFontSize(9); doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+            doc.setFontSize(pdfSettings.footerFontSize || 9); doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - ((pdfSettings.marginBottom || 40) / 2));
           }
         },
       });
@@ -256,12 +308,10 @@ export default function ReceptionMonitoring() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <FormField control={form.control} name="dateTime" render={({ field }) => (
                         <FormItem className="flex flex-col"><FormLabel>Date et Heure</FormLabel>
-                        <Popover><PopoverTrigger asChild>
-                            <FormControl><Button variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                        <Popover><PopoverTrigger asChild><FormControl><Button variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
                             {field.value ? format(field.value, "dd/MM/yyyy HH:mm", { locale: fr }) : <span>Choisir date et heure</span>}
                             <LucideCalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button></FormControl>
-                        </PopoverTrigger>
+                            </Button></FormControl></PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start">
                             <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr} />
                             <Input type="time" className="mt-1" 
@@ -281,12 +331,12 @@ export default function ReceptionMonitoring() {
                     </div>
                     <h4 className="text-md font-semibold pt-2 border-t mt-3">Détails Produits</h4>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <FormField control={form.control} name="productTemperature" render={({ field }) => (<FormItem><FormLabel>T° C Produit</FormLabel><FormControl><Input placeholder="Ex: 3°C" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={form.control} name="dlcDluo" render={({ field }) => (<FormItem><FormLabel>DLC / DLUO</FormLabel><FormControl><Input placeholder="Ex: 25/12/2024" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={form.control} name="lotNumber" render={({ field }) => (<FormItem><FormLabel>N° du lot</FormLabel><FormControl><Input placeholder="Ex: LOT12345" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={form.control} name="packagingAspect" render={({ field }) => (<FormItem><FormLabel>Aspect et emballage</FormLabel><FormControl><Input placeholder="Ex: Emballage intact" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={form.control} name="quantity" render={({ field }) => (<FormItem><FormLabel>Quantité</FormLabel><FormControl><Input placeholder="Ex: 10 kg" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={form.control} name="productLabeling" render={({ field }) => (<FormItem><FormLabel>Étiquetage du produit</FormLabel><FormControl><Input placeholder="Ex: Conforme" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="productTemperature" render={({ field }) => (<FormItem><FormLabel>T° C Produit</FormLabel><FormControl><Input placeholder="Ex: 3°C" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="dlcDluo" render={({ field }) => (<FormItem><FormLabel>DLC / DLUO</FormLabel><FormControl><Input placeholder="Ex: 25/12/2024" {...field} value={field.value || ''}/></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="lotNumber" render={({ field }) => (<FormItem><FormLabel>N° du lot</FormLabel><FormControl><Input placeholder="Ex: LOT12345" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="packagingAspect" render={({ field }) => (<FormItem><FormLabel>Aspect et emballage</FormLabel><FormControl><Input placeholder="Ex: Emballage intact" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="quantity" render={({ field }) => (<FormItem><FormLabel>Quantité</FormLabel><FormControl><Input placeholder="Ex: 10 kg" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="productLabeling" render={({ field }) => (<FormItem><FormLabel>Étiquetage du produit</FormLabel><FormControl><Input placeholder="Ex: Conforme" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
                     </div>
                      <FormField control={form.control} name="refused" render={({ field }) => (
                         <FormItem className="flex flex-row items-center space-x-2 pt-2">
@@ -296,12 +346,12 @@ export default function ReceptionMonitoring() {
                         </FormItem>
                     )} />
                     {form.watch('refused') && (
-                         <FormField control={form.control} name="refusalReason" render={({ field }) => (<FormItem><FormLabel>Raison du refus</FormLabel><FormControl><Textarea placeholder="Expliquer la raison du refus..." {...field} rows={2} /></FormControl><FormMessage /></FormItem>)} />
+                         <FormField control={form.control} name="refusalReason" render={({ field }) => (<FormItem><FormLabel>Raison du refus</FormLabel><FormControl><Textarea placeholder="Expliquer la raison du refus..." {...field} rows={2} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
                     )}
-                    <FormField control={form.control} name="visa" render={({ field }) => (<FormItem><FormLabel>Visa (Initiales)</FormLabel><FormControl><Input placeholder="Ex: JD" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="visa" render={({ field }) => (<FormItem><FormLabel>Visa (Initiales)</FormLabel><FormControl><Input placeholder="Ex: JD" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
                     <DialogFooter className="pt-3">
                     <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                    <Button type="submit">{editingEntry ? "Enregistrer Modifications" : "Ajouter Réception"}</Button>
+                    <Button type="submit" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingEntry ? "Enregistrer Modifications" : "Ajouter Réception"}</Button>
                     </DialogFooter>
                 </form>
                 </Form>
@@ -313,12 +363,12 @@ export default function ReceptionMonitoring() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
+        {isLoading && receptionEntries.length === 0 ? (
           <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Chargement...</div>
-        ) : receptionEntries.length === 0 ? (
+        ) : !isLoading && receptionEntries.length === 0 ? (
           <p className="text-muted-foreground text-center py-8">Aucun enregistrement de réception. Cliquez sur "Ajouter Réception" pour commencer.</p>
         ) : (
-          <div className="overflow-x-auto border rounded-md">
+          <div className="overflow-x-auto border rounded-md max-h-[60vh]">
             <Table>
               <TableHeader>
                 <TableRow className="bg-primary/10">
@@ -340,7 +390,7 @@ export default function ReceptionMonitoring() {
               <TableBody>
                 {receptionEntries.map(entry => (
                   <TableRow key={entry.id}>
-                    <TableCell>{format(parseISO(entry.dateTime), "dd/MM/yy HH:mm", { locale: fr })}</TableCell>
+                    <TableCell>{isValid(parseISO(entry.dateTime)) ? format(parseISO(entry.dateTime), "dd/MM/yy HH:mm", { locale: fr }) : 'Date invalide'}</TableCell>
                     <TableCell>{entry.supplierName}</TableCell>
                     <TableCell>{entry.productNameControlled}</TableCell>
                     <TableCell>{entry.vehicleObservations}</TableCell>
@@ -365,13 +415,13 @@ export default function ReceptionMonitoring() {
                           <AlertDialogHeader>
                             <AlertDialogTitle>Êtes-vous sûr de vouloir supprimer cet enregistrement ?</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Cette action est irréversible. L'enregistrement pour {entry.productNameControlled} du {format(parseISO(entry.dateTime), "dd/MM/yyyy", { locale: fr })} sera supprimé.
+                              Cette action est irréversible. L'enregistrement pour {entry.productNameControlled} du {isValid(parseISO(entry.dateTime)) ? format(parseISO(entry.dateTime), "dd/MM/yyyy", { locale: fr }) : 'Date invalide'} sera supprimé.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Annuler</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDeleteEntry(entry.id)}>
-                              Supprimer
+                            <AlertDialogAction onClick={() => handleDeleteEntry(entry.id)} disabled={isLoading}>
+                              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Supprimer
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
@@ -396,3 +446,6 @@ export default function ReceptionMonitoring() {
     </Card>
   );
 }
+
+
+    
