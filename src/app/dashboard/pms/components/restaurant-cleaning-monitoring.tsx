@@ -4,7 +4,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-// Removed Textarea as notes are removed
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -17,9 +16,11 @@ import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord as SimplifiedMonthlyRestaurantCleaningRecord, PmsZoneWithTasksDefinition as PmsRestaurantZoneWithTasksDefinition, PmsConfigurations } from '../types';
 import { PMS_RESTAURANT_CLEANING_KEY } from '@/app/dashboard/settings/types';
+// NO_STATUS_SELECT_VALUE is no longer directly used by a Select here, but kept for data consistency if other parts rely on it or for initial empty states.
 import { NO_STATUS_SELECT_VALUE } from '../types';
 import { getMonthDays, type DayData } from '../utils';
 import { cn } from '@/lib/utils';
+import { Checkbox } from '@/components/ui/checkbox'; // Added Checkbox
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { firestore } from '@/lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -54,7 +55,6 @@ export default function RestaurantCleaningMonitoring() {
     
     let newSelectedZoneId = selectedZoneId;
 
-    // Step 1: Load PMS Configurations
     const pmsSettingsDocRef = doc(firestore, "pmsConfigurations", "mainConfig");
     try {
       const pmsSettingsSnap = await getDoc(pmsSettingsDocRef);
@@ -93,7 +93,6 @@ export default function RestaurantCleaningMonitoring() {
     
     const zoneToLoadRecordsFor = newSelectedZoneId;
 
-    // Step 2: Load Cleaning Records
     if (!zoneToLoadRecordsFor) {
       setCleaningRecords({});
       console.log("[RestaurantClean LOAD_ALL] No zone to load records for. Clearing records.");
@@ -125,12 +124,10 @@ export default function RestaurantCleaningMonitoring() {
     console.log("[RestaurantClean LOAD_ALL] Finished all loading. setIsLoading(false).");
   }, [selectedYear, selectedMonth, selectedZoneId, toast]);
 
-  // Initial load and reload on period change
   useEffect(() => {
     loadDataForPeriod();
-  }, [loadDataForPeriod]); // loadDataForPeriod is memoized with its own dependencies
+  }, [loadDataForPeriod]);
 
-  // Event listener for config updates
   useEffect(() => {
     const handleConfigUpdate = () => {
       console.log(`[RestaurantCleaning] Received pmsConfigUpdated event. Refetching all data.`);
@@ -140,7 +137,6 @@ export default function RestaurantCleaningMonitoring() {
     return () => window.removeEventListener('pmsConfigUpdated', handleConfigUpdate);
   }, [loadDataForPeriod]);
 
-  // Debounced save for cleaningRecords
   useEffect(() => {
     if (isLoading || isSaving || Object.keys(cleaningRecords).length === 0 && !doc(firestore, "pmsRestaurantCleaningRecords", getFirestoreRecordsDocId())) {
       return;
@@ -206,7 +202,7 @@ export default function RestaurantCleaningMonitoring() {
       toast({ title: "Aucune Zone Sélectionnée", description: "Veuillez sélectionner une zone pour générer le PDF.", variant: "destructive" });
       return;
     }
-    setIsLoading(true); // Temporarily use general isLoading for PDF generation
+    setIsLoading(true); 
     try {
       const pdfSettings = getPdfLayoutSettings('pms_restaurant_cleaning_monthly');
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
@@ -238,7 +234,7 @@ export default function RestaurantCleaningMonitoring() {
       const headBase = ['Date', 'Jour'];
       const taskHeaders: string[] = [];
       selectedZoneData.tasks.forEach(task => {
-        taskHeaders.push(`Statut (${task.name})`);
+        taskHeaders.push(`Fait? (${task.name})`);
         taskHeaders.push(`Opérateur (${task.name})`);
       });
       const head: any[] = [headBase.concat(taskHeaders)];
@@ -251,13 +247,7 @@ export default function RestaurantCleaningMonitoring() {
         ];
         selectedZoneData.tasks.forEach(task => {
           const record = getRecord(day.date, selectedZoneData.id, task.id);
-          let statusDisplay = '';
-          switch (record.status) {
-            case 'fait': statusDisplay = 'Fait'; break;
-            case 'non_fait': statusDisplay = 'Non Fait'; break;
-            case 'na': statusDisplay = 'N/A'; break;
-            default: statusDisplay = '-';
-          }
+          const statusDisplay = record.status === 'fait' ? 'Oui' : (record.status === 'non_fait' ? 'Non' : (record.status === 'na' ? 'N/A' : '-'));
           row.push(day.isWeekend ? {content: statusDisplay, styles: {halign: 'center', fillColor: [230,230,230]}} : {content: statusDisplay, styles: {halign: 'center'}});
           row.push(day.isWeekend ? {content: record.operator || '-', styles: {halign: 'center', fillColor: [230,230,230]}} : {content: record.operator || '-', styles: {halign: 'center'}});
         });
@@ -270,7 +260,7 @@ export default function RestaurantCleaningMonitoring() {
       };
       let currentColumnIndex = 2;
       selectedZoneData.tasks.forEach(() => {
-        columnStyles[currentColumnIndex++] = { cellWidth: 30, halign: 'center' }; // Statut
+        columnStyles[currentColumnIndex++] = { cellWidth: 30, halign: 'center' }; // Fait?
         columnStyles[currentColumnIndex++] = { cellWidth: 30, halign: 'center' }; // Opérateur
       });
 
@@ -391,7 +381,7 @@ export default function RestaurantCleaningMonitoring() {
                         <TableHead key={task.id} className="w-[200px] min-w-[200px] text-center px-1 border-l">
                           {task.name}
                           <div className="grid grid-cols-2 gap-px mt-1 text-xs font-normal text-muted-foreground">
-                            <span>Statut</span>
+                            <span>Fait?</span>
                             <span>Opérateur</span>
                           </div>
                         </TableHead>
@@ -410,25 +400,18 @@ export default function RestaurantCleaningMonitoring() {
                           const record = getRecord(day.date, selectedZoneData.id, task.id);
                           return (
                             <TableCell key={task.id} className="p-1 align-top border-l">
-                              <div className="grid grid-cols-2 gap-1">
-                                <Select
-                                  value={record.status === '' ? NO_STATUS_SELECT_VALUE : record.status}
-                                  onValueChange={(valueFromSelect) => {
-                                    const valueToStore = valueFromSelect === NO_STATUS_SELECT_VALUE ? '' : valueFromSelect as 'fait' | 'non_fait' | 'na';
-                                    handleRecordChange(day.date, selectedZoneData.id, task.id, 'status', valueToStore);
-                                  }}
-                                  disabled={day.isWeekend || isSaving}
-                                >
-                                  <SelectTrigger className="h-7 text-xs text-foreground/80">
-                                    <SelectValue placeholder="Statut" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value={NO_STATUS_SELECT_VALUE}>-</SelectItem>
-                                    <SelectItem value="fait">Fait</SelectItem>
-                                    <SelectItem value="non_fait">Non Fait</SelectItem>
-                                    <SelectItem value="na">N/A</SelectItem>
-                                  </SelectContent>
-                                </Select>
+                              <div className="grid grid-cols-2 gap-1 items-center">
+                                <div className="flex justify-center">
+                                  <Checkbox
+                                    checked={record.status === 'fait'}
+                                    onCheckedChange={(checked) => {
+                                      const newStatus = checked ? 'fait' : '';
+                                      handleRecordChange(day.date, selectedZoneData.id, task.id, 'status', newStatus);
+                                    }}
+                                    disabled={day.isWeekend || isSaving}
+                                    className="h-5 w-5"
+                                  />
+                                </div>
                                 <Input
                                   type="text"
                                   placeholder="Op."
@@ -470,5 +453,3 @@ export default function RestaurantCleaningMonitoring() {
     </Card>
   );
 }
-
-    

@@ -16,9 +16,11 @@ import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord, PmsZoneWithTasksDefinition, PmsTaskDefinition, PmsConfigurations } from '../types';
 import { PMS_KITCHEN_CLEANING_KEY, PMS_CONFIG_STORAGE_KEY } from '@/app/dashboard/settings/types';
+// NO_STATUS_SELECT_VALUE is no longer directly used by a Select here, but kept for data consistency if other parts rely on it or for initial empty states.
 import { NO_STATUS_SELECT_VALUE } from '../types';
 import { getMonthDays, type DayData } from '../utils';
 import { cn } from '@/lib/utils';
+import { Checkbox } from '@/components/ui/checkbox'; // Added Checkbox
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { firestore } from '@/lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -48,7 +50,7 @@ export default function KitchenCleaningMonitoring() {
   const getFirestoreRecordsDocId = useCallback(() => `records_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
 
   const loadPmsConfigurations = useCallback(async () => {
-    setIsLoading(true); // Indicate loading started for configurations
+    setIsLoading(true); 
     console.log("[KitchenClean] Loading PMS configurations...");
     const docRef = doc(firestore, "pmsConfigurations", "mainConfig");
     try {
@@ -68,17 +70,16 @@ export default function KitchenCleaningMonitoring() {
       toast({ title: "Erreur Chargement Config", description: "Impossible de charger les configurations des zones.", variant: "destructive" });
       setConfiguredZones([]);
     }
-    // setIsLoading(false) will be set after records are loaded or if no zone is selected
   }, [toast]);
 
   const loadCleaningRecords = useCallback(async () => {
     if (!selectedZoneId) {
       setCleaningRecords({});
-      setIsLoading(false); // Ensure loading is false if no zone is selected
+      setIsLoading(false); 
       console.log("[KitchenClean] No zone selected, records not loaded, loading finished.");
       return;
     }
-    setIsLoading(true); // Indicate loading started for records
+    setIsLoading(true); 
     console.log(`[KitchenClean] Loading cleaning records for zone ${selectedZoneId}, period ${selectedYear}-${selectedMonth}`);
     const docId = getFirestoreRecordsDocId();
     const docRef = doc(firestore, "pmsKitchenCleaningRecords", docId);
@@ -96,11 +97,10 @@ export default function KitchenCleaningMonitoring() {
       toast({ title: "Erreur Chargement Enregistrements", description: "Impossible de charger les enregistrements de nettoyage.", variant: "destructive" });
       setCleaningRecords({});
     }
-    setIsLoading(false); // Overall loading done
+    setIsLoading(false); 
     console.log("[KitchenClean] Cleaning records loading process finished.");
   }, [selectedZoneId, selectedYear, selectedMonth, getFirestoreRecordsDocId, toast]);
 
-  // Effect 1: Load configurations on initial mount or when event 'pmsConfigUpdated' fires
   useEffect(() => {
     loadPmsConfigurations();
     const handleConfigUpdate = () => {
@@ -111,7 +111,6 @@ export default function KitchenCleaningMonitoring() {
     return () => window.removeEventListener('pmsConfigUpdated', handleConfigUpdate);
   }, [loadPmsConfigurations]);
 
-  // Effect 2: Update selectedZoneId when configurations change or selection becomes invalid
   useEffect(() => {
     console.log("[KitchenClean] Evaluating selectedZoneId. Current:", selectedZoneId, "Available zones:", configuredZones.length);
     if (configuredZones.length > 0) {
@@ -127,9 +126,8 @@ export default function KitchenCleaningMonitoring() {
       console.log("[KitchenClean] No configured zones, clearing selectedZoneId.");
       setSelectedZoneId(undefined);
     }
-  }, [configuredZones, selectedZoneId]); // Re-evaluate if selectedZoneId itself changes elsewhere, or configs change.
+  }, [configuredZones, selectedZoneId]); 
 
-  // Effect 3: Load/reload cleaning records when selectedZoneId or period (year/month) changes
   useEffect(() => {
     const yearNum = parseInt(selectedYear, 10);
     const monthNum = parseInt(selectedMonth, 10);
@@ -141,14 +139,13 @@ export default function KitchenCleaningMonitoring() {
       loadCleaningRecords();
     } else {
       console.log("[KitchenClean] No zone selected. Clearing records and setting loading to false.");
-      setCleaningRecords({}); // Clear records if no zone is selected
+      setCleaningRecords({}); 
       setIsLoading(false); 
     }
   }, [selectedZoneId, selectedYear, selectedMonth, loadCleaningRecords]);
 
-  // Effect 4: Debounced save for cleaningRecords
   useEffect(() => {
-    if (isLoading || isSaving) return; // Don't save if initial loading or already saving
+    if (isLoading || isSaving) return; 
 
     const saveRecordsToFirestore = async () => {
       if (Object.keys(cleaningRecords).length === 0 && !doc(firestore, "pmsKitchenCleaningRecords", getFirestoreRecordsDocId())) {
@@ -170,7 +167,7 @@ export default function KitchenCleaningMonitoring() {
       setIsSaving(false);
     };
 
-    const timeoutId = setTimeout(saveRecordsToFirestore, 2000); // Increased debounce time
+    const timeoutId = setTimeout(saveRecordsToFirestore, 2000); 
     return () => clearTimeout(timeoutId);
   }, [cleaningRecords, isLoading, isSaving, getFirestoreRecordsDocId, toast]);
 
@@ -249,7 +246,7 @@ export default function KitchenCleaningMonitoring() {
       const headBase = ['Date', 'Jour'];
       const taskHeaders: string[] = [];
       selectedZoneData.tasks.forEach(task => {
-        taskHeaders.push(`Statut (${task.name})`);
+        taskHeaders.push(`Fait? (${task.name})`);
         taskHeaders.push(`Opérateur (${task.name})`);
       });
       const head: any[] = [headBase.concat(taskHeaders)];
@@ -262,13 +259,7 @@ export default function KitchenCleaningMonitoring() {
         ];
         selectedZoneData.tasks.forEach(task => {
           const record = getRecord(day.date, selectedZoneData.id, task.id);
-          let statusDisplay = '';
-          switch (record.status) {
-            case 'fait': statusDisplay = 'Fait'; break;
-            case 'non_fait': statusDisplay = 'Non Fait'; break;
-            case 'na': statusDisplay = 'N/A'; break;
-            default: statusDisplay = '-';
-          }
+          const statusDisplay = record.status === 'fait' ? 'Oui' : (record.status === 'non_fait' ? 'Non' : (record.status === 'na' ? 'N/A' : '-'));
           row.push(day.isWeekend ? {content: statusDisplay, styles: {halign: 'center', fillColor: [230,230,230]}} : {content: statusDisplay, styles: {halign: 'center'}});
           row.push(day.isWeekend ? {content: record.operator || '-', styles: {halign: 'center', fillColor: [230,230,230]}} : {content: record.operator || '-', styles: {halign: 'center'}});
         });
@@ -281,7 +272,7 @@ export default function KitchenCleaningMonitoring() {
       };
       let currentColumnIndex = 2;
       selectedZoneData.tasks.forEach(() => {
-        columnStyles[currentColumnIndex++] = { cellWidth: 30, halign: 'center' }; // Statut
+        columnStyles[currentColumnIndex++] = { cellWidth: 30, halign: 'center' }; // Fait?
         columnStyles[currentColumnIndex++] = { cellWidth: 30, halign: 'center' }; // Opérateur
       });
 
@@ -350,7 +341,7 @@ export default function KitchenCleaningMonitoring() {
           </div>
         </div>
         
-        {isLoading && configuredZones.length === 0 ? ( // Show loader only when initially loading configs
+        {isLoading && configuredZones.length === 0 ? ( 
           <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /> Chargement des configurations...</div>
         ) : configuredZones.length === 0 ? (
            <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
@@ -381,7 +372,7 @@ export default function KitchenCleaningMonitoring() {
               </div>
             </div>
 
-            {isLoading && selectedZoneId ? ( // Show loader when records for a selected zone are loading
+            {isLoading && selectedZoneId ? ( 
                  <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /> Chargement des enregistrements pour "{selectedZoneData?.name}"...</div>
             ) : !selectedZoneId ? (
               <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
@@ -401,7 +392,7 @@ export default function KitchenCleaningMonitoring() {
                         <TableHead key={task.id} className="w-[200px] min-w-[200px] text-center px-1 border-l">
                           {task.name}
                           <div className="grid grid-cols-2 gap-px mt-1 text-xs font-normal text-muted-foreground">
-                            <span>Statut</span>
+                            <span>Fait?</span>
                             <span>Opérateur</span>
                           </div>
                         </TableHead>
@@ -420,25 +411,18 @@ export default function KitchenCleaningMonitoring() {
                           const record = getRecord(day.date, selectedZoneData.id, task.id);
                           return (
                             <TableCell key={task.id} className="p-1 align-top border-l">
-                              <div className="grid grid-cols-2 gap-1">
-                                <Select
-                                  value={record.status === '' ? NO_STATUS_SELECT_VALUE : record.status}
-                                  onValueChange={(valueFromSelect) => {
-                                    const valueToStore = valueFromSelect === NO_STATUS_SELECT_VALUE ? '' : valueFromSelect as 'fait' | 'non_fait' | 'na';
-                                    handleRecordChange(day.date, selectedZoneData.id, task.id, 'status', valueToStore);
-                                  }}
-                                  disabled={day.isWeekend || isSaving}
-                                >
-                                  <SelectTrigger className="h-7 text-xs text-foreground/80">
-                                    <SelectValue placeholder="Statut" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value={NO_STATUS_SELECT_VALUE}>-</SelectItem>
-                                    <SelectItem value="fait">Fait</SelectItem>
-                                    <SelectItem value="non_fait">Non Fait</SelectItem>
-                                    <SelectItem value="na">N/A</SelectItem>
-                                  </SelectContent>
-                                </Select>
+                              <div className="grid grid-cols-2 gap-1 items-center">
+                                <div className="flex justify-center">
+                                  <Checkbox
+                                    checked={record.status === 'fait'}
+                                    onCheckedChange={(checked) => {
+                                      const newStatus = checked ? 'fait' : '';
+                                      handleRecordChange(day.date, selectedZoneData.id, task.id, 'status', newStatus);
+                                    }}
+                                    disabled={day.isWeekend || isSaving}
+                                    className="h-5 w-5"
+                                  />
+                                </div>
                                 <Input
                                   type="text"
                                   placeholder="Op."
@@ -480,4 +464,3 @@ export default function KitchenCleaningMonitoring() {
     </Card>
   );
 }
-
