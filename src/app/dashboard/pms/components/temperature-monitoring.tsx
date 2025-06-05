@@ -47,7 +47,7 @@ const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
 // --- CONFIGURABLE TABLE PARAMETERS ---
 // Heights in pixels
-const ROW_HEIGHT_TEMP_PX = 8; // Height for temperature rows
+const ROW_HEIGHT_TEMP_PX = 3; // Height for temperature rows
 const ROW_HEIGHT_INPUT_PX = 10; // Height for Heure/Opérateur input rows
 
 // Font sizes in pixels
@@ -515,7 +515,7 @@ export default function TemperatureMonitoring() {
                                 </div>
                                 </TableCell>
                             ) : null}
-                            <TableCell className={cn("font-mono text-center border-r sticky left-[var(--col-zone-width)] z-10 bg-card p-0 leading-tight", pxToTailwindWidth(COL_WIDTH_TEMP_VALUE_PX))} style={{fontSize:`${FONT_SIZE_TEMP_VALUES_PX}px`, padding:'0px'}}>
+                            <TableCell className={cn("font-mono text-center border-r sticky left-[var(--col-zone-width)] z-10 bg-card p-0 py-0", pxToTailwindWidth(COL_WIDTH_TEMP_VALUE_PX))} style={{fontSize:`${FONT_SIZE_TEMP_VALUES_PX}px`, padding:'0px'}}>
                                 {tempValue}°
                             </TableCell>
                             {monthData.map((day) => {
