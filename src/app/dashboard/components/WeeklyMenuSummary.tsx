@@ -4,12 +4,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CalendarDays, AlertCircle } from "lucide-react";
-import { format, startOfWeek, endOfWeek, parseISO, isSameDay } from 'date-fns';
+import { CalendarDays, AlertCircle, Loader2 } from "lucide-react"; // Added Loader2
+import { format, startOfWeek, endOfWeek, parseISO, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import type { DailyMenu, MenuField, MenuThemeIdentifier, StoredMenuThemeValue } from '@/app/dashboard/menu-planning/types';
-import { menuThemeStyles, MENU_THEME_OPTIONS_FOR_SELECT } from '@/app/dashboard/menu-planning/types';
+import type { DailyMenu, MenuField, MenuThemeIdentifier, StoredMenuThemeValue, MenuItem } from '@/app/dashboard/menu-planning/types'; // Added MenuItem
+import { menuThemeStyles, MENU_THEME_OPTIONS_FOR_SELECT, initialMenuItem } from '@/app/dashboard/menu-planning/types'; // Added initialMenuItem
 import { cn } from '@/lib/utils';
+import { firestore } from '@/lib/firebase'; // Added Firestore
+import { doc, getDoc } from 'firebase/firestore'; // Added Firestore getDoc
+import { useToast } from '@/hooks/use-toast'; // Added useToast
 
 const mealPartLabels: Record<Exclude<MenuField, 'theme'>, string> = {
   entree: "Entrée",
@@ -26,6 +29,8 @@ export default function WeeklyMenuSummary() {
   const [weeklyMenu, setWeeklyMenu] = useState<DailyMenu[]>([]);
   const [isClient, setIsClient] = useState(false);
   const [currentWeekInfo, setCurrentWeekInfo] = useState({ start: '', end: '' });
+  const [isLoadingSummary, setIsLoadingSummary] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     setIsClient(true);
@@ -33,72 +38,127 @@ export default function WeeklyMenuSummary() {
 
   useEffect(() => {
     if (isClient) {
-      const today = new Date();
-      const currentYear = today.getFullYear();
-      const currentMonth = today.getMonth(); // 0-indexed
-      
-      const weekStart = startOfWeek(today, { weekStartsOn: 1 }); // Monday
-      const weekEnd = endOfWeek(today, { weekStartsOn: 1 }); // Sunday
-      setCurrentWeekInfo({
-        start: format(weekStart, "dd MMMM", { locale: fr }),
-        end: format(weekEnd, "dd MMMM yyyy", { locale: fr }),
-      });
+      const fetchMenuSummaryData = async () => {
+        setIsLoadingSummary(true);
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonth = today.getMonth(); // 0-indexed
 
-      // Attempt to load current month's menu
-      const currentMonthMenuKey = `menu_planning_${currentYear}_${currentMonth}`;
-      let fullMonthMenu: DailyMenu[] = [];
-      const storedCurrentMonthMenuData = localStorage.getItem(currentMonthMenuKey);
-      if (storedCurrentMonthMenuData) {
-        try {
-          fullMonthMenu = JSON.parse(storedCurrentMonthMenuData);
-        } catch (e) {
-          console.error("Failed to parse current month menu data from localStorage", e);
-        }
-      }
+        const weekStart = startOfWeek(today, { weekStartsOn: 1 }); // Monday
+        const weekEnd = endOfWeek(today, { weekStartsOn: 1 }); // Sunday
+        setCurrentWeekInfo({
+          start: format(weekStart, "dd MMMM", { locale: fr }),
+          end: format(weekEnd, "dd MMMM yyyy", { locale: fr }),
+        });
 
-      // If week spans across two months, attempt to load next month's menu too
-      if (weekEnd.getMonth() !== currentMonth) {
-        const nextMonth = (currentMonth + 1) % 12;
-        const yearForNextMonth = nextMonth === 0 ? currentYear + 1 : currentYear;
-        const nextMonthMenuKey = `menu_planning_${yearForNextMonth}_${nextMonth}`;
-        const storedNextMonthMenuData = localStorage.getItem(nextMonthMenuKey);
-        if (storedNextMonthMenuData) {
+        let fullMonthMenu: DailyMenu[] = [];
+
+        const fetchMonthDataFromFirestore = async (year: number, month: number): Promise<DailyMenu[]> => {
+          const firestoreDocId = `menu_${year}_${month}`; // Firestore key format
+          const docRef = doc(firestore, "menuPlanning", firestoreDocId);
           try {
-            const nextMonthParsed = JSON.parse(storedNextMonthMenuData);
-            fullMonthMenu = fullMonthMenu.concat(nextMonthParsed);
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+              const firestoreData = docSnap.data();
+              const loadedMenus = (firestoreData.menus as any[] || []).map((d: any) => ({
+                ...initialMenuItem,
+                ...d,
+                date: d.date, 
+                theme: d.theme || '',
+                holidayName: d.holidayName || undefined,
+                // Ensure all meal parts are strings, defaulting to empty if undefined/null from Firestore
+                entree: d.entree || '',
+                plat: d.plat || '',
+                feculent: d.feculent || '',
+                legume: d.legume || '',
+                sauce: d.sauce || '',
+                dessert: d.dessert || '',
+              }));
+              return loadedMenus;
+            }
           } catch (e) {
-            console.error("Failed to parse next month menu data from localStorage", e);
+            console.error(`Failed to fetch menu data for ${month + 1}/${year} from Firestore:`, e);
+            toast({ title: `Erreur chargement menus ${month + 1}/${year}`, variant: "destructive" });
           }
-        }
-      }
-      
-      const currentWeekStartStr = format(weekStart, 'yyyy-MM-dd');
-      const currentWeekEndStr = format(weekEnd, 'yyyy-MM-dd');
+          return [];
+        };
 
-      const itemsForCurrentWeek = fullMonthMenu.filter(item => {
-        if (!item || !item.date) return false;
-        try {
-            const itemDate = parseISO(item.date);
-            if (!isValid(itemDate)) return false;
-            const itemDateStr = format(itemDate, 'yyyy-MM-dd');
-            const hasContent = mealPartOrder.some(part => item[part] && String(item[part]).trim() !== '');
-            return itemDateStr >= currentWeekStartStr && itemDateStr <= currentWeekEndStr && hasContent;
-        } catch (e) {
-            console.warn(`Skipping invalid date in menu data: ${item.date}`, e);
-            return false;
+        fullMonthMenu = await fetchMonthDataFromFirestore(currentYear, currentMonth);
+
+        if (weekEnd.getMonth() !== currentMonth) {
+          const nextMonthIndex = (currentMonth + 1) % 12;
+          const yearForNextMonth = nextMonthIndex === 0 ? currentYear + 1 : currentYear;
+          const nextMonthMenus = await fetchMonthDataFromFirestore(yearForNextMonth, nextMonthIndex);
+          fullMonthMenu = fullMonthMenu.concat(nextMonthMenus);
         }
-      });
-      setWeeklyMenu(itemsForCurrentWeek);
+        
+        const currentWeekStartStr = format(weekStart, 'yyyy-MM-dd');
+        const currentWeekEndStr = format(weekEnd, 'yyyy-MM-dd');
+
+        const itemsForCurrentWeek = fullMonthMenu.filter(item => {
+          if (!item || !item.date) return false;
+          try {
+              const itemDateStr = item.date; 
+              const hasContent = mealPartOrder.some(part => item[part] && String(item[part]).trim() !== '');
+              return itemDateStr >= currentWeekStartStr && itemDateStr <= currentWeekEndStr && hasContent;
+          } catch (e) {
+              console.warn(`Skipping invalid date or item processing error in menu summary: ${item.date}`, e);
+              return false;
+          }
+        });
+        setWeeklyMenu(itemsForCurrentWeek);
+        setIsLoadingSummary(false);
+      };
+
+      fetchMenuSummaryData();
+
+      const handleMenuDataUpdated = () => {
+        console.log("WeeklyMenuSummary: menuDataUpdatedInFirestore event received. Re-fetching summary.");
+        fetchMenuSummaryData();
+      };
+      window.addEventListener('menuDataUpdatedInFirestore', handleMenuDataUpdated);
+
+      return () => {
+        window.removeEventListener('menuDataUpdatedInFirestore', handleMenuDataUpdated);
+      };
     }
-  }, [isClient]);
+  }, [isClient, toast]);
   
-  const isValid = (date: Date) => !isNaN(date.getTime());
+  const isValidDate = (date: Date) => !isNaN(date.getTime());
 
   const displayedItems = useMemo(() => {
     return weeklyMenu
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .slice(0, 3); // Display up to 3 days with full details
+      .sort((a, b) => {
+        // Ensure dates are valid before attempting to get time
+        const dateA = parseISO(a.date);
+        const dateB = parseISO(b.date);
+        if (!isValidDate(dateA) || !isValidDate(dateB)) return 0;
+        return dateA.getTime() - dateB.getTime();
+      })
+      .slice(0, 3); 
   }, [weeklyMenu]);
+
+  if (!isClient || isLoadingSummary) {
+    return (
+      <Card className="shadow-lg h-full flex flex-col">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-xl flex items-center gap-2">
+              <CalendarDays className="w-5 h-5 text-primary" />
+              Menu de la Semaine
+            </CardTitle>
+          </div>
+           <CardDescription className="text-xs">
+             Chargement des menus...
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex-grow pt-2 flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
 
   return (
     <Card className="shadow-lg h-full flex flex-col">
@@ -119,11 +179,11 @@ export default function WeeklyMenuSummary() {
             <ul className="space-y-2">
               {displayedItems.map((item) => (
                 <li key={item.date} className="text-sm border-b pb-3 last:border-b-0 last:pb-0 mb-2 last:mb-0">
-                  <p className="font-semibold text-base capitalize mb-1.5 text-white dark:text-white underline">
-                    {format(parseISO(item.date), "EEEE dd", { locale: fr })}
+                  <p className="font-semibold text-base capitalize mb-1.5 text-foreground dark:text-white underline">
+                    {isValidDate(parseISO(item.date)) ? format(parseISO(item.date), "EEEE dd", { locale: fr }) : "Date invalide"}
                     {item.theme && item.theme !== '' && (
                         <span className={cn(
-                            "ml-2 text-xs font-medium px-1.5 py-0.5 rounded-sm no-underline", // Added no-underline for the badge
+                            "ml-2 text-xs font-medium px-1.5 py-0.5 rounded-sm no-underline", 
                             menuThemeStyles[item.theme as MenuThemeIdentifier] || 'bg-muted text-muted-foreground'
                         )}>
                             {MENU_THEME_OPTIONS_FOR_SELECT.find(opt => opt.value === item.theme)?.label || item.theme}
@@ -159,3 +219,5 @@ export default function WeeklyMenuSummary() {
     </Card>
   );
 }
+
+    

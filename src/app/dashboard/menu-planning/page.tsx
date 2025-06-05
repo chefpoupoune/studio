@@ -48,7 +48,7 @@ export default function MenuPlanningPage() {
   const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().getMonth().toString());
   const [menuData, setMenuData] = useState<DailyMenu[]>([]);
-  const [dataLoaded, setDataLoaded] = useState(false); // Changed from isLoading
+  const [dataLoaded, setDataLoaded] = useState(false); 
   const [isSaving, setIsSaving] = useState(false);
   const [isGeneratingMonthlyPdf, setIsGeneratingMonthlyPdf] = useState(false);
   const { toast } = useToast();
@@ -75,7 +75,7 @@ export default function MenuPlanningPage() {
         dayName: frenchDays[dayOfWeek],
         isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
         isHoliday: holidayMap.has(dateStr),
-        holidayName: holidayMap.get(dateStr) || undefined, // Ensure holidayName is undefined if not present
+        holidayName: holidayMap.get(dateStr) || undefined, 
         ...initialMenuItem, 
       });
     }
@@ -97,18 +97,17 @@ export default function MenuPlanningPage() {
         if (docSnap.exists()) {
           const firestoreData = docSnap.data();
           const loadedMenuData = (firestoreData.menus as any[] || []).map((d: any) => ({
-             ...initialMenuItem, // Start with defaults to ensure all fields are present
+             ...initialMenuItem, 
              ...d,
-             date: d.date, // Assume date is stored as 'YYYY-MM-DD' string
-             theme: d.theme || '', // Ensure theme is string, default to empty
-             // Explicitly handle optional fields that might be undefined in Firestore data
+             date: d.date, 
+             theme: d.theme || '', 
              entree: d.entree || '',
              plat: d.plat || '',
              feculent: d.feculent || '',
              legume: d.legume || '',
              sauce: d.sauce || '',
              dessert: d.dessert || '',
-             holidayName: d.holidayName || undefined, // Ensure holidayName is undefined if not present
+             holidayName: d.holidayName || undefined,
           }));
           
           const expectedDays = getDaysInMonth(new Date(yearNum, monthNum));
@@ -121,7 +120,7 @@ export default function MenuPlanningPage() {
                 console.warn(`Data mismatch for ${docId}. Expected ${expectedDays} days starting with ${expectedFirstDayPrefix}, got ${loadedMenuData.length} days starting with ${firstDayLoadedDate}. Regenerating.`);
                 const freshData = generateMonthData(yearNum, monthNum);
                 setMenuData(freshData);
-                // Sanitize freshData before saving
+                
                 const sanitizedFreshData = freshData.map(dayMenu => ({
                   ...dayMenu,
                   entree: dayMenu.entree || '',
@@ -131,9 +130,11 @@ export default function MenuPlanningPage() {
                   sauce: dayMenu.sauce || '',
                   dessert: dayMenu.dessert || '',
                   theme: dayMenu.theme || '',
-                  holidayName: dayMenu.holidayName || null, // Use null for Firestore instead of undefined
+                  holidayName: dayMenu.holidayName || null, 
                 }));
                 await setDoc(docRef, { menus: sanitizedFreshData });
+                 window.dispatchEvent(new CustomEvent('menuDataUpdatedInFirestore'));
+                 console.log("Dispatched menuDataUpdatedInFirestore event after regenerating and saving month data.");
             }
         } else {
           const freshData = generateMonthData(yearNum, monthNum);
@@ -147,9 +148,11 @@ export default function MenuPlanningPage() {
             sauce: dayMenu.sauce || '',
             dessert: dayMenu.dessert || '',
             theme: dayMenu.theme || '',
-            holidayName: dayMenu.holidayName || null, // Use null for Firestore
+            holidayName: dayMenu.holidayName || null, 
           }));
           await setDoc(docRef, { menus: sanitizedFreshData });
+          window.dispatchEvent(new CustomEvent('menuDataUpdatedInFirestore'));
+          console.log("Dispatched menuDataUpdatedInFirestore event after creating new month data.");
           toast({ title: "Nouveau mois initialisé", description: `Les données pour ${months[monthNum].label} ${yearNum} ont été créées.`});
         }
       } catch (error) {
@@ -173,7 +176,6 @@ export default function MenuPlanningPage() {
       const docId = getFirestoreDocId();
       const docRef = doc(firestore, "menuPlanning", docId);
       try {
-        // Sanitize data before saving: replace undefined with null or empty strings
         const sanitizedMenuData = menuData.map(dayMenu => {
           const sanitizedDayMenu: Record<string, any> = {};
           for (const key in dayMenu) {
@@ -181,7 +183,7 @@ export default function MenuPlanningPage() {
               const value = (dayMenu as any)[key];
               if (key === 'holidayName') {
                 sanitizedDayMenu[key] = value === undefined ? null : value;
-              } else if (typeof value === 'string' && value === undefined) { // Should not happen with current types but good practice
+              } else if (typeof value === 'string' && value === undefined) { 
                 sanitizedDayMenu[key] = '';
               } else if (value === undefined) {
                  sanitizedDayMenu[key] = initialMenuItem[key as keyof MenuItem] === undefined ? null : (initialMenuItem[key as keyof MenuItem] || '');
@@ -191,7 +193,6 @@ export default function MenuPlanningPage() {
               }
             }
           }
-          // Ensure all MenuItem fields are at least empty strings
           (Object.keys(initialMenuItem) as Array<keyof MenuItem>).forEach(field => {
             if (sanitizedDayMenu[field] === undefined) {
                 sanitizedDayMenu[field] = initialMenuItem[field] || '';
@@ -200,6 +201,8 @@ export default function MenuPlanningPage() {
           return sanitizedDayMenu as DailyMenu;
         });
         await setDoc(docRef, { menus: sanitizedMenuData });
+        window.dispatchEvent(new CustomEvent('menuDataUpdatedInFirestore'));
+        console.log("Dispatched menuDataUpdatedInFirestore event after saving to Firestore.");
       } catch (error) {
         console.error("Error saving menu data to Firestore:", error);
         toast({ title: "Erreur de Sauvegarde", description: "Les modifications n'ont pas pu être enregistrées dans Firestore.", variant: "destructive" });
@@ -216,7 +219,7 @@ export default function MenuPlanningPage() {
   const handleUpdateMenuEntry = useCallback((date: string, field: MenuField, value: StoredMenuThemeValue) => {
     setMenuData(prevData =>
       prevData.map(dayMenu =>
-        dayMenu.date === date ? { ...dayMenu, [field]: value === undefined ? '' : value } : dayMenu // Ensure undefined becomes empty string
+        dayMenu.date === date ? { ...dayMenu, [field]: value === undefined ? '' : value } : dayMenu 
       )
     );
   }, []);
@@ -336,7 +339,7 @@ export default function MenuPlanningPage() {
         const themeLabel = MENU_THEME_OPTIONS_FOR_SELECT.find(t => t.value === currentThemeValueForSelect)?.label || '-';
         return [
           format(parseISO(dayMenu.date), 'dd/MM', { locale: fr }),
-          dayMenu.dayName + (dayMenu.holidayName ? `\n(${dayMenu.holidayName})` : ''), // holidayName can be undefined
+          dayMenu.dayName + (dayMenu.holidayName ? `\n(${dayMenu.holidayName})` : ''), 
           themeLabel,
           dayMenu.entree || '-',
           dayMenu.plat || '-',
@@ -593,3 +596,5 @@ export default function MenuPlanningPage() {
     </div>
   );
 }
+
+    
