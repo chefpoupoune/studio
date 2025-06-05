@@ -16,11 +16,9 @@ import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord as SimplifiedMonthlyRestaurantCleaningRecord, PmsZoneWithTasksDefinition as PmsRestaurantZoneWithTasksDefinition, PmsConfigurations } from '../types';
 import { PMS_RESTAURANT_CLEANING_KEY } from '@/app/dashboard/settings/types';
-// NO_STATUS_SELECT_VALUE is no longer directly used by a Select here, but kept for data consistency if other parts rely on it or for initial empty states.
-import { NO_STATUS_SELECT_VALUE } from '../types';
 import { getMonthDays, type DayData } from '../utils';
 import { cn } from '@/lib/utils';
-import { Checkbox } from '@/components/ui/checkbox'; // Added Checkbox
+import { Checkbox } from '@/components/ui/checkbox'; 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { firestore } from '@/lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -36,6 +34,8 @@ const monthsArray = Array.from({ length: 12 }, (_, i) => ({
   label: format(new Date(currentFullYear, i), "MMMM", { locale: fr }),
 }));
 
+const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
+
 export default function RestaurantCleaningMonitoring() {
   const [selectedYear, setSelectedYear] = useState<string>(getYear(new Date()).toString());
   const [selectedMonth, setSelectedMonth] = useState<string>(getMonth(new Date()).toString());
@@ -46,6 +46,13 @@ export default function RestaurantCleaningMonitoring() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
+  const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setLoggedInUsername(localStorage.getItem(LOGGED_IN_USERNAME_KEY));
+    }
+  }, []);
 
   const getFirestoreRecordsDocId = useCallback(() => `records_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
 
@@ -53,7 +60,7 @@ export default function RestaurantCleaningMonitoring() {
     setIsLoading(true);
     console.log(`[RestaurantClean LOAD_ALL] For period ${selectedYear}-${selectedMonth}, zone ${selectedZoneId}`);
     
-    let newSelectedZoneId = selectedZoneId;
+    let currentSelectedZoneId = selectedZoneId;
 
     const pmsSettingsDocRef = doc(firestore, "pmsConfigurations", "mainConfig");
     try {
@@ -65,18 +72,18 @@ export default function RestaurantCleaningMonitoring() {
         console.log("[RestaurantClean LOAD_ALL] PMS configurations loaded:", restaurantZonesFromFS.length, "zones");
 
         if (restaurantZonesFromFS.length > 0) {
-          const currentSelectionIsValid = newSelectedZoneId ? restaurantZonesFromFS.some(z => z.id === newSelectedZoneId) : false;
+          const currentSelectionIsValid = currentSelectedZoneId ? restaurantZonesFromFS.some(z => z.id === currentSelectedZoneId) : false;
           if (!currentSelectionIsValid) {
-            newSelectedZoneId = restaurantZonesFromFS[0].id;
-            console.log("[RestaurantClean LOAD_ALL] Selected zone was invalid or not set, defaulting to:", newSelectedZoneId);
+            currentSelectedZoneId = restaurantZonesFromFS[0].id;
+            console.log("[RestaurantClean LOAD_ALL] Selected zone was invalid or not set, defaulting to:", currentSelectedZoneId);
           }
         } else {
-          newSelectedZoneId = undefined;
+          currentSelectedZoneId = undefined;
           console.log("[RestaurantClean LOAD_ALL] No restaurant zones configured.");
         }
       } else {
         setConfiguredZones([]);
-        newSelectedZoneId = undefined;
+        currentSelectedZoneId = undefined;
         console.log("[RestaurantClean LOAD_ALL] No PMS configurations document found.");
         toast({ title: "Configuration Manquante", description: "Aucune configuration PMS pour le nettoyage restaurant trouvée.", variant: "destructive" });
       }
@@ -84,14 +91,14 @@ export default function RestaurantCleaningMonitoring() {
       console.error("Error loading PMS configurations in loadDataForPeriod (Restaurant):", error);
       toast({ title: "Erreur Chargement Config (Restaurant)", variant: "destructive" });
       setConfiguredZones([]);
-      newSelectedZoneId = undefined;
+      currentSelectedZoneId = undefined;
     }
     
-    if (newSelectedZoneId !== selectedZoneId) {
-        setSelectedZoneId(newSelectedZoneId); 
+    if (currentSelectedZoneId !== selectedZoneId) {
+        setSelectedZoneId(currentSelectedZoneId); 
     }
     
-    const zoneToLoadRecordsFor = newSelectedZoneId;
+    const zoneToLoadRecordsFor = currentSelectedZoneId;
 
     if (!zoneToLoadRecordsFor) {
       setCleaningRecords({});
@@ -407,6 +414,15 @@ export default function RestaurantCleaningMonitoring() {
                                     onCheckedChange={(checked) => {
                                       const newStatus = checked ? 'fait' : '';
                                       handleRecordChange(day.date, selectedZoneData.id, task.id, 'status', newStatus);
+                                      if (checked) {
+                                        if (loggedInUsername && loggedInUsername.trim() !== "") {
+                                          handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', loggedInUsername);
+                                        } else {
+                                          handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', ''); 
+                                        }
+                                      } else {
+                                        handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', '');
+                                      }
                                     }}
                                     disabled={day.isWeekend || isSaving}
                                     className="h-5 w-5"
@@ -453,3 +469,6 @@ export default function RestaurantCleaningMonitoring() {
     </Card>
   );
 }
+
+    
+    

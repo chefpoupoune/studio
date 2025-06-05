@@ -14,13 +14,11 @@ import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
-import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord, PmsZoneWithTasksDefinition, PmsTaskDefinition, PmsConfigurations } from '../types';
+import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord, PmsZoneWithTasksDefinition, PmsConfigurations } from '../types';
 import { PMS_KITCHEN_CLEANING_KEY, PMS_CONFIG_STORAGE_KEY } from '@/app/dashboard/settings/types';
-// NO_STATUS_SELECT_VALUE is no longer directly used by a Select here, but kept for data consistency if other parts rely on it or for initial empty states.
-import { NO_STATUS_SELECT_VALUE } from '../types';
 import { getMonthDays, type DayData } from '../utils';
 import { cn } from '@/lib/utils';
-import { Checkbox } from '@/components/ui/checkbox'; // Added Checkbox
+import { Checkbox } from '@/components/ui/checkbox'; 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { firestore } from '@/lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -36,6 +34,8 @@ const monthsArray = Array.from({ length: 12 }, (_, i) => ({
   label: format(new Date(currentFullYear, i), "MMMM", { locale: fr }),
 }));
 
+const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
+
 export default function KitchenCleaningMonitoring() {
   const [selectedYear, setSelectedYear] = useState<string>(getYear(new Date()).toString());
   const [selectedMonth, setSelectedMonth] = useState<string>(getMonth(new Date()).toString());
@@ -46,6 +46,13 @@ export default function KitchenCleaningMonitoring() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
+  const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setLoggedInUsername(localStorage.getItem(LOGGED_IN_USERNAME_KEY));
+    }
+  }, []);
 
   const getFirestoreRecordsDocId = useCallback(() => `records_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
 
@@ -418,6 +425,17 @@ export default function KitchenCleaningMonitoring() {
                                     onCheckedChange={(checked) => {
                                       const newStatus = checked ? 'fait' : '';
                                       handleRecordChange(day.date, selectedZoneData.id, task.id, 'status', newStatus);
+                                      if (checked) {
+                                        if (loggedInUsername && loggedInUsername.trim() !== "") {
+                                          handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', loggedInUsername);
+                                        } else {
+                                          // If no username, clear operator or set placeholder
+                                          handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', '');
+                                        }
+                                      } else {
+                                        // When unchecking, clear the operator field.
+                                        handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', '');
+                                      }
                                     }}
                                     disabled={day.isWeekend || isSaving}
                                     className="h-5 w-5"
@@ -464,3 +482,6 @@ export default function KitchenCleaningMonitoring() {
     </Card>
   );
 }
+
+    
+    
