@@ -33,12 +33,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { firestore } from '@/lib/firebase';
+import { collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy, Timestamp } from 'firebase/firestore';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
 }
 
-const PICNIC_DEPARTURE_FORMS_KEY = "pms_picnic_departure_forms_v1";
+const FIRESTORE_COLLECTION = "pmsPicnicDepartureForms";
 
 const picnicDepartureSchema = z.object({
   orderReceivedDate: z.date({ required_error: "Date de réception de commande requise." }),
@@ -54,7 +56,7 @@ export default function PicnicDepartureForm() {
   const [forms, setForms] = useState<PicnicDepartureEntry[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingForm, setEditingForm] = useState<PicnicDepartureEntry | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // Used for general loading and PDF generation
+  const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
   const form = useForm<PicnicDepartureFormData>({
@@ -68,28 +70,34 @@ export default function PicnicDepartureForm() {
     },
   });
 
-  useEffect(() => {
+  const fetchForms = useCallback(async () => {
     setIsLoading(true);
     try {
-      const storedForms = localStorage.getItem(PICNIC_DEPARTURE_FORMS_KEY);
-      if (storedForms) {
-        setForms(JSON.parse(storedForms).sort((a: PicnicDepartureEntry, b: PicnicDepartureEntry) => new Date(b.entryCreationDate).getTime() - new Date(a.entryCreationDate).getTime()));
-      } else {
-        setForms([]);
-      }
+      const formsCollectionRef = collection(firestore, FIRESTORE_COLLECTION);
+      const q = query(formsCollectionRef, orderBy("entryCreationDate", "desc"));
+      const querySnapshot = await getDocs(q);
+      const loadedForms = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          entryCreationDate: (data.entryCreationDate as Timestamp).toDate().toISOString(),
+          orderReceivedDate: (data.orderReceivedDate as Timestamp).toDate().toISOString(),
+        } as PicnicDepartureEntry;
+      });
+      setForms(loadedForms);
     } catch (error) {
-      console.error("Error loading picnic departure forms:", error);
-      toast({ title: "Erreur de chargement", description: "Données des fiches de départ PN corrompues.", variant: "destructive" });
+      console.error("Error loading picnic departure forms from Firestore:", error);
+      toast({ title: "Erreur de chargement", description: "Données des fiches de départ PN non chargées.", variant: "destructive" });
       setForms([]);
     }
     setIsLoading(false);
   }, [toast]);
 
   useEffect(() => {
-    if (!isLoading) { // Only save if not in a loading state (like PDF generation)
-      localStorage.setItem(PICNIC_DEPARTURE_FORMS_KEY, JSON.stringify(forms));
-    }
-  }, [forms, isLoading]);
+    fetchForms();
+  }, [fetchForms]);
+
 
   const handleOpenDialog = (entry?: PicnicDepartureEntry) => {
     setEditingForm(entry || null);
@@ -111,27 +119,54 @@ export default function PicnicDepartureForm() {
     setIsDialogOpen(true);
   };
 
-  const handleFormSubmit = (data: PicnicDepartureFormData) => {
-    const entryData = {
-      ...data,
-      entryCreationDate: new Date().toISOString(),
-      orderReceivedDate: data.orderReceivedDate.toISOString(),
+  const handleFormSubmit = async (data: PicnicDepartureFormData) => {
+    setIsLoading(true);
+    const entryDataForFirestore = {
+      orderReceivedDate: Timestamp.fromDate(data.orderReceivedDate),
+      orderReceivedTime: data.orderReceivedTime,
+      clientName: data.clientName,
+      numberOfPicnics: data.numberOfPicnics,
+      departureTemperature: data.departureTemperature,
+      entryCreationDate: editingForm ? Timestamp.fromDate(new Date(editingForm.entryCreationDate)) : Timestamp.fromDate(new Date()), // Keep original creation date on edit
     };
-    if (editingForm) {
-      setForms(prev => prev.map(f => f.id === editingForm.id ? { ...editingForm, ...entryData } : f)
-                           .sort((a,b) => new Date(b.entryCreationDate).getTime() - new Date(a.entryCreationDate).getTime()));
-      toast({ title: "Fiche Modifiée" });
-    } else {
-      const newForm: PicnicDepartureEntry = { ...entryData, id: `pn_dep_${Date.now()}` };
-      setForms(prev => [newForm, ...prev].sort((a,b) => new Date(b.entryCreationDate).getTime() - new Date(a.entryCreationDate).getTime()));
-      toast({ title: "Fiche Ajoutée" });
+
+    try {
+      if (editingForm) {
+        const formDocRef = doc(firestore, FIRESTORE_COLLECTION, editingForm.id);
+        await setDoc(formDocRef, {
+            ...entryDataForFirestore,
+             entryCreationDate: Timestamp.fromDate(new Date(editingForm.entryCreationDate)), // Keep original on edit
+          });
+        toast({ title: "Fiche Modifiée" });
+      } else {
+        await addDoc(collection(firestore, FIRESTORE_COLLECTION), {
+            ...entryDataForFirestore,
+            entryCreationDate: Timestamp.fromDate(new Date()), // New creation date
+        });
+        toast({ title: "Fiche Ajoutée" });
+      }
+      fetchForms();
+    } catch (error) {
+      console.error("Error saving picnic departure form to Firestore:", error);
+      toast({ title: "Erreur de Sauvegarde", variant: "destructive"});
+    } finally {
+      setIsLoading(false);
+      setIsDialogOpen(false);
     }
-    setIsDialogOpen(false);
   };
 
-  const handleDeleteForm = (formId: string) => {
-    setForms(prev => prev.filter(f => f.id !== formId));
-    toast({ title: "Fiche Supprimée", variant: "destructive" });
+  const handleDeleteForm = async (formId: string) => {
+    setIsLoading(true);
+    try {
+      await deleteDoc(doc(firestore, FIRESTORE_COLLECTION, formId));
+      toast({ title: "Fiche Supprimée", variant: "destructive" });
+      fetchForms();
+    } catch (error) {
+      console.error("Error deleting picnic departure form from Firestore:", error);
+      toast({ title: "Erreur de Suppression", variant: "destructive"});
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const generatePdfForEntry = (entry: PicnicDepartureEntry) => {
@@ -157,7 +192,6 @@ export default function PicnicDepartureForm() {
       
       let currentY = marginTop;
 
-      // Draw Logo and Custom Header Text (if any)
       if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
         try {
           const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
@@ -185,11 +219,10 @@ export default function PicnicDepartureForm() {
         currentY += 20;
       }
       
-      // Top right box with document reference
-      const topRightBoxWidth = 120; // Adjusted width
+      const topRightBoxWidth = 120; 
       const topRightBoxHeight = 30;
       const topRightBoxX = pageWidth - marginRight - topRightBoxWidth;
-      const topRightBoxY = marginTop - 10 > 0 ? marginTop -10 : marginTop; // Position it slightly above the main content start
+      const topRightBoxY = marginTop - 10 > 0 ? marginTop -10 : marginTop; 
 
       doc.rect(topRightBoxX, topRightBoxY, topRightBoxWidth, topRightBoxHeight);
       doc.setFontSize(8); doc.setTextColor(0,0,0);
@@ -236,11 +269,11 @@ export default function PicnicDepartureForm() {
 
       const signatureTableBody = [
         [
-          { content: 'Le cuisinier\nMr Dernoncourt Julien', styles: { halign: 'center', valign: 'top', minCellHeight: 80 } }, // Increased minCellHeight for signature space
+          { content: 'Le cuisinier\nMr Dernoncourt Julien', styles: { halign: 'center', valign: 'top', minCellHeight: 80 } },
           { content: `Le client\n${entry.clientName}`, styles: { halign: 'center', valign: 'top', minCellHeight: 80 } }
         ]
       ];
-      const sigTableColWidth = (contentWidth - (doc.getLineWidth() * 3)) / 2; // Adjusted for 2 columns
+      const sigTableColWidth = (contentWidth - (doc.getLineWidth() * 3)) / 2; 
 
       doc.autoTable({
         startY: currentY,
@@ -258,8 +291,7 @@ export default function PicnicDepartureForm() {
       doc.text(`T° de Départ : ........ ${entry.departureTemperature} ........`, marginLeft, currentY);
       currentY += defaultFontSize * 1.2 + 5;
       
-      // Ensure currentY does not exceed page height before drawing footer
-      if (currentY > pageHeight - marginBottom - (pdfSettings.footerFontSize || 8) - 10) { // Extra buffer for footer
+      if (currentY > pageHeight - marginBottom - (pdfSettings.footerFontSize || 8) - 10) { 
          currentY = pageHeight - marginBottom - (pdfSettings.footerFontSize || 8) - 5;
       }
 
@@ -278,7 +310,6 @@ export default function PicnicDepartureForm() {
       setIsLoading(false);
     }
   };
-
 
   return (
     <Card className="shadow-lg">
@@ -311,7 +342,7 @@ export default function PicnicDepartureForm() {
                   <FormField control={form.control} name="departureTemperature" render={({ field }) => (<FormItem><FormLabel>T° de Départ</FormLabel><FormControl><Input placeholder="Ex: 3°C" {...field} /></FormControl><FormMessage /></FormItem>)} />
                   <DialogFooter className="pt-4">
                     <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                    <Button type="submit">{editingForm ? "Enregistrer" : "Ajouter Fiche"}</Button>
+                    <Button type="submit" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingForm ? "Enregistrer" : "Ajouter Fiche"}</Button>
                   </DialogFooter>
                 </form>
               </Form>
@@ -323,9 +354,9 @@ export default function PicnicDepartureForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {isLoading && forms.length === 0 ? ( // Show loading only if initially loading and no forms yet
+        {isLoading && forms.length === 0 ? ( 
           <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Chargement...</div>
-        ) : !isLoading && forms.length === 0 ? ( // Show no forms message only after loading is done
+        ) : !isLoading && forms.length === 0 ? ( 
           <p className="text-muted-foreground text-center py-8">Aucune fiche de départ enregistrée. Cliquez sur "Nouvelle Fiche" pour commencer.</p>
         ) : (
           <div className="overflow-x-auto border rounded-md max-h-[60vh]">
@@ -365,7 +396,9 @@ export default function PicnicDepartureForm() {
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Annuler</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDeleteForm(entry.id)}>Supprimer</AlertDialogAction>
+                            <AlertDialogAction onClick={() => handleDeleteForm(entry.id)} disabled={isLoading}>
+                                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Supprimer
+                            </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
