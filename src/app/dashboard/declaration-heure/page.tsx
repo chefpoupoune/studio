@@ -53,8 +53,7 @@ interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
 }
 
-// OVERTIME_REQUESTS_STORAGE_KEY and ABSENCE_REQUESTS_STORAGE_KEY removed
-const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2'; // Still needed to get user info for display
+const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2'; 
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
 
@@ -90,7 +89,6 @@ export default function DeclarationHeurePage() {
     setIsClient(true);
   }, []);
 
-  // Fetch Brigade Members and LoggedInUsername (from localStorage)
   useEffect(() => {
     if (!isClient) return;
     
@@ -100,14 +98,11 @@ export default function DeclarationHeurePage() {
             if (storedBrigadeMembersRaw) {
                 setBrigadeMembers(JSON.parse(storedBrigadeMembersRaw));
             } else {
-                // Fallback: try fetching from Firestore if not in local storage
                 const membersCollectionRef = collection(firestore, 'brigadeMembers');
                 const q = query(membersCollectionRef, orderBy("name"));
                 const querySnapshot = await getDocs(q);
                 const membersList = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as BrigadeMember));
                 setBrigadeMembers(membersList);
-                // Optionally save to local storage if needed by other parts (though better to centralize to Firestore)
-                // localStorage.setItem(BRIGADE_MEMBERS_STORAGE_KEY, JSON.stringify(membersList));
             }
             
             const usernameFromStorage = localStorage.getItem(LOGGED_IN_USERNAME_KEY);
@@ -122,7 +117,6 @@ export default function DeclarationHeurePage() {
     fetchInitialLocalData();
   }, [isClient, toast]);
 
-  // Fetch Overtime Requests from Firestore
   const fetchOvertimeRequests = useCallback(async () => {
     if (!isClient) return;
     setDataLoaded(false);
@@ -158,7 +152,6 @@ export default function DeclarationHeurePage() {
     }
   }, [isClient, toast]);
 
-  // Fetch Absence Requests from Firestore
   const fetchAbsenceRequests = useCallback(async () => {
     if (!isClient) return;
     setDataLoaded(false);
@@ -228,7 +221,7 @@ export default function DeclarationHeurePage() {
       decisionDate: data.decisionDate ? Timestamp.fromDate(new Date(data.decisionDate)) : null,
       overtimeDetails: (data.overtimeDetails || []).map(detail => ({
         ...detail,
-        date: detail.date ? Timestamp.fromDate(new Date(detail.date)) : Timestamp.fromDate(new Date()), // Ensure date is Timestamp
+        date: detail.date ? Timestamp.fromDate(new Date(detail.date)) : Timestamp.fromDate(new Date()),
       })),
       compensationType: null,
     };
@@ -390,7 +383,32 @@ export default function DeclarationHeurePage() {
                     <Button variant="outline" size="sm" className="text-xs" onClick={() => handleOpenOvertimeForm(req, approverModeView)}>
                       <Edit2 className="mr-1 h-3.5 w-3.5"/> {approverModeView ? "Traiter / Voir" : ((req.approvalStatus === 'accepted' || req.approvalStatus === 'rejected') ? "Voir" : "Modifier")}
                     </Button>
-                    {(req.approvalStatus === 'pending' || !req.approvalStatus) && !approverModeView && ( 
+                    {/* Delete button for Chef in approval view */}
+                    {approverModeView && isChef && (
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="destructive" size="sm" className="text-xs">
+                                    <Trash2 className="mr-1 h-3.5 w-3.5"/> Supprimer
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Supprimer la demande ?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        Êtes-vous sûr de vouloir supprimer la demande de {req.employeeName} du {isValid(parseISO(req.requestDate)) ? format(parseISO(req.requestDate), "dd/MM/yyyy") : 'date inconnue'}? Cette action est irréversible.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Non</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleDeleteOvertimeRequest(req.id)}>
+                                        Oui, supprimer
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    )}
+                    {/* Cancel/Delete button for employee view */}
+                    {(!approverModeView && (req.approvalStatus === 'pending' || !req.approvalStatus)) && ( 
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button variant="destructive" size="sm" className="text-xs">
@@ -452,7 +470,7 @@ export default function DeclarationHeurePage() {
                     <Button variant="outline" size="sm" className="text-xs" onClick={() => handleOpenAbsenceForm(req, approverModeView)}>
                       <Edit2 className="mr-1 h-3.5 w-3.5"/> {(approverModeView || req.approvalStatus === 'accepted' || req.approvalStatus === 'rejected') ? "Voir / Traiter" : "Modifier"}
                     </Button>
-                    {(req.approvalStatus === 'pending' || !req.approvalStatus) && !approverModeView && ( 
+                    {(!approverModeView && (req.approvalStatus === 'pending' || !req.approvalStatus)) && ( 
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button variant="destructive" size="sm" className="text-xs"><Trash2 className="mr-1 h-3.5 w-3.5"/> Annuler/Suppr.</Button>
@@ -681,4 +699,5 @@ export default function DeclarationHeurePage() {
   );
 }
 
+    
     
