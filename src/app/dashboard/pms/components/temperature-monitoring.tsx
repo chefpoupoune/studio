@@ -262,11 +262,11 @@ export default function TemperatureMonitoring() {
       let newTime = currentRecord.time;
       let newOperator = currentRecord.operator;
 
-      if (newMarkedValue !== undefined ) { // If marking any temperature
-        if (!currentRecord.time || currentRecord.markedTemperatureValue === undefined ) { // And no time was set OR it was previously empty
+      if (newMarkedValue !== undefined ) { 
+        if (!currentRecord.time || currentRecord.markedTemperatureValue === undefined ) { 
             newTime = format(new Date(), 'HH:mm');
         }
-        if (!currentRecord.operator || currentRecord.markedTemperatureValue === undefined) { // And no operator was set OR it was previously empty
+        if (!currentRecord.operator || currentRecord.markedTemperatureValue === undefined) { 
            newOperator = loggedInUsername || '';
         }
       } else if (newMarkedValue === undefined && currentRecord.markedTemperatureValue === tempValue) { 
@@ -470,62 +470,62 @@ export default function TemperatureMonitoring() {
               <div className="overflow-x-auto border rounded-md">
                 <Table className="min-w-full table-fixed text-[10px]" style={{fontSize: '10px'}}>
                   <TableHeader className="sticky top-0 z-30 bg-card shadow-sm">
-                    <TableRow className="h-[5px]">
-                      <TableHead className="w-[18px] sm:w-[20px] sticky left-0 z-20 bg-card border-r text-center p-0 align-middle text-[8px]">Zone</TableHead>
-                      <TableHead className="w-[15px] sm:w-[18px] sticky left-[18px] sm:left-[20px] z-20 bg-card border-r text-center p-0 align-middle text-[8px]">T°C</TableHead>
-                      {monthData.map(day => (<TableHead key={day.date} className={cn("text-center p-0 w-[7px] sm:w-[8px] h-[5px] text-[8px]", day.isWeekend && "bg-muted/30")}>{day.dayOfMonth}<br/>{day.dayName.substring(0,1)}</TableHead>))}
+                    <TableRow className="h-px">
+                      <TableHead className="w-6 sm:w-7 sticky left-0 z-20 bg-card border-r text-center p-0 align-middle text-[6px]">Zone</TableHead>
+                      <TableHead className="w-5 sm:w-6 sticky left-6 sm:left-7 z-20 bg-card border-r text-center p-0 align-middle text-[6px]">T°C</TableHead>
+                      {monthData.map(day => (<TableHead key={day.date} className={cn("text-center p-0 w-2 sm:w-2.5 h-px text-[6px]", day.isWeekend && "bg-muted/30")}>{day.dayOfMonth}<br/>{day.dayName.substring(0,1)}</TableHead>))}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {dynamicTempZones.map(zone => 
                        zone.values.slice().reverse().map((tempValue, indexInZone) => ( 
-                         <TableRow key={`${zone.type}-${tempValue}`} className="h-[5px] hover:bg-muted/10" style={{height: '5px'}}>
+                         <TableRow key={`${zone.type}-${tempValue}`} className="h-px hover:bg-muted/10">
                             {indexInZone === 0 ? (
                                 <TableCell
                                   rowSpan={zone.values.length}
-                                  className={cn(zone.color, zone.textColor, "font-semibold align-middle text-center text-[8px] p-0 sticky left-0 z-10 border-r w-[18px] sm:w-[20px]")}
-                                  style={{fontSize: '8px', padding: '0px', width: selectedEquipmentData.name.length > 15 ? '22px' : '18px' }}
+                                  className={cn(zone.color, zone.textColor, "font-semibold align-middle text-center text-[6px] p-0 sticky left-0 z-10 border-r w-6 sm:w-7")}
+                                  style={{fontSize: '6px', padding: '0px', width: selectedEquipmentData.name.length > 15 ? '22px' : '18px' }}
                                 >
                                 <div className="h-full flex items-center justify-center overflow-hidden" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', transform: 'rotate(180deg)', whiteSpace: 'nowrap'}}>
                                     {zone.label}
                                 </div>
                                 </TableCell>
                             ) : null}
-                            <TableCell className="font-mono text-[10px] text-center border-r sticky left-[18px] sm:left-[20px] z-10 bg-card p-0 py-0" style={{fontSize: '10px', padding: '0px'}}>{tempValue}°</TableCell>
+                            <TableCell className="font-mono text-[6px] text-center border-r sticky left-6 sm:left-7 z-10 bg-card p-0" style={{fontSize:'6px', padding:'0px'}}>{tempValue}°</TableCell>
                             {monthData.map((day) => {
                                 const record = getRecord(day.date, selectedEquipmentData.id);
                                 const isMarked = record.markedTemperatureValue === tempValue;
                                 return (
                                 <TableCell
                                     key={day.date}
-                                    className={cn("text-center p-0 h-[5px] w-[7px] sm:w-[8px] cursor-pointer hover:bg-primary/10", day.isWeekend && "bg-muted/25", isMarked && "bg-primary text-primary-foreground")}
-                                    style={{height: '5px', padding: '0px', fontSize: '10px'}}
+                                    className={cn("text-center p-0 h-px w-2 sm:w-2.5 cursor-pointer hover:bg-primary/10", day.isWeekend && "bg-muted/25", isMarked && "bg-primary text-primary-foreground")}
+                                    style={{height: '1px', padding: '0px', fontSize: '6px'}}
                                     onClick={() => handleTempCellClick(day.date, selectedEquipmentData.id, tempValue)}
                                 >
-                                    {isMarked ? <span className="font-bold text-[10px] leading-none">X</span> : ""}
+                                    {isMarked ? <span className="font-bold text-[6px] leading-none">X</span> : ""}
                                 </TableCell>
                                 );
                             })}
                          </TableRow>
                        ))
                     )}
-                    <TableRow className="bg-card/90 sticky bottom-[10px] z-20 h-[10px]" style={{height: '10px'}}>
-                        <TableCell colSpan={2} className="text-right font-semibold text-[8px] sticky left-0 z-30 bg-card p-0 pr-0.5 border-t py-0" style={{fontSize: '8px', padding: '0px'}}>Heure</TableCell>
+                    <TableRow className="bg-card/90 sticky bottom-4 z-20 h-4">
+                        <TableCell colSpan={2} className="text-right font-semibold text-[8px] sticky left-0 z-30 bg-card p-0 pr-0.5 border-t">Heure</TableCell>
                         {monthData.map(day => (
-                            <TableCell key={`time-${day.date}`} className={cn("p-0 border-t py-0", day.isWeekend && "bg-muted/25")} style={{padding: '0px'}}>
+                            <TableCell key={`time-${day.date}`} className={cn("p-0 border-t", day.isWeekend && "bg-muted/25")}>
                                 <Input type="text" placeholder="HH:mm" defaultValue={getRecord(day.date, selectedEquipmentData.id).time} 
                                        onBlur={(e) => handleTimeOperatorChange(day.date, selectedEquipmentData.id, 'time', e.target.value)}
-                                       className={cn("h-[10px] text-[8px] text-center p-0 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent")} pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" style={{height: '10px', fontSize: '8px', padding: '0px'}}/>
+                                       className={cn("h-full text-[8px] text-center p-0 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent")} pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" style={{height: '100%', fontSize: '8px', padding: '0px'}}/>
                             </TableCell>
                         ))}
                     </TableRow>
-                    <TableRow className="bg-card/90 sticky bottom-0 z-20 h-[10px]" style={{height: '10px'}}>
-                        <TableCell colSpan={2} className="text-right font-semibold text-[8px] sticky left-0 z-30 bg-card p-0 pr-0.5 border-t py-0" style={{fontSize: '8px', padding: '0px'}}>Opérateur</TableCell>
+                    <TableRow className="bg-card/90 sticky bottom-0 z-20 h-4">
+                        <TableCell colSpan={2} className="text-right font-semibold text-[8px] sticky left-0 z-30 bg-card p-0 pr-0.5 border-t">Opérateur</TableCell>
                         {monthData.map(day => (
-                            <TableCell key={`op-${day.date}`} className={cn("p-0 border-t py-0", day.isWeekend && "bg-muted/25")} style={{padding: '0px'}}>
+                            <TableCell key={`op-${day.date}`} className={cn("p-0 border-t", day.isWeekend && "bg-muted/25")}>
                                 <Input type="text" placeholder="Op." defaultValue={getRecord(day.date, selectedEquipmentData.id).operator} 
                                        onBlur={(e) => handleTimeOperatorChange(day.date, selectedEquipmentData.id, 'operator', e.target.value)}
-                                       className={cn("h-[10px] text-[8px] text-center p-0 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent")} maxLength={10} style={{height: '10px', fontSize: '8px', padding: '0px'}}/>
+                                       className={cn("h-full text-[8px] text-center p-0 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent")} maxLength={10} style={{height: '100%', fontSize: '8px', padding: '0px'}}/>
                             </TableCell>
                         ))}
                     </TableRow>
