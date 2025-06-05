@@ -45,6 +45,30 @@ interface TempZoneStyle {
 
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
+// --- CONFIGURABLE TABLE PARAMETERS ---
+// Heights in pixels
+const ROW_HEIGHT_TEMP_PX = 8; // Height for temperature rows
+const ROW_HEIGHT_INPUT_PX = 10; // Height for Heure/Opérateur input rows
+
+// Font sizes in pixels
+const FONT_SIZE_TEMP_VALUES_PX = 7; // For T°C values in the second column
+const FONT_SIZE_X_MARK_PX = 7;      // For 'X' marks in the cells
+const FONT_SIZE_DAY_HEADER_PX = 6;  // For day headers (1 L, 2 M, etc.)
+const FONT_SIZE_INPUT_FIELDS_PX = 7;// For Heure/Opérateur inputs
+const FONT_SIZE_ZONE_LABEL_PX = 6;  // For vertical zone labels
+
+// Column widths in pixels (approximate for Tailwind mapping)
+const COL_WIDTH_ZONE_PX = 12;             // For the "Zone" column (e.g., w-3)
+const COL_WIDTH_TEMP_VALUE_PX = 10;       // For the "T°C" value column (e.g., w-2.5)
+const COL_WIDTH_DAY_PX = 8;               // For each day column (e.g., w-2)
+// --- END CONFIGURABLE TABLE PARAMETERS ---
+
+// Helper to convert pixel values to Tailwind height/width classes (approximate)
+// Tailwind's spacing scale is based on 0.25rem (4px). So h-1 is 4px, h-1.5 is 6px, h-2 is 8px etc.
+const pxToTailwindHeight = (px: number) => `h-[${px}px]`;
+const pxToTailwindWidth = (px: number) => `w-[${px}px]`;
+
+
 export default function TemperatureMonitoring() {
   const [selectedYear, setSelectedYear] = useState<string>(getYear(new Date()).toString());
   const [selectedMonth, setSelectedMonth] = useState<string>(getMonth(new Date()).toString());
@@ -470,28 +494,28 @@ export default function TemperatureMonitoring() {
               <div className="overflow-x-auto border rounded-md">
                 <Table className="min-w-full table-fixed text-[6px] leading-none">
                   <TableHeader className="sticky top-0 z-30 bg-card shadow-sm">
-                    <TableRow className="h-auto">
-                      <TableHead className="w-3 sm:w-3.5 sticky left-0 z-20 bg-card border-r text-center p-0 align-middle text-[6px] leading-tight">Zone</TableHead>
-                      <TableHead className="w-2 sm:w-2.5 sticky left-[12px] sm:left-[14px] z-20 bg-card border-r text-center p-0 align-middle text-[6px] leading-tight">t°</TableHead>
-                      {monthData.map(day => (<TableHead key={day.date} className={cn("text-center p-0 w-2 h-auto text-[5px] leading-tight", day.isWeekend && "bg-muted/30")}>{day.dayOfMonth}<br/>{day.dayName.substring(0,1)}</TableHead>))}
+                    <TableRow className={cn("h-auto", pxToTailwindHeight(ROW_HEIGHT_INPUT_PX * 1.5))}>
+                      <TableHead className={cn("sticky left-0 z-20 bg-card border-r text-center p-0 align-middle leading-tight", pxToTailwindWidth(COL_WIDTH_ZONE_PX))} style={{fontSize: `${FONT_SIZE_ZONE_LABEL_PX}px`}}>Zone</TableHead>
+                      <TableHead className={cn("sticky left-[var(--col-zone-width)] z-20 bg-card border-r text-center p-0 align-middle leading-tight", pxToTailwindWidth(COL_WIDTH_TEMP_VALUE_PX))} style={{fontSize: `${FONT_SIZE_TEMP_VALUES_PX}px`}}>t°</TableHead>
+                      {monthData.map(day => (<TableHead key={day.date} className={cn("text-center p-0 h-auto leading-tight", pxToTailwindWidth(COL_WIDTH_DAY_PX), day.isWeekend && "bg-muted/30")} style={{fontSize: `${FONT_SIZE_DAY_HEADER_PX}px`}}>{day.dayOfMonth}<br/>{day.dayName.substring(0,1)}</TableHead>))}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {dynamicTempZones.map(zone => 
                        zone.values.slice().reverse().map((tempValue, indexInZone) => ( 
-                         <TableRow key={`${zone.type}-${tempValue}`} className="h-2.5">
+                         <TableRow key={`${zone.type}-${tempValue}`} className={cn("h-auto", pxToTailwindHeight(ROW_HEIGHT_TEMP_PX))}>
                             {indexInZone === 0 ? (
                                 <TableCell
                                   rowSpan={zone.values.length}
-                                  className={cn(zone.color, zone.textColor, "font-semibold align-middle text-center text-[5px] p-0 sticky left-0 z-10 border-r w-3 sm:w-3.5 leading-tight")}
-                                  style={{padding: '0px', width: '12px'}}
+                                  className={cn(zone.color, zone.textColor, "font-semibold align-middle text-center p-0 sticky left-0 z-10 border-r leading-tight", pxToTailwindWidth(COL_WIDTH_ZONE_PX))}
+                                  style={{padding: '0px'}}
                                 >
-                                <div className="h-full flex items-center justify-center overflow-hidden" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', transform: 'rotate(180deg)', whiteSpace: 'nowrap', fontSize: '5px'}}>
+                                <div className="h-full flex items-center justify-center overflow-hidden" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', transform: 'rotate(180deg)', whiteSpace: 'nowrap', fontSize: `${FONT_SIZE_ZONE_LABEL_PX}px`}}>
                                     {zone.label}
                                 </div>
                                 </TableCell>
                             ) : null}
-                            <TableCell className="font-mono text-[6px] text-center border-r sticky left-[12px] sm:left-[14px] z-10 bg-card p-0 leading-tight" style={{fontSize:'6px', padding:'0px'}}>
+                            <TableCell className={cn("font-mono text-center border-r sticky left-[var(--col-zone-width)] z-10 bg-card p-0 leading-tight", pxToTailwindWidth(COL_WIDTH_TEMP_VALUE_PX))} style={{fontSize:`${FONT_SIZE_TEMP_VALUES_PX}px`, padding:'0px'}}>
                                 {tempValue}°
                             </TableCell>
                             {monthData.map((day) => {
@@ -500,34 +524,34 @@ export default function TemperatureMonitoring() {
                                 return (
                                 <TableCell
                                     key={day.date}
-                                    className={cn("text-center p-0 h-2.5 w-2 cursor-pointer hover:bg-primary/10 leading-tight", day.isWeekend && "bg-muted/25", isMarked && "bg-primary text-primary-foreground")}
+                                    className={cn("text-center p-0 h-auto w-auto cursor-pointer hover:bg-primary/10 leading-tight", pxToTailwindWidth(COL_WIDTH_DAY_PX), pxToTailwindHeight(ROW_HEIGHT_TEMP_PX), day.isWeekend && "bg-muted/25", isMarked && "bg-primary text-primary-foreground")}
                                     style={{padding: '0px'}}
                                     onClick={() => !day.isWeekend && handleTempCellClick(day.date, selectedEquipmentData.id, tempValue)}
                                 >
-                                    {isMarked ? <span className="font-bold text-[6px] leading-none align-middle">X</span> : ""}
+                                    {isMarked ? <span className="font-bold align-middle" style={{fontSize: `${FONT_SIZE_X_MARK_PX}px`}}>X</span> : ""}
                                 </TableCell>
                                 );
                             })}
                          </TableRow>
                        ))
                     )}
-                    <TableRow className="bg-card/90 sticky bottom-[12px] z-20 h-3">
-                        <TableCell colSpan={2} className="text-right font-semibold text-[6px] sticky left-0 z-30 bg-card p-0 pr-0.5 border-t leading-tight">Heure</TableCell>
+                    <TableRow className={cn("bg-card/90 sticky bottom-[var(--row-input-height)] z-20 h-auto", pxToTailwindHeight(ROW_HEIGHT_INPUT_PX))}>
+                        <TableCell colSpan={2} className="text-right font-semibold sticky left-0 z-30 bg-card p-0 pr-0.5 border-t leading-tight" style={{fontSize: `${FONT_SIZE_INPUT_FIELDS_PX}px`}}>Heure</TableCell>
                         {monthData.map(day => (
-                            <TableCell key={`time-${day.date}`} className={cn("p-0 border-t h-3", day.isWeekend && "bg-muted/25")}>
+                            <TableCell key={`time-${day.date}`} className={cn("p-0 border-t h-auto", pxToTailwindWidth(COL_WIDTH_DAY_PX), pxToTailwindHeight(ROW_HEIGHT_INPUT_PX), day.isWeekend && "bg-muted/25")}>
                                 <Input type="text" placeholder="HH:mm" defaultValue={getRecord(day.date, selectedEquipmentData.id).time} 
                                        onBlur={(e) => handleTimeOperatorChange(day.date, selectedEquipmentData.id, 'time', e.target.value)}
-                                       className={cn("h-full text-[6px] text-center p-0 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent w-full leading-tight")} pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" style={{height: '100%', fontSize: '6px', padding: '0px'}} disabled={day.isWeekend || isSaving}/>
+                                       className={cn("h-full text-center p-0 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent w-full leading-tight")} pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" style={{height: '100%', fontSize: `${FONT_SIZE_INPUT_FIELDS_PX}px`, padding: '0px'}} disabled={day.isWeekend || isSaving}/>
                             </TableCell>
                         ))}
                     </TableRow>
-                    <TableRow className="bg-card/90 sticky bottom-0 z-20 h-3">
-                        <TableCell colSpan={2} className="text-right font-semibold text-[6px] sticky left-0 z-30 bg-card p-0 pr-0.5 border-t leading-tight">Opérateur</TableCell>
+                    <TableRow className={cn("bg-card/90 sticky bottom-0 z-20 h-auto", pxToTailwindHeight(ROW_HEIGHT_INPUT_PX))}>
+                        <TableCell colSpan={2} className="text-right font-semibold sticky left-0 z-30 bg-card p-0 pr-0.5 border-t leading-tight" style={{fontSize: `${FONT_SIZE_INPUT_FIELDS_PX}px`}}>Opérateur</TableCell>
                         {monthData.map(day => (
-                            <TableCell key={`op-${day.date}`} className={cn("p-0 border-t h-3", day.isWeekend && "bg-muted/25")}>
+                            <TableCell key={`op-${day.date}`} className={cn("p-0 border-t h-auto", pxToTailwindWidth(COL_WIDTH_DAY_PX), pxToTailwindHeight(ROW_HEIGHT_INPUT_PX), day.isWeekend && "bg-muted/25")}>
                                 <Input type="text" placeholder="Op." defaultValue={getRecord(day.date, selectedEquipmentData.id).operator} 
                                        onBlur={(e) => handleTimeOperatorChange(day.date, selectedEquipmentData.id, 'operator', e.target.value)}
-                                       className={cn("h-full text-[6px] text-center p-0 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent w-full leading-tight")} maxLength={10} style={{height: '100%', fontSize: '6px', padding: '0px'}} disabled={day.isWeekend || isSaving}/>
+                                       className={cn("h-full text-center p-0 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent w-full leading-tight")} maxLength={10} style={{height: '100%', fontSize: `${FONT_SIZE_INPUT_FIELDS_PX}px`, padding: '0px'}} disabled={day.isWeekend || isSaving}/>
                             </TableCell>
                         ))}
                     </TableRow>
@@ -540,7 +564,15 @@ export default function TemperatureMonitoring() {
           </>
         )}
       </CardContent>
+      <style jsx global>{`
+        :root {
+          --col-zone-width: ${COL_WIDTH_ZONE_PX}px;
+          --row-input-height: ${ROW_HEIGHT_INPUT_PX}px;
+        }
+      `}</style>
     </Card>
   );
 }
 
+    
+    
