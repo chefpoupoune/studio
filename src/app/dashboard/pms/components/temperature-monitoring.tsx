@@ -18,6 +18,7 @@ import type { DailyTemperatureRecord, MonthlyTemperatureLog, PmsZone as PmsEquip
 import { PMS_TEMPERATURE_MONITORING_KEY } from '@/app/dashboard/settings/types';
 import { getMonthDays, type DayData } from '../utils';
 import { cn } from '@/lib/utils';
+import { Checkbox } from '@/components/ui/checkbox'; 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { firestore } from '@/lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -42,6 +43,8 @@ interface TempZoneStyle {
   values: number[];
 }
 
+const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
+
 export default function TemperatureMonitoring() {
   const [selectedYear, setSelectedYear] = useState<string>(getYear(new Date()).toString());
   const [selectedMonth, setSelectedMonth] = useState<string>(getMonth(new Date()).toString());
@@ -52,8 +55,15 @@ export default function TemperatureMonitoring() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
+  const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
 
-  const getLocalStorageKeyForRecords = useCallback(() => `pms_temperature_records_vFirebase_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]); // Key changed to avoid conflict with old localStorage data if any
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setLoggedInUsername(localStorage.getItem(LOGGED_IN_USERNAME_KEY));
+    }
+  }, []);
+
+  const getFirestoreRecordsDocId = useCallback(() => `temp_records_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
 
   const selectedEquipmentData = useMemo(() => {
     return configuredEquipments.find(eq => eq.id === selectedEquipmentId);
@@ -146,8 +156,7 @@ export default function TemperatureMonitoring() {
 
   const loadDataForPeriod = useCallback(async () => {
     setIsLoading(true);
-    console.log(`[TempMon LOAD_ALL] For period ${selectedYear}-${selectedMonth}, equipment ${selectedEquipmentId}`);
-
+    
     let currentSelectedEquipmentId = selectedEquipmentId;
 
     const pmsSettingsDocRef = doc(firestore, "pmsConfigurations", "mainConfig");
@@ -157,22 +166,18 @@ export default function TemperatureMonitoring() {
         const pmsSettings = pmsSettingsSnap.data() as PmsConfigurations;
         const equipmentsFromFS = pmsSettings[PMS_TEMPERATURE_MONITORING_KEY] || [];
         setConfiguredEquipments(equipmentsFromFS);
-        console.log("[TempMon LOAD_ALL] PMS configurations loaded:", equipmentsFromFS.length, "equipments");
-
+        
         if (equipmentsFromFS.length > 0) {
           const currentSelectionIsValid = currentSelectedEquipmentId ? equipmentsFromFS.some(eq => eq.id === currentSelectedEquipmentId) : false;
           if (!currentSelectionIsValid) {
             currentSelectedEquipmentId = equipmentsFromFS[0].id;
-            console.log("[TempMon LOAD_ALL] Selected equipment was invalid/not set, defaulting to:", currentSelectedEquipmentId);
           }
         } else {
           currentSelectedEquipmentId = undefined;
-          console.log("[TempMon LOAD_ALL] No temperature monitoring equipments configured.");
         }
       } else {
         setConfiguredEquipments([]);
         currentSelectedEquipmentId = undefined;
-        console.log("[TempMon LOAD_ALL] No PMS configurations document found.");
         toast({ title: "Configuration Manquante", description: "Aucune configuration PMS pour le suivi des températures trouvée.", variant: "destructive" });
       }
     } catch (error) {
@@ -181,42 +186,36 @@ export default function TemperatureMonitoring() {
       setConfiguredEquipments([]);
       currentSelectedEquipmentId = undefined;
     }
-
+    
     if (currentSelectedEquipmentId !== selectedEquipmentId) {
-      setSelectedEquipmentId(currentSelectedEquipmentId);
+        setSelectedEquipmentId(currentSelectedEquipmentId); 
     }
-
+    
     const equipmentToLoadRecordsFor = currentSelectedEquipmentId;
 
     if (!equipmentToLoadRecordsFor) {
       setTemperatureRecords({});
-      console.log("[TempMon LOAD_ALL] No equipment to load records for. Clearing records.");
     } else {
-      console.log(`[TempMon LOAD_ALL] Loading temperature records for equipment ${equipmentToLoadRecordsFor}`);
-      const recordsDocId = `temp_records_${selectedYear}_${selectedMonth}`; // Naming convention for Firestore doc
+      const recordsDocId = `temp_records_${selectedYear}_${selectedMonth}`;
       const recordsDocRef = doc(firestore, "pmsTemperatureRecords", recordsDocId);
       try {
         const recordsSnap = await getDoc(recordsDocRef);
         if (recordsSnap.exists()) {
           setTemperatureRecords(recordsSnap.data() as MonthlyTemperatureLog);
-          console.log("[TempMon LOAD_ALL] Temperature records loaded.");
         } else {
           setTemperatureRecords({});
-          console.log("[TempMon LOAD_ALL] No temperature records found for this period.");
         }
       } catch (error) {
         console.error("Error loading temperature records in loadDataForPeriod:", error);
         setTemperatureRecords({});
       }
     }
-
+    
     const yearNum = parseInt(selectedYear, 10);
     const monthNum = parseInt(selectedMonth, 10);
     setMonthData(getMonthDays(yearNum, monthNum));
-    console.log(`[TempMon LOAD_ALL] Month data generated for ${selectedYear}-${selectedMonth}.`);
 
     setIsLoading(false);
-    console.log("[TempMon LOAD_ALL] Finished all loading. setIsLoading(false).");
   }, [selectedYear, selectedMonth, selectedEquipmentId, toast]);
 
   useEffect(() => {
@@ -225,7 +224,6 @@ export default function TemperatureMonitoring() {
 
   useEffect(() => {
     const handleConfigUpdate = () => {
-      console.log(`[TemperatureMonitoring] Received pmsConfigUpdated event. Refetching all data.`);
       loadDataForPeriod();
     };
     window.addEventListener('pmsConfigUpdated', handleConfigUpdate);
@@ -233,7 +231,7 @@ export default function TemperatureMonitoring() {
   }, [loadDataForPeriod]);
 
   useEffect(() => {
-    if (isLoading || isSaving || Object.keys(temperatureRecords).length === 0 && !doc(firestore, "pmsTemperatureRecords", getLocalStorageKeyForRecords())) { 
+    if (isLoading || isSaving || Object.keys(temperatureRecords).length === 0 && !doc(firestore, "pmsTemperatureRecords", getFirestoreRecordsDocId())) { 
       return;
     }
     
@@ -253,7 +251,7 @@ export default function TemperatureMonitoring() {
     const timeoutId = setTimeout(saveRecordsToFirestore, 2000);
     return () => clearTimeout(timeoutId);
 
-  }, [temperatureRecords, isLoading, isSaving, selectedYear, selectedMonth, toast]);
+  }, [temperatureRecords, isLoading, isSaving, selectedYear, selectedMonth, toast, getFirestoreRecordsDocId]);
 
 
  const handleTempCellClick = (dateStr: string, equipmentId: string, tempValue: number) => {
@@ -262,19 +260,26 @@ export default function TemperatureMonitoring() {
       const currentRecord = prev[recordKey] || { time: '', operator: '' };
       const newMarkedValue = currentRecord.markedTemperatureValue === tempValue ? undefined : tempValue;
       let newTime = currentRecord.time;
+      let newOperator = currentRecord.operator;
 
-      if (newMarkedValue !== undefined && (!currentRecord.time || currentRecord.markedTemperatureValue === undefined)) {
-        newTime = format(new Date(), 'HH:mm');
+      if (newMarkedValue !== undefined ) { // If marking any temperature
+        if (!currentRecord.time || currentRecord.markedTemperatureValue === undefined ) { // And no time was set OR it was previously empty
+            newTime = format(new Date(), 'HH:mm');
+        }
+        if (!currentRecord.operator || currentRecord.markedTemperatureValue === undefined) { // And no operator was set OR it was previously empty
+           newOperator = loggedInUsername || '';
+        }
       } else if (newMarkedValue === undefined && currentRecord.markedTemperatureValue === tempValue) { 
         newTime = ''; 
+        newOperator = '';
       }
 
       return {
         ...prev,
         [recordKey]: {
-          ...currentRecord,
           markedTemperatureValue: newMarkedValue,
           time: newTime,
+          operator: newOperator,
         }
       };
     });
@@ -310,11 +315,7 @@ export default function TemperatureMonitoring() {
           }
         });
         
-        if (Object.keys(newRecordsForMonth).length === 0) {
-            await setDoc(docRef, newRecordsForMonth); 
-        } else {
-            await setDoc(docRef, newRecordsForMonth);
-        }
+        await setDoc(docRef, newRecordsForMonth); 
         setTemperatureRecords(newRecordsForMonth);
         toast({ title: "Données Effacées", description: `Les données de température pour ${selectedEquipmentData?.name} pour ${monthsArray[parseInt(selectedMonth)].label} ${selectedYear} ont été effacées.` });
       } catch (error) {
@@ -348,9 +349,9 @@ export default function TemperatureMonitoring() {
       
       const head: any[] = [
         [
-          { content: 'Zone', rowSpan: 2, styles: { valign: 'middle', halign: 'center', fontStyle: 'bold', minCellWidth: 18, cellWidth: 20, fontSize: 6 } }, // Adjusted fontSize
-          { content: 'T°C', rowSpan: 2, styles: { valign: 'middle', halign: 'center', fontStyle: 'bold', minCellWidth: 8, cellWidth: 12, fontSize: 6 } }, // Adjusted fontSize
-          ...monthData.map(day => ({ content: `${day.dayOfMonth}\n${day.dayName.substring(0,1)}`, styles: { halign: 'center', fontSize: 5, cellWidth: 6, minCellHeight: 6 } })) // Adjusted cellWidth and fontSize
+          { content: 'Zone', rowSpan: 2, styles: { valign: 'middle', halign: 'center', fontStyle: 'bold', minCellWidth: 18, cellWidth: 20, fontSize: 6 } },
+          { content: 'T°C', rowSpan: 2, styles: { valign: 'middle', halign: 'center', fontStyle: 'bold', minCellWidth: 8, cellWidth: 12, fontSize: 6 } },
+          ...monthData.map(day => ({ content: `${day.dayOfMonth}\n${day.dayName.substring(0,1)}`, styles: { halign: 'center', fontSize: 5, cellWidth: 6, minCellHeight: 6 } })) 
         ]
       ];
       head.push(monthData.map(() => ({content: '', styles: {minCellHeight: 1.5}})));
@@ -368,35 +369,35 @@ export default function TemperatureMonitoring() {
                     valign: 'middle', 
                     halign: 'center', 
                     fontStyle: 'bold', 
-                    fontSize: 5, // Adjusted fontSize
+                    fontSize: 5,
                     fillColor: zone.pdfColor,
-                    cellWidth: 20, // Ensure consistent width with header
+                    cellWidth: 20,
                 } 
             });
           }
-          row.push({ content: `${tempVal}°C`, styles: { halign: 'center', fontSize: 6, cellPadding: 0.2, cellWidth: 12 } }); // Adjusted fontSize and cellWidth
+          row.push({ content: `${tempVal}°C`, styles: { halign: 'center', fontSize: 6, cellPadding: 0.2, cellWidth: 12 } });
           monthData.forEach(day => {
             const record = getRecord(day.date, selectedEquipmentData.id);
             row.push({
               content: record.markedTemperatureValue === tempVal ? 'X' : '',
-              styles: { halign: 'center', fontSize: 6, cellPadding: 0.2, cellWidth: 6, fillColor: day.isWeekend ? [230,230,230] : undefined } // Adjusted fontSize and cellWidth
+              styles: { halign: 'center', fontSize: 6, cellPadding: 0.2, cellWidth: 6, fillColor: day.isWeekend ? [230,230,230] : undefined } 
             });
           });
           body.push(row);
         });
       });
       
-      const timeRow: any[] = [{content: 'Heure', colSpan: 2, styles: {fontStyle: 'bold', fontSize: 6, halign: 'right', cellPadding: 0.2, cellWidth: 32}}]; // Adjusted fontSize, cellPadding, and cellWidth
+      const timeRow: any[] = [{content: 'Heure', colSpan: 2, styles: {fontStyle: 'bold', fontSize: 6, halign: 'right', cellPadding: 0.2, cellWidth: 32}}];
       monthData.forEach(day => {
         const record = getRecord(day.date, selectedEquipmentData.id);
-        timeRow.push({content: record.time || '-', styles: {halign: 'center', fontSize: 6, cellPadding: 0.2, cellWidth: 6, fillColor: day.isWeekend ? [230,230,230] : undefined}}); // Adjusted fontSize, cellPadding, and cellWidth
+        timeRow.push({content: record.time || '-', styles: {halign: 'center', fontSize: 6, cellPadding: 0.2, cellWidth: 6, fillColor: day.isWeekend ? [230,230,230] : undefined}});
       });
       body.push(timeRow);
 
-      const operatorRow: any[] = [{content: 'Opérateur', colSpan: 2, styles: {fontStyle: 'bold', fontSize: 6, halign: 'right', cellPadding: 0.2, cellWidth: 32}}]; // Adjusted fontSize, cellPadding, and cellWidth
+      const operatorRow: any[] = [{content: 'Opérateur', colSpan: 2, styles: {fontStyle: 'bold', fontSize: 6, halign: 'right', cellPadding: 0.2, cellWidth: 32}}];
       monthData.forEach(day => {
         const record = getRecord(day.date, selectedEquipmentData.id);
-        operatorRow.push({content: record.operator || '-', styles: {halign: 'center', fontSize: 6, cellPadding: 0.2, cellWidth: 6, fillColor: day.isWeekend ? [230,230,230] : undefined}}); // Adjusted fontSize, cellPadding, and cellWidth
+        operatorRow.push({content: record.operator || '-', styles: {halign: 'center', fontSize: 6, cellPadding: 0.2, cellWidth: 6, fillColor: day.isWeekend ? [230,230,230] : undefined}});
       });
       body.push(operatorRow);
 
@@ -406,8 +407,8 @@ export default function TemperatureMonitoring() {
         head: head,
         body: body,
         theme: 'grid',
-        headStyles: { halign: 'center', fontSize: 6, cellPadding: 0.5, fillColor: primaryColorForPdf, textColor: [0,0,0] }, // Adjusted fontSize and cellPadding
-        styles: { fontSize: 6, cellPadding: 0.2, minCellHeight: 4 }, // Adjusted fontSize, cellPadding, and minCellHeight
+        headStyles: { halign: 'center', fontSize: 6, cellPadding: 0.5, fillColor: primaryColorForPdf, textColor: [0,0,0] },
+        styles: { fontSize: 6, cellPadding: 0.2, minCellHeight: 4 }, 
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
           if (pdfSettings.footerText) {
@@ -466,63 +467,65 @@ export default function TemperatureMonitoring() {
                  <div className="flex justify-center items-center py-6"><Loader2 className="h-6 w-6 animate-spin text-primary" /> Chargement des relevés pour "{selectedEquipmentData?.name}"...</div>
             ) : !selectedEquipmentId ? (<div className="text-center py-6 border-2 border-dashed border-muted-foreground/30 rounded-lg"><ListFilter className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-1 text-sm text-muted-foreground">Sélectionnez un équipement.</p></div>
             ) : selectedEquipmentData && monthData.length > 0 ? (
-              <div className="overflow-x-auto border rounded-md"> {/* Removed max-h here */}
-                <Table className="min-w-full table-fixed text-[7px]"> {/* Global font size for table content */}
+              <div className="overflow-x-auto border rounded-md">
+                <Table className="min-w-full table-fixed text-[10px]" style={{fontSize: '10px'}}>
                   <TableHeader className="sticky top-0 z-30 bg-card shadow-sm">
-                    <TableRow className="h-4"> {/* Reduced header row height */}
-                      <TableHead className="w-5 sm:w-6 sticky left-0 z-20 bg-card border-r text-center p-0 align-middle text-[4px]">Zone</TableHead> {/* Adjusted width & font */}
-                      <TableHead className="w-5 sm:w-6 sticky left-5 sm:left-6 z-20 bg-card border-r text-center p-0 align-middle text-[4px]">T°C</TableHead> {/* Adjusted width & font */}
-                      {monthData.map(day => (<TableHead key={day.date} className={cn("text-center p-0 w-2.5 sm:w-3 h-4 text-[4px]", day.isWeekend && "bg-muted/30")}>{day.dayOfMonth}<br/>{day.dayName.substring(0,1)}</TableHead>))} {/* Adjusted width & font */}
+                    <TableRow className="h-[5px]">
+                      <TableHead className="w-[18px] sm:w-[20px] sticky left-0 z-20 bg-card border-r text-center p-0 align-middle text-[8px]">Zone</TableHead>
+                      <TableHead className="w-[15px] sm:w-[18px] sticky left-[18px] sm:left-[20px] z-20 bg-card border-r text-center p-0 align-middle text-[8px]">T°C</TableHead>
+                      {monthData.map(day => (<TableHead key={day.date} className={cn("text-center p-0 w-[7px] sm:w-[8px] h-[5px] text-[8px]", day.isWeekend && "bg-muted/30")}>{day.dayOfMonth}<br/>{day.dayName.substring(0,1)}</TableHead>))}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {dynamicTempZones.map(zone => 
                        zone.values.slice().reverse().map((tempValue, indexInZone) => ( 
-                         <TableRow key={`${zone.type}-${tempValue}`} className="h-1 hover:bg-muted/10"> {/* Further reduced row height to h-1 */}
+                         <TableRow key={`${zone.type}-${tempValue}`} className="h-[5px] hover:bg-muted/10" style={{height: '5px'}}>
                             {indexInZone === 0 ? (
                                 <TableCell
                                   rowSpan={zone.values.length}
-                                  className={cn(zone.color, zone.textColor, "font-semibold align-middle text-center text-[3px] p-0 sticky left-0 z-10 border-r w-5 sm:w-6")} /* Adjusted font & width */
+                                  className={cn(zone.color, zone.textColor, "font-semibold align-middle text-center text-[8px] p-0 sticky left-0 z-10 border-r w-[18px] sm:w-[20px]")}
+                                  style={{fontSize: '8px', padding: '0px', width: selectedEquipmentData.name.length > 15 ? '22px' : '18px' }}
                                 >
-                                <div className="h-full flex items-center justify-center overflow-hidden" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', transform: 'rotate(180deg)'}}>
+                                <div className="h-full flex items-center justify-center overflow-hidden" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', transform: 'rotate(180deg)', whiteSpace: 'nowrap'}}>
                                     {zone.label}
                                 </div>
                                 </TableCell>
                             ) : null}
-                            <TableCell className="font-mono text-[5px] text-center border-r sticky left-5 sm:left-6 z-10 bg-card p-0 py-0">{tempValue}°</TableCell> {/* Adjusted font & padding */}
+                            <TableCell className="font-mono text-[10px] text-center border-r sticky left-[18px] sm:left-[20px] z-10 bg-card p-0 py-0" style={{fontSize: '10px', padding: '0px'}}>{tempValue}°</TableCell>
                             {monthData.map((day) => {
                                 const record = getRecord(day.date, selectedEquipmentData.id);
                                 const isMarked = record.markedTemperatureValue === tempValue;
                                 return (
                                 <TableCell
                                     key={day.date}
-                                    className={cn("text-center p-0 h-1 w-2.5 sm:w-3 cursor-pointer hover:bg-primary/10", day.isWeekend && "bg-muted/25", isMarked && "bg-primary text-primary-foreground")} /* Adjusted height & width */
+                                    className={cn("text-center p-0 h-[5px] w-[7px] sm:w-[8px] cursor-pointer hover:bg-primary/10", day.isWeekend && "bg-muted/25", isMarked && "bg-primary text-primary-foreground")}
+                                    style={{height: '5px', padding: '0px', fontSize: '10px'}}
                                     onClick={() => handleTempCellClick(day.date, selectedEquipmentData.id, tempValue)}
                                 >
-                                    {isMarked ? <span className="font-bold text-[5px] leading-none">X</span> : ""} {/* Adjusted font */}
+                                    {isMarked ? <span className="font-bold text-[10px] leading-none">X</span> : ""}
                                 </TableCell>
                                 );
                             })}
                          </TableRow>
                        ))
                     )}
-                    <TableRow className="bg-card/90 sticky bottom-3 z-20 h-2"> {/* Reduced height */}
-                        <TableCell colSpan={2} className="text-right font-semibold text-[4px] sticky left-0 z-30 bg-card p-0 pr-0.5 border-t py-0">Heure</TableCell> {/* Adjusted font & padding */}
+                    <TableRow className="bg-card/90 sticky bottom-[10px] z-20 h-[10px]" style={{height: '10px'}}>
+                        <TableCell colSpan={2} className="text-right font-semibold text-[8px] sticky left-0 z-30 bg-card p-0 pr-0.5 border-t py-0" style={{fontSize: '8px', padding: '0px'}}>Heure</TableCell>
                         {monthData.map(day => (
-                            <TableCell key={`time-${day.date}`} className={cn("p-0 border-t py-0", day.isWeekend && "bg-muted/25")}>
+                            <TableCell key={`time-${day.date}`} className={cn("p-0 border-t py-0", day.isWeekend && "bg-muted/25")} style={{padding: '0px'}}>
                                 <Input type="text" placeholder="HH:mm" defaultValue={getRecord(day.date, selectedEquipmentData.id).time} 
                                        onBlur={(e) => handleTimeOperatorChange(day.date, selectedEquipmentData.id, 'time', e.target.value)}
-                                       className={cn("h-2 text-[4px] text-center p-0 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent")} pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" /> {/* Adjusted height & font */}
+                                       className={cn("h-[10px] text-[8px] text-center p-0 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent")} pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" style={{height: '10px', fontSize: '8px', padding: '0px'}}/>
                             </TableCell>
                         ))}
                     </TableRow>
-                    <TableRow className="bg-card/90 sticky bottom-0 z-20 h-2"> {/* Reduced height */}
-                        <TableCell colSpan={2} className="text-right font-semibold text-[4px] sticky left-0 z-30 bg-card p-0 pr-0.5 border-t py-0">Opérateur</TableCell> {/* Adjusted font & padding */}
+                    <TableRow className="bg-card/90 sticky bottom-0 z-20 h-[10px]" style={{height: '10px'}}>
+                        <TableCell colSpan={2} className="text-right font-semibold text-[8px] sticky left-0 z-30 bg-card p-0 pr-0.5 border-t py-0" style={{fontSize: '8px', padding: '0px'}}>Opérateur</TableCell>
                         {monthData.map(day => (
-                            <TableCell key={`op-${day.date}`} className={cn("p-0 border-t py-0", day.isWeekend && "bg-muted/25")}>
+                            <TableCell key={`op-${day.date}`} className={cn("p-0 border-t py-0", day.isWeekend && "bg-muted/25")} style={{padding: '0px'}}>
                                 <Input type="text" placeholder="Op." defaultValue={getRecord(day.date, selectedEquipmentData.id).operator} 
                                        onBlur={(e) => handleTimeOperatorChange(day.date, selectedEquipmentData.id, 'operator', e.target.value)}
-                                       className={cn("h-2 text-[4px] text-center p-0 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent")} maxLength={10}/> {/* Adjusted height & font */}
+                                       className={cn("h-[10px] text-[8px] text-center p-0 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent")} maxLength={10} style={{height: '10px', fontSize: '8px', padding: '0px'}}/>
                             </TableCell>
                         ))}
                     </TableRow>
@@ -540,3 +543,4 @@ export default function TemperatureMonitoring() {
 }
 
     
+
