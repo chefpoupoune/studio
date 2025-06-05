@@ -466,63 +466,63 @@ export default function TemperatureMonitoring() {
                  <div className="flex justify-center items-center py-6"><Loader2 className="h-6 w-6 animate-spin text-primary" /> Chargement des relevés pour "{selectedEquipmentData?.name}"...</div>
             ) : !selectedEquipmentId ? (<div className="text-center py-6 border-2 border-dashed border-muted-foreground/30 rounded-lg"><ListFilter className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-1 text-sm text-muted-foreground">Sélectionnez un équipement.</p></div>
             ) : selectedEquipmentData && monthData.length > 0 ? (
-              <div className="overflow-x-auto border rounded-md"> {/* Removed max-h here */}
-                <Table className="min-w-full table-fixed text-[8px]"> {/* Reduced base text size */}
+              <div className="overflow-x-auto border rounded-md">
+                <Table className="min-w-full table-fixed text-[7px]"> {/* Global font size for table content */}
                   <TableHeader className="sticky top-0 z-30 bg-card shadow-sm">
-                    <TableRow className="h-5">  {/* Reduced header row height */}
-                      <TableHead className="w-8 sm:w-10 sticky left-0 z-20 bg-card border-r text-center p-0 align-middle text-[6px]">Zone</TableHead> {/* Reduced width and font */}
-                      <TableHead className="w-8 sm:w-10 sticky left-8 sm:left-10 z-20 bg-card border-r text-center p-0 align-middle text-[6px]">T°C</TableHead> {/* Reduced width and font */}
-                      {monthData.map(day => (<TableHead key={day.date} className={cn("text-center p-0 w-4 sm:w-5 h-5 text-[6px]", day.isWeekend && "bg-muted/30")}>{day.dayOfMonth}<br/>{day.dayName.substring(0,1)}</TableHead>))} {/* Reduced width and font */}
+                    <TableRow className="h-4"> {/* Reduced header row height */}
+                      <TableHead className="w-6 sm:w-7 sticky left-0 z-20 bg-card border-r text-center p-0 align-middle text-[5px]">Zone</TableHead> {/* Adjusted width & font */}
+                      <TableHead className="w-6 sm:w-7 sticky left-6 sm:left-7 z-20 bg-card border-r text-center p-0 align-middle text-[5px]">T°C</TableHead> {/* Adjusted width & font */}
+                      {monthData.map(day => (<TableHead key={day.date} className={cn("text-center p-0 w-3 sm:w-4 h-4 text-[5px]", day.isWeekend && "bg-muted/30")}>{day.dayOfMonth}<br/>{day.dayName.substring(0,1)}</TableHead>))} {/* Adjusted width & font */}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {dynamicTempZones.map(zone => 
                        zone.values.slice().reverse().map((tempValue, indexInZone) => ( 
-                         <TableRow key={`${zone.type}-${tempValue}`} className="h-2.5 hover:bg-muted/10"> {/* Reduced row height */}
+                         <TableRow key={`${zone.type}-${tempValue}`} className="h-1.5 hover:bg-muted/10"> {/* Further reduced row height */}
                             {indexInZone === 0 ? (
                                 <TableCell
                                   rowSpan={zone.values.length}
-                                  className={cn(zone.color, zone.textColor, "font-semibold align-middle text-center text-[5px] p-0 sticky left-0 z-10 border-r w-8 sm:w-10")} /* Reduced font & width */
+                                  className={cn(zone.color, zone.textColor, "font-semibold align-middle text-center text-[4px] p-0 sticky left-0 z-10 border-r w-6 sm:w-7")} /* Adjusted font & width */
                                 >
                                 <div className="h-full flex items-center justify-center overflow-hidden" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', transform: 'rotate(180deg)'}}>
                                     {zone.label}
                                 </div>
                                 </TableCell>
                             ) : null}
-                            <TableCell className="font-mono text-[7px] text-center border-r sticky left-8 sm:left-10 z-10 bg-card p-0">{tempValue}°</TableCell> {/* Reduced font & padding */}
+                            <TableCell className="font-mono text-[6px] text-center border-r sticky left-6 sm:left-7 z-10 bg-card p-0">{tempValue}°</TableCell> {/* Adjusted font & padding */}
                             {monthData.map((day) => {
                                 const record = getRecord(day.date, selectedEquipmentData.id);
                                 const isMarked = record.markedTemperatureValue === tempValue;
                                 return (
                                 <TableCell
                                     key={day.date}
-                                    className={cn("text-center p-0 h-2.5 w-4 sm:w-5 cursor-pointer hover:bg-primary/10", day.isWeekend && "bg-muted/25", isMarked && "bg-primary text-primary-foreground")} /* Reduced height & width */
+                                    className={cn("text-center p-0 h-1.5 w-3 sm:w-4 cursor-pointer hover:bg-primary/10", day.isWeekend && "bg-muted/25", isMarked && "bg-primary text-primary-foreground")} /* Adjusted height & width */
                                     onClick={() => handleTempCellClick(day.date, selectedEquipmentData.id, tempValue)}
                                 >
-                                    {isMarked ? <span className="font-bold text-[7px] leading-none">X</span> : ""} {/* Reduced font */}
+                                    {isMarked ? <span className="font-bold text-[6px] leading-none">X</span> : ""} {/* Adjusted font */}
                                 </TableCell>
                                 );
                             })}
                          </TableRow>
                        ))
                     )}
-                    <TableRow className="bg-card/90 sticky bottom-4 z-20 h-3.5"> {/* Reduced height */}
-                        <TableCell colSpan={2} className="text-right font-semibold text-[6px] sticky left-0 z-30 bg-card p-0 pr-1 border-t">Heure</TableCell> {/* Reduced font & padding */}
+                    <TableRow className="bg-card/90 sticky bottom-3 z-20 h-2.5"> {/* Reduced height */}
+                        <TableCell colSpan={2} className="text-right font-semibold text-[5px] sticky left-0 z-30 bg-card p-0 pr-0.5 border-t">Heure</TableCell> {/* Adjusted font & padding */}
                         {monthData.map(day => (
                             <TableCell key={`time-${day.date}`} className={cn("p-0 border-t", day.isWeekend && "bg-muted/25")}>
                                 <Input type="text" placeholder="HH:mm" defaultValue={getRecord(day.date, selectedEquipmentData.id).time} 
                                        onBlur={(e) => handleTimeOperatorChange(day.date, selectedEquipmentData.id, 'time', e.target.value)}
-                                       className={cn("h-3 text-[6px] text-center p-0 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent")} pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" /> {/* Reduced height & font */}
+                                       className={cn("h-2.5 text-[5px] text-center p-0 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent")} pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" /> {/* Adjusted height & font */}
                             </TableCell>
                         ))}
                     </TableRow>
-                    <TableRow className="bg-card/90 sticky bottom-0 z-20 h-3.5"> {/* Reduced height */}
-                        <TableCell colSpan={2} className="text-right font-semibold text-[6px] sticky left-0 z-30 bg-card p-0 pr-1 border-t">Opérateur</TableCell> {/* Reduced font & padding */}
+                    <TableRow className="bg-card/90 sticky bottom-0 z-20 h-2.5"> {/* Reduced height */}
+                        <TableCell colSpan={2} className="text-right font-semibold text-[5px] sticky left-0 z-30 bg-card p-0 pr-0.5 border-t">Opérateur</TableCell> {/* Adjusted font & padding */}
                         {monthData.map(day => (
                             <TableCell key={`op-${day.date}`} className={cn("p-0 border-t", day.isWeekend && "bg-muted/25")}>
                                 <Input type="text" placeholder="Op." defaultValue={getRecord(day.date, selectedEquipmentData.id).operator} 
                                        onBlur={(e) => handleTimeOperatorChange(day.date, selectedEquipmentData.id, 'operator', e.target.value)}
-                                       className={cn("h-3 text-[6px] text-center p-0 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent")} maxLength={10}/> {/* Reduced height & font */}
+                                       className={cn("h-2.5 text-[5px] text-center p-0 border-0 rounded-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent")} maxLength={10}/> {/* Adjusted height & font */}
                             </TableCell>
                         ))}
                     </TableRow>
@@ -540,4 +540,3 @@ export default function TemperatureMonitoring() {
 }
 
     
-
