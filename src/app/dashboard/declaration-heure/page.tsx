@@ -383,7 +383,6 @@ export default function DeclarationHeurePage() {
                     <Button variant="outline" size="sm" className="text-xs" onClick={() => handleOpenOvertimeForm(req, approverModeView)}>
                       <Edit2 className="mr-1 h-3.5 w-3.5"/> {approverModeView ? "Traiter / Voir" : ((req.approvalStatus === 'accepted' || req.approvalStatus === 'rejected') ? "Voir" : "Modifier")}
                     </Button>
-                    {/* Delete button for Chef in approval view */}
                     {approverModeView && isChef && (
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
@@ -407,7 +406,6 @@ export default function DeclarationHeurePage() {
                             </AlertDialogContent>
                         </AlertDialog>
                     )}
-                    {/* Cancel/Delete button for employee view */}
                     {(!approverModeView && (req.approvalStatus === 'pending' || !req.approvalStatus)) && ( 
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
@@ -470,6 +468,29 @@ export default function DeclarationHeurePage() {
                     <Button variant="outline" size="sm" className="text-xs" onClick={() => handleOpenAbsenceForm(req, approverModeView)}>
                       <Edit2 className="mr-1 h-3.5 w-3.5"/> {(approverModeView || req.approvalStatus === 'accepted' || req.approvalStatus === 'rejected') ? "Voir / Traiter" : "Modifier"}
                     </Button>
+                    {approverModeView && isChef && (
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="destructive" size="sm" className="text-xs">
+                                    <Trash2 className="mr-1 h-3.5 w-3.5"/> Supprimer
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Supprimer la demande d'absence ?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        Êtes-vous sûr de vouloir supprimer la demande d'absence de {req.employeeName} du {isValid(parseISO(req.startDate)) ? format(parseISO(req.startDate), "dd/MM/yyyy") : 'date inconnue'}? Cette action est irréversible.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Non</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleDeleteAbsenceRequest(req.id)}>
+                                        Oui, supprimer
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    )}
                     {(!approverModeView && (req.approvalStatus === 'pending' || !req.approvalStatus)) && ( 
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
@@ -701,3 +722,4 @@ export default function DeclarationHeurePage() {
 
     
     
+
