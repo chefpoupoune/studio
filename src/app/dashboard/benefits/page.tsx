@@ -9,44 +9,62 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { CurrentDate } from '@/components/current-date';
 import React, { useState, useEffect, useCallback } from 'react'; 
 import type { BenefitEmployee } from './types'; 
-import type { BrigadeMember } from '@/app/dashboard/time-tracking/types'; 
+// BrigadeMember type is not directly used here, but its structure is similar to what's fetched
 import { useToast } from '@/hooks/use-toast'; 
 import { firestore } from '@/lib/firebase'; // Firestore import
 import { collection, query, orderBy, getDocs } from 'firebase/firestore'; // Firestore query imports
 
-// BRIGADE_MEMBERS_STORAGE_KEY removed
+const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
+const VIRTUAL_CHEF_ID = 'chef_virtual_user_id';
 
 export default function BenefitsPage() {
   const [employeesForBenefits, setEmployeesForBenefits] = useState<BenefitEmployee[]>([]);
-  const [isLoadingEmployees, setIsLoadingEmployees] = useState(true); // New loading state
+  const [isLoadingEmployees, setIsLoadingEmployees] = useState(true); 
   const [isClient, setIsClient] = useState(false);
   const { toast } = useToast();
+  const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
+
 
   useEffect(() => {
     setIsClient(true);
+    if (typeof window !== 'undefined') {
+      setLoggedInUsername(localStorage.getItem(LOGGED_IN_USERNAME_KEY));
+    }
   }, []);
 
   const fetchBrigadeMembersForBenefits = useCallback(async () => {
     if (!isClient) return;
     setIsLoadingEmployees(true);
     try {
-      const membersCollectionRef = collection(firestore, 'brigadeMembers'); // Firestore collection
+      const membersCollectionRef = collection(firestore, 'brigadeMembers'); 
       const q = query(membersCollectionRef, orderBy("name"));
       const querySnapshot = await getDocs(q);
-      const membersList = querySnapshot.docs.map(docSnap => ({
+      let membersList = querySnapshot.docs.map(docSnap => ({
         id: docSnap.id,
         name: docSnap.data().name,
-        // role: docSnap.data().role // if BenefitEmployee had a role
       } as BenefitEmployee));
+
+      // Add virtual Chef if loggedInUsername is 'Chef' and Chef is not already in the list
+      if (loggedInUsername?.toLowerCase() === 'chef' && !membersList.some(m => m.name.toLowerCase() === 'chef')) {
+        const virtualChefBenefitEmployee: BenefitEmployee = {
+          id: VIRTUAL_CHEF_ID, 
+          name: 'Chef'
+        };
+        membersList.push(virtualChefBenefitEmployee);
+      }
+
       setEmployeesForBenefits(membersList.sort((a,b) => a.name.localeCompare(b.name)));
     } catch (e) {
       console.error("Error loading brigade members for benefits from Firestore", e);
-      setEmployeesForBenefits([]);
+      setEmployeesForBenefits([]); // Keep empty on error, or Chef virtual if logged in
+      if (loggedInUsername?.toLowerCase() === 'chef') {
+         setEmployeesForBenefits([{ id: VIRTUAL_CHEF_ID, name: 'Chef' }]);
+      }
       toast({ title: "Erreur de chargement des employés", description: "Les données des membres de la brigade n'ont pu être chargées.", variant: "destructive" });
     } finally {
       setIsLoadingEmployees(false);
     }
-  }, [isClient, toast]);
+  }, [isClient, toast, loggedInUsername]);
 
   useEffect(() => {
     if (isClient) {
@@ -55,7 +73,7 @@ export default function BenefitsPage() {
   }, [isClient, fetchBrigadeMembersForBenefits]);
 
 
-  if (!isClient || isLoadingEmployees) { // Check new loading state
+  if (!isClient || isLoadingEmployees) { 
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary mr-2" />

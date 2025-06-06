@@ -34,10 +34,11 @@ import {
   writeBatch
 } from 'firebase/firestore';
 
-// TIME_ENTRIES_STORAGE_KEY removed
+
 const LOGGED_IN_USER_PERMISSIONS_KEY = 'loggedInUserPermissions';
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 const LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY = 'loggedInUserHourViewConfig';
+const VIRTUAL_CHEF_ID = 'chef_virtual_user_id'; // Consistent virtual ID
 
 interface TimeTrackingTab {
   value: string;
@@ -58,7 +59,7 @@ export default function TimeTrackingPage() {
   const [loggedInUserHourViewConfig, setLoggedInUserHourViewConfig] = useState<ViewableHourSummaryConfig | null>(null);
   const [isLoadingMembers, setIsLoadingMembers] = useState(true);
   const [isLoadingScheduleTemplates, setIsLoadingScheduleTemplates] = useState(true);
-  const [isLoadingTimeEntries, setIsLoadingTimeEntries] = useState(true); // New loading state for time entries
+  const [isLoadingTimeEntries, setIsLoadingTimeEntries] = useState(true); 
   const { toast } = useToast();
   const isMobile = useIsMobile();
   
@@ -92,17 +93,34 @@ export default function TimeTrackingPage() {
       const membersCollectionRef = collection(firestore, 'brigadeMembers');
       const q = query(membersCollectionRef, orderBy("name"));
       const querySnapshot = await getDocs(q);
-      const membersList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BrigadeMember));
-      setBrigadeMembers(membersList.map((m: any) => ({ ...m, assignedScheduleTemplateIds: Array.isArray(m.assignedScheduleTemplateIds) ? m.assignedScheduleTemplateIds : [] })));
-      console.log("TimeTrackingPage: Brigade members fetched from Firestore:", membersList.length);
+      let membersList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BrigadeMember));
+      membersList = membersList.map((m: any) => ({ ...m, assignedScheduleTemplateIds: Array.isArray(m.assignedScheduleTemplateIds) ? m.assignedScheduleTemplateIds : [] }));
+      
+      // Add virtual Chef if loggedInUsername is 'Chef' and Chef is not already in the list
+      if (loggedInUsername?.toLowerCase() === 'chef' && !membersList.some(m => m.name.toLowerCase() === 'chef')) {
+        const virtualChefMember: BrigadeMember = {
+          id: VIRTUAL_CHEF_ID,
+          name: 'Chef',
+          role: 'Administrateur',
+          assignedScheduleTemplateIds: [] 
+        };
+        membersList.push(virtualChefMember);
+      }
+      
+      setBrigadeMembers(membersList.sort((a,b) => a.name.localeCompare(b.name)));
+      console.log("TimeTrackingPage: Brigade members processed (Firestore + virtual Chef if needed):", membersList.length);
     } catch (error) {
       console.error("Error fetching brigade members from Firestore:", error);
       toast({ title: "Erreur de chargement des membres", variant: "destructive" });
-      setBrigadeMembers([]);
+      if (loggedInUsername?.toLowerCase() === 'chef') {
+        setBrigadeMembers([{ id: VIRTUAL_CHEF_ID, name: 'Chef', role: 'Administrateur', assignedScheduleTemplateIds: [] }]);
+      } else {
+        setBrigadeMembers([]);
+      }
     } finally {
       setIsLoadingMembers(false);
     }
-  }, [isClient, toast]);
+  }, [isClient, toast, loggedInUsername]);
 
   const fetchScheduleTemplates = useCallback(async () => {
     if (!isClient) return;
@@ -128,14 +146,14 @@ export default function TimeTrackingPage() {
     setIsLoadingTimeEntries(true);
     try {
       const entriesCollectionRef = collection(firestore, 'timeTrackingEntries');
-      const q = query(entriesCollectionRef, orderBy("date", "desc")); // Order by date, most recent first
+      const q = query(entriesCollectionRef, orderBy("date", "desc")); 
       const querySnapshot = await getDocs(q);
       const entriesList = querySnapshot.docs.map(docSnap => {
         const data = docSnap.data();
         return {
           id: docSnap.id,
           ...data,
-          date: (data.date as Timestamp).toDate(), // Convert Firestore Timestamp to JS Date
+          date: (data.date as Timestamp).toDate(), 
         } as TimeEntry;
       });
       setTimeEntries(entriesList);
@@ -152,15 +170,17 @@ export default function TimeTrackingPage() {
 
   useEffect(() => {
     if (isClient) {
-      fetchBrigadeMembers();
+      fetchBrigadeMembers(); // fetchBrigadeMembers now depends on loggedInUsername
       fetchScheduleTemplates();
-      fetchTimeEntries(); // Fetch time entries
+      fetchTimeEntries(); 
     }
-  }, [isClient, fetchBrigadeMembers, fetchScheduleTemplates, fetchTimeEntries]);
-
-  // Removed useEffect for saving timeEntries to localStorage
+  }, [isClient, fetchBrigadeMembers, fetchScheduleTemplates, fetchTimeEntries, loggedInUsername]); // Added loggedInUsername dependency to initial fetch chain
 
   const addMember = useCallback(async (memberData: Omit<BrigadeMember, 'id'>) => {
+    if (memberData.name.toLowerCase() === 'chef') {
+        toast({ title: "Nom Réservé", description: "Le nom 'Chef' est réservé et ne peut être ajouté manuellement.", variant: "destructive"});
+        return;
+    }
     const newMember = { 
       ...memberData, 
       assignedScheduleTemplateIds: Array.isArray(memberData.assignedScheduleTemplateIds) ? memberData.assignedScheduleTemplateIds : [] 
@@ -177,6 +197,10 @@ export default function TimeTrackingPage() {
   }, [toast, fetchBrigadeMembers]);
 
   const updateMember = useCallback(async (updatedMember: BrigadeMember) => {
+     if (updatedMember.id === VIRTUAL_CHEF_ID) {
+        toast({ title: "Non Modifiable", description: "Le Chef virtuel ne peut pas être modifié ici.", variant: "default"});
+        return;
+    }
     const memberToUpdate = {
       ...updatedMember,
       assignedScheduleTemplateIds: Array.isArray(updatedMember.assignedScheduleTemplateIds) ? updatedMember.assignedScheduleTemplateIds : []
@@ -186,7 +210,6 @@ export default function TimeTrackingPage() {
       const { id, ...dataToSave } = memberToUpdate;
       await setDoc(memberDocRef, dataToSave); 
       fetchBrigadeMembers();
-      // Update memberName in existing timeEntries state if it changed (client-side update for immediate reflection)
       setTimeEntries(prevEntries => prevEntries.map(entry => 
           entry.memberId === id ? {...entry, memberName: memberToUpdate.name} : entry
       ));
@@ -199,12 +222,15 @@ export default function TimeTrackingPage() {
   }, [toast, fetchBrigadeMembers]);
   
   const deleteMember = useCallback(async (memberId: string) => {
+    if (memberId === VIRTUAL_CHEF_ID) {
+        toast({ title: "Non Supprimable", description: "Le Chef virtuel ne peut pas être supprimé.", variant: "default"});
+        return;
+    }
     const memberName = brigadeMembers.find(m => m.id === memberId)?.name || "Le membre";
     try {
       await deleteDoc(doc(firestore, "brigadeMembers", memberId));
       fetchBrigadeMembers();
       window.dispatchEvent(new CustomEvent('brigadeMembersUpdated'));
-      // Optionally, delete associated time entries or handle them as needed
       toast({ title: "Membre Supprimé", description: `${memberName} a été retiré de Firestore.`, variant: "destructive" });
     } catch (e) {
       console.error("Error deleting member from Firestore: ", e);
@@ -213,23 +239,29 @@ export default function TimeTrackingPage() {
   }, [brigadeMembers, toast, fetchBrigadeMembers]);
 
   const addTimeEntry = useCallback(async (entryData: Omit<TimeEntry, 'id' | 'memberName'>) => {
-    const member = brigadeMembers.find(m => m.id === entryData.memberId);
-    if (!member) {
-      toast({ title: "Erreur", description: "Membre non trouvé pour cette entrée d'heures.", variant: "destructive" });
-      return;
+    let memberNameForEntry = "Inconnu";
+    if (entryData.memberId === VIRTUAL_CHEF_ID) {
+        memberNameForEntry = "Chef";
+    } else {
+        const member = brigadeMembers.find(m => m.id === entryData.memberId);
+        if (!member) {
+            toast({ title: "Erreur", description: "Membre non trouvé pour cette entrée d'heures.", variant: "destructive" });
+            return;
+        }
+        memberNameForEntry = member.name;
     }
     
     const newEntryFirestoreData = { 
         ...entryData, 
-        memberName: member.name,
+        memberName: memberNameForEntry,
         date: Timestamp.fromDate(new Date(entryData.date)) 
     };
 
     try {
       await addDoc(collection(firestore, "timeTrackingEntries"), newEntryFirestoreData);
-      fetchTimeEntries(); // Re-fetch from Firestore
-      window.dispatchEvent(new CustomEvent('timeEntriesUpdated')); // Notify other components
-      toast({ title: "Entrée d'heures enregistrée", description: `Entrée pour ${member.name} le ${format(new Date(entryData.date), "dd/MM/yyyy", {locale: fr})} enregistrée.` });
+      fetchTimeEntries(); 
+      window.dispatchEvent(new CustomEvent('timeEntriesUpdated')); 
+      toast({ title: "Entrée d'heures enregistrée", description: `Entrée pour ${memberNameForEntry} le ${format(new Date(entryData.date), "dd/MM/yyyy", {locale: fr})} enregistrée.` });
     } catch (e) {
       console.error("Error adding time entry to Firestore:", e);
       toast({ title: "Erreur d'enregistrement", description: "L'entrée d'heures n'a pas pu être enregistrée.", variant: "destructive"});
@@ -245,7 +277,7 @@ export default function TimeTrackingPage() {
       const batchDelete = writeBatch(firestore);
       querySnapshot.docs.forEach(docSnapshot => batchDelete.delete(docSnapshot.ref));
       await batchDelete.commit();
-      fetchTimeEntries(); // Refresh entries
+      fetchTimeEntries(); 
       window.dispatchEvent(new CustomEvent('timeEntriesUpdated'));
       toast({ title: "Historique Effacé", description: "Toutes les saisies d'heures ont été supprimées de Firestore.", variant: "destructive" });
     } catch (e) {
