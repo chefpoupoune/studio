@@ -231,24 +231,30 @@ export default function NumberOfPicnics() {
   const handleDailyValueChange = (rowId: PicnicRowKey, day: DayOfWeekKey, value: string) => {
     const numericValue = value === '' ? '' : parseInt(value, 10);
     if (value === '' || (!isNaN(numericValue) && numericValue >= 0)) {
-      setPicnicData(prevData => ({
-        ...prevData,
-        [rowId]: {
-          ...prevData[rowId],
-          [day]: value === '' ? '' : numericValue,
-        }
-      }));
+      setPicnicData(prevData => {
+        const currentRowData = prevData[rowId] || initialRowData(); // Ensure all fields from initialRowData are present
+        return {
+          ...prevData,
+          [rowId]: {
+            ...currentRowData, // Spread all fields from existing/initial row
+            [day]: value === '' ? '' : numericValue, // Then update the specific day
+          }
+        };
+      });
     }
   };
   
   const handleObservationChange = (rowId: PicnicRowKey, value: string) => {
-    setPicnicData(prevData => ({
-        ...prevData,
-        [rowId]: {
-            ...prevData[rowId],
-            weeklyObservation: value,
-        }
-    }));
+    setPicnicData(prevData => {
+        const currentRowData = prevData[rowId] || initialRowData(); // Ensure all fields from initialRowData are present
+        return {
+            ...prevData,
+            [rowId]: {
+                ...currentRowData,
+                weeklyObservation: value,
+            }
+        };
+    });
   };
 
   const handleClientOrderClientNameChange = (index: number, value: string) => {
@@ -822,4 +828,3 @@ export default function NumberOfPicnics() {
   );
 }
 
-    
