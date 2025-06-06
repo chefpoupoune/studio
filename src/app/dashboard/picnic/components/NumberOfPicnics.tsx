@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Save, Trash2, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Save, Trash2, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import type { PicnicWeekData, PicnicRowKey, DisplayRowConfig, ClientPicnicOrder, BreadChoice, DailyClientPicnicData, DayOfWeekKey, PicnicRowData } from '../types';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -27,6 +27,8 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { format, startOfWeek, endOfWeek, addDays, subDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { firestore } from '@/lib/firebase';
+import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 
 const DAYS_OF_WEEK_KEYS: DayOfWeekKey[] = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'];
 const DAY_LABELS: Record<DayOfWeekKey, string> = {
@@ -37,8 +39,8 @@ const DAY_LABELS: Record<DayOfWeekKey, string> = {
   vendredi: 'Vendredi',
 };
 
-const PICNIC_DATA_STORAGE_KEY_PREFIX = "picnic_nb_pn_data_v1_";
-const PICNIC_CLIENT_ORDERS_KEY_PREFIX = "picnic_client_orders_data_v3_"; 
+const PICNIC_WEEK_DATA_COLLECTION = "picnicWeekData";
+const PICNIC_CLIENT_ORDERS_COLLECTION = "picnicClientOrders";
 
 const initialRowData = (): PicnicRowData => ({
   lundi: '', mardi: '', mercredi: '', jeudi: '', vendredi: '', weeklyObservation: ''
@@ -99,6 +101,9 @@ export default function NumberOfPicnics() {
   const [clientOrders, setClientOrders] = useState<ClientPicnicOrder[]>([]);
   const [selectedClientOrderDay, setSelectedClientOrderDay] = useState<DayOfWeekKey>('lundi');
   const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSavingPicnicData, setIsSavingPicnicData] = useState(false);
+  const [isSavingClientOrders, setIsSavingClientOrders] = useState(false);
 
   const weekIdentifier = useMemo(() => {
     const monday = startOfWeek(selectedDate, { weekStartsOn: 1 });
@@ -111,87 +116,116 @@ export default function NumberOfPicnics() {
     return `Semaine du : ${format(monday, 'dd MMMM', { locale: fr })} au ${format(friday, 'dd MMMM yyyy', { locale: fr })}`;
   }, [selectedDate]);
 
-
-  const getPicnicDataStorageKey = useCallback(() => `${PICNIC_DATA_STORAGE_KEY_PREFIX}${weekIdentifier}`, [weekIdentifier]);
-  const getClientOrdersStorageKey = useCallback(() => `${PICNIC_CLIENT_ORDERS_KEY_PREFIX}${weekIdentifier}`, [weekIdentifier]);
-
   useEffect(() => {
-    try {
-      const storedPicnicDataRaw = localStorage.getItem(getPicnicDataStorageKey());
-      if (storedPicnicDataRaw) {
-        const parsedData = JSON.parse(storedPicnicDataRaw);
-        const completeData: Partial<PicnicWeekData> = {};
-        (Object.keys(createInitialPicnicWeekData()) as PicnicRowKey[]).forEach(key => {
-          completeData[key] = { ...(initialRowData()), ...parsedData[key] };
-        });
-        setPicnicData(completeData as PicnicWeekData);
-      } else {
-        setPicnicData(currentPicnicDataForPreviousWeek => {
-            const freshDataForNewWeek = createInitialPicnicWeekData();
-            (Object.keys(freshDataForNewWeek) as PicnicRowKey[]).forEach(key => {
-                if (currentPicnicDataForPreviousWeek && currentPicnicDataForPreviousWeek[key]?.weeklyObservation) {
-                    freshDataForNewWeek[key].weeklyObservation = currentPicnicDataForPreviousWeek[key].weeklyObservation;
-                }
-            });
-            return freshDataForNewWeek;
-        });
+    setIsLoading(true);
+    const loadDataForWeek = async () => {
+      try {
+        // Load Picnic Data (NB PN)
+        const picnicDataDocRef = doc(firestore, PICNIC_WEEK_DATA_COLLECTION, weekIdentifier);
+        const picnicDataSnap = await getDoc(picnicDataDocRef);
+        if (picnicDataSnap.exists()) {
+          const parsedData = picnicDataSnap.data() as PicnicWeekData;
+          const completeData: Partial<PicnicWeekData> = {};
+          (Object.keys(createInitialPicnicWeekData()) as PicnicRowKey[]).forEach(key => {
+            completeData[key] = { ...(initialRowData()), ...parsedData[key] };
+          });
+          setPicnicData(completeData as PicnicWeekData);
+        } else {
+          setPicnicData(createInitialPicnicWeekData());
+        }
+
+        // Load Client Orders
+        const clientOrdersDocRef = doc(firestore, PICNIC_CLIENT_ORDERS_COLLECTION, weekIdentifier);
+        const clientOrdersSnap = await getDoc(clientOrdersDocRef);
+        if (clientOrdersSnap.exists()) {
+          const data = clientOrdersSnap.data();
+          const parsedClientOrders: ClientPicnicOrder[] = data.orders || [];
+          setClientOrders(parsedClientOrders.map(order => ({
+            ...createInitialClientOrder(), 
+            ...order,
+            id: order.id || `client_order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, 
+            days: { 
+              lundi: { ...createInitialDailyClientPicnicData(), ...(order.days?.lundi || {}) },
+              mardi: { ...createInitialDailyClientPicnicData(), ...(order.days?.mardi || {}) },
+              mercredi: { ...createInitialDailyClientPicnicData(), ...(order.days?.mercredi || {}) },
+              jeudi: { ...createInitialDailyClientPicnicData(), ...(order.days?.jeudi || {}) },
+              vendredi: { ...createInitialDailyClientPicnicData(), ...(order.days?.vendredi || {}) },
+            }
+          })));
+        } else {
+          setClientOrders(Array.from({ length: 3 }, createInitialClientOrder));
+        }
+      } catch (e) {
+        console.error("Failed to load data from Firestore for week " + weekIdentifier, e);
+        toast({ title: "Erreur de chargement", description: "Données de pique-nique corrompues pour la semaine sélectionnée.", variant: "destructive" });
+        setPicnicData(createInitialPicnicWeekData());
+        setClientOrders(Array.from({ length: 3 }, createInitialClientOrder));
+      } finally {
+        setIsLoading(false);
       }
+    };
+    loadDataForWeek();
+  }, [weekIdentifier, toast]);
 
-      const storedClientOrders = localStorage.getItem(getClientOrdersStorageKey());
-      if (storedClientOrders) {
-        const parsedClientOrders: ClientPicnicOrder[] = JSON.parse(storedClientOrders);
-        setClientOrders(parsedClientOrders.map(order => ({
-          ...createInitialClientOrder(), 
-          ...order,
-          id: order.id || `client_order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, 
-          days: { 
-            lundi: { ...createInitialDailyClientPicnicData(), ...(order.days?.lundi || {}) },
-            mardi: { ...createInitialDailyClientPicnicData(), ...(order.days?.mardi || {}) },
-            mercredi: { ...createInitialDailyClientPicnicData(), ...(order.days?.mercredi || {}) },
-            jeudi: { ...createInitialDailyClientPicnicData(), ...(order.days?.jeudi || {}) },
-            vendredi: { ...createInitialDailyClientPicnicData(), ...(order.days?.vendredi || {}) },
-          }
-        })));
-      } else {
-        setClientOrders(Array.from({ length: 3 }, createInitialClientOrder)); 
-      }
-    } catch (e) {
-      console.error("Failed to load picnic data from localStorage for week " + weekIdentifier, e);
-      toast({ title: "Erreur de chargement", description: "Données de pique-nique corrompues pour la semaine sélectionnée.", variant: "destructive" });
-      setPicnicData(createInitialPicnicWeekData());
-      setClientOrders(Array.from({ length: 3 }, createInitialClientOrder));
-    }
-  }, [getPicnicDataStorageKey, getClientOrdersStorageKey, toast, weekIdentifier]);
-
-  const saveData = useCallback(() => {
+  const savePicnicDataToFirestore = useCallback(async () => {
+    if (isSavingPicnicData) return;
+    setIsSavingPicnicData(true);
     try {
-      localStorage.setItem(getPicnicDataStorageKey(), JSON.stringify(picnicData));
-      toast({ title: "Données Hebdomadaires Sauvegardées", description: "Les nombres de pique-niques de la semaine ont été enregistrés." });
+      const picnicDataDocRef = doc(firestore, PICNIC_WEEK_DATA_COLLECTION, weekIdentifier);
+      await setDoc(picnicDataDocRef, picnicData);
+      toast({ title: "Données Hebdomadaires Sauvegardées", description: "Les nombres de pique-niques ont été enregistrés dans Firestore." });
     } catch (e) {
-      console.error("Failed to save picnic data to localStorage", e);
-      toast({ title: "Erreur de sauvegarde (semaine)", variant: "destructive" });
+      console.error("Failed to save picnic data to Firestore", e);
+      toast({ title: "Erreur de sauvegarde (NB PN)", variant: "destructive" });
+    } finally {
+      setIsSavingPicnicData(false);
     }
-  }, [picnicData, toast, getPicnicDataStorageKey]);
+  }, [picnicData, weekIdentifier, toast, isSavingPicnicData]);
 
-  const saveClientOrders = useCallback(() => {
+  const saveClientOrdersToFirestore = useCallback(async () => {
+    if (isSavingClientOrders) return;
+    setIsSavingClientOrders(true);
     try {
-      localStorage.setItem(getClientOrdersStorageKey(), JSON.stringify(clientOrders));
-      toast({ title: "Commandes Clients Sauvegardées", description: "Les commandes clients pour pique-niques ont été enregistrées." });
+      const clientOrdersDocRef = doc(firestore, PICNIC_CLIENT_ORDERS_COLLECTION, weekIdentifier);
+      await setDoc(clientOrdersDocRef, { orders: clientOrders });
+      toast({ title: "Commandes Clients Sauvegardées", description: "Les commandes clients ont été enregistrées dans Firestore." });
     } catch (e) {
-      console.error("Failed to save client orders to localStorage", e);
-      toast({ title: "Erreur de sauvegarde (commandes clients)", variant: "destructive" });
+      console.error("Failed to save client orders to Firestore", e);
+      toast({ title: "Erreur de sauvegarde (Commandes Clients)", variant: "destructive" });
+    } finally {
+      setIsSavingClientOrders(false);
     }
-  }, [clientOrders, toast, getClientOrdersStorageKey]);
+  }, [clientOrders, weekIdentifier, toast, isSavingClientOrders]);
 
-  const handleConfirmClearData = () => {
-    // When clearing data for the week, also clear observations as they are tied to that week's data context
-    setPicnicData(createInitialPicnicWeekData()); 
-    toast({ title: "Données hebdomadaires effacées", variant: "destructive"});
+  const handleConfirmClearPicnicData = async () => {
+    setIsSavingPicnicData(true);
+    try {
+      const picnicDataDocRef = doc(firestore, PICNIC_WEEK_DATA_COLLECTION, weekIdentifier);
+      await setDoc(picnicDataDocRef, createInitialPicnicWeekData()); // Save empty data
+      setPicnicData(createInitialPicnicWeekData()); 
+      toast({ title: "Données hebdomadaires (NB PN) effacées de Firestore.", variant: "destructive"});
+    } catch (e) {
+      console.error("Error clearing picnic data in Firestore:", e);
+      toast({ title: "Erreur d'effacement (NB PN)", variant: "destructive"});
+    } finally {
+      setIsSavingPicnicData(false);
+    }
   };
 
-  const handleConfirmClearClientOrders = () => {
-    setClientOrders(Array.from({ length: 3 }, createInitialClientOrder));
-    toast({ title: "Données commandes clients effacées", variant: "destructive"});
+  const handleConfirmClearClientOrders = async () => {
+    setIsSavingClientOrders(true);
+    const initialEmptyOrders = Array.from({ length: 3 }, createInitialClientOrder);
+    try {
+      const clientOrdersDocRef = doc(firestore, PICNIC_CLIENT_ORDERS_COLLECTION, weekIdentifier);
+      await setDoc(clientOrdersDocRef, { orders: initialEmptyOrders }); // Save empty orders
+      setClientOrders(initialEmptyOrders);
+      toast({ title: "Données commandes clients effacées de Firestore.", variant: "destructive"});
+    } catch (e) {
+      console.error("Error clearing client orders in Firestore:", e);
+      toast({ title: "Erreur d'effacement (Commandes Clients)", variant: "destructive"});
+    } finally {
+      setIsSavingClientOrders(false);
+    }
   };
 
   const handleDailyValueChange = (rowId: PicnicRowKey, day: DayOfWeekKey, value: string) => {
@@ -216,7 +250,6 @@ export default function NumberOfPicnics() {
         }
     }));
   };
-
 
   const handleClientOrderClientNameChange = (index: number, value: string) => {
     setClientOrders(prevOrders => {
@@ -317,7 +350,7 @@ export default function NumberOfPicnics() {
       const nbPn = Number(dayData.nbPn);
       if (!isNaN(nbPn) && nbPn > 0) {
         if (dayData.breadChoice === 'baguette') {
-          baguettes += Math.round(nbPn / 2); // Divide by 2 for baguettes
+          baguettes += Math.round(nbPn / 2);
         } else if (dayData.breadChoice === 'faluche') {
           faluches += nbPn;
         }
@@ -378,7 +411,6 @@ export default function NumberOfPicnics() {
     return totals;
   }, [weeklyClientRecapData]);
 
-
   const handlePreviousWeek = () => {
     setSelectedDate(prevDate => subDays(prevDate, 7));
   };
@@ -386,6 +418,15 @@ export default function NumberOfPicnics() {
   const handleNextWeek = () => {
     setSelectedDate(prevDate => addDays(prevDate, 7));
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center p-10">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="ml-2 text-muted-foreground">Chargement des données de la semaine...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -428,7 +469,7 @@ export default function NumberOfPicnics() {
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto border rounded-md">
-            <Table className="min-w-[1050px]"> {/* Increased min-width for observation column */}
+            <Table className="min-w-[1050px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[180px] min-w-[180px] sticky left-0 z-10 bg-card">Catégorie</TableHead>
@@ -460,6 +501,7 @@ export default function NumberOfPicnics() {
                               rowConfig.textColor.includes('white') ? "text-white placeholder:text-gray-300 focus:ring-white/50" : "text-black placeholder:text-gray-500 focus:ring-black/50"
                             )}
                             placeholder="0"
+                            disabled={isSavingPicnicData}
                           />
                         );
                       } else if (rowConfig.id === 'total_global') {
@@ -490,6 +532,7 @@ export default function NumberOfPicnics() {
                             rowConfig.textColor.includes('white') ? "text-white placeholder:text-gray-300 focus:ring-white/50" : "text-black placeholder:text-gray-500 focus:ring-black/50"
                           )}
                           placeholder="Notes..."
+                          disabled={isSavingPicnicData}
                         />
                       ) : (
                         <span className={cn("block py-1.5", rowConfig.textColor)}>-</span>
@@ -503,7 +546,8 @@ export default function NumberOfPicnics() {
           <div className="mt-6 flex justify-end space-x-2">
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                   <Button variant="outline">
+                   <Button variant="outline" disabled={isSavingPicnicData}>
+                      {isSavingPicnicData && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       <Trash2 className="mr-2 h-4 w-4" />
                       Effacer Données Semaine
                   </Button>
@@ -517,13 +561,14 @@ export default function NumberOfPicnics() {
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Annuler</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleConfirmClearData}>
+                    <AlertDialogAction onClick={handleConfirmClearPicnicData}>
                       Effacer
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
-              <Button onClick={saveData}>
+              <Button onClick={savePicnicDataToFirestore} disabled={isSavingPicnicData}>
+                  {isSavingPicnicData && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   <Save className="mr-2 h-4 w-4" />
                   Sauvegarder Données Semaine
               </Button>
@@ -542,7 +587,7 @@ export default function NumberOfPicnics() {
           <div className="mb-4 flex items-end gap-4">
             <div className="flex-grow">
               <Label htmlFor="client-order-day-select">Sélectionner un Jour</Label>
-              <Select value={selectedClientOrderDay} onValueChange={(value) => setSelectedClientOrderDay(value as DayOfWeekKey)}>
+              <Select value={selectedClientOrderDay} onValueChange={(value) => setSelectedClientOrderDay(value as DayOfWeekKey)} disabled={isSavingClientOrders}>
                 <SelectTrigger id="client-order-day-select" className="mt-1">
                   <SelectValue placeholder="Choisir un jour..." />
                 </SelectTrigger>
@@ -580,6 +625,7 @@ export default function NumberOfPicnics() {
                             onChange={(e) => handleClientOrderClientNameChange(index, e.target.value)}
                             className="h-8"
                             placeholder="Nom du client"
+                            disabled={isSavingClientOrders}
                             />
                         </TableCell>
                         <TableCell className="p-1">
@@ -590,13 +636,14 @@ export default function NumberOfPicnics() {
                             onChange={(e) => handleClientOrderDailyInputChange(index, selectedClientOrderDay, e.target.value)}
                             className="h-8 text-center"
                             placeholder="0"
+                            disabled={isSavingClientOrders}
                             />
                         </TableCell>
                         <TableCell className="p-1">
                             <Select
                             value={isNbPnZeroOrInvalid ? 'none' : dayData.breadChoice}
                             onValueChange={(value) => handleClientOrderDailyBreadChange(index, selectedClientOrderDay, value as BreadChoice)}
-                            disabled={isNbPnZeroOrInvalid}
+                            disabled={isNbPnZeroOrInvalid || isSavingClientOrders}
                             >
                             <SelectTrigger className="h-8 text-xs">
                                 <SelectValue placeholder="Pain..." />
@@ -614,10 +661,11 @@ export default function NumberOfPicnics() {
                             onChange={(e) => handleClientOrderObservationChange(index, e.target.value)}
                             className="h-8"
                             placeholder="Détails..."
+                            disabled={isSavingClientOrders}
                             />
                         </TableCell>
                         <TableCell className="p-1 text-center sticky right-0 z-10 bg-card group-hover:bg-muted/50">
-                            <Button variant="destructive" size="icon" onClick={() => handleDeleteClientOrderRow(order.id)} className="h-8 w-8">
+                            <Button variant="destructive" size="icon" onClick={() => handleDeleteClientOrderRow(order.id)} className="h-8 w-8" disabled={isSavingClientOrders}>
                             <Trash2 className="h-4 w-4" />
                             </Button>
                         </TableCell>
@@ -639,13 +687,14 @@ export default function NumberOfPicnics() {
             </Table>
           </div>
           <div className="mt-6 flex justify-between items-center">
-            <Button onClick={handleAddClientOrderRow} variant="outline">
+            <Button onClick={handleAddClientOrderRow} variant="outline" disabled={isSavingClientOrders}>
               <PlusCircle className="mr-2 h-4 w-4" /> Ajouter Ligne Client
             </Button>
             <div className="flex space-x-2">
                 <AlertDialog>
                     <AlertDialogTrigger asChild>
-                    <Button variant="outline">
+                    <Button variant="outline" disabled={isSavingClientOrders}>
+                        {isSavingClientOrders && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         <Trash2 className="mr-2 h-4 w-4" />
                         Effacer Commandes Clients (semaine)
                     </Button>
@@ -665,7 +714,8 @@ export default function NumberOfPicnics() {
                     </AlertDialogFooter>
                     </AlertDialogContent>
                 </AlertDialog>
-                <Button onClick={saveClientOrders}>
+                <Button onClick={saveClientOrdersToFirestore} disabled={isSavingClientOrders}>
+                    {isSavingClientOrders && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     <Save className="mr-2 h-4 w-4" />
                     Sauvegarder Commandes Clients
                 </Button>
@@ -771,5 +821,5 @@ export default function NumberOfPicnics() {
     </div>
   );
 }
-    
 
+    
