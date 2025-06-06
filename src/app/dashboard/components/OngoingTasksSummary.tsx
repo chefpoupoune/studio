@@ -11,8 +11,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { firestore } from '@/lib/firebase';
 import { collection, query, where, orderBy, getDocs, Timestamp, limit } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
-import { format, isValid, parseISO } from 'date-fns'; 
-import { fr } from 'date-fns/locale'; 
+import { format, isValid, parseISO } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 export default function OngoingTasksSummary() {
   const [allTasks, setAllTasks] = useState<Task[]>([]);
@@ -43,20 +43,20 @@ export default function OngoingTasksSummary() {
         try {
           const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : new Date());
           const updatedAt = data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : new Date());
-          const appointmentDate = data.appointmentDate instanceof Timestamp 
-            ? data.appointmentDate.toDate() 
-            : (data.appointmentDate && typeof data.appointmentDate === 'string' && isValid(parseISO(data.appointmentDate))) 
-              ? parseISO(data.appointmentDate) 
+          const appointmentDate = data.appointmentDate instanceof Timestamp
+            ? data.appointmentDate.toDate()
+            : (data.appointmentDate && typeof data.appointmentDate === 'string' && isValid(parseISO(data.appointmentDate)))
+              ? parseISO(data.appointmentDate)
               : data.appointmentDate && typeof data.appointmentDate.seconds === 'number' // Handle Firestore Timestamp-like objects
                 ? new Date(data.appointmentDate.seconds * 1000)
                 : null;
-          
+
           const statusHistory = (data.statusHistory || []).map((log: any) => ({
             status: log.status || 'en_cours', // Default status if missing
-            date: log.date instanceof Timestamp 
-              ? log.date.toDate() 
-              : (log.date && typeof log.date.seconds === 'number') 
-                ? new Date(log.date.seconds * 1000) 
+            date: log.date instanceof Timestamp
+              ? log.date.toDate()
+              : (log.date && typeof log.date.seconds === 'number')
+                ? new Date(log.date.seconds * 1000)
                 : (log.date ? new Date(log.date) : new Date()),
             notes: log.notes || undefined,
           }));
@@ -77,10 +77,10 @@ export default function OngoingTasksSummary() {
           // Continue with other tasks
         }
       });
-      
+
       // Client-side filter for ongoing tasks
       const ongoingTasksList = mappedTasks.filter(task => !['termine', 'annule'].includes(task.currentStatus));
-      
+
       setAllTasks(ongoingTasksList);
       console.log("OngoingTasksSummary: Tasks fetched and filtered successfully:", ongoingTasksList.length);
     } catch (e: any) {
@@ -94,14 +94,14 @@ export default function OngoingTasksSummary() {
 
   useEffect(() => {
     if (isClient) {
-      fetchOngoingTasks(); 
+      fetchOngoingTasks();
 
       const handleTasksUpdated = () => {
         console.log("OngoingTasksSummary: taskManagementTasksUpdated event received. Re-fetching tasks.");
         fetchOngoingTasks();
       };
       window.addEventListener('taskManagementTasksUpdated', handleTasksUpdated);
-      
+
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
           console.log("OngoingTasksSummary: Tab became visible, re-fetching tasks.");
@@ -117,12 +117,12 @@ export default function OngoingTasksSummary() {
     }
   }, [isClient, fetchOngoingTasks]);
 
-  const ongoingTasks = allTasks; 
+  const ongoingTasks = allTasks;
 
   const activeTasksCount = useMemo(() => {
     return ongoingTasks.filter(task => ['en_cours', 'rendez_vous', 'mr_dufay_prevenue', 'devis_fait', 'devis_envoye', 'devis_signature'].includes(task.currentStatus)).length;
   }, [ongoingTasks]);
-  
+
   const getStatusBadgeVariant = (status: TaskStatus): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info" => {
     switch (status) {
       case 'termine': return 'success';
@@ -181,18 +181,17 @@ export default function OngoingTasksSummary() {
         {ongoingTasks.length > 0 ? (
           <ScrollArea className="h-[220px] sm:h-[240px] pr-3">
             <ul className="space-y-2.5">
-              {ongoingTasks.slice(0, 5).map((task) => { 
-                // Get the last entry from statusHistory, if available
-                const lastStatusEntry = task.statusHistory && task.statusHistory.length > 0 
-                  ? task.statusHistory[task.statusHistory.length - 1] 
+              {ongoingTasks.slice(0, 5).map((task) => {
+                const lastStatusEntry = task.statusHistory && task.statusHistory.length > 0
+                  ? task.statusHistory[task.statusHistory.length - 1]
                   : null;
                 const lastNotes = lastStatusEntry?.notes;
                 return (
                   <li key={task.id} className="p-2 border rounded-md bg-card/60 hover:bg-muted/30 text-sm">
                     <div className="flex justify-between items-start mb-0.5">
                       <span className="font-medium truncate pr-2" title={task.title}>{task.title}</span>
-                      <Badge 
-                          variant={getStatusBadgeVariant(task.currentStatus)} 
+                      <Badge
+                          variant={getStatusBadgeVariant(task.currentStatus)}
                           className="text-xs whitespace-nowrap"
                       >
                         {taskStatusLabels[task.currentStatus] || task.currentStatus}
@@ -201,8 +200,8 @@ export default function OngoingTasksSummary() {
                     {lastNotes && (
                       <div className="mt-1 text-xs text-muted-foreground/90 flex items-start gap-1">
                         <MessageSquare className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                        <p className="truncate" title={lastNotes}>
-                          Obs: {lastNotes}
+                        <p className="break-words" title={lastNotes}> {/* Removed truncate, added break-words */}
+                          <span className="font-semibold">Obs:</span> {lastNotes}
                         </p>
                       </div>
                     )}
