@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { BookOpenText, CalendarDays, ClipboardCheck, Thermometer, FileText as FileTextIcon, Loader2 } from 'lucide-react';
+import { BookOpenText, CalendarDays, ClipboardCheck, Thermometer, FileText as FileTextIcon, Loader2, Trash2 } from 'lucide-react'; // Added Trash2
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
@@ -25,6 +25,17 @@ import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { firestore } from '@/lib/firebase';
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 
 interface jsPDFWithAutoTable extends jsPDF {
@@ -50,6 +61,7 @@ export default function MenuPlanningPage() {
   const [menuData, setMenuData] = useState<DailyMenu[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false); 
   const [isSaving, setIsSaving] = useState(false);
+  const [isResettingMonthData, setIsResettingMonthData] = useState(false); // New state for reset
   const [isGeneratingMonthlyPdf, setIsGeneratingMonthlyPdf] = useState(false);
   const { toast } = useToast();
   const isMobile = useIsMobile();
@@ -167,7 +179,7 @@ export default function MenuPlanningPage() {
   }, [selectedYear, selectedMonth, generateMonthData, getFirestoreDocId, toast]);
 
   useEffect(() => {
-    if (!dataLoaded || isSaving || menuData.length === 0) { 
+    if (!dataLoaded || isSaving || isResettingMonthData || menuData.length === 0) { // Added isResettingMonthData
       return;
     }
     
@@ -213,7 +225,7 @@ export default function MenuPlanningPage() {
     const timeoutId = setTimeout(saveToFirestore, 1500);
     return () => clearTimeout(timeoutId);
 
-  }, [menuData, dataLoaded, isSaving, getFirestoreDocId, toast]);
+  }, [menuData, dataLoaded, isSaving, isResettingMonthData, getFirestoreDocId, toast]);
 
 
   const handleUpdateMenuEntry = useCallback((date: string, field: MenuField, value: StoredMenuThemeValue) => {
@@ -223,6 +235,39 @@ export default function MenuPlanningPage() {
       )
     );
   }, []);
+
+  const handleResetCurrentMonthData = async () => {
+    setIsResettingMonthData(true);
+    const yearNum = parseInt(selectedYear, 10);
+    const monthNum = parseInt(selectedMonth, 10);
+    const freshData = generateMonthData(yearNum, monthNum);
+    const sanitizedFreshData = freshData.map(dayMenu => ({
+        ...dayMenu,
+        entree: dayMenu.entree || '',
+        plat: dayMenu.plat || '',
+        feculent: dayMenu.feculent || '',
+        legume: dayMenu.legume || '',
+        sauce: dayMenu.sauce || '',
+        dessert: dayMenu.dessert || '',
+        theme: dayMenu.theme || '',
+        holidayName: dayMenu.holidayName || null,
+    }));
+    
+    const docId = getFirestoreDocId();
+    const docRef = doc(firestore, "menuPlanning", docId);
+
+    try {
+      await setDoc(docRef, { menus: sanitizedFreshData });
+      setMenuData(freshData); // Update local state after successful save
+      window.dispatchEvent(new CustomEvent('menuDataUpdatedInFirestore'));
+      toast({ title: "Mois Réinitialisé", description: `Les menus pour ${months[monthNum].label} ${yearNum} ont été réinitialisés.` });
+    } catch (error) {
+      console.error("Error resetting month data in Firestore:", error);
+      toast({ title: "Erreur de Réinitialisation", variant: "destructive" });
+    } finally {
+      setIsResettingMonthData(false);
+    }
+  };
 
   const generateMonthlyMenuPdf = () => {
     if (menuData.length === 0) {
@@ -439,10 +484,34 @@ export default function MenuPlanningPage() {
               Les données sont sauvegardées automatiquement dans Firestore.
             </CardDescription>
           </div>
-          <Button onClick={generateMonthlyMenuPdf} disabled={!dataLoaded || isGeneratingMonthlyPdf || isSaving} className="w-full sm:w-auto">
-            {(isGeneratingMonthlyPdf || isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileTextIcon className="mr-2 h-4 w-4" />}
-            Générer PDF Mensuel
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto self-start sm:self-center">
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={!dataLoaded || isSaving || isResettingMonthData} className="w-full sm:w-auto">
+                  {(isResettingMonthData) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                  Réinitialiser Mois
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Confirmer la réinitialisation</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Êtes-vous sûr de vouloir réinitialiser tous les menus pour {months.find(m => m.value === selectedMonth)?.label} {selectedYear} ? Cette action est irréversible.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Annuler</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleResetCurrentMonthData}>
+                    Réinitialiser
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+            <Button onClick={generateMonthlyMenuPdf} disabled={!dataLoaded || isGeneratingMonthlyPdf || isSaving || isResettingMonthData} className="w-full sm:w-auto">
+              {(isGeneratingMonthlyPdf || isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileTextIcon className="mr-2 h-4 w-4" />}
+              Générer PDF Mensuel
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
