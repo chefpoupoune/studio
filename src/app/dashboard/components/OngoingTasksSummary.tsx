@@ -182,7 +182,10 @@ export default function OngoingTasksSummary() {
           <ScrollArea className="h-[220px] sm:h-[240px] pr-3">
             <ul className="space-y-2.5">
               {ongoingTasks.slice(0, 5).map((task) => { 
-                const lastStatusEntry = task.statusHistory && task.statusHistory.length > 0 ? task.statusHistory[task.statusHistory.length - 1] : null;
+                // Get the last entry from statusHistory, if available
+                const lastStatusEntry = task.statusHistory && task.statusHistory.length > 0 
+                  ? task.statusHistory[task.statusHistory.length - 1] 
+                  : null;
                 const lastNotes = lastStatusEntry?.notes;
                 return (
                   <li key={task.id} className="p-2 border rounded-md bg-card/60 hover:bg-muted/30 text-sm">
@@ -224,3 +227,4 @@ export default function OngoingTasksSummary() {
     </Card>
   );
 }
+
