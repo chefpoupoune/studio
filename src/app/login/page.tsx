@@ -14,9 +14,12 @@ import { useToast } from '@/hooks/use-toast';
 import type { AppUser, RubricId, ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management';
 import { ALL_RUBRIC_IDS, LOGGED_IN_USER_PERMISSIONS_KEY, LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY } from '@/app/dashboard/settings/components/user-management';
 import { firestore } from '@/lib/firebase';
-import { collection, getDocs, query, orderBy, doc, setDoc, addDoc } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, doc, setDoc, addDoc, getDoc } from 'firebase/firestore'; // Added getDoc
 
-const APP_LOGO_STORAGE_KEY = "app_config_app_logo_url_v1";
+// Firestore constants for app settings
+const APP_SETTINGS_COLLECTION = "appSettings";
+const GLOBAL_APP_SETTINGS_DOC_ID = "globalAppSettings";
+// APP_LOGO_STORAGE_KEY removed
 
 const simulatedHash = (password: string): string => `sim_hashed_${password}_!`;
 const DEFAULT_CHEF_ID_FIRESTORE = 'default_chef_user_id';
@@ -43,19 +46,34 @@ export default function LoginPage() {
         return;
       }
 
-      const storedAppLogo = localStorage.getItem(APP_LOGO_STORAGE_KEY);
-      if (storedAppLogo) {
-          setAppLogoUrl(storedAppLogo);
-      }
-      
-      const fetchUsersForLogin = async () => {
+      const loadInitialData = async () => {
+        setIsLoading(true);
+        // Load App Logo from Firestore
+        const settingsDocRef = doc(firestore, APP_SETTINGS_COLLECTION, GLOBAL_APP_SETTINGS_DOC_ID);
+        try {
+          const docSnap = await getDoc(settingsDocRef);
+          if (docSnap.exists()) {
+            const settingsData = docSnap.data();
+            if (settingsData && settingsData.appLogoUrl) {
+              setAppLogoUrl(settingsData.appLogoUrl);
+            } else {
+              setAppLogoUrl(null);
+            }
+          } else {
+            setAppLogoUrl(null); // No settings doc, no logo
+          }
+        } catch (logoError) {
+          console.error("Error loading app logo from Firestore on login page:", logoError);
+          setAppLogoUrl(null); // Fallback to no logo on error
+        }
+
+        // Fetch Users
         let usersFromDb: AppUser[] = [];
         try {
           const usersCollectionRef = collection(firestore, 'appUsers');
           const q = query(usersCollectionRef, orderBy("username"));
           const querySnapshot = await getDocs(q);
           usersFromDb = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as AppUser));
-          console.log(`[Login Page LOAD]: Loaded ${usersFromDb.length} users from Firestore.`);
         } catch (e) {
           console.error("Error loading users from Firestore for login:", e);
           toast({ title: "Erreur de chargement des utilisateurs", variant: "destructive"});
@@ -65,7 +83,6 @@ export default function LoginPage() {
         let chefUserInDb = usersFromDb.find(u => u.username.toLowerCase() === 'chef');
 
         if (!chefUserInDb) {
-          console.log("[Login Page LOAD]: Chef user NOT found in Firestore. Attempting to create default Chef.");
           const defaultChefForCreation: Omit<AppUser, 'id'> = {
             username: 'Chef', 
             passwordRequired: true, 
@@ -75,7 +92,6 @@ export default function LoginPage() {
           };
           try {
             const chefDocRef = await addDoc(collection(firestore, "appUsers"), defaultChefForCreation);
-            console.log("[Login Page LOAD]: Default Chef created in Firestore with ID:", chefDocRef.id);
             const newChefUser = { ...defaultChefForCreation, id: chefDocRef.id };
             usersFromDb.push(newChefUser); 
             chefUserInDb = newChefUser; 
@@ -116,7 +132,7 @@ export default function LoginPage() {
         setIsLoading(false);
       };
 
-      fetchUsersForLogin();
+      loadInitialData();
     }
   }, [isClient, router, toast]);
 
@@ -168,7 +184,7 @@ export default function LoginPage() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center p-4 md:p-8 bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary mr-2" />
-        <p className="text-muted-foreground">Chargement des utilisateurs...</p>
+        <p className="text-muted-foreground">Chargement...</p>
       </main>
     );
   }
@@ -182,8 +198,8 @@ export default function LoginPage() {
             alt="Logo de l'application"
             width={100} 
             height={100}
-            className="rounded-lg object-contain"
-            data-ai-hint="application logo"
+            className="rounded-lg object-contain max-h-[100px]" // Added max-h for consistency
+            data-ai-hint="application logo" // This hint is fine
             unoptimized 
           />
         </div>
@@ -286,5 +302,3 @@ export default function LoginPage() {
     </main>
   );
 }
-
-    
