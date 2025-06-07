@@ -275,24 +275,6 @@ export default function CostAnalysisTable() {
       setIsLoading(false);
     }
   };
-  
-  const getColumnClass = (header: string, isHeader: boolean = true) => {
-    const grayCols = ['Fournisseur', 'HT', 'TVA', 'Avoir', 'Total Ligne', 'Effectif Ligne']; // Adjusted 'Total' to 'Total Ligne', 'Effectif' to 'Effectif Ligne'
-    const orangeCols = ['IMP', 'SAJ', 'IME', 'ESAT', 'Repas +++', 'Nous', 'PN', 'PN ESAT'];
-    
-    if (isHeader) { 
-      if (['Jour'].includes(header)) return 'bg-primary/40 text-primary-foreground text-center font-semibold py-1'; 
-      if (grayCols.includes(header)) return 'bg-muted text-muted-foreground';
-      if (orangeCols.includes(header)) return 'bg-accent/30 text-accent-foreground';
-      return 'bg-card text-card-foreground';
-    } else { 
-      if (['Jour'].includes(header)) return 'bg-primary/10 p-0.5 text-center'; 
-      if (grayCols.includes(header)) return 'bg-muted/50'; // Slightly lighter for body cells
-      if (orangeCols.includes(header)) return 'bg-accent/20'; // Slightly lighter for body cells
-      return 'bg-card';
-    }
-  };
-
 
   return (
     <div className="space-y-6">
@@ -318,88 +300,122 @@ export default function CostAnalysisTable() {
       {isLoading ? (
         <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin" /> Chargement...</div>
       ) : (
-      <div className="overflow-x-auto border rounded-md">
-        <Table className="min-w-full">
-          <TableHeader>
-            <TableRow>
-              <TableHead className={cn("sticky left-0 z-10", getColumnClass('Fournisseur'))}>Fournisseur</TableHead>
-              {['HT', 'TVA', 'Avoir'].map(h => <TableHead key={h} className={getColumnClass(h)}>{h}</TableHead>)}
-              <TableHead className={getColumnClass('Jour')}>Jour</TableHead> 
-              {['IMP', 'SAJ', 'IME', 'ESAT', 'Repas +++', 'Nous'].map(h => <TableHead key={h} className={getColumnClass(h.replace('+++', ' +++'))}>{h.replace('+++', ' +++')}</TableHead>)}
-              <TableHead className={getColumnClass('Total Ligne')}>Total Ligne</TableHead>
-              {['PN', 'PN ESAT'].map(h => <TableHead key={h} className={getColumnClass(h)}>{h}</TableHead>)}
-              <TableHead className={getColumnClass('Effectif Ligne')}>Effectif Ligne</TableHead>
-              <TableHead className="bg-card text-center">Action</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {costData.map((row, rowIndex) => (
-              <React.Fragment key={row.id}>
-                {dayKeys.map((dayKey, dayIndex) => { 
+        <>
+          {/* Tableau Fournisseurs */}
+          <div className="overflow-x-auto border rounded-md">
+            <h3 className="text-lg font-semibold p-3 bg-muted/30">Données Fournisseurs</h3>
+            <Table className="min-w-full">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-1/3 sticky left-0 z-10 bg-card">Fournisseur</TableHead>
+                  <TableHead className="w-1/4">HT (€)</TableHead>
+                  <TableHead className="w-1/4">TVA (€)</TableHead>
+                  <TableHead className="w-1/4">Avoir (€)</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {costData.map((row, rowIndex) => (
+                  <TableRow key={row.id + "-supplier"}>
+                    <TableCell className="sticky left-0 z-10 bg-card group-hover:bg-muted/50">
+                      <Input type="text" value={row.fournisseur} onChange={e => handleInputChange(rowIndex, 'fournisseur', e.target.value)} className="text-xs p-1 bg-background" />
+                    </TableCell>
+                    <TableCell>
+                      <Input type="number" value={row.ht} onChange={e => handleInputChange(rowIndex, 'ht', e.target.value)} className="text-xs p-1 bg-background" />
+                    </TableCell>
+                    <TableCell>
+                      <Input type="number" value={row.tva} onChange={e => handleInputChange(rowIndex, 'tva', e.target.value)} className="text-xs p-1 bg-background" />
+                    </TableCell>
+                    <TableCell>
+                      <Input type="number" value={row.avoir} onChange={e => handleInputChange(rowIndex, 'avoir', e.target.value)} className="text-xs p-1 bg-background" />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+              <TableFooter>
+                <TableRow className="font-bold bg-muted/80">
+                  <TableCell className="sticky left-0 z-10 bg-muted/80">Totaux Fournisseurs</TableCell>
+                  <TableCell>{totals.totalHt.toFixed(2)}</TableCell>
+                  <TableCell>{totals.totalTva.toFixed(2)}</TableCell>
+                  <TableCell>{totals.totalAvoir.toFixed(2)}</TableCell>
+                </TableRow>
+              </TableFooter>
+            </Table>
+          </div>
+
+          {/* Tableau Répartition et Actions */}
+          <div className="overflow-x-auto border rounded-md mt-6">
+             <h3 className="text-lg font-semibold p-3 bg-muted/30">Répartition des Coûts et Effectifs</h3>
+            <Table className="min-w-full">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[80px] min-w-[80px]">Jour</TableHead>
+                  {dayKeys.map((dayKey, dayIndex) => (
+                    <TableHead key={dayKey} className="w-[60px] min-w-[60px] text-center">{dayIndex + 1}</TableHead>
+                  ))}
+                  <TableHead className="w-[80px] min-w-[80px]">IMP</TableHead>
+                  <TableHead className="w-[80px] min-w-[80px]">SAJ</TableHead>
+                  <TableHead className="w-[80px] min-w-[80px]">IME</TableHead>
+                  <TableHead className="w-[80px] min-w-[80px]">ESAT</TableHead>
+                  <TableHead className="w-[80px] min-w-[80px]">Repas +</TableHead>
+                  <TableHead className="w-[80px] min-w-[80px]">Nous</TableHead>
+                  <TableHead className="w-[100px] min-w-[100px] font-semibold">Total Ligne</TableHead>
+                  <TableHead className="w-[80px] min-w-[80px]">PN</TableHead>
+                  <TableHead className="w-[80px] min-w-[80px]">PN ESAT</TableHead>
+                  <TableHead className="w-[100px] min-w-[100px] font-semibold">Effectif Ligne</TableHead>
+                  <TableHead className="w-[100px] min-w-[100px] text-center">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {costData.map((row, rowIndex) => {
                   const rowTotal = calculateRowTotal(row);
                   const rowEffectif = calculateRowEffectif(row, rowTotal);
                   return (
-                  <TableRow key={`${row.id}-${dayKey}`}>
-                    {dayIndex === 0 && (
-                      <>
-                        <TableCell rowSpan={dayKeys.length} className={cn("sticky left-0 z-10 align-top py-2", getColumnClass('Fournisseur', false))}>
-                          <Input type="text" value={row.fournisseur} onChange={e => handleInputChange(rowIndex, 'fournisseur', e.target.value)} className="w-32 text-xs p-1 bg-background" />
+                    <TableRow key={row.id + "-details"}>
+                      <TableCell className="font-medium bg-muted/10">{row.fournisseur || `Ligne ${rowIndex + 1}`}</TableCell>
+                      {dayKeys.map(dayKey => (
+                        <TableCell key={dayKey} className="p-1">
+                          <Input
+                            type="number"
+                            value={row[dayKey]}
+                            onChange={e => handleInputChange(rowIndex, dayKey, e.target.value)}
+                            className="w-12 text-xs p-1 bg-background"
+                          />
                         </TableCell>
-                        {(['ht', 'tva', 'avoir'] as const).map(field => (
-                          <TableCell rowSpan={dayKeys.length} key={field} className={cn("align-top py-2", getColumnClass(field.toUpperCase(), false))}>
-                            <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="w-20 text-xs p-1 bg-background" />
-                          </TableCell>
-                        ))}
-                      </>
-                    )}
-                    <TableCell className={cn(getColumnClass('Jour', false), "align-middle py-2")}> 
-                        <span className="text-xs text-muted-foreground">{dayIndex + 1}</span> 
-                    </TableCell>
-                    {dayIndex === 0 && (
-                      <>
-                        {(['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'] as const).map(field => (
-                          <TableCell rowSpan={dayKeys.length} key={field} className={cn("align-top py-2", getColumnClass(field.toUpperCase().replace('REPASPLUS', 'Repas +++'), false))}>
-                            <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="w-20 text-xs p-1 bg-background" />
-                          </TableCell>
-                        ))}
-                        <TableCell rowSpan={dayKeys.length} className={cn("align-top py-2 font-semibold", getColumnClass('Total Ligne', false))}>{rowTotal.toFixed(2)}</TableCell>
-                        {(['pn', 'pnEsat'] as const).map(field => (
-                          <TableCell rowSpan={dayKeys.length} key={field} className={cn("align-top py-2", getColumnClass(field.toUpperCase(), false))}>
-                            <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="w-20 text-xs p-1 bg-background" />
-                          </TableCell>
-                        ))}
-                        <TableCell rowSpan={dayKeys.length} className={cn("align-top py-2 font-semibold", getColumnClass('Effectif Ligne', false))}>{rowEffectif.toFixed(2)}</TableCell>
-                        <TableCell rowSpan={dayKeys.length} className={cn("align-middle text-center py-2", getColumnClass('Action', true))}>
-                          <Button variant="destructive" size="icon" onClick={() => handleDeleteRow(row.id)}><Trash2 className="h-4 w-4" /></Button>
+                      ))}
+                      {(['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'] as const).map(field => (
+                        <TableCell key={field} className="p-1">
+                          <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="text-xs p-1 bg-background" />
                         </TableCell>
-                      </>
-                    )}
-                  </TableRow>
-                )})}
-              </React.Fragment>
-            ))}
-          </TableBody>
-          <TableFooter>
-            <TableRow className="font-bold bg-muted/80">
-              <TableCell className={cn("sticky left-0 z-10", getColumnClass('Fournisseur'))}>Totaux</TableCell>
-              <TableCell className={getColumnClass('HT')}>{totals.totalHt.toFixed(2)}</TableCell>
-              <TableCell className={getColumnClass('TVA')}>{totals.totalTva.toFixed(2)}</TableCell>
-              <TableCell className={getColumnClass('Avoir')}>{totals.totalAvoir.toFixed(2)}</TableCell>
-              <TableCell className={cn(getColumnClass('Jour', false), "py-2")}></TableCell> 
-              <TableCell colSpan={6} className={cn(getColumnClass('IMP', false), "py-2")}></TableCell> 
-              <TableCell className={cn(getColumnClass('Total Ligne'), "py-2")}></TableCell> 
-              <TableCell colSpan={2} className={cn(getColumnClass('PN', false), "py-2")}></TableCell> 
-              <TableCell className={getColumnClass('Effectif Ligne')}>{totals.totalEffectifSum.toFixed(2)}</TableCell>
-              <TableCell className={cn(getColumnClass('Action', true), "py-2")}></TableCell> 
-            </TableRow>
-            <TableRow className="font-bold bg-muted/90">
-              <TableCell colSpan={14} className={cn("text-right", getColumnClass('Effectif Ligne'))}>Prix de Revient</TableCell> 
-              <TableCell className={getColumnClass('Effectif Ligne')}>{totals.prixDeRevient.toFixed(2)}</TableCell>
-              <TableCell className={cn(getColumnClass('Action', true), "py-2")}></TableCell> 
-            </TableRow>
-          </TableFooter>
-        </Table>
-      </div>
+                      ))}
+                      <TableCell className="font-semibold text-center">{rowTotal.toFixed(2)}</TableCell>
+                      {(['pn', 'pnEsat'] as const).map(field => (
+                        <TableCell key={field} className="p-1">
+                          <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="text-xs p-1 bg-background" />
+                        </TableCell>
+                      ))}
+                      <TableCell className="font-semibold text-center">{rowEffectif.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">
+                        <Button variant="destructive" size="icon" onClick={() => handleDeleteRow(row.id)}><Trash2 className="h-4 w-4" /></Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+              <TableFooter>
+                <TableRow className="font-bold bg-muted/80">
+                  <TableCell colSpan={32 + 6 + 1 + 2 + 1} className="text-right">Total Effectif Lignes</TableCell> {/* Ajuster colSpan en fonction du nombre de colonnes avant */}
+                  <TableCell className="text-center">{totals.totalEffectifSum.toFixed(2)}</TableCell>
+                  <TableCell></TableCell>
+                </TableRow>
+                <TableRow className="font-bold bg-muted/90">
+                  <TableCell colSpan={32 + 6 + 1 + 2 + 1} className="text-right">Prix de Revient Mensuel</TableCell>
+                  <TableCell className="text-center">{totals.prixDeRevient.toFixed(2)}</TableCell>
+                  <TableCell></TableCell>
+                </TableRow>
+              </TableFooter>
+            </Table>
+          </div>
+        </>
       )}
       {costData.length > 0 && (
         <Button onClick={generatePdf} disabled={isLoading} className="mt-4">
@@ -413,6 +429,5 @@ export default function CostAnalysisTable() {
     </div>
   );
 }
-
 
     
