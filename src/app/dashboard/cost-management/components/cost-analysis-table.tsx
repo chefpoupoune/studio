@@ -65,15 +65,19 @@ export default function CostAnalysisTable() {
     }
   }, [costData, getLocalStorageKey, isLoading]);
 
-  const handleInputChange = (rowIndex: number, fieldName: keyof CostEntryData, value: string | number) => {
+  const handleInputChange = (rowIndex: number, fieldName: keyof CostEntryData | DayKey, value: string | number) => {
     setCostData(prevData =>
       prevData.map((row, index) => {
         if (index === rowIndex) {
-          const fieldDefinition = initialRowData()[fieldName];
+          const isDayKeyField = dayKeys.includes(fieldName as DayKey);
           let processedValue: string | number;
 
-          if (typeof fieldDefinition === 'number') { 
-            processedValue = parseFloat(value as string) || 0;
+          if (typeof initialRowData()[fieldName as keyof CostEntryData] === 'number' || isDayKeyField) { 
+            if (isDayKeyField && value === "") {
+                processedValue = ""; // Allow empty string for day inputs
+            } else {
+                processedValue = parseFloat(value as string) || 0;
+            }
           } else { 
             processedValue = value;
           }
@@ -91,41 +95,43 @@ export default function CostAnalysisTable() {
 
   const handleDeleteRow = (rowId: string) => {
     setCostData(prevData => prevData.filter(row => row.id !== rowId));
-    toast({ title: "Ligne Supprimée", description: "La ligne a été retirée du tableau." });
+    toast({ title: "Ligne Fournisseur Supprimée", description: "La ligne fournisseur a été retirée du tableau." });
   };
 
   const totals = useMemo(() => {
     let totalHt = 0;
     let totalTva = 0;
     let totalAvoir = 0;
-    let totalEffectifSum = 0;
+    let totalEffectifQuantity = 0; 
 
     costData.forEach(row => {
       totalHt += row.ht || 0;
       totalTva += row.tva || 0;
       totalAvoir += row.avoir || 0;
-      const rowTotal = calculateRowTotal(row);
-      totalEffectifSum += calculateRowEffectif(row, rowTotal);
+      
+      dayKeys.forEach(dayKey => {
+        totalEffectifQuantity += Number(row[dayKey as DayKey]) || 0;
+      });
     });
 
-    const prixDeRevient = totalEffectifSum !== 0 ? (totalHt - totalAvoir) / totalEffectifSum : 0;
+    const netCost = totalHt - totalAvoir;
+    const prixDeRevient = totalEffectifQuantity !== 0 ? netCost / totalEffectifQuantity : 0;
 
-    return { totalHt, totalTva, totalAvoir, totalEffectifSum, prixDeRevient };
+    return { totalHt, totalTva, totalAvoir, totalEffectifQuantity, prixDeRevient };
   }, [costData]);
 
   const generatePdf = () => {
     setIsLoading(true);
     try {
       const pdfSettings = getPdfLayoutSettings('monthly_cost');
-      const doc = new jsPDF('landscape') as jsPDFWithAutoTable; // Default A4 landscape
+      const doc = new jsPDF('landscape') as jsPDFWithAutoTable; 
       const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
-      let currentY = pdfSettings.marginTop; // Use margin from settings
+      let currentY = pdfSettings.marginTop; 
       if (pdfSettings.headerText) {
-        // Simplified header rendering for brevity, assuming single line for now
         doc.setFontSize(pdfSettings.headerFontSize);
-        doc.text(pdfSettings.headerText.split('\n')[0], pdfSettings.marginLeft, currentY); // Use margin
+        doc.text(pdfSettings.headerText.split('\n')[0], pdfSettings.marginLeft, currentY); 
         currentY += (pdfSettings.headerFontSize * 0.7) + 5;
       }
 
@@ -143,13 +149,11 @@ export default function CostAnalysisTable() {
         }
       }
 
-
       const title = `Coût de Revient - ${monthLabel} ${selectedYear}`;
-      doc.setFontSize(pdfSettings.headerFontSize + 2); // Slightly larger title
+      doc.setFontSize(pdfSettings.headerFontSize + 2); 
       doc.text(title, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.headerFontSize * 0.7) + 5;
       doc.setFontSize(pdfSettings.defaultFontSize);
       doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 5;
-
 
       const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, fontSize?: number } = {
         fontStyle: 'bold',
@@ -167,35 +171,36 @@ export default function CostAnalysisTable() {
       const head = [
         ['Fournisseur', 'HT', 'TVA', 'Avoir', 'Jour', 
          'IMP', 'SAJ', 'IME', 'ESAT', 'Repas+++', 'Nous', 
-         'Total Ligne', 'PN', 'PN ESAT', 'Effectif Ligne']
+         'Total Coeff.', 'PN', 'PN ESAT', 'Effectif Coeff.']
       ];
       
       const pdfBody: any[] = [];
       costData.forEach(row => {
-        const rowTotal = calculateRowTotal(row);
-        const rowEffectif = calculateRowEffectif(row, rowTotal);
+        const rowTotalCoeff = calculateRowTotal(row);
+        const rowEffectifCoeff = calculateRowEffectif(row, rowTotalCoeff);
         dayKeys.forEach((dayKey, dayIndex) => {
           const dayRowEntry: any[] = [];
-          if (dayIndex === 0) {
-            dayRowEntry.push({ content: row.fournisseur, rowSpan: dayKeys.length });
-            dayRowEntry.push({ content: row.ht.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
-            dayRowEntry.push({ content: row.tva.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
-            dayRowEntry.push({ content: row.avoir.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
+          
+          if (dayIndex === 0) { 
+            dayRowEntry.push({ content: row.fournisseur, rowSpan: dayKeys.length, styles: {valign: 'middle'} });
+            dayRowEntry.push({ content: row.ht.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right', valign: 'middle' } });
+            dayRowEntry.push({ content: row.tva.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right', valign: 'middle' } });
+            dayRowEntry.push({ content: row.avoir.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right', valign: 'middle' } });
           }
           
           dayRowEntry.push({ content: (dayIndex + 1).toString(), styles: { halign: 'center' } }); 
-
-          if (dayIndex === 0) {
-            dayRowEntry.push({ content: row.imp.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
-            dayRowEntry.push({ content: row.saj.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
-            dayRowEntry.push({ content: row.ime.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
-            dayRowEntry.push({ content: row.esat.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
-            dayRowEntry.push({ content: row.repasPlus.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
-            dayRowEntry.push({ content: row.nous.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
-            dayRowEntry.push({ content: rowTotal.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right', fontStyle: 'bold' } });
-            dayRowEntry.push({ content: row.pn.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
-            dayRowEntry.push({ content: row.pnEsat.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right' } });
-            dayRowEntry.push({ content: rowEffectif.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right', fontStyle: 'bold' } });
+          
+          if (dayIndex === 0) { 
+            dayRowEntry.push({ content: row.imp.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right', valign: 'middle' } });
+            dayRowEntry.push({ content: row.saj.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right', valign: 'middle' } });
+            dayRowEntry.push({ content: row.ime.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right', valign: 'middle' } });
+            dayRowEntry.push({ content: row.esat.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right', valign: 'middle' } });
+            dayRowEntry.push({ content: row.repasPlus.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right', valign: 'middle' } });
+            dayRowEntry.push({ content: row.nous.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right', valign: 'middle' } });
+            dayRowEntry.push({ content: rowTotalCoeff.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right', fontStyle: 'bold', valign: 'middle' } });
+            dayRowEntry.push({ content: row.pn.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right', valign: 'middle' } });
+            dayRowEntry.push({ content: row.pnEsat.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right', valign: 'middle' } });
+            dayRowEntry.push({ content: rowEffectifCoeff.toFixed(2), rowSpan: dayKeys.length, styles: { halign: 'right', fontStyle: 'bold', valign: 'middle' } });
           }
           pdfBody.push(dayRowEntry);
         });
@@ -211,32 +216,31 @@ export default function CostAnalysisTable() {
           { content: '', colSpan: 6, styles: {halign: 'right'} }, 
           { content: '', styles: {halign: 'right'} }, 
           { content: '', colSpan: 2, styles: {halign: 'right'} }, 
-          { content: totals.totalEffectifSum.toFixed(2), styles: { fontStyle: 'bold', halign: 'right' } }
+          { content: totals.totalEffectifQuantity.toFixed(0), styles: { fontStyle: 'bold', halign: 'right' } } 
         ],
         [
-          { content: 'Prix de Revient', colSpan: 14, styles: { fontStyle: 'bold', halign: 'right' } },
+          { content: 'Prix de Revient Mensuel', colSpan: 14, styles: { fontStyle: 'bold', halign: 'right' } },
           { content: totals.prixDeRevient.toFixed(2), styles: { fontStyle: 'bold', halign: 'right' } }
         ]
       ];
       
       const newColumnStyles = {
-        0: { cellWidth: 150, halign: 'left' },    // Fournisseur
-        1: { cellWidth: 40, halign: 'right' },  // HT
-        2: { cellWidth: 40, halign: 'right' },  // TVA
-        3: { cellWidth: 40, halign: 'right' },  // Avoir
-        4: { cellWidth: 20, halign: 'center' }, // Jour
-        5: { cellWidth: 35, halign: 'right' },  // IMP
-        6: { cellWidth: 35, halign: 'right' },  // SAJ
-        7: { cellWidth: 35, halign: 'right' },  // IME
-        8: { cellWidth: 35, halign: 'right' },  // ESAT
-        9: { cellWidth: 35, halign: 'right' },  // Repas +++
-        10: { cellWidth: 35, halign: 'right' }, // Nous
-        11: { cellWidth: 45, halign: 'right' }, // Total Ligne
-        12: { cellWidth: 35, halign: 'right' }, // PN
-        13: { cellWidth: 35, halign: 'right' }, // PN ESAT
-        14: { cellWidth: 45, halign: 'right' }  // Effectif Ligne
+        0: { cellWidth: 100, halign: 'left' },    
+        1: { cellWidth: 30, halign: 'right' },  
+        2: { cellWidth: 30, halign: 'right' },  
+        3: { cellWidth: 30, halign: 'right' },  
+        4: { cellWidth: 15, halign: 'center' }, 
+        5: { cellWidth: 25, halign: 'right' }, 
+        6: { cellWidth: 25, halign: 'right' },  
+        7: { cellWidth: 25, halign: 'right' },  
+        8: { cellWidth: 25, halign: 'right' },  
+        9: { cellWidth: 25, halign: 'right' }, 
+        10: { cellWidth: 25, halign: 'right' }, 
+        11: { cellWidth: 35, halign: 'right' }, 
+        12: { cellWidth: 25, halign: 'right' }, 
+        13: { cellWidth: 25, halign: 'right' }, 
+        14: { cellWidth: 35, halign: 'right' }  
       };
-
 
       doc.autoTable({
         head: head,
@@ -344,73 +348,83 @@ export default function CostAnalysisTable() {
 
           {/* Tableau Répartition et Actions */}
           <div className="overflow-x-auto border rounded-md mt-6">
-             <h3 className="text-lg font-semibold p-3 bg-muted/30">Répartition des Coûts et Effectifs</h3>
+             <h3 className="text-lg font-semibold p-3 bg-muted/30">Répartition des Coûts et Saisie des Quantités Journalières</h3>
             <Table className="min-w-full">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[80px] min-w-[80px]">Jour</TableHead>
-                  {dayKeys.map((dayKey, dayIndex) => (
-                    <TableHead key={dayKey} className="w-[60px] min-w-[60px] text-center">{dayIndex + 1}</TableHead>
-                  ))}
-                  <TableHead className="w-[80px] min-w-[80px]">IMP</TableHead>
-                  <TableHead className="w-[80px] min-w-[80px]">SAJ</TableHead>
-                  <TableHead className="w-[80px] min-w-[80px]">IME</TableHead>
-                  <TableHead className="w-[80px] min-w-[80px]">ESAT</TableHead>
-                  <TableHead className="w-[80px] min-w-[80px]">Repas +</TableHead>
-                  <TableHead className="w-[80px] min-w-[80px]">Nous</TableHead>
-                  <TableHead className="w-[100px] min-w-[100px] font-semibold">Total Ligne</TableHead>
-                  <TableHead className="w-[80px] min-w-[80px]">PN</TableHead>
-                  <TableHead className="w-[80px] min-w-[80px]">PN ESAT</TableHead>
-                  <TableHead className="w-[100px] min-w-[100px] font-semibold">Effectif Ligne</TableHead>
-                  <TableHead className="w-[100px] min-w-[100px] text-center">Action</TableHead>
+                  <TableHead className="w-[150px] min-w-[150px] sticky left-0 z-20 bg-card">Fournisseur</TableHead>
+                  <TableHead className="w-[60px] min-w-[60px] text-center">Jour</TableHead>
+                  <TableHead className="w-[100px] min-w-[100px] text-center">Qté Jour</TableHead>
+                  <TableHead className="w-[70px] min-w-[70px]">IMP</TableHead>
+                  <TableHead className="w-[70px] min-w-[70px]">SAJ</TableHead>
+                  <TableHead className="w-[70px] min-w-[70px]">IME</TableHead>
+                  <TableHead className="w-[70px] min-w-[70px]">ESAT</TableHead>
+                  <TableHead className="w-[70px] min-w-[70px]">Repas +</TableHead>
+                  <TableHead className="w-[70px] min-w-[70px]">Nous</TableHead>
+                  <TableHead className="w-[100px] min-w-[100px] font-semibold text-center">Total Coeff.</TableHead>
+                  <TableHead className="w-[70px] min-w-[70px]">PN</TableHead>
+                  <TableHead className="w-[70px] min-w-[70px]">PN ESAT</TableHead>
+                  <TableHead className="w-[100px] min-w-[100px] font-semibold text-center">Effectif Coeff.</TableHead>
+                  <TableHead className="w-[100px] min-w-[100px] text-center sticky right-0 z-20 bg-card">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {costData.map((row, rowIndex) => {
-                  const rowTotal = calculateRowTotal(row);
-                  const rowEffectif = calculateRowEffectif(row, rowTotal);
-                  return (
-                    <TableRow key={row.id + "-details"}>
-                      <TableCell className="font-medium bg-muted/10">{row.fournisseur || `Ligne ${rowIndex + 1}`}</TableCell>
-                      {dayKeys.map(dayKey => (
-                        <TableCell key={dayKey} className="p-1">
+                {costData.map((row, rowIndex) => (
+                  <React.Fragment key={row.id + "-details-group"}>
+                    {dayKeys.map((dayKey, dayIndex) => (
+                      <TableRow key={`${row.id}-${dayKey}`}>
+                        {dayIndex === 0 && (
+                          <TableCell rowSpan={dayKeys.length} className="font-medium align-top py-2 sticky left-0 z-10 bg-card group-hover:bg-muted/50">
+                            {row.fournisseur || `Ligne ${rowIndex + 1}`}
+                          </TableCell>
+                        )}
+                        <TableCell className="text-center">{dayIndex + 1}</TableCell>
+                        <TableCell className="p-1">
                           <Input
-                            type="number"
+                            type="text"
                             value={row[dayKey]}
-                            onChange={e => handleInputChange(rowIndex, dayKey, e.target.value)}
-                            className="w-12 text-xs p-1 bg-background"
+                            onChange={e => handleInputChange(rowIndex, dayKey as DayKey, e.target.value)}
+                            className="w-16 text-xs p-1 text-center bg-background"
                           />
                         </TableCell>
-                      ))}
-                      {(['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'] as const).map(field => (
-                        <TableCell key={field} className="p-1">
-                          <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="text-xs p-1 bg-background" />
-                        </TableCell>
-                      ))}
-                      <TableCell className="font-semibold text-center">{rowTotal.toFixed(2)}</TableCell>
-                      {(['pn', 'pnEsat'] as const).map(field => (
-                        <TableCell key={field} className="p-1">
-                          <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="text-xs p-1 bg-background" />
-                        </TableCell>
-                      ))}
-                      <TableCell className="font-semibold text-center">{rowEffectif.toFixed(2)}</TableCell>
-                      <TableCell className="text-center">
-                        <Button variant="destructive" size="icon" onClick={() => handleDeleteRow(row.id)}><Trash2 className="h-4 w-4" /></Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                        {dayIndex === 0 && ( 
+                          <React.Fragment>
+                            {(['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'] as const).map(field => (
+                              <TableCell key={field} rowSpan={dayKeys.length} className="p-1 align-top py-2">
+                                <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="text-xs p-1 bg-background w-16 text-center" />
+                              </TableCell>
+                            ))}
+                            <TableCell rowSpan={dayKeys.length} className="font-semibold text-center align-middle">
+                              {calculateRowTotal(row).toFixed(2)}
+                            </TableCell>
+                            {(['pn', 'pnEsat'] as const).map(field => (
+                              <TableCell key={field} rowSpan={dayKeys.length} className="p-1 align-top py-2">
+                                <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="text-xs p-1 bg-background w-16 text-center" />
+                              </TableCell>
+                            ))}
+                            <TableCell rowSpan={dayKeys.length} className="font-semibold text-center align-middle">
+                              {calculateRowEffectif(row, calculateRowTotal(row)).toFixed(2)}
+                            </TableCell>
+                            <TableCell rowSpan={dayKeys.length} className="text-center align-middle sticky right-0 z-10 bg-card group-hover:bg-muted/50">
+                              <Button variant="destructive" size="icon" onClick={() => handleDeleteRow(row.id)}><Trash2 className="h-4 w-4" /></Button>
+                            </TableCell>
+                          </React.Fragment>
+                        )}
+                      </TableRow>
+                    ))}
+                  </React.Fragment>
+                ))}
               </TableBody>
               <TableFooter>
                 <TableRow className="font-bold bg-muted/80">
-                  <TableCell colSpan={32 + 6 + 1 + 2 + 1} className="text-right">Total Effectif Lignes</TableCell> {/* Ajuster colSpan en fonction du nombre de colonnes avant */}
-                  <TableCell className="text-center">{totals.totalEffectifSum.toFixed(2)}</TableCell>
-                  <TableCell></TableCell>
+                  <TableCell colSpan={12} className="text-right sticky left-0 bg-muted/80">Total Quantités Mois</TableCell> 
+                  <TableCell className="text-center">{totals.totalEffectifQuantity.toFixed(0)}</TableCell>
+                  <TableCell className="sticky right-0 bg-muted/80"></TableCell>
                 </TableRow>
                 <TableRow className="font-bold bg-muted/90">
-                  <TableCell colSpan={32 + 6 + 1 + 2 + 1} className="text-right">Prix de Revient Mensuel</TableCell>
+                  <TableCell colSpan={12} className="text-right sticky left-0 bg-muted/90">Prix de Revient Mensuel (€)</TableCell>
                   <TableCell className="text-center">{totals.prixDeRevient.toFixed(2)}</TableCell>
-                  <TableCell></TableCell>
+                  <TableCell className="sticky right-0 bg-muted/90"></TableCell>
                 </TableRow>
               </TableFooter>
             </Table>
@@ -431,3 +445,4 @@ export default function CostAnalysisTable() {
 }
 
     
+
