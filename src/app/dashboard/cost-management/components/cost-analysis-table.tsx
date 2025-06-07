@@ -352,9 +352,9 @@ export default function CostAnalysisTable() {
             <Table className="min-w-full">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[150px] min-w-[150px] sticky left-0 z-20 bg-card">Fournisseur</TableHead>
+                  <TableHead className="w-[150px] min-w-[150px] sticky left-0 z-20 bg-card"></TableHead> {/* Empty Header for Supplier Name Column */}
                   <TableHead className="w-[60px] min-w-[60px] text-center">Jour</TableHead>
-                  <TableHead className="w-[100px] min-w-[100px] text-center">Qté Jour</TableHead>
+                  <TableHead className="w-[100px] min-w-[100px] text-center"></TableHead> {/* Empty Header for Daily Quantity Column */}
                   <TableHead className="w-[70px] min-w-[70px]">IMP</TableHead>
                   <TableHead className="w-[70px] min-w-[70px]">SAJ</TableHead>
                   <TableHead className="w-[70px] min-w-[70px]">IME</TableHead>
@@ -381,7 +381,7 @@ export default function CostAnalysisTable() {
                         <TableCell className="text-center">{dayIndex + 1}</TableCell>
                         <TableCell className="p-1">
                           <Input
-                            type="text"
+                            type="text" // Changed to text to allow empty string, parsing will handle numbers
                             value={row[dayKey]}
                             onChange={e => handleInputChange(rowIndex, dayKey as DayKey, e.target.value)}
                             className="w-16 text-xs p-1 text-center bg-background"
@@ -443,6 +443,6 @@ export default function CostAnalysisTable() {
     </div>
   );
 }
-
     
 
+    
