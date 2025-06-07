@@ -7,15 +7,15 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Trash2, FileText, Loader2, CalendarRange } from 'lucide-react';
+import { PlusCircle, Trash2, FileText, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format, getDaysInMonth as dfnsGetDaysInMonth, startOfMonth as dfnsStartOfMonth, addDays as dfnsAddDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
-import type { CostEntry } from '../types'; // CostEntry now doesn't have day1-31
+import type { CostEntry } from '../types';
 import { months, years, currentYear, calculateRowTotal, calculateRowEffectif } from '../types';
-import { ScrollArea } from '@/components/ui/scroll-area'; // Added ScrollArea
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -28,7 +28,7 @@ const initialRowDataForSupplier = (): Omit<CostEntry, 'id'> => ({
 });
 
 interface DayInfo {
-  date: string;
+  date: string; // YYYY-MM-DD
   dayOfMonth: number;
   dayName: string;
   isWeekend: boolean;
@@ -52,52 +52,83 @@ function getMonthDaysCalendar(year: number, month: number): DayInfo[] {
   return daysArray;
 }
 
+interface DailyGlobalQuantity {
+  day: number;
+  quantity: number | "";
+}
 
 export default function CostAnalysisTable() {
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().getMonth().toString());
   const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
   const [costData, setCostData] = useState<CostEntry[]>([]);
+  const [dailyGlobalQuantities, setDailyGlobalQuantities] = useState<DailyGlobalQuantity[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const [monthlyCalendarDays, setMonthlyCalendarDays] = useState<DayInfo[]>([]);
 
-  const getLocalStorageKey = useCallback(() => `cost_analysis_data_suppliers_v3_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
+  const getLocalStorageKeySuppliers = useCallback(() => `cost_analysis_data_suppliers_v4_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
+  const getLocalStorageKeyDailyQuantities = useCallback(() => `cost_analysis_daily_quantities_v1_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
 
-  useEffect(() => {
-    setIsLoading(true);
-    try {
-      const storedData = localStorage.getItem(getLocalStorageKey());
-      if (storedData) {
-        setCostData(JSON.parse(storedData));
-      } else {
-        setCostData([]);
-      }
-    } catch (error) {
-      console.error("Error loading supplier cost data from localStorage:", error);
-      setCostData([]);
-      toast({ title: "Erreur de chargement", description: "Données des coûts fournisseurs corrompues, réinitialisation.", variant: "destructive" });
-    }
-    setIsLoading(false);
-  }, [selectedMonth, selectedYear, getLocalStorageKey, toast]);
-
-  useEffect(() => {
-    if (!isLoading) {
-      localStorage.setItem(getLocalStorageKey(), JSON.stringify(costData));
-    }
-  }, [costData, getLocalStorageKey, isLoading]);
-  
   useEffect(() => {
     const yearNum = parseInt(selectedYear, 10);
     const monthNum = parseInt(selectedMonth, 10);
-    setMonthlyCalendarDays(getMonthDaysCalendar(yearNum, monthNum));
-  }, [selectedYear, selectedMonth]);
+    const calendarDays = getMonthDaysCalendar(yearNum, monthNum);
+    setMonthlyCalendarDays(calendarDays);
 
-  const handleInputChange = (rowIndex: number, fieldName: keyof CostEntry, value: string | number) => {
+    // Initialize dailyGlobalQuantities for the new month/year
+    const initialQuantities = calendarDays.map(day => ({
+      day: day.dayOfMonth,
+      quantity: "" as (number | ""),
+    }));
+
+    setIsLoading(true);
+    try {
+      const storedSuppliers = localStorage.getItem(getLocalStorageKeySuppliers());
+      if (storedSuppliers) {
+        setCostData(JSON.parse(storedSuppliers));
+      } else {
+        setCostData([]);
+      }
+
+      const storedDailyQuantities = localStorage.getItem(getLocalStorageKeyDailyQuantities());
+      if (storedDailyQuantities) {
+        const parsedQuantities = JSON.parse(storedDailyQuantities) as DailyGlobalQuantity[];
+        // Ensure parsedQuantities align with current month's days
+        const alignedQuantities = calendarDays.map(calDay => {
+            const foundQty = parsedQuantities.find(q => q.day === calDay.dayOfMonth);
+            return foundQty ? foundQty : { day: calDay.dayOfMonth, quantity: "" };
+        });
+        setDailyGlobalQuantities(alignedQuantities);
+      } else {
+        setDailyGlobalQuantities(initialQuantities);
+      }
+
+    } catch (error) {
+      console.error("Error loading data from localStorage:", error);
+      setCostData([]);
+      setDailyGlobalQuantities(initialQuantities);
+      toast({ title: "Erreur de chargement", description: "Données corrompues, réinitialisation.", variant: "destructive" });
+    }
+    setIsLoading(false);
+  }, [selectedMonth, selectedYear, getLocalStorageKeySuppliers, getLocalStorageKeyDailyQuantities, toast]);
+
+  useEffect(() => {
+    if (!isLoading) {
+      localStorage.setItem(getLocalStorageKeySuppliers(), JSON.stringify(costData));
+    }
+  }, [costData, getLocalStorageKeySuppliers, isLoading]);
+
+  useEffect(() => {
+    if (!isLoading) {
+      localStorage.setItem(getLocalStorageKeyDailyQuantities(), JSON.stringify(dailyGlobalQuantities));
+    }
+  }, [dailyGlobalQuantities, getLocalStorageKeyDailyQuantities, isLoading]);
+
+  const handleSupplierInputChange = (rowIndex: number, fieldName: keyof CostEntry, value: string | number) => {
     setCostData(prevData =>
       prevData.map((row, index) => {
         if (index === rowIndex) {
           let processedValue: string | number;
-          // Check type of initialRowDataForSupplier for the field
           const initialFieldType = typeof initialRowDataForSupplier()[fieldName as keyof Omit<CostEntry, 'id'>];
           if (initialFieldType === 'number') {
             processedValue = parseFloat(value as string) || 0;
@@ -111,11 +142,22 @@ export default function CostAnalysisTable() {
     );
   };
 
-  const handleAddRow = () => {
+  const handleDailyQuantityChange = (dayOfMonth: number, value: string) => {
+    const numericValue = value === "" ? "" : parseInt(value, 10);
+    if (value === "" || (!isNaN(numericValue) && numericValue >= 0)) {
+      setDailyGlobalQuantities(prevQuantities =>
+        prevQuantities.map(item =>
+          item.day === dayOfMonth ? { ...item, quantity: numericValue } : item
+        )
+      );
+    }
+  };
+
+  const handleAddSupplierRow = () => {
     setCostData(prevData => [...prevData, { ...initialRowDataForSupplier(), id: `cost_${Date.now()}` }]);
   };
 
-  const handleDeleteRow = (rowId: string) => {
+  const handleDeleteSupplierRow = (rowId: string) => {
     setCostData(prevData => prevData.filter(row => row.id !== rowId));
     toast({ title: "Ligne Fournisseur Supprimée", description: "La ligne fournisseur a été retirée du tableau." });
   };
@@ -124,59 +166,27 @@ export default function CostAnalysisTable() {
     let totalHt = 0;
     let totalTva = 0;
     let totalAvoir = 0;
-    let totalEffectifQuantity = 0; // This will be sum of effectifCoeff from all suppliers
+    let totalEffectifCoeffSum = 0; // Sum of effectif coefficients from suppliers
 
     costData.forEach(row => {
       totalHt += row.ht || 0;
       totalTva += row.tva || 0;
       totalAvoir += row.avoir || 0;
-      totalEffectifQuantity += calculateRowEffectif(row, calculateRowTotal(row));
+      totalEffectifCoeffSum += calculateRowEffectif(row, calculateRowTotal(row));
     });
 
+    const totalQuantitiesMonth = dailyGlobalQuantities.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
     const netCost = totalHt - totalAvoir;
-    const prixDeRevient = totalEffectifQuantity !== 0 ? netCost / totalEffectifQuantity : 0;
+    const prixDeRevient = totalQuantitiesMonth !== 0 ? netCost / totalQuantitiesMonth : 0;
 
-    return { totalHt, totalTva, totalAvoir, totalEffectifQuantity, prixDeRevient };
-  }, [costData]);
+    return { totalHt, totalTva, totalAvoir, totalEffectifCoeffSum, totalQuantitiesMonth, prixDeRevient };
+  }, [costData, dailyGlobalQuantities]);
 
   const generatePdf = () => {
     setIsLoading(true);
     try {
       toast({ title: "Fonction PDF Obsolète", description: "La génération PDF pour le coût de revient mensuel doit être mise à jour pour refléter la nouvelle structure du tableau.", variant: "default", duration: 7000 });
-      // The existing PDF generation logic is likely incompatible with the new structure.
-      // It needs significant rework. For now, it will attempt to generate based on old assumptions.
-      // Consider disabling or updating this function properly.
-      // ... (rest of the old PDF logic can remain for now, but will be incorrect) ...
-      const pdfSettings = getPdfLayoutSettings('monthly_cost');
-      const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
-      const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
-      const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
-      let currentY = pdfSettings.marginTop; 
-      if (pdfSettings.headerText) { /* ... header logic ... */ }
-      if (pdfSettings.logoUrl) { /* ... logo logic ... */ }
-      const title = `Coût de Revient - ${monthLabel} ${selectedYear}`;
-      doc.setFontSize(pdfSettings.headerFontSize + 2); 
-      doc.text(title, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.headerFontSize * 0.7) + 5;
-      doc.setFontSize(pdfSettings.defaultFontSize);
-      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 5;
-
-      const head = [['Fournisseur', 'HT (€)', 'TVA (€)', 'Avoir (€)', 'IMP', 'SAJ', 'IME', 'ESAT', 'Repas +', 'Nous', 'Total Coeff.', 'PN', 'PN ESAT', 'Effectif Coeff.']];
-      const body = costData.map(row => [
-        row.fournisseur,
-        row.ht.toFixed(2), row.tva.toFixed(2), row.avoir.toFixed(2),
-        row.imp.toFixed(2), row.saj.toFixed(2), row.ime.toFixed(2), row.esat.toFixed(2),
-        row.repasPlus.toFixed(2), row.nous.toFixed(2),
-        calculateRowTotal(row).toFixed(2),
-        row.pn.toFixed(2), row.pnEsat.toFixed(2),
-        calculateRowEffectif(row, calculateRowTotal(row)).toFixed(2),
-      ]);
-      const pdfFooter = [
-        [{ content: 'TOTAUX', styles: { fontStyle: 'bold' } }, totals.totalHt.toFixed(2), totals.totalTva.toFixed(2), totals.totalAvoir.toFixed(2), '', '', '', '', '', '', '', '', '', totals.totalEffectifQuantity.toFixed(0)],
-        [{ content: 'Prix de Revient Mensuel (€)', colSpan: 13, styles: { fontStyle: 'bold', halign: 'right' } }, totals.prixDeRevient.toFixed(2)]
-      ];
-      doc.autoTable({ head, body, foot: pdfFooter, startY: currentY, theme: 'grid' /*, ... other styles ... */ });
-      doc.save(`cout_de_revient_${monthLabel}_${selectedYear}.pdf`);
-
+      // PDF generation logic needs to be updated
     } catch (error: any) {
       console.error("Error generating PDF:", error);
       toast({ title: "Erreur PDF", description: `La génération du PDF a échoué: ${error.message || 'Erreur inconnue'}.`, variant: "destructive" });
@@ -184,7 +194,6 @@ export default function CostAnalysisTable() {
       setIsLoading(false);
     }
   };
-
 
   return (
     <div className="space-y-6">
@@ -234,50 +243,55 @@ export default function CostAnalysisTable() {
                     {costData.map((row, rowIndex) => (
                     <TableRow key={row.id}>
                         <TableCell className="sticky left-0 z-10 bg-card group-hover:bg-muted/50">
-                        <Input type="text" value={row.fournisseur} onChange={e => handleInputChange(rowIndex, 'fournisseur', e.target.value)} className="text-xs p-1 h-7 bg-background" />
+                          <Input type="text" value={row.fournisseur} onChange={e => handleSupplierInputChange(rowIndex, 'fournisseur', e.target.value)} className="text-xs p-1 h-7 bg-background" />
                         </TableCell>
-                        <TableCell className="p-1"><Input type="number" value={row.ht} onChange={e => handleInputChange(rowIndex, 'ht', e.target.value)} className="text-xs p-1 h-7 bg-background" /></TableCell>
-                        <TableCell className="p-1"><Input type="number" value={row.tva} onChange={e => handleInputChange(rowIndex, 'tva', e.target.value)} className="text-xs p-1 h-7 bg-background" /></TableCell>
-                        <TableCell className="p-1"><Input type="number" value={row.avoir} onChange={e => handleInputChange(rowIndex, 'avoir', e.target.value)} className="text-xs p-1 h-7 bg-background" /></TableCell>
+                        <TableCell className="p-1"><Input type="number" value={row.ht} onChange={e => handleSupplierInputChange(rowIndex, 'ht', e.target.value)} className="text-xs p-1 h-7 bg-background" /></TableCell>
+                        <TableCell className="p-1"><Input type="number" value={row.tva} onChange={e => handleSupplierInputChange(rowIndex, 'tva', e.target.value)} className="text-xs p-1 h-7 bg-background" /></TableCell>
+                        <TableCell className="p-1"><Input type="number" value={row.avoir} onChange={e => handleSupplierInputChange(rowIndex, 'avoir', e.target.value)} className="text-xs p-1 h-7 bg-background" /></TableCell>
                         {(['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'] as const).map(field => (
                             <TableCell key={field} className="p-1">
-                                <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="text-xs p-1 h-7 bg-background w-14 text-center" />
+                                <Input type="number" value={row[field]} onChange={e => handleSupplierInputChange(rowIndex, field, e.target.value)} className="text-xs p-1 h-7 bg-background w-14 text-center" />
                             </TableCell>
                         ))}
                         <TableCell className="font-semibold text-center align-middle">{calculateRowTotal(row).toFixed(2)}</TableCell>
                         {(['pn', 'pnEsat'] as const).map(field => (
                             <TableCell key={field} className="p-1">
-                                <Input type="number" value={row[field]} onChange={e => handleInputChange(rowIndex, field, e.target.value)} className="text-xs p-1 h-7 bg-background w-14 text-center" />
+                                <Input type="number" value={row[field]} onChange={e => handleSupplierInputChange(rowIndex, field, e.target.value)} className="text-xs p-1 h-7 bg-background w-14 text-center" />
                             </TableCell>
                         ))}
                         <TableCell className="font-semibold text-center align-middle">{calculateRowEffectif(row, calculateRowTotal(row)).toFixed(0)}</TableCell>
                         <TableCell className="text-center sticky right-0 z-10 bg-card group-hover:bg-muted/50">
-                            <Button variant="destructive" size="icon" onClick={() => handleDeleteRow(row.id)} className="h-7 w-7"><Trash2 className="h-4 w-4" /></Button>
+                            <Button variant="destructive" size="icon" onClick={() => handleDeleteSupplierRow(row.id)} className="h-7 w-7"><Trash2 className="h-4 w-4" /></Button>
                         </TableCell>
                     </TableRow>
                     ))}
                 </TableBody>
                 <TableFooter>
                     <TableRow className="font-bold bg-muted/80">
-                    <TableCell className="sticky left-0 z-10 bg-muted/80">Totaux Fournisseurs</TableCell>
-                    <TableCell>{totals.totalHt.toFixed(2)}</TableCell>
-                    <TableCell>{totals.totalTva.toFixed(2)}</TableCell>
-                    <TableCell>{totals.totalAvoir.toFixed(2)}</TableCell>
-                    <TableCell colSpan={7}></TableCell>
-                    <TableCell colSpan={2}></TableCell>
-                    <TableCell className="text-center">{totals.totalEffectifQuantity.toFixed(0)}</TableCell>
-                    <TableCell className="sticky right-0 z-10 bg-muted/80"></TableCell>
+                      <TableCell className="sticky left-0 z-10 bg-muted/80">Totaux Fournisseurs</TableCell>
+                      <TableCell>{totals.totalHt.toFixed(2)}</TableCell>
+                      <TableCell>{totals.totalTva.toFixed(2)}</TableCell>
+                      <TableCell>{totals.totalAvoir.toFixed(2)}</TableCell>
+                      <TableCell colSpan={7}></TableCell> 
+                      <TableCell colSpan={2}></TableCell> 
+                      <TableCell className="text-center">{totals.totalEffectifCoeffSum.toFixed(0)}</TableCell>
+                      <TableCell className="sticky right-0 z-10 bg-muted/80"></TableCell>
+                    </TableRow>
+                     <TableRow className="font-bold bg-muted/90">
+                      <TableCell colSpan={13} className="text-right sticky left-0 z-10 bg-muted/90">Total Quantités Mois (Global)</TableCell>
+                      <TableCell className="text-center">{totals.totalQuantitiesMonth.toFixed(0)}</TableCell>
+                      <TableCell className="sticky right-0 z-10 bg-muted/90"></TableCell>
                     </TableRow>
                     <TableRow className="font-bold bg-muted/90">
-                    <TableCell colSpan={13} className="text-right sticky left-0 z-10 bg-muted/90">Prix de Revient Mensuel (€)</TableCell>
-                    <TableCell className="text-center">{totals.prixDeRevient.toFixed(2)}</TableCell>
-                    <TableCell className="sticky right-0 z-10 bg-muted/90"></TableCell>
+                      <TableCell colSpan={13} className="text-right sticky left-0 z-10 bg-muted/90">Prix de Revient Mensuel (€)</TableCell>
+                      <TableCell className="text-center">{totals.prixDeRevient.toFixed(2)}</TableCell>
+                      <TableCell className="sticky right-0 z-10 bg-muted/90"></TableCell>
                     </TableRow>
                 </TableFooter>
                 </Table>
             </div>
             <div className="mt-4 flex justify-between">
-                <Button onClick={handleAddRow}><PlusCircle className="mr-2 h-4 w-4" /> Ajouter Fournisseur</Button>
+                <Button onClick={handleAddSupplierRow}><PlusCircle className="mr-2 h-4 w-4" /> Ajouter Fournisseur</Button>
                 {costData.length > 0 && (
                     <Button onClick={generatePdf} disabled={isLoading} className="">
                     {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
@@ -290,24 +304,39 @@ export default function CostAnalysisTable() {
             )}
         </div>
 
-        {/* Calendrier du Mois Sélectionné (Informatif) */}
-        <div className="lg:w-72 flex-shrink-0">
-            <h3 className="text-lg font-semibold p-3 bg-muted/30 border rounded-t-md">Calendrier du Mois</h3>
-            <ScrollArea className="h-[400px] lg:h-auto lg:max-h-[calc(100vh-20rem)] border border-t-0 rounded-b-md">
+        {/* Calendrier et Saisie des Quantités Journalières Globales */}
+        <div className="lg:w-[400px] flex-shrink-0">
+            <h3 className="text-lg font-semibold p-3 bg-muted/30 border rounded-t-md">Saisie des Quantités Journalières Globales</h3>
+            <ScrollArea className="h-[calc(88vh-15rem)] lg:max-h-[calc(100vh-20rem)] border border-t-0 rounded-b-md">
               <Table className="min-w-full">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-1/2 text-center">Jour</TableHead>
-                    <TableHead className="w-1/2 text-center">Nom du Jour</TableHead>
+                    <TableHead className="w-1/2 text-center">Quantité Globale Jour</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {monthlyCalendarDays.map((day) => (
-                    <TableRow key={day.date} className={cn(day.isWeekend && "bg-muted/50 text-muted-foreground")}>
-                      <TableCell className="text-center">{day.dayOfMonth}</TableCell>
-                      <TableCell className="text-center">{day.dayName}</TableCell>
-                    </TableRow>
-                  ))}
+                  {monthlyCalendarDays.map((day) => {
+                    const quantityEntry = dailyGlobalQuantities.find(q => q.day === day.dayOfMonth);
+                    return (
+                        <TableRow key={day.date} className={cn(day.isWeekend && "bg-muted/50 text-muted-foreground")}>
+                        <TableCell className="text-center">
+                            {day.dayOfMonth} - {day.dayName}
+                        </TableCell>
+                        <TableCell className="p-1">
+                            <Input
+                            type="number"
+                            min="0"
+                            value={quantityEntry?.quantity ?? ""}
+                            onChange={(e) => handleDailyQuantityChange(day.dayOfMonth, e.target.value)}
+                            className="h-7 text-xs text-center"
+                            disabled={day.isWeekend}
+                            placeholder="Qté"
+                            />
+                        </TableCell>
+                        </TableRow>
+                    );
+                   })}
                 </TableBody>
               </Table>
             </ScrollArea>
@@ -316,5 +345,3 @@ export default function CostAnalysisTable() {
     </div>
   );
 }
-    
-    
