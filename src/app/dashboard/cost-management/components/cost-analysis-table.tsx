@@ -14,9 +14,10 @@ import { fr } from 'date-fns/locale';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 import type { CostEntry, DailyCoefficientEntry } from '../types';
 import { months, years, currentYear } from '../types';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"; // Import Card components
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { getMonthDays, DayData } from '@/app/dashboard/pms/utils';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -49,7 +50,7 @@ export default function CostAnalysisTable() {
     try {
       const storedSuppliers = localStorage.getItem(getLocalStorageKeySuppliers());
       const parsedSuppliers = storedSuppliers ? JSON.parse(storedSuppliers) : [initialSupplierRow() as CostEntry];
-      setCostData(parsedSuppliers.length > 0 ? parsedSuppliers.map((s: any, index: number) => ({...initialSupplierRow(), ...s, id: s.id || `supplier_${Date.now()}_${index}`})) : [initialSupplierRow() as CostEntry]);
+      setCostData(parsedSuppliers.length > 0 ? parsedSuppliers.map((s: any, index: number) => ({...initialSupplierRow(), ...s, id: s.id || `supplier_${Date.now()}_${index}`})) : [{...initialSupplierRow(), id: `supplier_init_${Date.now()}`}]);
 
       const storedDailyCoeffs = localStorage.getItem(getLocalStorageKeyDailyCoeffs());
       const daysInMonth = dfnsGetDaysInMonth(new Date(parseInt(selectedYear), parseInt(selectedMonth)));
@@ -59,7 +60,6 @@ export default function CostAnalysisTable() {
         if (parsedCoeffs.length === daysInMonth && parsedCoeffs.every((entry, i) => entry.day === i + 1)) {
           setDailyCoeffData(parsedCoeffs);
         } else {
-          // Data structure mismatch or wrong number of days, reinitialize
           setDailyCoeffData(Array.from({ length: daysInMonth }, (_, i) => initialDailyCoefficientEntry(i + 1)));
         }
       } else {
@@ -67,7 +67,6 @@ export default function CostAnalysisTable() {
       }
     } catch (error) {
       console.error("Error loading data from localStorage:", error);
-      // Reset to defaults in case of corrupted data
       setCostData([{ ...initialSupplierRow(), id: `supplier_err_${Date.now()}` }]);
       const daysInMonth = dfnsGetDaysInMonth(new Date(parseInt(selectedYear), parseInt(selectedMonth)));
       setDailyCoeffData(Array.from({ length: daysInMonth }, (_, i) => initialDailyCoefficientEntry(i + 1)));
@@ -94,7 +93,6 @@ export default function CostAnalysisTable() {
     setCostData(prevData =>
       prevData.map((row, index) => {
         if (index === rowIndex) {
-          // Correctly parse numbers, default to 0 if parsing fails, maintain string for 'fournisseur'
           let processedValue = typeof (initialSupplierRow() as any)[fieldName] === 'number'
             ? parseFloat(value as string) || 0
             : value;
@@ -106,7 +104,7 @@ export default function CostAnalysisTable() {
   };
   
   const handleDailyCoeffInputChange = (dayIndex: number, fieldName: keyof Omit<DailyCoefficientEntry, 'day'>, value: string) => {
-    const numericValue = value === "" ? "" : parseFloat(value); // Allow empty string for clearing
+    const numericValue = value === "" ? "" : parseFloat(value); 
     if (value === "" || (!isNaN(numericValue as number) && (numericValue as number) >= 0)) {
         setDailyCoeffData(prevData =>
             prevData.map((entry, index) => {
@@ -124,7 +122,7 @@ export default function CostAnalysisTable() {
   };
 
   const handleDeleteSupplierRow = (rowId: string) => {
-    if (costData.length <= 1) { // Prevent deleting the last row if it's the only one
+    if (costData.length <= 1) { 
         toast({ title: "Action impossible", description: "Au moins une ligne fournisseur doit être conservée.", variant: "default" });
         return;
     }
@@ -183,13 +181,172 @@ export default function CostAnalysisTable() {
   }, [supplierTotals, grandTotalGlobalJourValue]);
 
   const generatePdf = () => {
-    toast({ title: "Fonctionnalité PDF Obsolète", description: "La génération PDF pour cette structure de coût de revient n'est plus à jour et nécessite une refonte. Elle ne reflètera pas correctement les données actuelles.", variant: "default" });
+    setIsLoading(true);
+    try {
+      const pdfSettings = getPdfLayoutSettings('monthly_cost');
+      const doc = new jsPDF({
+        orientation: pdfSettings.orientation || 'landscape',
+        unit: 'pt',
+        format: pdfSettings.pageSize || 'a3',
+      }) as jsPDFWithAutoTable;
+      
+      doc.setFont(pdfSettings.fontFamily);
+      const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
+      const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
+      
+      let currentY = pdfSettings.marginTop;
+
+      if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
+        try {
+            const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+            const format = imgProps.fileType.toUpperCase();
+            const desiredHeight = 30; 
+            const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
+            doc.addImage(pdfSettings.logoUrl, format, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
+            currentY += desiredHeight + 5;
+        } catch(e: any) {
+            console.error("Error drawing logo in PDF:", e);
+            doc.setFontSize(pdfSettings.defaultFontSize); doc.text(`[Logo Error]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 5;
+        }
+      } else if (pdfSettings.headerText) {
+        const headerLines = pdfSettings.headerText.split('\n');
+        doc.setFontSize(pdfSettings.headerFontSize);
+        headerLines.forEach(line => {
+            doc.text(line, pdfSettings.marginLeft, currentY);
+            currentY += pdfSettings.headerFontSize * 0.7 + 2; 
+        });
+        currentY += 5;
+      }
+
+      const baseDocTitle = pdfSettings.documentBaseTitle || "Fiche de Coût de Revient Mensuel";
+      const title = `${baseDocTitle} - ${monthLabel} ${selectedYear}`;
+      doc.setFontSize(pdfSettings.documentTitleFontSize);
+      doc.text(title, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
+      currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+      doc.setFontSize(pdfSettings.defaultFontSize);
+      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
+      currentY += pdfSettings.defaultFontSize + 7;
+
+      const tableHeadStyles: any = {
+        fontStyle: 'bold',
+        fontSize: pdfSettings.tableHeaderFontSize,
+        halign: 'center',
+        valign: 'middle',
+      };
+      if (pdfSettings.primaryColor) {
+        const primaryRgb = hexToRgb(pdfSettings.primaryColor);
+        if (primaryRgb) {
+          tableHeadStyles.fillColor = primaryRgb;
+          const brightness = (primaryRgb[0] * 299 + primaryRgb[1] * 587 + primaryRgb[2] * 114) / 1000;
+          tableHeadStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
+        }
+      } else {
+        tableHeadStyles.fillColor = [220,220,220];
+        tableHeadStyles.textColor = [0,0,0];
+      }
+      const tableBodyStyles: any = { fontSize: pdfSettings.tableBodyFontSize, valign: 'middle' };
+      const tableFooterStyles: any = { ...tableHeadStyles, fillColor: [230, 230, 230], textColor: [0,0,0] };
+
+      // Table 1: Données Fournisseurs
+      doc.setFontSize(pdfSettings.defaultFontSize + 2);
+      doc.text("Tableau des Fournisseurs", pdfSettings.marginLeft, currentY);
+      currentY += (pdfSettings.defaultFontSize + 2) * 0.7 + 3;
+
+      const supplierTableHead = [['Fournisseur', 'HT (€)', 'TVA (€)', 'Avoir (€)']];
+      const supplierTableBody = costData.map(row => [
+        row.fournisseur,
+        row.ht.toFixed(2),
+        row.tva.toFixed(2),
+        row.avoir.toFixed(2),
+      ]);
+      const supplierTableFoot = [[
+        'Total Fournisseurs',
+        supplierTotals.totalHt.toFixed(2),
+        supplierTotals.totalTva.toFixed(2),
+        supplierTotals.totalAvoir.toFixed(2),
+      ]];
+      doc.autoTable({
+        head: supplierTableHead, body: supplierTableBody, foot: supplierTableFoot,
+        startY: currentY, theme: 'grid',
+        headStyles: tableHeadStyles, styles: tableBodyStyles, footStyles: tableFooterStyles,
+        columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
+        margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
+      });
+      currentY = (doc as any).lastAutoTable.finalY + 10;
+
+      // Table 2: Coefficients Journaliers
+      doc.setFontSize(pdfSettings.defaultFontSize + 2);
+      doc.text("Tableau des Coefficients et Quantités Journaliers", pdfSettings.marginLeft, currentY);
+      currentY += (pdfSettings.defaultFontSize + 2) * 0.7 + 3;
+
+      const dailyCoeffTableHead = [['Jour', 'IMP', 'SAJ', 'IME', 'ESAT', 'Repas ++', 'Nous', 'Total Coeff.', 'PN', 'PN ESAT', 'Total PN', 'TOTAL GLOBAL JOUR.']];
+      const dailyCoeffTableBody = dailyCoeffData.map((entry, dayIndex) => [
+        entry.day,
+        entry.imp === "" ? "0.00" : Number(entry.imp).toFixed(2),
+        entry.saj === "" ? "0.00" : Number(entry.saj).toFixed(2),
+        entry.ime === "" ? "0.00" : Number(entry.ime).toFixed(2),
+        entry.esat === "" ? "0.00" : Number(entry.esat).toFixed(2),
+        entry.repasPlus === "" ? "0.00" : Number(entry.repasPlus).toFixed(2),
+        entry.nous === "" ? "0.00" : Number(entry.nous).toFixed(2),
+        (dailyCoeffTotals.totalCoeffJour as number[])[dayIndex].toFixed(2),
+        entry.pn === "" ? "0" : Number(entry.pn).toFixed(0),
+        entry.pnEsat === "" ? "0" : Number(entry.pnEsat).toFixed(0),
+        (dailyCoeffTotals.totalPnJour as number[])[dayIndex].toFixed(0),
+        (dailyCoeffTotals.totalGlobalJour as number[])[dayIndex].toFixed(2),
+      ]);
+      const dailyCoeffTableFoot = [[
+        'Total Mois',
+        (dailyCoeffTotals.imp as number).toFixed(2), (dailyCoeffTotals.saj as number).toFixed(2), (dailyCoeffTotals.ime as number).toFixed(2), (dailyCoeffTotals.esat as number).toFixed(2), (dailyCoeffTotals.repasPlus as number).toFixed(2), (dailyCoeffTotals.nous as number).toFixed(2),
+        ((dailyCoeffTotals.imp as number) + (dailyCoeffTotals.saj as number) + (dailyCoeffTotals.ime as number) + (dailyCoeffTotals.esat as number) + (dailyCoeffTotals.repasPlus as number) + (dailyCoeffTotals.nous as number)).toFixed(2),
+        (dailyCoeffTotals.pn as number).toFixed(0), (dailyCoeffTotals.pnEsat as number).toFixed(0),
+        ((dailyCoeffTotals.pn as number) + (dailyCoeffTotals.pnEsat as number)).toFixed(0),
+        grandTotalGlobalJourValue.toFixed(2),
+      ]];
+      doc.autoTable({
+        head: dailyCoeffTableHead, body: dailyCoeffTableBody, foot: dailyCoeffTableFoot,
+        startY: currentY, theme: 'grid',
+        headStyles: {...tableHeadStyles, fontSize: 7}, styles: {...tableBodyStyles, fontSize: 6.5, cellPadding: 1}, footStyles: {...tableFooterStyles, fontSize: 7},
+        columnStyles: { 0: { halign: 'center', cellWidth: 18}, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center' }, 5: { halign: 'center' }, 6: { halign: 'center' }, 7: { halign: 'center', fontStyle:'bold', fillColor: [203, 213, 225] }, 8: { halign: 'center' }, 9: { halign: 'center' }, 10: { halign: 'center', fontStyle:'bold', fillColor: [191, 219, 254] }, 11: { halign: 'center', fontStyle:'bold', fillColor: [254, 202, 202] }},
+        margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
+        didDrawPage: (data) => {
+            const pageCount = doc.internal.getNumberOfPages();
+            if (pdfSettings.footerText) {
+                let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', data.pageNumber.toString()).replace('{totalPages}', pageCount.toString());
+                doc.setFontSize(pdfSettings.footerFontSize); doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
+            }
+        }
+      });
+      currentY = (doc as any).lastAutoTable.finalY + 10;
+
+      // Récapitulatif Final
+      doc.setFontSize(pdfSettings.defaultFontSize + 1);
+      doc.text("Calcul du Prix de Revient Mensuel", pdfSettings.marginLeft, currentY);
+      currentY += (pdfSettings.defaultFontSize + 1) * 0.7 + 3;
+      doc.setFontSize(pdfSettings.defaultFontSize);
+      const coutMatierePrem = supplierTotals.totalHt - supplierTotals.totalAvoir;
+      doc.text(`Coût Matière Première (Total HT Fournisseurs - Total Avoir Fournisseurs): ${coutMatierePrem.toFixed(2)} €`, pdfSettings.marginLeft, currentY);
+      currentY += pdfSettings.defaultFontSize * 0.7 + 2;
+      doc.text(`Total du Mois (Somme des TOTAL GLOBAL JOUR.): ${grandTotalGlobalJourValue.toFixed(2)}`, pdfSettings.marginLeft, currentY);
+      currentY += pdfSettings.defaultFontSize * 0.7 + 2;
+      doc.setFontSize(pdfSettings.defaultFontSize + 1); doc.setFont(undefined, 'bold');
+      doc.text(`Prix de Revient du Mois: ${prixDeRevientMensuel.toFixed(2)} €`, pdfSettings.marginLeft, currentY);
+      doc.setFont(undefined, 'normal');
+
+      doc.save(`Cout_Revient_Mensuel_${monthLabel}_${selectedYear}.pdf`);
+      toast({ title: "PDF Généré", description: "Le PDF du coût de revient mensuel a été téléchargé." });
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      toast({ title: "Erreur PDF", description: "La génération du PDF a échoué.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
   };
+
 
   const daysInMonthArray = useMemo(() => {
     const year = parseInt(selectedYear, 10);
     const monthIndex = parseInt(selectedMonth, 10);
-    return getMonthDays(year, monthIndex); // Uses the utility from PMS
+    return getMonthDays(year, monthIndex);
   }, [selectedYear, selectedMonth]);
 
   return (
@@ -211,140 +368,147 @@ export default function CostAnalysisTable() {
         </div>
          <Button onClick={generatePdf} disabled={isLoading} className="sm:col-start-3 justify-self-end">
             {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-            Générer PDF Coût Revient (Obsolète)
+            recree moi le pdf
         </Button>
       </div>
 
-      {/* Tableau des Fournisseurs */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Données Fournisseurs & Coefficients</CardTitle>
-          <CardDescription>Entrez les informations financières pour chaque fournisseur et leurs coefficients associés.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto border rounded-md">
-            <Table>
-              <TableHeader><TableRow>
-                <TableHead className="min-w-[150px]">Fournisseur</TableHead>
-                <TableHead className="min-w-[80px] text-right">HT (€)</TableHead>
-                <TableHead className="min-w-[80px] text-right">TVA (€)</TableHead>
-                <TableHead className="min-w-[80px] text-right">Avoir (€)</TableHead>
-                <TableHead className="min-w-[50px] text-center">Action</TableHead>
-              </TableRow></TableHeader>
-              <TableBody>
-                {costData.map((row, rowIndex) => (
-                  <TableRow key={row.id || `supplier_new_${rowIndex}`}>
-                    <TableCell className="p-1"><Input type="text" value={row.fournisseur} onChange={e => handleSupplierInputChange(rowIndex, 'fournisseur', e.target.value)} className="text-xs p-1 h-8" /></TableCell>
-                    <TableCell className="p-1"><Input type="number" value={row.ht} onChange={e => handleSupplierInputChange(rowIndex, 'ht', e.target.value)} className="text-xs p-1 h-8 text-right" /></TableCell>
-                    <TableCell className="p-1"><Input type="number" value={row.tva} onChange={e => handleSupplierInputChange(rowIndex, 'tva', e.target.value)} className="text-xs p-1 h-8 text-right" /></TableCell>
-                    <TableCell className="p-1"><Input type="number" value={row.avoir} onChange={e => handleSupplierInputChange(rowIndex, 'avoir', e.target.value)} className="text-xs p-1 h-8 text-right" /></TableCell>
-                    <TableCell className="text-center p-1">
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteSupplierRow(row.id!)} className="h-8 w-8" disabled={costData.length <= 1}><Trash2 className="h-4 w-4" /></Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-              <TableFooter><TableRow className="font-bold bg-muted/80">
-                <TableCell>Total Fournisseurs</TableCell>
-                <TableCell className="text-right">{supplierTotals.totalHt.toFixed(2)}</TableCell>
-                <TableCell className="text-right">{supplierTotals.totalTva.toFixed(2)}</TableCell>
-                <TableCell className="text-right">{supplierTotals.totalAvoir.toFixed(2)}</TableCell>
-                <TableCell></TableCell>
-              </TableRow></TableFooter>
-            </Table>
-          </div>
-          <Button onClick={handleAddSupplierRow} className="mt-4"><PlusCircle className="mr-2 h-4 w-4" /> Ajouter Ligne Fournisseur</Button>
-        </CardContent>
-      </Card>
+      {isLoading && costData.length === 0 && dailyCoeffData.length === 0 ? (
+        <div className="flex justify-center items-center py-10">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <span className="ml-2 text-muted-foreground">Chargement des données...</span>
+        </div>
+      ) : (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Données Fournisseurs</CardTitle>
+              <CardDescription>Entrez les informations financières pour chaque fournisseur.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto border rounded-md">
+                <Table>
+                  <TableHeader><TableRow>
+                    <TableHead className="min-w-[150px]">Fournisseur</TableHead>
+                    <TableHead className="min-w-[80px] text-right">HT (€)</TableHead>
+                    <TableHead className="min-w-[80px] text-right">TVA (€)</TableHead>
+                    <TableHead className="min-w-[80px] text-right">Avoir (€)</TableHead>
+                    <TableHead className="min-w-[50px] text-center">Action</TableHead>
+                  </TableRow></TableHeader>
+                  <TableBody>
+                    {costData.map((row, rowIndex) => (
+                      <TableRow key={row.id || `supplier_new_${rowIndex}`}>
+                        <TableCell className="p-1"><Input type="text" value={row.fournisseur} onChange={e => handleSupplierInputChange(rowIndex, 'fournisseur', e.target.value)} className="text-xs p-1 h-8" /></TableCell>
+                        <TableCell className="p-1"><Input type="number" value={row.ht} onChange={e => handleSupplierInputChange(rowIndex, 'ht', e.target.value)} className="text-xs p-1 h-8 text-right" /></TableCell>
+                        <TableCell className="p-1"><Input type="number" value={row.tva} onChange={e => handleSupplierInputChange(rowIndex, 'tva', e.target.value)} className="text-xs p-1 h-8 text-right" /></TableCell>
+                        <TableCell className="p-1"><Input type="number" value={row.avoir} onChange={e => handleSupplierInputChange(rowIndex, 'avoir', e.target.value)} className="text-xs p-1 h-8 text-right" /></TableCell>
+                        <TableCell className="text-center p-1">
+                          <Button variant="destructive" size="icon" onClick={() => handleDeleteSupplierRow(row.id!)} className="h-8 w-8" disabled={costData.length <= 1}><Trash2 className="h-4 w-4" /></Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                  <TableFooter><TableRow className="font-bold bg-muted/80">
+                    <TableCell>Total Fournisseurs</TableCell>
+                    <TableCell className="text-right">{supplierTotals.totalHt.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{supplierTotals.totalTva.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{supplierTotals.totalAvoir.toFixed(2)}</TableCell>
+                    <TableCell></TableCell>
+                  </TableRow></TableFooter>
+                </Table>
+              </div>
+              <Button onClick={handleAddSupplierRow} className="mt-4"><PlusCircle className="mr-2 h-4 w-4" /> Ajouter Ligne Fournisseur</Button>
+            </CardContent>
+          </Card>
 
-      {/* Tableau des Coefficients Journaliers */}
-      <Card className="mt-8">
-        <CardHeader>
-          <CardTitle>Coefficients Journaliers (IMP, SAJ, PN, etc.)</CardTitle>
-          <CardDescription>Saisissez les coefficients pour chaque jour du mois.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto border rounded-md">
-            <Table className="min-w-[1200px]">
-              <TableHeader><TableRow>
-                <TableHead className="w-[60px]">Jour</TableHead>
-                <TableHead className="min-w-[70px] text-center">IMP</TableHead>
-                <TableHead className="min-w-[70px] text-center">SAJ</TableHead>
-                <TableHead className="min-w-[70px] text-center">IME</TableHead>
-                <TableHead className="min-w-[70px] text-center">ESAT</TableHead>
-                <TableHead className="min-w-[70px] text-center">Repas ++</TableHead>
-                <TableHead className="min-w-[70px] text-center">Nous</TableHead>
-                <TableHead className="min-w-[80px] text-center font-semibold bg-blue-100 dark:bg-blue-800/30">Total (Coeff)</TableHead>
-                <TableHead className="min-w-[70px] text-center">PN</TableHead>
-                <TableHead className="min-w-[70px] text-center">PN ESAT</TableHead>
-                <TableHead className="min-w-[80px] text-center font-semibold bg-green-100 dark:bg-green-800/30">Total (PN)</TableHead>
-                <TableHead className="min-w-[90px] text-center font-semibold bg-purple-100 dark:bg-purple-800/30">TOTAL GLOBAL JOUR.</TableHead>
-              </TableRow></TableHeader>
-              <TableBody>
-                {dailyCoeffData.map((entry, dayIndex) => (
-                  <TableRow key={entry.day}>
-                    <TableCell className="font-medium text-center">{entry.day}</TableCell>
+          <Card className="mt-8">
+            <CardHeader>
+              <CardTitle>Coefficients Journaliers (IMP, SAJ, PN, etc.)</CardTitle>
+              <CardDescription>Saisissez les coefficients pour chaque jour du mois.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto border rounded-md">
+                <Table className="min-w-[1200px]">
+                  <TableHeader><TableRow>
+                    <TableHead className="w-[100px] text-center">Jour</TableHead>
+                    <TableHead className="min-w-[70px] text-center">IMP</TableHead>
+                    <TableHead className="min-w-[70px] text-center">SAJ</TableHead>
+                    <TableHead className="min-w-[70px] text-center">IME</TableHead>
+                    <TableHead className="min-w-[70px] text-center">ESAT</TableHead>
+                    <TableHead className="min-w-[70px] text-center">Repas ++</TableHead>
+                    <TableHead className="min-w-[70px] text-center">Nous</TableHead>
+                    <TableHead className="min-w-[80px] text-center font-semibold bg-blue-100 dark:bg-blue-800/30">Total (Coeff)</TableHead>
+                    <TableHead className="min-w-[70px] text-center">PN</TableHead>
+                    <TableHead className="min-w-[70px] text-center">PN ESAT</TableHead>
+                    <TableHead className="min-w-[80px] text-center font-semibold bg-green-100 dark:bg-green-800/30">Total (PN)</TableHead>
+                    <TableHead className="min-w-[90px] text-center font-semibold bg-purple-100 dark:bg-purple-800/30">TOTAL GLOBAL JOUR.</TableHead>
+                  </TableRow></TableHeader>
+                  <TableBody>
+                    {dailyCoeffData.map((entry, dayIndex) => (
+                      <TableRow key={entry.day}>
+                        <TableCell className="font-medium text-center">{daysInMonthArray[dayIndex]?.dayOfMonth} - {daysInMonthArray[dayIndex]?.dayName.substring(0,3)}</TableCell>
+                        {(['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'] as const).map(field => (
+                          <TableCell key={field} className="p-1">
+                            <Input type="number" value={entry[field]} onChange={e => handleDailyCoeffInputChange(dayIndex, field, e.target.value)} className="text-xs p-1 h-8 text-center" placeholder="0" />
+                          </TableCell>
+                        ))}
+                        <TableCell className="text-center font-semibold bg-blue-100 dark:bg-blue-800/30">{(dailyCoeffTotals.totalCoeffJour as number[])[dayIndex].toFixed(2)}</TableCell>
+                         {(['pn', 'pnEsat'] as const).map(field => (
+                            <TableCell key={field} className="p-1">
+                                <Input type="number" value={entry[field]} onChange={e => handleDailyCoeffInputChange(dayIndex, field, e.target.value)} className="text-xs p-1 h-8 text-center" placeholder="0" />
+                            </TableCell>
+                        ))}
+                        <TableCell className="text-center font-semibold bg-green-100 dark:bg-green-800/30">{(dailyCoeffTotals.totalPnJour as number[])[dayIndex].toFixed(0)}</TableCell>
+                        <TableCell className="text-center font-semibold bg-purple-100 dark:bg-purple-800/30">{((dailyCoeffTotals.totalGlobalJour as number[])[dayIndex]).toFixed(2)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                  <TableFooter><TableRow className="font-bold bg-muted/80">
+                    <TableCell>Total Mois</TableCell>
                     {(['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'] as const).map(field => (
-                      <TableCell key={field} className="p-1">
-                        <Input type="number" value={entry[field]} onChange={e => handleDailyCoeffInputChange(dayIndex, field, e.target.value)} className="text-xs p-1 h-8 text-center" placeholder="0" />
+                      <TableCell key={`total-${field}`} className="text-center">
+                        {(dailyCoeffTotals[field] as number).toFixed(2)}
                       </TableCell>
                     ))}
-                    <TableCell className="text-center font-semibold bg-blue-100 dark:bg-blue-800/30">{(dailyCoeffTotals.totalCoeffJour as number[])[dayIndex].toFixed(2)}</TableCell>
-                     {(['pn', 'pnEsat'] as const).map(field => (
-                        <TableCell key={field} className="p-1">
-                            <Input type="number" value={entry[field]} onChange={e => handleDailyCoeffInputChange(dayIndex, field, e.target.value)} className="text-xs p-1 h-8 text-center" placeholder="0" />
-                        </TableCell>
+                    <TableCell className="text-center font-semibold bg-blue-100 dark:bg-blue-800/30">
+                      {((dailyCoeffTotals.imp as number) + (dailyCoeffTotals.saj as number) + (dailyCoeffTotals.ime as number) + (dailyCoeffTotals.esat as number) + (dailyCoeffTotals.repasPlus as number) + (dailyCoeffTotals.nous as number)).toFixed(2)}
+                    </TableCell>
+                    {(['pn', 'pnEsat'] as const).map(field => (
+                      <TableCell key={`total-${field}`} className="text-center">
+                        {(dailyCoeffTotals[field] as number).toFixed(0)}
+                      </TableCell>
                     ))}
-                    <TableCell className="text-center font-semibold bg-green-100 dark:bg-green-800/30">{(dailyCoeffTotals.totalPnJour as number[])[dayIndex].toFixed(0)}</TableCell>
-                    <TableCell className="text-center font-semibold bg-purple-100 dark:bg-purple-800/30">{((dailyCoeffTotals.totalGlobalJour as number[])[dayIndex]).toFixed(2)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-              <TableFooter><TableRow className="font-bold bg-muted/80">
-                <TableCell>Total Mois</TableCell>
-                {(['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'] as const).map(field => (
-                  <TableCell key={`total-${field}`} className="text-center">
-                    {(dailyCoeffTotals[field] as number).toFixed(2)}
-                  </TableCell>
-                ))}
-                <TableCell className="text-center font-semibold bg-blue-100 dark:bg-blue-800/30">
-                  {((dailyCoeffTotals.imp as number) + (dailyCoeffTotals.saj as number) + (dailyCoeffTotals.ime as number) + (dailyCoeffTotals.esat as number) + (dailyCoeffTotals.repasPlus as number) + (dailyCoeffTotals.nous as number)).toFixed(2)}
-                </TableCell>
-                {(['pn', 'pnEsat'] as const).map(field => (
-                  <TableCell key={`total-${field}`} className="text-center">
-                    {(dailyCoeffTotals[field] as number).toFixed(0)}
-                  </TableCell>
-                ))}
-                 <TableCell className="text-center font-semibold bg-green-100 dark:bg-green-800/30">
-                  {((dailyCoeffTotals.pn as number) + (dailyCoeffTotals.pnEsat as number)).toFixed(0)}
-                </TableCell>
-                <TableCell className="text-center font-semibold bg-purple-100 dark:bg-purple-800/30">
-                  {grandTotalGlobalJourValue.toFixed(2)}
-                </TableCell>
-              </TableRow></TableFooter>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                     <TableCell className="text-center font-semibold bg-green-100 dark:bg-green-800/30">
+                      {((dailyCoeffTotals.pn as number) + (dailyCoeffTotals.pnEsat as number)).toFixed(0)}
+                    </TableCell>
+                    <TableCell className="text-center font-semibold bg-purple-100 dark:bg-purple-800/30">
+                      {grandTotalGlobalJourValue.toFixed(2)}
+                    </TableCell>
+                  </TableRow></TableFooter>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
 
-      <Card className="mt-8">
-        <CardHeader>
-            <CardTitle>Calcul du Prix de Revient Mensuel</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div><span className="font-medium">Coût Matière Première (Total HT Fournisseurs - Total Avoir Fournisseurs):</span> <span className="font-semibold">{(supplierTotals.totalHt - supplierTotals.totalAvoir).toFixed(2)} €</span></div>
-                <div><span className="font-medium">Total du Mois (Σ TOTAL GLOBAL JOUR.):</span> <span className="font-semibold">{grandTotalGlobalJourValue.toFixed(2)}</span></div>
-            </div>
-            <div className="mt-4 pt-4 border-t">
-                <Label className="text-lg font-semibold">Prix de Revient du Mois :</Label>
-                <span className="text-2xl font-bold ml-2 text-primary">{prixDeRevientMensuel.toFixed(2)} €</span>
-                <p className="text-xs text-muted-foreground mt-1">
-                    Calculé comme : (Coût Matière Première) / Total du Mois (Σ TOTAL GLOBAL JOUR.).
-                </p>
-            </div>
-        </CardContent>
-      </Card>
+          <Card className="mt-8">
+            <CardHeader>
+                <CardTitle>Calcul du Prix de Revient Mensuel</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div><span className="font-medium">Coût Matière Première (Total HT Fournisseurs - Total Avoir Fournisseurs):</span> <span className="font-semibold">{(supplierTotals.totalHt - supplierTotals.totalAvoir).toFixed(2)} €</span></div>
+                    <div><span className="font-medium">Total du Mois (Σ TOTAL GLOBAL JOUR.):</span> <span className="font-semibold">{grandTotalGlobalJourValue.toFixed(2)}</span></div>
+                </div>
+                <div className="mt-4 pt-4 border-t">
+                    <Label className="text-lg font-semibold">Prix de Revient du Mois :</Label>
+                    <span className="text-2xl font-bold ml-2 text-primary">{prixDeRevientMensuel.toFixed(2)} €</span>
+                    <p className="text-xs text-muted-foreground mt-1">
+                        Calculé comme : (Coût Matière Première) / Total du Mois (Σ TOTAL GLOBAL JOUR.).
+                    </p>
+                </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 }
