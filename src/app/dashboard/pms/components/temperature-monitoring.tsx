@@ -6,9 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, FileText, Trash2, Thermometer as ThermometerIcon, AlertCircle, Check } from 'lucide-react';
+import { Loader2, FileText, Trash2, Thermometer as ThermometerIcon, AlertCircle, Check } from 'lucide-react'; // Added Check
 import { useToast } from '@/hooks/use-toast';
-import { format, getYear, getMonth } from 'date-fns';
+import { format, getYear, getMonth, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -97,7 +97,7 @@ export default function TemperatureMonitoring() {
       setIsLoading(false);
     };
     loadInitialData();
-  }, [selectedYear, selectedMonth, toast]);
+  }, [selectedYear, selectedMonth, toast]); // selectedEquipmentId removed as it's set inside
 
   useEffect(() => {
     if (!selectedEquipmentId) {
@@ -155,29 +155,43 @@ export default function TemperatureMonitoring() {
 
   const getEquipmentZoneInfo = useCallback((temp: number, config?: PmsEquipmentDefinition): { label: string; colorClass: string } => {
     if (!config) return { label: '', colorClass: 'bg-background hover:bg-muted/50' };
-    const { targetTempMin, targetTempMax, tolerance1TempMin, tolerance1TempMax, tolerance2TempMin, tolerance2TempMax, equipmentType, name } = config;
+    
+    const { 
+      targetTempMin, targetTempMax, 
+      tolerance1TempMin, tolerance1TempMax, 
+      tolerance2TempMin, tolerance2TempMax 
+    } = config;
 
-    const nameLower = name.toLowerCase();
-    if (nameLower.includes("frigo positif") || nameLower.includes("réfrigérateur") || equipmentType === 'refrigerator') {
-        if (temp >= 1 && temp <= 4) return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 hover:bg-green-300 dark:hover:bg-green-600' };
-        if ((temp >= 0 && temp < 1) || (temp > 4 && temp <= 9)) return { label: "Tolérance", colorClass: 'bg-blue-200 dark:bg-blue-800/60 hover:bg-blue-300 dark:hover:bg-blue-600' };
-        return { label: "Rejet", colorClass: 'bg-red-200 dark:bg-red-800/60 hover:bg-red-300 dark:hover:bg-red-600' };
-    } else if (nameLower.includes("congélateur") || equipmentType === 'freezer') {
-        if (temp >= -22 && temp <= -18) return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 hover:bg-green-300 dark:hover:bg-green-600' };
-        if ((temp > -18 && temp <= -15) || (temp < -22 && temp >= -25)) return { label: "Tolérance", colorClass: 'bg-blue-200 dark:bg-blue-800/60 hover:bg-blue-300 dark:hover:bg-blue-600' };
-        return { label: "Rejet", colorClass: 'bg-red-200 dark:bg-red-800/60 hover:bg-red-300 dark:hover:bg-red-600' };
+    let isInTarget = false;
+    if (typeof targetTempMin === 'number' && typeof targetTempMax === 'number') {
+      isInTarget = temp >= targetTempMin && temp <= targetTempMax;
+    } else if (typeof targetTempMin === 'number') {
+      isInTarget = temp >= targetTempMin;
+    } else if (typeof targetTempMax === 'number') {
+      isInTarget = temp <= targetTempMax;
     }
-    
-    // Generic logic using configured ranges if specific names/types don't match
-    let isTarget = false, isTolerance1 = false, isTolerance2 = false;
-    if (targetTempMin !== undefined && targetTempMax !== undefined) isTarget = temp >= targetTempMin && temp <= targetTempMax;
-    if (tolerance1TempMin !== undefined && tolerance1TempMax !== undefined) isTolerance1 = temp >= tolerance1TempMin && temp <= tolerance1TempMax && !isTarget;
-    if (tolerance2TempMin !== undefined && tolerance2TempMax !== undefined) isTolerance2 = temp >= tolerance2TempMin && temp <= tolerance2TempMax && !isTarget && !isTolerance1;
+    if (isInTarget) return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 hover:bg-green-300 dark:hover:bg-green-600' };
 
-    if (isTarget) return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 hover:bg-green-300 dark:hover:bg-green-600' };
-    if (isTolerance1) return { label: "Tolérance 1", colorClass: 'bg-blue-200 dark:bg-blue-800/60 hover:bg-blue-300 dark:hover:bg-blue-600' };
-    if (isTolerance2) return { label: "Tolérance 2", colorClass: 'bg-yellow-200 dark:bg-yellow-800/60 hover:bg-yellow-300 dark:hover:bg-yellow-600' };
+    let isInTolerance1 = false;
+    if (typeof tolerance1TempMin === 'number' && typeof tolerance1TempMax === 'number') {
+      isInTolerance1 = temp >= tolerance1TempMin && temp <= tolerance1TempMax;
+    } else if (typeof tolerance1TempMin === 'number') {
+      isInTolerance1 = temp >= tolerance1TempMin;
+    } else if (typeof tolerance1TempMax === 'number') {
+      isInTolerance1 = temp <= tolerance1TempMax;
+    }
+    if (isInTolerance1) return { label: "Tolérance 1", colorClass: 'bg-blue-200 dark:bg-blue-800/60 hover:bg-blue-300 dark:hover:bg-blue-600' };
     
+    let isInTolerance2 = false;
+    if (typeof tolerance2TempMin === 'number' && typeof tolerance2TempMax === 'number') {
+      isInTolerance2 = temp >= tolerance2TempMin && temp <= tolerance2TempMax;
+    } else if (typeof tolerance2TempMin === 'number') {
+      isInTolerance2 = temp >= tolerance2TempMin;
+    } else if (typeof tolerance2TempMax === 'number') {
+      isInTolerance2 = temp <= tolerance2TempMax;
+    }
+    if (isInTolerance2) return { label: "Tolérance 2", colorClass: 'bg-yellow-200 dark:bg-yellow-800/60 hover:bg-yellow-300 dark:hover:bg-yellow-600' };
+
     return { label: "Rejet", colorClass: 'bg-red-200 dark:bg-red-800/60 hover:bg-red-300 dark:hover:bg-red-600' };
   }, []);
 
@@ -187,14 +201,22 @@ export default function TemperatureMonitoring() {
       const dayRecord = prev[dayDate] || { markedTemp: null, time: '', operator: '' };
       const isCurrentlySelected = dayRecord.markedTemp === tempValue;
       const newMarkedTemp = isCurrentlySelected ? null : tempValue;
-      const newTime = newMarkedTemp !== null ? (dayRecord.time || format(new Date(), 'HH:mm')) : '';
+      
+      let newTime = dayRecord.time || '';
       let newOperator = dayRecord.operator || '';
-      if (newMarkedTemp !== null && !newOperator && loggedInUsername) {
-        newOperator = loggedInUsername.substring(0, 3).toUpperCase();
-      } else if (newMarkedTemp === null) {
+
+      if (newMarkedTemp !== null) { // If a temp is selected (or changed)
+        if (!newTime) { // Only set time if it's not already set for this day
+          newTime = format(new Date(), 'HH:mm');
+        }
+        if (!newOperator && loggedInUsername) { // Only set operator if not already set and user is logged in
+          newOperator = loggedInUsername.substring(0,3).toUpperCase();
+        }
+      } else { // If temp is deselected
+        newTime = '';
         newOperator = '';
       }
-
+      
       return {
         ...prev,
         [dayDate]: {
@@ -344,7 +366,7 @@ export default function TemperatureMonitoring() {
                             key={`${day.date}-${temp}`}
                             className={cn(
                               "w-[40px] h-8 p-0 text-center cursor-pointer border-r",
-                              zoneInfo.colorClass,
+                              zoneInfo.colorClass, // Apply zone color to all cells in row (except first header)
                               day.isWeekend && "opacity-70 cursor-not-allowed",
                               isSelected && "ring-2 ring-primary ring-inset"
                             )}
