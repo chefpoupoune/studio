@@ -14,7 +14,8 @@ import { fr } from 'date-fns/locale';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 import type { CostEntry, DailyCoefficientEntry } from '../types';
 import { months, years, currentYear } from '../types';
-import { ScrollArea } from '@/components/ui/scroll-area'; // Added ScrollArea
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"; // Added Card imports
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -39,8 +40,8 @@ export default function CostAnalysisTable() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const getLocalStorageKeySuppliers = useCallback(() => `cost_analysis_suppliers_v7_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
-  const getLocalStorageKeyDailyCoeffs = useCallback(() => `cost_analysis_daily_coeffs_v7_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
+  const getLocalStorageKeySuppliers = useCallback(() => `cost_analysis_suppliers_v8_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
+  const getLocalStorageKeyDailyCoeffs = useCallback(() => `cost_analysis_daily_coeffs_v8_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
 
   useEffect(() => {
     setIsLoading(true);
@@ -162,15 +163,18 @@ export default function CostAnalysisTable() {
     });
     return totals;
   }, [dailyCoeffData]);
+  
+  const totalQuantitesMois = useMemo(() => {
+    return dailyCoeffTotals.pn + dailyCoeffTotals.pnEsat;
+  }, [dailyCoeffTotals]);
 
   const prixDeRevientMensuel = useMemo(() => {
     const coutMatierePremiere = supplierTotals.totalHt - supplierTotals.totalAvoir;
     const coutsVariablesDirects = dailyCoeffTotals.imp + dailyCoeffTotals.saj + dailyCoeffTotals.ime + dailyCoeffTotals.esat + dailyCoeffTotals.repasPlus + dailyCoeffTotals.nous;
-    const quantiteTotale = dailyCoeffTotals.pn + dailyCoeffTotals.pnEsat;
     
-    if (quantiteTotale === 0) return 0;
-    return (coutMatierePremiere + coutsVariablesDirects) / quantiteTotale;
-  }, [supplierTotals, dailyCoeffTotals]);
+    if (totalQuantitesMois === 0) return 0;
+    return (coutMatierePremiere + coutsVariablesDirects) / totalQuantitesMois;
+  }, [supplierTotals, dailyCoeffTotals, totalQuantitesMois]);
 
   const generatePdf = () => {
     toast({ title: "PDF Non Fonctionnel", description: "La génération PDF pour cette structure de coût de revient n'est pas encore implémentée.", variant: "default" });
@@ -282,12 +286,17 @@ export default function CostAnalysisTable() {
                 {dailyCoeffData.map((entry, dayIndex) => (
                   <TableRow key={entry.day}>
                     <TableCell className="font-medium text-center">{entry.day}</TableCell>
-                    {(['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous', 'pn', 'pnEsat'] as const).map(field => (
+                    {(['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'] as const).map(field => (
                       <TableCell key={field} className="p-1">
                         <Input type="number" value={entry[field]} onChange={e => handleDailyCoeffInputChange(dayIndex, field, e.target.value)} className="text-xs p-1 h-8 text-center" placeholder="0" />
                       </TableCell>
                     ))}
                     <TableCell className="text-center font-semibold bg-blue-100 dark:bg-blue-800/30">{dailyCoeffTotals.totalCoeffJour[dayIndex].toFixed(2)}</TableCell>
+                     {(['pn', 'pnEsat'] as const).map(field => (
+                        <TableCell key={field} className="p-1">
+                            <Input type="number" value={entry[field]} onChange={e => handleDailyCoeffInputChange(dayIndex, field, e.target.value)} className="text-xs p-1 h-8 text-center" placeholder="0" />
+                        </TableCell>
+                    ))}
                     <TableCell className="text-center font-semibold bg-green-100 dark:bg-green-800/30">{dailyCoeffTotals.totalPnJour[dayIndex].toFixed(0)}</TableCell>
                   </TableRow>
                 ))}
@@ -325,7 +334,7 @@ export default function CostAnalysisTable() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div><span className="font-medium">Coût Matière Première (Total HT - Total Avoir):</span> <span className="font-semibold">{(supplierTotals.totalHt - supplierTotals.totalAvoir).toFixed(2)} €</span></div>
                 <div><span className="font-medium">Total Coûts Variables Directs (Σ IMP à Nous):</span> <span className="font-semibold">{(dailyCoeffTotals.imp + dailyCoeffTotals.saj + dailyCoeffTotals.ime + dailyCoeffTotals.esat + dailyCoeffTotals.repasPlus + dailyCoeffTotals.nous).toFixed(2)}</span></div>
-                <div><span className="font-medium">Quantité Totale (Σ PN + PN ESAT):</span> <span className="font-semibold">{(dailyCoeffTotals.pn + dailyCoeffTotals.pnEsat).toFixed(0)}</span></div>
+                <div><span className="font-medium">Quantité Totale (Σ PN + PN ESAT):</span> <span className="font-semibold">{totalQuantitesMois.toFixed(0)}</span></div>
             </div>
             <div className="mt-4 pt-4 border-t">
                 <Label className="text-lg font-semibold">Prix de Revient du Mois :</Label>
@@ -339,6 +348,3 @@ export default function CostAnalysisTable() {
     </div>
   );
 }
-
-    
-    
