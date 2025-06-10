@@ -14,7 +14,7 @@ import { fr } from 'date-fns/locale';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 import type { CostEntry, DailyCoefficientEntry } from '../types';
 import { months, years, currentYear } from '../types';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"; // Import Card components
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { getMonthDays, DayData } from '@/app/dashboard/pms/utils';
 
@@ -41,8 +41,8 @@ export default function CostAnalysisTable() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const getLocalStorageKeySuppliers = useCallback(() => `cost_analysis_suppliers_v10_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
-  const getLocalStorageKeyDailyCoeffs = useCallback(() => `cost_analysis_daily_coeffs_v10_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
+  const getLocalStorageKeySuppliers = useCallback(() => `cost_analysis_suppliers_v11_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
+  const getLocalStorageKeyDailyCoeffs = useCallback(() => `cost_analysis_daily_coeffs_v11_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
 
   useEffect(() => {
     setIsLoading(true);
@@ -59,6 +59,7 @@ export default function CostAnalysisTable() {
         if (parsedCoeffs.length === daysInMonth && parsedCoeffs.every((entry, i) => entry.day === i + 1)) {
           setDailyCoeffData(parsedCoeffs);
         } else {
+          // Data structure mismatch or wrong number of days, reinitialize
           setDailyCoeffData(Array.from({ length: daysInMonth }, (_, i) => initialDailyCoefficientEntry(i + 1)));
         }
       } else {
@@ -66,10 +67,11 @@ export default function CostAnalysisTable() {
       }
     } catch (error) {
       console.error("Error loading data from localStorage:", error);
+      // Reset to defaults in case of corrupted data
       setCostData([{ ...initialSupplierRow(), id: `supplier_err_${Date.now()}` }]);
       const daysInMonth = dfnsGetDaysInMonth(new Date(parseInt(selectedYear), parseInt(selectedMonth)));
       setDailyCoeffData(Array.from({ length: daysInMonth }, (_, i) => initialDailyCoefficientEntry(i + 1)));
-      toast({ title: "Erreur de chargement", description: "Données corrompues, réinitialisation.", variant: "destructive" });
+      toast({ title: "Erreur de chargement", description: "Données locales corrompues, réinitialisation.", variant: "destructive" });
     }
     setIsLoading(false);
   }, [selectedMonth, selectedYear, getLocalStorageKeySuppliers, getLocalStorageKeyDailyCoeffs, toast]);
@@ -88,10 +90,11 @@ export default function CostAnalysisTable() {
     }
   }, [dailyCoeffData, getLocalStorageKeyDailyCoeffs, isLoading]);
 
-  const handleSupplierInputChange = (rowIndex: number, fieldName: keyof CostEntry, value: string | number) => {
+  const handleSupplierInputChange = (rowIndex: number, fieldName: keyof Omit<CostEntry, 'id'>, value: string | number) => {
     setCostData(prevData =>
       prevData.map((row, index) => {
         if (index === rowIndex) {
+          // Correctly parse numbers, default to 0 if parsing fails, maintain string for 'fournisseur'
           let processedValue = typeof (initialSupplierRow() as any)[fieldName] === 'number'
             ? parseFloat(value as string) || 0
             : value;
@@ -103,8 +106,8 @@ export default function CostAnalysisTable() {
   };
   
   const handleDailyCoeffInputChange = (dayIndex: number, fieldName: keyof Omit<DailyCoefficientEntry, 'day'>, value: string) => {
-    const numericValue = value === "" ? "" : parseFloat(value); 
-    if (value === "" || (!isNaN(numericValue) && numericValue >= 0)) {
+    const numericValue = value === "" ? "" : parseFloat(value); // Allow empty string for clearing
+    if (value === "" || (!isNaN(numericValue as number) && (numericValue as number) >= 0)) {
         setDailyCoeffData(prevData =>
             prevData.map((entry, index) => {
                 if (index === dayIndex) {
@@ -121,7 +124,7 @@ export default function CostAnalysisTable() {
   };
 
   const handleDeleteSupplierRow = (rowId: string) => {
-    if (costData.length <= 1) {
+    if (costData.length <= 1) { // Prevent deleting the last row if it's the only one
         toast({ title: "Action impossible", description: "Au moins une ligne fournisseur doit être conservée.", variant: "default" });
         return;
     }
@@ -169,18 +172,15 @@ export default function CostAnalysisTable() {
     return totals as { [K in keyof Omit<DailyCoefficientEntry, 'day'>]: number } & { totalCoeffJour: number[], totalPnJour: number[], totalGlobalJour: number[] };
   }, [dailyCoeffData]);
   
-  const totalQuantitesMois = useMemo(() => {
-    return (dailyCoeffTotals.pn as number) + (dailyCoeffTotals.pnEsat as number);
-  }, [dailyCoeffTotals]);
+  const grandTotalGlobalJourValue = useMemo(() => {
+    return (dailyCoeffTotals.totalGlobalJour as number[]).reduce((sum, val) => sum + val, 0);
+  }, [dailyCoeffTotals.totalGlobalJour]);
 
   const prixDeRevientMensuel = useMemo(() => {
     const coutMatierePremiere = supplierTotals.totalHt - supplierTotals.totalAvoir;
-    // const coutsVariablesDirects = (dailyCoeffTotals.imp as number) + (dailyCoeffTotals.saj as number) + (dailyCoeffTotals.ime as number) + (dailyCoeffTotals.esat as number) + (dailyCoeffTotals.repasPlus as number) + (dailyCoeffTotals.nous as number);
-    
-    if (totalQuantitesMois === 0) return 0;
-    // Nouvelle formule : (Coût Matière Première) / Quantité Totale
-    return coutMatierePremiere / totalQuantitesMois;
-  }, [supplierTotals, totalQuantitesMois]);
+    if (grandTotalGlobalJourValue === 0) return 0;
+    return coutMatierePremiere / grandTotalGlobalJourValue;
+  }, [supplierTotals, grandTotalGlobalJourValue]);
 
   const generatePdf = () => {
     toast({ title: "Fonctionnalité PDF Obsolète", description: "La génération PDF pour cette structure de coût de revient n'est plus à jour et nécessite une refonte. Elle ne reflètera pas correctement les données actuelles.", variant: "default" });
@@ -189,7 +189,7 @@ export default function CostAnalysisTable() {
   const daysInMonthArray = useMemo(() => {
     const year = parseInt(selectedYear, 10);
     const monthIndex = parseInt(selectedMonth, 10);
-    return getMonthDays(year, monthIndex);
+    return getMonthDays(year, monthIndex); // Uses the utility from PMS
   }, [selectedYear, selectedMonth]);
 
   return (
@@ -215,20 +215,21 @@ export default function CostAnalysisTable() {
         </Button>
       </div>
 
+      {/* Tableau des Fournisseurs */}
       <Card>
         <CardHeader>
-          <CardTitle>Données Fournisseurs</CardTitle>
-          <CardDescription>Entrez les informations financières pour chaque fournisseur.</CardDescription>
+          <CardTitle>Données Fournisseurs & Coefficients</CardTitle>
+          <CardDescription>Entrez les informations financières pour chaque fournisseur et leurs coefficients associés.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto border rounded-md">
             <Table>
               <TableHeader><TableRow>
-                <TableHead className="min-w-[200px]">Fournisseur</TableHead>
-                <TableHead className="min-w-[100px] text-right">HT (€)</TableHead>
-                <TableHead className="min-w-[100px] text-right">TVA (€)</TableHead>
-                <TableHead className="min-w-[100px] text-right">Avoir (€)</TableHead>
-                <TableHead className="min-w-[100px] text-center">Action</TableHead>
+                <TableHead className="min-w-[150px]">Fournisseur</TableHead>
+                <TableHead className="min-w-[80px] text-right">HT (€)</TableHead>
+                <TableHead className="min-w-[80px] text-right">TVA (€)</TableHead>
+                <TableHead className="min-w-[80px] text-right">Avoir (€)</TableHead>
+                <TableHead className="min-w-[50px] text-center">Action</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {costData.map((row, rowIndex) => (
@@ -256,6 +257,7 @@ export default function CostAnalysisTable() {
         </CardContent>
       </Card>
 
+      {/* Tableau des Coefficients Journaliers */}
       <Card className="mt-8">
         <CardHeader>
           <CardTitle>Coefficients Journaliers (IMP, SAJ, PN, etc.)</CardTitle>
@@ -294,7 +296,7 @@ export default function CostAnalysisTable() {
                         </TableCell>
                     ))}
                     <TableCell className="text-center font-semibold bg-green-100 dark:bg-green-800/30">{(dailyCoeffTotals.totalPnJour as number[])[dayIndex].toFixed(0)}</TableCell>
-                    <TableCell className="text-center font-semibold bg-purple-100 dark:bg-purple-800/30">{((dailyCoeffTotals.totalCoeffJour as number[])[dayIndex] + (dailyCoeffTotals.totalPnJour as number[])[dayIndex]).toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-semibold bg-purple-100 dark:bg-purple-800/30">{((dailyCoeffTotals.totalGlobalJour as number[])[dayIndex]).toFixed(2)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -317,7 +319,7 @@ export default function CostAnalysisTable() {
                   {((dailyCoeffTotals.pn as number) + (dailyCoeffTotals.pnEsat as number)).toFixed(0)}
                 </TableCell>
                 <TableCell className="text-center font-semibold bg-purple-100 dark:bg-purple-800/30">
-                  {(dailyCoeffTotals.totalGlobalJour as number[]).reduce((sum, val) => sum + val, 0).toFixed(2)}
+                  {grandTotalGlobalJourValue.toFixed(2)}
                 </TableCell>
               </TableRow></TableFooter>
             </Table>
@@ -332,14 +334,13 @@ export default function CostAnalysisTable() {
         <CardContent className="space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div><span className="font-medium">Coût Matière Première (Total HT Fournisseurs - Total Avoir Fournisseurs):</span> <span className="font-semibold">{(supplierTotals.totalHt - supplierTotals.totalAvoir).toFixed(2)} €</span></div>
-                {/* <div><span className="font-medium">Total Coûts Variables Directs (Σ IMP à Nous):</span> <span className="font-semibold">{((dailyCoeffTotals.imp as number) + (dailyCoeffTotals.saj as number) + (dailyCoeffTotals.ime as number) + (dailyCoeffTotals.esat as number) + (dailyCoeffTotals.repasPlus as number) + (dailyCoeffTotals.nous as number)).toFixed(2)}</span></div> */}
-                <div><span className="font-medium">Total du Mois Effectif Global (Σ PN + PN ESAT):</span> <span className="font-semibold">{totalQuantitesMois.toFixed(0)}</span></div>
+                <div><span className="font-medium">Total du Mois (Σ TOTAL GLOBAL JOUR.):</span> <span className="font-semibold">{grandTotalGlobalJourValue.toFixed(2)}</span></div>
             </div>
             <div className="mt-4 pt-4 border-t">
                 <Label className="text-lg font-semibold">Prix de Revient du Mois :</Label>
                 <span className="text-2xl font-bold ml-2 text-primary">{prixDeRevientMensuel.toFixed(2)} €</span>
                 <p className="text-xs text-muted-foreground mt-1">
-                    Calculé comme : (Coût Matière Première) / Total du Mois Effectif Global.
+                    Calculé comme : (Coût Matière Première) / Total du Mois (Σ TOTAL GLOBAL JOUR.).
                 </p>
             </div>
         </CardContent>
@@ -348,3 +349,4 @@ export default function CostAnalysisTable() {
   );
 }
 
+    
