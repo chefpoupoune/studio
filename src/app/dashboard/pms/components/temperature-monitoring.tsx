@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, FileText, Trash2, Thermometer as ThermometerIcon, AlertCircle, Check } from 'lucide-react'; // Added Check
+import { Loader2, FileText, Trash2, Thermometer as ThermometerIcon, AlertCircle, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format, getYear, getMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -64,11 +64,9 @@ export default function TemperatureMonitoring() {
     return `tempGridLog_${selectedEquipmentId}_${selectedYear}_${selectedMonth}`;
   }, [selectedEquipmentId, selectedYear, selectedMonth]);
 
-  // Load equipment configurations and then records
   useEffect(() => {
     const loadInitialData = async () => {
       setIsLoading(true);
-      // Load equipment configurations
       const pmsSettingsDocRef = doc(firestore, "pmsConfigurations", "mainConfig");
       let fetchedEquipment: PmsEquipmentDefinition[] = [];
       try {
@@ -93,21 +91,17 @@ export default function TemperatureMonitoring() {
         setEquipmentList([]);
         setSelectedEquipmentId(undefined);
       }
-
-      // Update month days based on selectedYear and selectedMonth
       const yearNum = parseInt(selectedYear, 10);
       const monthNum = parseInt(selectedMonth, 10);
       setMonthDays(getMonthDays(yearNum, monthNum));
-      
-      setIsLoading(false); // Initial config load done
+      setIsLoading(false);
     };
     loadInitialData();
-  }, [selectedYear, selectedMonth, toast]); // Removed selectedEquipmentId from deps to avoid loop
+  }, [selectedYear, selectedMonth, toast]);
 
-  // Load records when selectedEquipmentId, year, or month changes
   useEffect(() => {
     if (!selectedEquipmentId) {
-      setRecords({}); // Clear records if no equipment selected
+      setRecords({});
       setIsLoading(false);
       return;
     }
@@ -134,8 +128,6 @@ export default function TemperatureMonitoring() {
     loadRecords();
   }, [selectedEquipmentId, selectedYear, selectedMonth, getFirestoreDocId, toast]);
 
-
-  // Debounced save
   useEffect(() => {
     if (isLoading || isSaving || !selectedEquipmentId) return;
 
@@ -147,7 +139,6 @@ export default function TemperatureMonitoring() {
       const recordsDocRef = doc(firestore, "pmsTemperatureGridLogs", docId);
       try {
         await setDoc(recordsDocRef, records);
-        // toast({ title: "Sauvegarde Auto", description: "Modifications enregistrées." });
       } catch (error) {
         console.error("Error auto-saving temperature grid records:", error);
         toast({ title: "Erreur Sauvegarde Auto", variant: "destructive" });
@@ -162,48 +153,55 @@ export default function TemperatureMonitoring() {
     return equipmentList.find(eq => eq.id === selectedEquipmentId);
   }, [selectedEquipmentId, equipmentList]);
 
-  const getCellColorClass = (temp: number): string => {
-    if (!selectedEquipmentConfig) return 'bg-background hover:bg-muted/50';
+  const getEquipmentZoneInfo = useCallback((temp: number, config?: PmsEquipmentDefinition): { label: string; colorClass: string } => {
+    if (!config) return { label: '', colorClass: 'bg-background hover:bg-muted/50' };
+    const { targetTempMin, targetTempMax, tolerance1TempMin, tolerance1TempMax, tolerance2TempMin, tolerance2TempMax, equipmentType, name } = config;
 
-    const { targetTempMin, targetTempMax, tolerance1TempMin, tolerance1TempMax } = selectedEquipmentConfig;
+    const nameLower = name.toLowerCase();
+    if (nameLower.includes("frigo positif") || nameLower.includes("réfrigérateur") || equipmentType === 'refrigerator') {
+        if (temp >= 1 && temp <= 4) return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 hover:bg-green-300 dark:hover:bg-green-600' };
+        if ((temp >= 0 && temp < 1) || (temp > 4 && temp <= 9)) return { label: "Tolérance", colorClass: 'bg-blue-200 dark:bg-blue-800/60 hover:bg-blue-300 dark:hover:bg-blue-600' };
+        return { label: "Rejet", colorClass: 'bg-red-200 dark:bg-red-800/60 hover:bg-red-300 dark:hover:bg-red-600' };
+    } else if (nameLower.includes("congélateur") || equipmentType === 'freezer') {
+        if (temp >= -22 && temp <= -18) return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 hover:bg-green-300 dark:hover:bg-green-600' };
+        if ((temp > -18 && temp <= -15) || (temp < -22 && temp >= -25)) return { label: "Tolérance", colorClass: 'bg-blue-200 dark:bg-blue-800/60 hover:bg-blue-300 dark:hover:bg-blue-600' };
+        return { label: "Rejet", colorClass: 'bg-red-200 dark:bg-red-800/60 hover:bg-red-300 dark:hover:bg-red-600' };
+    }
+    
+    // Generic logic using configured ranges if specific names/types don't match
+    let isTarget = false, isTolerance1 = false, isTolerance2 = false;
+    if (targetTempMin !== undefined && targetTempMax !== undefined) isTarget = temp >= targetTempMin && temp <= targetTempMax;
+    if (tolerance1TempMin !== undefined && tolerance1TempMax !== undefined) isTolerance1 = temp >= tolerance1TempMin && temp <= tolerance1TempMax && !isTarget;
+    if (tolerance2TempMin !== undefined && tolerance2TempMax !== undefined) isTolerance2 = temp >= tolerance2TempMin && temp <= tolerance2TempMax && !isTarget && !isTolerance1;
 
-    // Zone Cible (Vert)
-    if (targetTempMin !== undefined && targetTempMax !== undefined && temp >= targetTempMin && temp <= targetTempMax) {
-      return 'bg-green-200 dark:bg-green-700 hover:bg-green-300 dark:hover:bg-green-600';
-    }
-    // Zone Tolérance (Bleu) - based on image: 0 to -4 AND 5 to 9 for frigo positif
-    // This simplified logic uses tolerance1 as a single band around target.
-    // To precisely match the image, PmsEquipmentDefinition would need more complex range fields.
-    // For now, we use the values from the image for "Frigo Positif" as reference.
-    if (selectedEquipmentConfig.name.toLowerCase().includes("frigo positif") || selectedEquipmentConfig.name.toLowerCase().includes("réfrigérateur")) {
-        if ((temp >= 0 && temp < 1) || (temp > 4 && temp <= 9)) { // Approximation of blue zones from image
-             return 'bg-blue-200 dark:bg-blue-700 hover:bg-blue-300 dark:hover:bg-blue-600';
-        }
-        if (temp < 0 || temp > 9) { // Approximation of red zones
-            return 'bg-red-200 dark:bg-red-700 hover:bg-red-300 dark:hover:bg-red-600';
-        }
-    } else if (selectedEquipmentConfig.equipmentType === 'freezer') { // Example for freezer
-        if (temp >= -18 && temp <= -15) return 'bg-green-200 dark:bg-green-700 hover:bg-green-300 dark:hover:bg-green-600'; // Target
-        if ((temp > -15 && temp <= -12) || (temp < -18 && temp >= -22)) return 'bg-blue-200 dark:bg-blue-700 hover:bg-blue-300 dark:hover:bg-blue-600'; // Tolerance
-        return 'bg-red-200 dark:bg-red-700 hover:bg-red-300 dark:hover:bg-red-600'; // Rejection
-    }
+    if (isTarget) return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 hover:bg-green-300 dark:hover:bg-green-600' };
+    if (isTolerance1) return { label: "Tolérance 1", colorClass: 'bg-blue-200 dark:bg-blue-800/60 hover:bg-blue-300 dark:hover:bg-blue-600' };
+    if (isTolerance2) return { label: "Tolérance 2", colorClass: 'bg-yellow-200 dark:bg-yellow-800/60 hover:bg-yellow-300 dark:hover:bg-yellow-600' };
+    
+    return { label: "Rejet", colorClass: 'bg-red-200 dark:bg-red-800/60 hover:bg-red-300 dark:hover:bg-red-600' };
+  }, []);
 
-    // Fallback for general equipment based on config if available
-    if (tolerance1TempMin !== undefined && tolerance1TempMax !== undefined && temp >= tolerance1TempMin && temp <= tolerance1TempMax) {
-      return 'bg-blue-200 dark:bg-blue-700 hover:bg-blue-300 dark:hover:bg-blue-600';
-    }
-    // Zone Rejet (Rouge)
-    return 'bg-red-200 dark:bg-red-700 hover:bg-red-300 dark:hover:bg-red-600';
-  };
 
   const handleCellClick = (dayDate: string, tempValue: number) => {
     setRecords(prev => {
-      const dayRecord = prev[dayDate] || {};
+      const dayRecord = prev[dayDate] || { markedTemp: null, time: '', operator: '' };
+      const isCurrentlySelected = dayRecord.markedTemp === tempValue;
+      const newMarkedTemp = isCurrentlySelected ? null : tempValue;
+      const newTime = newMarkedTemp !== null ? (dayRecord.time || format(new Date(), 'HH:mm')) : '';
+      let newOperator = dayRecord.operator || '';
+      if (newMarkedTemp !== null && !newOperator && loggedInUsername) {
+        newOperator = loggedInUsername.substring(0, 3).toUpperCase();
+      } else if (newMarkedTemp === null) {
+        newOperator = '';
+      }
+
       return {
         ...prev,
         [dayDate]: {
           ...dayRecord,
-          markedTemp: dayRecord.markedTemp === tempValue ? null : tempValue,
+          markedTemp: newMarkedTemp,
+          time: newTime,
+          operator: newOperator,
         }
       };
     });
@@ -230,7 +228,7 @@ export default function TemperatureMonitoring() {
       if (!docId) {setIsSaving(false); return;}
       const docRef = doc(firestore, "pmsTemperatureGridLogs", docId);
       try {
-        await setDoc(docRef, {}); // Empty object to clear data
+        await setDoc(docRef, {}); 
         setRecords({});
         toast({ title: "Données Effacées", description: "Les relevés pour ce mois et cet équipement ont été effacés." });
       } catch (error) {
@@ -246,21 +244,10 @@ export default function TemperatureMonitoring() {
       toast({ title: "Équipement non sélectionné", variant: "destructive" });
       return;
     }
-    // PDF generation logic will be complex and similar to the kitchen cleaning one,
-    // but needs to render the grid with checks. This is a placeholder.
     toast({ title: "PDF Non Implémenté", description: "La génération PDF pour ce tableau est en cours de développement." });
   };
 
-  const getZoneLabel = (temp: number): string => {
-    // Hardcoded based on image for "Frigo Positif"
-    if (temp >= 1 && temp <= 4) return "Zone Cible";
-    if ((temp >= 0 && temp < 1) || (temp >= 5 && temp <= 9)) return "Zone de Tolérance";
-    if ((temp >= -10 && temp < 0) || (temp >= 10 && temp <= 16)) return "Zone de Rejet";
-    return "";
-  };
-
-
-  if (isLoading && equipmentList.length === 0) {
+  if (isLoading && equipmentList.length === 0 && !selectedEquipmentId) {
     return (
         <Card className="shadow-lg">
             <CardHeader><CardTitle className="flex items-center gap-2"><ThermometerIcon className="w-6 h-6 text-primary"/>Suivi des Températures</CardTitle></CardHeader>
@@ -326,9 +313,9 @@ export default function TemperatureMonitoring() {
         ) : (
           <div className="overflow-x-auto border rounded-md">
             <Table className="min-w-max border-collapse">
-              <TableHeader className="sticky top-0 z-10 bg-card">
+              <TableHeader className="sticky top-0 z-10 bg-card shadow-sm">
                 <TableRow>
-                  <TableHead className="w-[100px] min-w-[100px] sticky left-0 z-20 bg-card text-xs p-1 text-center border-r">T°C / Zone</TableHead>
+                  <TableHead className="w-[150px] min-w-[150px] sticky left-0 z-20 bg-card text-xs p-1 text-center border-r">T°C / Zone</TableHead>
                   {monthDays.map(day => (
                     <TableHead key={day.date} className={cn("w-[40px] min-w-[40px] text-center text-xs p-1 border-r", day.isWeekend && "bg-muted/50")}>
                       {day.dayOfMonth}<br/>{day.dayName.substring(0,3)}
@@ -337,42 +324,39 @@ export default function TemperatureMonitoring() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {TEMPERATURE_ROWS.map(temp => (
-                  <TableRow key={temp}>
-                    <TableCell className={cn(
-                        "sticky left-0 z-10 font-medium text-xs p-1 text-center border-r h-8", 
-                        getCellColorClass(temp)
-                      )}>
-                      <div className="flex items-center justify-center h-full">
-                        {temp}°C
-                        {temp === 16 && <span className="text-[0.6rem] ml-1 leading-tight">Zone Rejet</span>}
-                        {temp === 9 && <span className="text-[0.6rem] ml-1 leading-tight">Zone Tol.</span>}
-                        {temp === 4 && <span className="text-[0.6rem] ml-1 leading-tight">Zone Cible</span>}
-                        {temp === 0 && <span className="text-[0.6rem] ml-1 leading-tight">Zone Tol.</span>}
-                        {temp === -5 && <span className="text-[0.6rem] ml-1 leading-tight">Zone Rejet</span>}
-                      </div>
-                    </TableCell>
-                    {monthDays.map(day => {
-                      const dayRecord = records[day.date] || {};
-                      const isSelected = dayRecord.markedTemp === temp;
-                      return (
-                        <TableCell
-                          key={`${day.date}-${temp}`}
-                          className={cn(
-                            "w-[40px] h-8 p-0 text-center cursor-pointer border-r",
-                            getCellColorClass(temp),
-                            day.isWeekend && "opacity-70 cursor-not-allowed",
-                            isSelected && "ring-2 ring-primary ring-inset"
-                          )}
-                          onClick={() => !day.isWeekend && handleCellClick(day.date, temp)}
-                        >
-                          {isSelected && <Check className="h-4 w-4 mx-auto text-foreground" />}
-                        </TableCell>
-                      );
-                    })}
-                  </TableRow>
-                ))}
-                {/* Heure Row */}
+                {TEMPERATURE_ROWS.map(temp => {
+                  const zoneInfo = getEquipmentZoneInfo(temp, selectedEquipmentConfig);
+                  return (
+                    <TableRow key={temp}>
+                      <TableCell className={cn(
+                          "sticky left-0 z-10 font-medium text-xs p-1 text-center border-r h-8", 
+                          zoneInfo.colorClass
+                        )}>
+                        <div className="flex items-center justify-center h-full">
+                          {temp}°C - {zoneInfo.label}
+                        </div>
+                      </TableCell>
+                      {monthDays.map(day => {
+                        const dayRecord = records[day.date] || {};
+                        const isSelected = dayRecord.markedTemp === temp;
+                        return (
+                          <TableCell
+                            key={`${day.date}-${temp}`}
+                            className={cn(
+                              "w-[40px] h-8 p-0 text-center cursor-pointer border-r",
+                              zoneInfo.colorClass,
+                              day.isWeekend && "opacity-70 cursor-not-allowed",
+                              isSelected && "ring-2 ring-primary ring-inset"
+                            )}
+                            onClick={() => !day.isWeekend && handleCellClick(day.date, temp)}
+                          >
+                            {isSelected && <Check className="h-4 w-4 mx-auto text-foreground" />}
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  );
+                })}
                 <TableRow className="bg-muted/20">
                   <TableCell className="sticky left-0 z-10 font-semibold text-xs p-1 text-center border-r bg-muted/20">Heure</TableCell>
                   {monthDays.map(day => (
@@ -387,7 +371,6 @@ export default function TemperatureMonitoring() {
                     </TableCell>
                   ))}
                 </TableRow>
-                {/* Personnel Row */}
                 <TableRow className="bg-muted/20">
                   <TableCell className="sticky left-0 z-10 font-semibold text-xs p-1 text-center border-r bg-muted/20">Personnel</TableCell>
                   {monthDays.map(day => (
@@ -395,7 +378,7 @@ export default function TemperatureMonitoring() {
                       <Input
                         type="text"
                         placeholder="Initiales"
-                        value={(records[day.date]?.operator || (loggedInUsername && records[day.date]?.markedTemp ? loggedInUsername.substring(0,3).toUpperCase() : ""))}
+                        value={records[day.date]?.operator || ""}
                         onChange={e => handleInputChange(day.date, 'operator', e.target.value)}
                         className="h-7 text-xs w-full text-center"
                         disabled={day.isWeekend || isSaving}
@@ -420,3 +403,4 @@ export default function TemperatureMonitoring() {
     </Card>
   );
 }
+
