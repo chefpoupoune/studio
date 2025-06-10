@@ -16,7 +16,7 @@ import type { CostEntry, DailyCoefficientEntry } from '../types';
 import { months, years, currentYear } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { getMonthDays, DayData } from '@/app/dashboard/pms/utils'; // Assuming this path is correct
+import { getMonthDays, DayData } from '@/app/dashboard/pms/utils';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -41,16 +41,15 @@ export default function CostAnalysisTable() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const getLocalStorageKeySuppliers = useCallback(() => `cost_analysis_suppliers_v9_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
-  const getLocalStorageKeyDailyCoeffs = useCallback(() => `cost_analysis_daily_coeffs_v9_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
+  const getLocalStorageKeySuppliers = useCallback(() => `cost_analysis_suppliers_v10_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
+  const getLocalStorageKeyDailyCoeffs = useCallback(() => `cost_analysis_daily_coeffs_v10_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
 
   useEffect(() => {
     setIsLoading(true);
     try {
       const storedSuppliers = localStorage.getItem(getLocalStorageKeySuppliers());
       const parsedSuppliers = storedSuppliers ? JSON.parse(storedSuppliers) : [initialSupplierRow() as CostEntry];
-      setCostData(parsedSuppliers.length > 0 ? parsedSuppliers : [initialSupplierRow() as CostEntry]);
-
+      setCostData(parsedSuppliers.length > 0 ? parsedSuppliers.map((s: any, index: number) => ({...initialSupplierRow(), ...s, id: s.id || `supplier_${Date.now()}_${index}`})) : [initialSupplierRow() as CostEntry]);
 
       const storedDailyCoeffs = localStorage.getItem(getLocalStorageKeyDailyCoeffs());
       const daysInMonth = dfnsGetDaysInMonth(new Date(parseInt(selectedYear), parseInt(selectedMonth)));
@@ -60,7 +59,6 @@ export default function CostAnalysisTable() {
         if (parsedCoeffs.length === daysInMonth && parsedCoeffs.every((entry, i) => entry.day === i + 1)) {
           setDailyCoeffData(parsedCoeffs);
         } else {
-          // Data might be from a month with different number of days, regenerate
           setDailyCoeffData(Array.from({ length: daysInMonth }, (_, i) => initialDailyCoefficientEntry(i + 1)));
         }
       } else {
@@ -68,7 +66,7 @@ export default function CostAnalysisTable() {
       }
     } catch (error) {
       console.error("Error loading data from localStorage:", error);
-      setCostData([initialSupplierRow() as CostEntry]);
+      setCostData([{ ...initialSupplierRow(), id: `supplier_err_${Date.now()}` }]);
       const daysInMonth = dfnsGetDaysInMonth(new Date(parseInt(selectedYear), parseInt(selectedMonth)));
       setDailyCoeffData(Array.from({ length: daysInMonth }, (_, i) => initialDailyCoefficientEntry(i + 1)));
       toast({ title: "Erreur de chargement", description: "Données corrompues, réinitialisation.", variant: "destructive" });
@@ -80,7 +78,7 @@ export default function CostAnalysisTable() {
     if (!isLoading && costData.length > 0) {
       localStorage.setItem(getLocalStorageKeySuppliers(), JSON.stringify(costData));
     } else if (!isLoading && costData.length === 0) {
-       localStorage.removeItem(getLocalStorageKeySuppliers()); // Remove if empty to clean up
+       localStorage.removeItem(getLocalStorageKeySuppliers()); 
     }
   }, [costData, getLocalStorageKeySuppliers, isLoading]);
 
@@ -105,7 +103,7 @@ export default function CostAnalysisTable() {
   };
   
   const handleDailyCoeffInputChange = (dayIndex: number, fieldName: keyof Omit<DailyCoefficientEntry, 'day'>, value: string) => {
-    const numericValue = value === "" ? "" : parseFloat(value); // Allow empty string for clearing
+    const numericValue = value === "" ? "" : parseFloat(value); 
     if (value === "" || (!isNaN(numericValue) && numericValue >= 0)) {
         setDailyCoeffData(prevData =>
             prevData.map((entry, index) => {
@@ -142,45 +140,47 @@ export default function CostAnalysisTable() {
   }, [costData]);
 
   const dailyCoeffTotals = useMemo(() => {
-    const totals: Record<keyof Omit<DailyCoefficientEntry, 'day'>, number> & { totalCoeffJour: number[], totalPnJour: number[], totalGlobalJour: number[] } = {
+    const totals: Record<keyof Omit<DailyCoefficientEntry, 'day'> | 'totalCoeffJour' | 'totalPnJour' | 'totalGlobalJour', number | number[]> = {
       imp: 0, saj: 0, ime: 0, esat: 0, repasPlus: 0, nous: 0, pn: 0, pnEsat: 0,
       totalCoeffJour: Array(dailyCoeffData.length).fill(0),
       totalPnJour: Array(dailyCoeffData.length).fill(0),
       totalGlobalJour: Array(dailyCoeffData.length).fill(0),
     };
+
     dailyCoeffData.forEach((dayEntry, dayIndex) => {
       let currentDayTotalCoeff = 0;
       let currentDayTotalPn = 0;
-      (Object.keys(totals) as Array<keyof Omit<DailyCoefficientEntry, 'day'>>).forEach(key => {
-        if (key !== 'totalCoeffJour' && key !== 'totalPnJour' && key !== 'totalGlobalJour') {
-            const val = Number(dayEntry[key]) || 0;
-            totals[key] += val;
-            if (['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'].includes(key)) {
-                currentDayTotalCoeff += val;
-            }
-            if (['pn', 'pnEsat'].includes(key)) {
-                currentDayTotalPn += val;
-            }
+      (Object.keys(dayEntry) as Array<keyof DailyCoefficientEntry>).forEach(key => {
+        if (key !== 'day') {
+          const val = Number(dayEntry[key]) || 0;
+          (totals[key] as number) += val;
+          if (['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'].includes(key)) {
+            currentDayTotalCoeff += val;
+          }
+          if (['pn', 'pnEsat'].includes(key)) {
+            currentDayTotalPn += val;
+          }
         }
       });
-      totals.totalCoeffJour[dayIndex] = currentDayTotalCoeff;
-      totals.totalPnJour[dayIndex] = currentDayTotalPn;
-      totals.totalGlobalJour[dayIndex] = currentDayTotalCoeff + currentDayTotalPn;
+      (totals.totalCoeffJour as number[])[dayIndex] = currentDayTotalCoeff;
+      (totals.totalPnJour as number[])[dayIndex] = currentDayTotalPn;
+      (totals.totalGlobalJour as number[])[dayIndex] = currentDayTotalCoeff + currentDayTotalPn;
     });
-    return totals;
+    return totals as { [K in keyof Omit<DailyCoefficientEntry, 'day'>]: number } & { totalCoeffJour: number[], totalPnJour: number[], totalGlobalJour: number[] };
   }, [dailyCoeffData]);
   
   const totalQuantitesMois = useMemo(() => {
-    return dailyCoeffTotals.pn + dailyCoeffTotals.pnEsat;
+    return (dailyCoeffTotals.pn as number) + (dailyCoeffTotals.pnEsat as number);
   }, [dailyCoeffTotals]);
 
   const prixDeRevientMensuel = useMemo(() => {
     const coutMatierePremiere = supplierTotals.totalHt - supplierTotals.totalAvoir;
-    const coutsVariablesDirects = dailyCoeffTotals.imp + dailyCoeffTotals.saj + dailyCoeffTotals.ime + dailyCoeffTotals.esat + dailyCoeffTotals.repasPlus + dailyCoeffTotals.nous;
+    // const coutsVariablesDirects = (dailyCoeffTotals.imp as number) + (dailyCoeffTotals.saj as number) + (dailyCoeffTotals.ime as number) + (dailyCoeffTotals.esat as number) + (dailyCoeffTotals.repasPlus as number) + (dailyCoeffTotals.nous as number);
     
     if (totalQuantitesMois === 0) return 0;
-    return (coutMatierePremiere + coutsVariablesDirects) / totalQuantitesMois;
-  }, [supplierTotals, dailyCoeffTotals, totalQuantitesMois]);
+    // Nouvelle formule : (Coût Matière Première) / Quantité Totale
+    return coutMatierePremiere / totalQuantitesMois;
+  }, [supplierTotals, totalQuantitesMois]);
 
   const generatePdf = () => {
     toast({ title: "Fonctionnalité PDF Obsolète", description: "La génération PDF pour cette structure de coût de revient n'est plus à jour et nécessite une refonte. Elle ne reflètera pas correctement les données actuelles.", variant: "default" });
@@ -287,14 +287,14 @@ export default function CostAnalysisTable() {
                         <Input type="number" value={entry[field]} onChange={e => handleDailyCoeffInputChange(dayIndex, field, e.target.value)} className="text-xs p-1 h-8 text-center" placeholder="0" />
                       </TableCell>
                     ))}
-                    <TableCell className="text-center font-semibold bg-blue-100 dark:bg-blue-800/30">{dailyCoeffTotals.totalCoeffJour[dayIndex].toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-semibold bg-blue-100 dark:bg-blue-800/30">{(dailyCoeffTotals.totalCoeffJour as number[])[dayIndex].toFixed(2)}</TableCell>
                      {(['pn', 'pnEsat'] as const).map(field => (
                         <TableCell key={field} className="p-1">
                             <Input type="number" value={entry[field]} onChange={e => handleDailyCoeffInputChange(dayIndex, field, e.target.value)} className="text-xs p-1 h-8 text-center" placeholder="0" />
                         </TableCell>
                     ))}
-                    <TableCell className="text-center font-semibold bg-green-100 dark:bg-green-800/30">{dailyCoeffTotals.totalPnJour[dayIndex].toFixed(0)}</TableCell>
-                    <TableCell className="text-center font-semibold bg-purple-100 dark:bg-purple-800/30">{(dailyCoeffTotals.totalCoeffJour[dayIndex] + dailyCoeffTotals.totalPnJour[dayIndex]).toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-semibold bg-green-100 dark:bg-green-800/30">{(dailyCoeffTotals.totalPnJour as number[])[dayIndex].toFixed(0)}</TableCell>
+                    <TableCell className="text-center font-semibold bg-purple-100 dark:bg-purple-800/30">{((dailyCoeffTotals.totalCoeffJour as number[])[dayIndex] + (dailyCoeffTotals.totalPnJour as number[])[dayIndex]).toFixed(2)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -302,22 +302,22 @@ export default function CostAnalysisTable() {
                 <TableCell>Total Mois</TableCell>
                 {(['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'] as const).map(field => (
                   <TableCell key={`total-${field}`} className="text-center">
-                    {dailyCoeffTotals[field].toFixed(2)}
+                    {(dailyCoeffTotals[field] as number).toFixed(2)}
                   </TableCell>
                 ))}
                 <TableCell className="text-center font-semibold bg-blue-100 dark:bg-blue-800/30">
-                  {(dailyCoeffTotals.imp + dailyCoeffTotals.saj + dailyCoeffTotals.ime + dailyCoeffTotals.esat + dailyCoeffTotals.repasPlus + dailyCoeffTotals.nous).toFixed(2)}
+                  {((dailyCoeffTotals.imp as number) + (dailyCoeffTotals.saj as number) + (dailyCoeffTotals.ime as number) + (dailyCoeffTotals.esat as number) + (dailyCoeffTotals.repasPlus as number) + (dailyCoeffTotals.nous as number)).toFixed(2)}
                 </TableCell>
                 {(['pn', 'pnEsat'] as const).map(field => (
                   <TableCell key={`total-${field}`} className="text-center">
-                    {dailyCoeffTotals[field].toFixed(0)}
+                    {(dailyCoeffTotals[field] as number).toFixed(0)}
                   </TableCell>
                 ))}
                  <TableCell className="text-center font-semibold bg-green-100 dark:bg-green-800/30">
-                  {(dailyCoeffTotals.pn + dailyCoeffTotals.pnEsat).toFixed(0)}
+                  {((dailyCoeffTotals.pn as number) + (dailyCoeffTotals.pnEsat as number)).toFixed(0)}
                 </TableCell>
                 <TableCell className="text-center font-semibold bg-purple-100 dark:bg-purple-800/30">
-                  {dailyCoeffTotals.totalGlobalJour.reduce((sum, val) => sum + val, 0).toFixed(2)}
+                  {(dailyCoeffTotals.totalGlobalJour as number[]).reduce((sum, val) => sum + val, 0).toFixed(2)}
                 </TableCell>
               </TableRow></TableFooter>
             </Table>
@@ -331,15 +331,15 @@ export default function CostAnalysisTable() {
         </CardHeader>
         <CardContent className="space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div><span className="font-medium">Coût Matière Première (Total HT - Total Avoir):</span> <span className="font-semibold">{(supplierTotals.totalHt - supplierTotals.totalAvoir).toFixed(2)} €</span></div>
-                <div><span className="font-medium">Total Coûts Variables Directs (Σ IMP à Nous):</span> <span className="font-semibold">{(dailyCoeffTotals.imp + dailyCoeffTotals.saj + dailyCoeffTotals.ime + dailyCoeffTotals.esat + dailyCoeffTotals.repasPlus + dailyCoeffTotals.nous).toFixed(2)}</span></div>
-                <div><span className="font-medium">Quantité Totale (Σ PN + PN ESAT):</span> <span className="font-semibold">{totalQuantitesMois.toFixed(0)}</span></div>
+                <div><span className="font-medium">Coût Matière Première (Total HT Fournisseurs - Total Avoir Fournisseurs):</span> <span className="font-semibold">{(supplierTotals.totalHt - supplierTotals.totalAvoir).toFixed(2)} €</span></div>
+                {/* <div><span className="font-medium">Total Coûts Variables Directs (Σ IMP à Nous):</span> <span className="font-semibold">{((dailyCoeffTotals.imp as number) + (dailyCoeffTotals.saj as number) + (dailyCoeffTotals.ime as number) + (dailyCoeffTotals.esat as number) + (dailyCoeffTotals.repasPlus as number) + (dailyCoeffTotals.nous as number)).toFixed(2)}</span></div> */}
+                <div><span className="font-medium">Total du Mois Effectif Global (Σ PN + PN ESAT):</span> <span className="font-semibold">{totalQuantitesMois.toFixed(0)}</span></div>
             </div>
             <div className="mt-4 pt-4 border-t">
                 <Label className="text-lg font-semibold">Prix de Revient du Mois :</Label>
                 <span className="text-2xl font-bold ml-2 text-primary">{prixDeRevientMensuel.toFixed(2)} €</span>
                 <p className="text-xs text-muted-foreground mt-1">
-                    Calculé comme : (Coût Matière Première + Total Coûts Variables Directs) / Quantité Totale.
+                    Calculé comme : (Coût Matière Première) / Total du Mois Effectif Global.
                 </p>
             </div>
         </CardContent>
@@ -348,5 +348,3 @@ export default function CostAnalysisTable() {
   );
 }
 
-
-    
