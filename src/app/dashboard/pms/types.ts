@@ -39,15 +39,19 @@ export type SimplifiedMonthlyRestaurantCleaningRecord = SimplifiedMonthlyKitchen
 export type SimplifiedMonthlyFryerLog = SimplifiedMonthlyKitchenCleaningRecord;
 
 
-export interface DailyTemperatureRecord {
-  markedTemperatureValue?: number;
-  time?: string;
+// Updated for the new temperature grid component
+export interface DailyTempGridLogEntry {
+  markedTemp?: number | null; // The temp value marked, e.g., 3 for 3°C. Null if none.
+  time?: string; // HH:MM
   operator?: string;
 }
 
-export interface MonthlyTemperatureLog {
-  [date_equipmentId: string]: DailyTemperatureRecord;
+// Represents all records for a specific equipment for a specific month.
+// Key is 'YYYY-MM-DD' string for the day.
+export interface MonthlyTempGridLog {
+  [date: string]: DailyTempGridLogEntry;
 }
+
 
 export interface ReceptionEntry {
   id: string;
