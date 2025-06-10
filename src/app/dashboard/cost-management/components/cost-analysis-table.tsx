@@ -14,8 +14,9 @@ import { fr } from 'date-fns/locale';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 import type { CostEntry, DailyCoefficientEntry } from '../types';
 import { months, years, currentYear } from '../types';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"; // Added Card imports
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { getMonthDays, DayData } from '@/app/dashboard/pms/utils'; // Assuming this path is correct
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -40,14 +41,16 @@ export default function CostAnalysisTable() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const getLocalStorageKeySuppliers = useCallback(() => `cost_analysis_suppliers_v8_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
-  const getLocalStorageKeyDailyCoeffs = useCallback(() => `cost_analysis_daily_coeffs_v8_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
+  const getLocalStorageKeySuppliers = useCallback(() => `cost_analysis_suppliers_v9_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
+  const getLocalStorageKeyDailyCoeffs = useCallback(() => `cost_analysis_daily_coeffs_v9_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
 
   useEffect(() => {
     setIsLoading(true);
     try {
       const storedSuppliers = localStorage.getItem(getLocalStorageKeySuppliers());
-      setCostData(storedSuppliers ? JSON.parse(storedSuppliers) : [initialSupplierRow() as CostEntry]);
+      const parsedSuppliers = storedSuppliers ? JSON.parse(storedSuppliers) : [initialSupplierRow() as CostEntry];
+      setCostData(parsedSuppliers.length > 0 ? parsedSuppliers : [initialSupplierRow() as CostEntry]);
+
 
       const storedDailyCoeffs = localStorage.getItem(getLocalStorageKeyDailyCoeffs());
       const daysInMonth = dfnsGetDaysInMonth(new Date(parseInt(selectedYear), parseInt(selectedMonth)));
@@ -57,6 +60,7 @@ export default function CostAnalysisTable() {
         if (parsedCoeffs.length === daysInMonth && parsedCoeffs.every((entry, i) => entry.day === i + 1)) {
           setDailyCoeffData(parsedCoeffs);
         } else {
+          // Data might be from a month with different number of days, regenerate
           setDailyCoeffData(Array.from({ length: daysInMonth }, (_, i) => initialDailyCoefficientEntry(i + 1)));
         }
       } else {
@@ -76,12 +80,12 @@ export default function CostAnalysisTable() {
     if (!isLoading && costData.length > 0) {
       localStorage.setItem(getLocalStorageKeySuppliers(), JSON.stringify(costData));
     } else if (!isLoading && costData.length === 0) {
-       localStorage.removeItem(getLocalStorageKeySuppliers());
+       localStorage.removeItem(getLocalStorageKeySuppliers()); // Remove if empty to clean up
     }
   }, [costData, getLocalStorageKeySuppliers, isLoading]);
 
   useEffect(() => {
-    if (!isLoading) {
+    if (!isLoading && dailyCoeffData.length > 0) {
       localStorage.setItem(getLocalStorageKeyDailyCoeffs(), JSON.stringify(dailyCoeffData));
     }
   }, [dailyCoeffData, getLocalStorageKeyDailyCoeffs, isLoading]);
@@ -101,7 +105,7 @@ export default function CostAnalysisTable() {
   };
   
   const handleDailyCoeffInputChange = (dayIndex: number, fieldName: keyof Omit<DailyCoefficientEntry, 'day'>, value: string) => {
-    const numericValue = value === "" ? "" : parseFloat(value);
+    const numericValue = value === "" ? "" : parseFloat(value); // Allow empty string for clearing
     if (value === "" || (!isNaN(numericValue) && numericValue >= 0)) {
         setDailyCoeffData(prevData =>
             prevData.map((entry, index) => {
@@ -138,16 +142,17 @@ export default function CostAnalysisTable() {
   }, [costData]);
 
   const dailyCoeffTotals = useMemo(() => {
-    const totals: Record<keyof Omit<DailyCoefficientEntry, 'day'>, number> & { totalCoeffJour: number[], totalPnJour: number[] } = {
+    const totals: Record<keyof Omit<DailyCoefficientEntry, 'day'>, number> & { totalCoeffJour: number[], totalPnJour: number[], totalGlobalJour: number[] } = {
       imp: 0, saj: 0, ime: 0, esat: 0, repasPlus: 0, nous: 0, pn: 0, pnEsat: 0,
       totalCoeffJour: Array(dailyCoeffData.length).fill(0),
       totalPnJour: Array(dailyCoeffData.length).fill(0),
+      totalGlobalJour: Array(dailyCoeffData.length).fill(0),
     };
     dailyCoeffData.forEach((dayEntry, dayIndex) => {
       let currentDayTotalCoeff = 0;
       let currentDayTotalPn = 0;
       (Object.keys(totals) as Array<keyof Omit<DailyCoefficientEntry, 'day'>>).forEach(key => {
-        if (key !== 'totalCoeffJour' && key !== 'totalPnJour') {
+        if (key !== 'totalCoeffJour' && key !== 'totalPnJour' && key !== 'totalGlobalJour') {
             const val = Number(dayEntry[key]) || 0;
             totals[key] += val;
             if (['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'].includes(key)) {
@@ -160,6 +165,7 @@ export default function CostAnalysisTable() {
       });
       totals.totalCoeffJour[dayIndex] = currentDayTotalCoeff;
       totals.totalPnJour[dayIndex] = currentDayTotalPn;
+      totals.totalGlobalJour[dayIndex] = currentDayTotalCoeff + currentDayTotalPn;
     });
     return totals;
   }, [dailyCoeffData]);
@@ -177,21 +183,13 @@ export default function CostAnalysisTable() {
   }, [supplierTotals, dailyCoeffTotals, totalQuantitesMois]);
 
   const generatePdf = () => {
-    toast({ title: "PDF Non Fonctionnel", description: "La génération PDF pour cette structure de coût de revient n'est pas encore implémentée.", variant: "default" });
+    toast({ title: "Fonctionnalité PDF Obsolète", description: "La génération PDF pour cette structure de coût de revient n'est plus à jour et nécessite une refonte. Elle ne reflètera pas correctement les données actuelles.", variant: "default" });
   };
 
   const daysInMonthArray = useMemo(() => {
     const year = parseInt(selectedYear, 10);
     const monthIndex = parseInt(selectedMonth, 10);
-    const numDays = dfnsGetDaysInMonth(new Date(year, monthIndex));
-    return Array.from({ length: numDays }, (_, i) => {
-      const date = new Date(year, monthIndex, i + 1);
-      return {
-        dayNumber: i + 1,
-        dayName: format(date, 'EEEE', { locale: fr }),
-        isWeekend: date.getDay() === 0 || date.getDay() === 6,
-      };
-    });
+    return getMonthDays(year, monthIndex);
   }, [selectedYear, selectedMonth]);
 
   return (
@@ -217,7 +215,6 @@ export default function CostAnalysisTable() {
         </Button>
       </div>
 
-      {/* Tableau des Fournisseurs */}
       <Card>
         <CardHeader>
           <CardTitle>Données Fournisseurs</CardTitle>
@@ -241,7 +238,7 @@ export default function CostAnalysisTable() {
                     <TableCell className="p-1"><Input type="number" value={row.tva} onChange={e => handleSupplierInputChange(rowIndex, 'tva', e.target.value)} className="text-xs p-1 h-8 text-right" /></TableCell>
                     <TableCell className="p-1"><Input type="number" value={row.avoir} onChange={e => handleSupplierInputChange(rowIndex, 'avoir', e.target.value)} className="text-xs p-1 h-8 text-right" /></TableCell>
                     <TableCell className="text-center p-1">
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteSupplierRow(row.id)} className="h-8 w-8" disabled={costData.length <= 1}><Trash2 className="h-4 w-4" /></Button>
+                      <Button variant="destructive" size="icon" onClick={() => handleDeleteSupplierRow(row.id!)} className="h-8 w-8" disabled={costData.length <= 1}><Trash2 className="h-4 w-4" /></Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -259,8 +256,6 @@ export default function CostAnalysisTable() {
         </CardContent>
       </Card>
 
-
-      {/* Tableau des Coefficients Journaliers */}
       <Card className="mt-8">
         <CardHeader>
           <CardTitle>Coefficients Journaliers (IMP, SAJ, PN, etc.)</CardTitle>
@@ -281,6 +276,7 @@ export default function CostAnalysisTable() {
                 <TableHead className="min-w-[70px] text-center">PN</TableHead>
                 <TableHead className="min-w-[70px] text-center">PN ESAT</TableHead>
                 <TableHead className="min-w-[80px] text-center font-semibold bg-green-100 dark:bg-green-800/30">Total (PN)</TableHead>
+                <TableHead className="min-w-[90px] text-center font-semibold bg-purple-100 dark:bg-purple-800/30">TOTAL GLOBAL JOUR.</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {dailyCoeffData.map((entry, dayIndex) => (
@@ -298,6 +294,7 @@ export default function CostAnalysisTable() {
                         </TableCell>
                     ))}
                     <TableCell className="text-center font-semibold bg-green-100 dark:bg-green-800/30">{dailyCoeffTotals.totalPnJour[dayIndex].toFixed(0)}</TableCell>
+                    <TableCell className="text-center font-semibold bg-purple-100 dark:bg-purple-800/30">{(dailyCoeffTotals.totalCoeffJour[dayIndex] + dailyCoeffTotals.totalPnJour[dayIndex]).toFixed(2)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -319,13 +316,15 @@ export default function CostAnalysisTable() {
                  <TableCell className="text-center font-semibold bg-green-100 dark:bg-green-800/30">
                   {(dailyCoeffTotals.pn + dailyCoeffTotals.pnEsat).toFixed(0)}
                 </TableCell>
+                <TableCell className="text-center font-semibold bg-purple-100 dark:bg-purple-800/30">
+                  {dailyCoeffTotals.totalGlobalJour.reduce((sum, val) => sum + val, 0).toFixed(2)}
+                </TableCell>
               </TableRow></TableFooter>
             </Table>
           </div>
         </CardContent>
       </Card>
 
-      {/* Prix de Revient du Mois */}
       <Card className="mt-8">
         <CardHeader>
             <CardTitle>Calcul du Prix de Revient Mensuel</CardTitle>
@@ -348,3 +347,6 @@ export default function CostAnalysisTable() {
     </div>
   );
 }
+
+
+    
