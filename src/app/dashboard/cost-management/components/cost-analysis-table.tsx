@@ -141,7 +141,7 @@ export default function CostAnalysisTable() {
   }, [costData]);
 
   const dailyCoeffTotals = useMemo(() => {
-    const totals: Record<keyof Omit<DailyCoefficientEntry, 'day'> | 'totalCoeffJour' | 'totalPnJour' | 'totalGlobalJour', number | number[]> = {
+    const totals: { [K in keyof Omit<DailyCoefficientEntry, 'day'>]: number } & { totalCoeffJour: number[], totalPnJour: number[], totalGlobalJour: number[] } = {
       imp: 0, saj: 0, ime: 0, esat: 0, repasPlus: 0, nous: 0, pn: 0, pnEsat: 0,
       totalCoeffJour: Array(dailyCoeffData.length).fill(0),
       totalPnJour: Array(dailyCoeffData.length).fill(0),
@@ -163,15 +163,15 @@ export default function CostAnalysisTable() {
           }
         }
       });
-      (totals.totalCoeffJour as number[])[dayIndex] = currentDayTotalCoeff;
-      (totals.totalPnJour as number[])[dayIndex] = currentDayTotalPn;
-      (totals.totalGlobalJour as number[])[dayIndex] = currentDayTotalCoeff + currentDayTotalPn;
+      totals.totalCoeffJour[dayIndex] = currentDayTotalCoeff;
+      totals.totalPnJour[dayIndex] = currentDayTotalPn;
+      totals.totalGlobalJour[dayIndex] = currentDayTotalCoeff + currentDayTotalPn;
     });
-    return totals as { [K in keyof Omit<DailyCoefficientEntry, 'day'>]: number } & { totalCoeffJour: number[], totalPnJour: number[], totalGlobalJour: number[] };
+    return totals;
   }, [dailyCoeffData]);
   
   const grandTotalGlobalJourValue = useMemo(() => {
-    return (dailyCoeffTotals.totalGlobalJour as number[]).reduce((sum, val) => sum + val, 0);
+    return dailyCoeffTotals.totalGlobalJour.reduce((sum, val) => sum + val, 0);
   }, [dailyCoeffTotals.totalGlobalJour]);
 
   const prixDeRevientMensuel = useMemo(() => {
@@ -261,7 +261,7 @@ export default function CostAnalysisTable() {
           tableHeadStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
         }
       } else {
-         tableHeadStyles.fillColor = [200,200,200]; // Default grey if no primary color
+         tableHeadStyles.fillColor = [200,200,200]; 
          tableHeadStyles.textColor = [0,0,0];
       }
 
@@ -309,25 +309,25 @@ export default function CostAnalysisTable() {
           entry.esat === "" ? "0.00" : Number(entry.esat).toFixed(2),
           entry.repasPlus === "" ? "0.00" : Number(entry.repasPlus).toFixed(2),
           entry.nous === "" ? "0.00" : Number(entry.nous).toFixed(2),
-          { content: (dailyCoeffTotals.totalCoeffJour as number[])[dayIndex].toFixed(2), styles: { fontStyle: 'bold' } },
+          { content: dailyCoeffTotals.totalCoeffJour[dayIndex].toFixed(2), styles: { fontStyle: 'bold' } },
           entry.pn === "" ? "0" : Number(entry.pn).toFixed(0),
           entry.pnEsat === "" ? "0" : Number(entry.pnEsat).toFixed(0),
-          { content: (dailyCoeffTotals.totalPnJour as number[])[dayIndex].toFixed(0), styles: { fontStyle: 'bold' } },
-          { content: (dailyCoeffTotals.totalGlobalJour as number[])[dayIndex].toFixed(2), styles: { fontStyle: 'bold' } },
+          { content: dailyCoeffTotals.totalPnJour[dayIndex].toFixed(0), styles: { fontStyle: 'bold' } },
+          { content: dailyCoeffTotals.totalGlobalJour[dayIndex].toFixed(2), styles: { fontStyle: 'bold' } },
         ]
       });
       const dailyCoeffTableFoot = [[
         { content: 'Total Mois', styles: { fontStyle: 'bold', halign: 'right'} },
-        { content: (dailyCoeffTotals.imp as number).toFixed(2), styles: { fontStyle: 'bold'} }, 
-        { content: (dailyCoeffTotals.saj as number).toFixed(2), styles: { fontStyle: 'bold'} }, 
-        { content: (dailyCoeffTotals.ime as number).toFixed(2), styles: { fontStyle: 'bold'} }, 
-        { content: (dailyCoeffTotals.esat as number).toFixed(2), styles: { fontStyle: 'bold'} }, 
-        { content: (dailyCoeffTotals.repasPlus as number).toFixed(2), styles: { fontStyle: 'bold'} }, 
-        { content: (dailyCoeffTotals.nous as number).toFixed(2), styles: { fontStyle: 'bold'} },
-        { content: ((dailyCoeffTotals.totalCoeffJour as number[]).reduce((s,v) => s+v,0)).toFixed(2), styles: { fontStyle: 'bold' } },
-        { content: (dailyCoeffTotals.pn as number).toFixed(0), styles: { fontStyle: 'bold'} }, 
-        { content: (dailyCoeffTotals.pnEsat as number).toFixed(0), styles: { fontStyle: 'bold'} },
-        { content: ((dailyCoeffTotals.totalPnJour as number[]).reduce((s,v) => s+v,0)).toFixed(0), styles: { fontStyle: 'bold' } },
+        { content: dailyCoeffTotals.imp.toFixed(2), styles: { fontStyle: 'bold'} }, 
+        { content: dailyCoeffTotals.saj.toFixed(2), styles: { fontStyle: 'bold'} }, 
+        { content: dailyCoeffTotals.ime.toFixed(2), styles: { fontStyle: 'bold'} }, 
+        { content: dailyCoeffTotals.esat.toFixed(2), styles: { fontStyle: 'bold'} }, 
+        { content: dailyCoeffTotals.repasPlus.toFixed(2), styles: { fontStyle: 'bold'} }, 
+        { content: dailyCoeffTotals.nous.toFixed(2), styles: { fontStyle: 'bold'} },
+        { content: (dailyCoeffTotals.totalCoeffJour.reduce((s,v) => s+v,0)).toFixed(2), styles: { fontStyle: 'bold' } },
+        { content: dailyCoeffTotals.pn.toFixed(0), styles: { fontStyle: 'bold'} }, 
+        { content: dailyCoeffTotals.pnEsat.toFixed(0), styles: { fontStyle: 'bold'} },
+        { content: (dailyCoeffTotals.totalPnJour.reduce((s,v) => s+v,0)).toFixed(0), styles: { fontStyle: 'bold' } },
         { content: grandTotalGlobalJourValue.toFixed(2), styles: { fontStyle: 'bold' } },
       ]];
       doc.autoTable({
@@ -361,7 +361,7 @@ export default function CostAnalysisTable() {
       const coutMatierePrem = supplierTotals.totalHt - supplierTotals.totalAvoir;
       doc.text(`Coût Matière Première (Total HT Fournisseurs - Total Avoir Fournisseurs): ${coutMatierePrem.toFixed(2)} €`, pdfSettings.marginLeft || 40, currentY);
       currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 2;
-      doc.text(`Total du Mois (Somme des TOTAL GLOBAL JOUR.): ${grandTotalGlobalJourValue.toFixed(2)}`, pdfSettings.marginLeft || 40, currentY);
+      doc.text(`Total du Mois (Σ TOTAL GLOBAL JOUR.): ${grandTotalGlobalJourValue.toFixed(2)}`, pdfSettings.marginLeft || 40, currentY);
       currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 2;
       doc.setFontSize((pdfSettings.defaultFontSize || 10) + 1); doc.setFont(undefined, 'bold');
       doc.text(`Prix de Revient du Mois: ${prixDeRevientMensuel.toFixed(2)} €`, pdfSettings.marginLeft || 40, currentY);
@@ -403,7 +403,7 @@ export default function CostAnalysisTable() {
         </div>
          <Button onClick={generatePdf} disabled={isLoading} className="sm:col-start-3 justify-self-end">
             {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-            renome moi le bouton PDF du mois
+            PDF du Mois
         </Button>
       </div>
 
@@ -457,8 +457,8 @@ export default function CostAnalysisTable() {
 
           <Card className="mt-8">
             <CardHeader>
-              <CardTitle>Coefficients Journaliers (IMP, SAJ, PN, etc.)</CardTitle>
-              <CardDescription>Saisissez les coefficients pour chaque jour du mois.</CardDescription>
+              <CardTitle>Coefficients et Quantités Journaliers</CardTitle>
+              <CardDescription>Saisissez les coefficients (IMP, SAJ, etc.) et les quantités (PN) pour chaque jour du mois.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto border rounded-md">
@@ -486,34 +486,32 @@ export default function CostAnalysisTable() {
                             <Input type="number" value={entry[field]} onChange={e => handleDailyCoeffInputChange(dayIndex, field, e.target.value)} className="text-xs p-1 h-8 text-center" placeholder="0" />
                           </TableCell>
                         ))}
-                        <TableCell className="text-center font-semibold bg-blue-100 dark:bg-blue-800/30">{(dailyCoeffTotals.totalCoeffJour as number[])[dayIndex].toFixed(2)}</TableCell>
+                        <TableCell className="text-center font-semibold bg-blue-100 dark:bg-blue-800/30">{dailyCoeffTotals.totalCoeffJour[dayIndex].toFixed(2)}</TableCell>
                          {(['pn', 'pnEsat'] as const).map(field => (
                             <TableCell key={field} className="p-1">
                                 <Input type="number" value={entry[field]} onChange={e => handleDailyCoeffInputChange(dayIndex, field, e.target.value)} className="text-xs p-1 h-8 text-center" placeholder="0" />
                             </TableCell>
                         ))}
-                        <TableCell className="text-center font-semibold bg-green-100 dark:bg-green-800/30">{(dailyCoeffTotals.totalPnJour as number[])[dayIndex].toFixed(0)}</TableCell>
-                        <TableCell className="text-center font-semibold bg-purple-100 dark:bg-purple-800/30">{((dailyCoeffTotals.totalGlobalJour as number[])[dayIndex]).toFixed(2)}</TableCell>
+                        <TableCell className="text-center font-semibold bg-green-100 dark:bg-green-800/30">{dailyCoeffTotals.totalPnJour[dayIndex].toFixed(0)}</TableCell>
+                        <TableCell className="text-center font-semibold bg-purple-100 dark:bg-purple-800/30">{dailyCoeffTotals.totalGlobalJour[dayIndex].toFixed(2)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                   <TableFooter><TableRow className="font-bold bg-muted/80">
                     <TableCell>Total Mois</TableCell>
-                    {(['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'] as const).map(field => (
-                      <TableCell key={`total-${field}`} className="text-center">
-                        {(dailyCoeffTotals[field] as number).toFixed(2)}
-                      </TableCell>
-                    ))}
+                    <TableCell className="text-center">{dailyCoeffTotals.imp.toFixed(2)}</TableCell>
+                    <TableCell className="text-center">{dailyCoeffTotals.saj.toFixed(2)}</TableCell>
+                    <TableCell className="text-center">{dailyCoeffTotals.ime.toFixed(2)}</TableCell>
+                    <TableCell className="text-center">{dailyCoeffTotals.esat.toFixed(2)}</TableCell>
+                    <TableCell className="text-center">{dailyCoeffTotals.repasPlus.toFixed(2)}</TableCell>
+                    <TableCell className="text-center">{dailyCoeffTotals.nous.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-semibold bg-blue-100 dark:bg-blue-800/30">
-                      {((dailyCoeffTotals.totalCoeffJour as number[]).reduce((s,v) => s+v,0)).toFixed(2)}
+                      {(dailyCoeffTotals.totalCoeffJour.reduce((s,v) => s+v,0)).toFixed(2)}
                     </TableCell>
-                    {(['pn', 'pnEsat'] as const).map(field => (
-                      <TableCell key={`total-${field}`} className="text-center">
-                        {(dailyCoeffTotals[field] as number).toFixed(0)}
-                      </TableCell>
-                    ))}
+                    <TableCell className="text-center">{dailyCoeffTotals.pn.toFixed(0)}</TableCell>
+                    <TableCell className="text-center">{dailyCoeffTotals.pnEsat.toFixed(0)}</TableCell>
                      <TableCell className="text-center font-semibold bg-green-100 dark:bg-green-800/30">
-                      {((dailyCoeffTotals.totalPnJour as number[]).reduce((s,v) => s+v,0)).toFixed(0)}
+                      {(dailyCoeffTotals.totalPnJour.reduce((s,v) => s+v,0)).toFixed(0)}
                     </TableCell>
                     <TableCell className="text-center font-semibold bg-purple-100 dark:bg-purple-800/30">
                       {grandTotalGlobalJourValue.toFixed(2)}
