@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, FileText, Trash2, Thermometer as ThermometerIcon, AlertCircle, Check } from 'lucide-react'; // Added Check
+import { Loader2, FileText, Trash2, Thermometer as ThermometerIcon, AlertCircle, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format, getYear, getMonth, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -34,7 +34,7 @@ const monthsArray = Array.from({ length: 12 }, (_, i) => ({
   label: format(new Date(currentFullYear, i), "MMMM", { locale: fr }),
 }));
 
-const TEMPERATURE_ROWS = Array.from({ length: 27 }, (_, i) => 16 - i); // 16 down to -10
+const TEMPERATURE_ROWS = Array.from({ length: 27 }, (_, i) => 16 - i); 
 
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
@@ -48,7 +48,8 @@ export default function TemperatureMonitoring() {
   const [monthDays, setMonthDays] = useState<DayData[]>([]);
   const [records, setRecords] = useState<MonthlyTempGridLog>({});
   
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingConfig, setIsLoadingConfig] = useState(true);
+  const [isLoadingRecords, setIsLoadingRecords] = useState(false); // Separate loading for records
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
@@ -64,76 +65,93 @@ export default function TemperatureMonitoring() {
     return `tempGridLog_${selectedEquipmentId}_${selectedYear}_${selectedMonth}`;
   }, [selectedEquipmentId, selectedYear, selectedMonth]);
 
-  useEffect(() => {
-    const loadInitialData = async () => {
-      setIsLoading(true);
-      const pmsSettingsDocRef = doc(firestore, "pmsConfigurations", "mainConfig");
-      let fetchedEquipment: PmsEquipmentDefinition[] = [];
-      try {
-        const pmsSettingsSnap = await getDoc(pmsSettingsDocRef);
-        if (pmsSettingsSnap.exists()) {
-          const pmsSettings = pmsSettingsSnap.data() as PmsConfigurations;
-          fetchedEquipment = (pmsSettings[PMS_TEMPERATURE_MONITORING_KEY] || []) as PmsEquipmentDefinition[];
-          setEquipmentList(fetchedEquipment);
-          if (fetchedEquipment.length > 0 && !selectedEquipmentId) {
-            setSelectedEquipmentId(fetchedEquipment[0].id);
-          } else if (fetchedEquipment.length === 0) {
-            setSelectedEquipmentId(undefined);
-          }
-        } else {
-          setEquipmentList([]);
-          setSelectedEquipmentId(undefined);
-          toast({ title: "Configuration Manquante", description: "Aucune configuration d'équipement de température trouvée.", variant: "destructive"});
+  const loadPmsConfigurations = useCallback(async () => {
+    setIsLoadingConfig(true);
+    const pmsSettingsDocRef = doc(firestore, "pmsConfigurations", "mainConfig");
+    let fetchedEquipment: PmsEquipmentDefinition[] = [];
+    let newSelectedEquipmentId = selectedEquipmentId;
+    try {
+      const pmsSettingsSnap = await getDoc(pmsSettingsDocRef);
+      if (pmsSettingsSnap.exists()) {
+        const pmsSettings = pmsSettingsSnap.data() as PmsConfigurations;
+        fetchedEquipment = (pmsSettings[PMS_TEMPERATURE_MONITORING_KEY] || []) as PmsEquipmentDefinition[];
+        setEquipmentList(fetchedEquipment);
+        
+        const currentSelectionStillValid = newSelectedEquipmentId && fetchedEquipment.some(eq => eq.id === newSelectedEquipmentId);
+        if (fetchedEquipment.length > 0 && !currentSelectionStillValid) {
+          newSelectedEquipmentId = fetchedEquipment[0].id;
+        } else if (fetchedEquipment.length === 0) {
+          newSelectedEquipmentId = undefined;
         }
-      } catch (error) {
-        console.error("Error loading PMS equipment configurations:", error);
-        toast({ title: "Erreur Config Équipement", variant: "destructive" });
+      } else {
         setEquipmentList([]);
-        setSelectedEquipmentId(undefined);
+        newSelectedEquipmentId = undefined;
+        toast({ title: "Configuration Manquante", description: "Aucune configuration d'équipement de température trouvée.", variant: "destructive"});
       }
-      const yearNum = parseInt(selectedYear, 10);
-      const monthNum = parseInt(selectedMonth, 10);
-      setMonthDays(getMonthDays(yearNum, monthNum));
-      setIsLoading(false);
-    };
-    loadInitialData();
-  }, [selectedYear, selectedMonth, toast]); // selectedEquipmentId removed as it's set inside
+    } catch (error) {
+      console.error("Error loading PMS equipment configurations:", error);
+      toast({ title: "Erreur Config Équipement", variant: "destructive" });
+      setEquipmentList([]);
+      newSelectedEquipmentId = undefined;
+    }
+    // Only update selectedEquipmentId if it needs to change
+    if (newSelectedEquipmentId !== selectedEquipmentId) {
+        setSelectedEquipmentId(newSelectedEquipmentId);
+    }
+    setIsLoadingConfig(false);
+  }, [toast, selectedEquipmentId]); // Add selectedEquipmentId to ensure it updates if it was changed
 
   useEffect(() => {
+    loadPmsConfigurations(); // Initial load of configurations
+
+    const handleConfigUpdate = () => {
+      console.log("[TempMonitoring] PMS Config updated event received. Reloading equipment list.");
+      loadPmsConfigurations();
+    };
+    window.addEventListener('pmsConfigUpdated', handleConfigUpdate);
+    return () => window.removeEventListener('pmsConfigUpdated', handleConfigUpdate);
+  }, [loadPmsConfigurations]);
+
+
+  const loadTemperatureRecords = useCallback(async () => {
     if (!selectedEquipmentId) {
       setRecords({});
-      setIsLoading(false);
+      setIsLoadingRecords(false);
       return;
     }
-    const loadRecords = async () => {
-      setIsLoading(true);
-      const docId = getFirestoreDocId();
-      if (!docId) { setIsLoading(false); return; }
+    setIsLoadingRecords(true);
+    const docId = getFirestoreDocId();
+    if (!docId) { setIsLoadingRecords(false); return; }
 
-      const recordsDocRef = doc(firestore, "pmsTemperatureGridLogs", docId);
-      try {
-        const docSnap = await getDoc(recordsDocRef);
-        if (docSnap.exists()) {
-          setRecords(docSnap.data() as MonthlyTempGridLog);
-        } else {
-          setRecords({});
-        }
-      } catch (error) {
-        console.error("Error loading temperature grid records:", error);
-        toast({ title: "Erreur Chargement Relevés", variant: "destructive" });
+    const recordsDocRef = doc(firestore, "pmsTemperatureGridLogs", docId);
+    try {
+      const docSnap = await getDoc(recordsDocRef);
+      if (docSnap.exists()) {
+        setRecords(docSnap.data() as MonthlyTempGridLog);
+      } else {
         setRecords({});
       }
-      setIsLoading(false);
-    };
-    loadRecords();
-  }, [selectedEquipmentId, selectedYear, selectedMonth, getFirestoreDocId, toast]);
+    } catch (error) {
+      console.error("Error loading temperature grid records:", error);
+      toast({ title: "Erreur Chargement Relevés", variant: "destructive" });
+      setRecords({});
+    }
+    setIsLoadingRecords(false);
+  }, [selectedEquipmentId, getFirestoreDocId, toast]);
+  
+  useEffect(() => {
+    const yearNum = parseInt(selectedYear, 10);
+    const monthNum = parseInt(selectedMonth, 10);
+    setMonthDays(getMonthDays(yearNum, monthNum));
+    loadTemperatureRecords(); // This will now correctly use the potentially updated selectedEquipmentId
+  }, [selectedYear, selectedMonth, loadTemperatureRecords]); // loadTemperatureRecords depends on selectedEquipmentId via getFirestoreDocId
 
   useEffect(() => {
-    if (isLoading || isSaving || !selectedEquipmentId) return;
+    if (isLoadingConfig || isLoadingRecords || isSaving || !selectedEquipmentId) return;
 
     const saveRecords = async () => {
       const docId = getFirestoreDocId();
-      if (!docId || Object.keys(records).length === 0 && !doc(firestore, "pmsTemperatureGridLogs", docId)) return;
+      if (!docId || (Object.keys(records).length === 0 && !doc(firestore, "pmsTemperatureGridLogs", docId))) return;
       
       setIsSaving(true);
       const recordsDocRef = doc(firestore, "pmsTemperatureGridLogs", docId);
@@ -147,7 +165,7 @@ export default function TemperatureMonitoring() {
     };
     const timeoutId = setTimeout(saveRecords, 2000);
     return () => clearTimeout(timeoutId);
-  }, [records, isLoading, isSaving, selectedEquipmentId, getFirestoreDocId, toast]);
+  }, [records, isLoadingConfig, isLoadingRecords, isSaving, selectedEquipmentId, getFirestoreDocId, toast]);
 
   const selectedEquipmentConfig = useMemo(() => {
     return equipmentList.find(eq => eq.id === selectedEquipmentId);
@@ -162,35 +180,26 @@ export default function TemperatureMonitoring() {
       tolerance2TempMin, tolerance2TempMax 
     } = config;
 
-    let isInTarget = false;
-    if (typeof targetTempMin === 'number' && typeof targetTempMax === 'number') {
-      isInTarget = temp >= targetTempMin && temp <= targetTempMax;
-    } else if (typeof targetTempMin === 'number') {
-      isInTarget = temp >= targetTempMin;
-    } else if (typeof targetTempMax === 'number') {
-      isInTarget = temp <= targetTempMax;
-    }
-    if (isInTarget) return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 hover:bg-green-300 dark:hover:bg-green-600' };
+    const isInRange = (val: number, min?: number, max?: number): boolean => {
+      const numVal = Number(val);
+      const lower = (min === undefined || min === null || isNaN(Number(min))) ? null : Number(min);
+      const upper = (max === undefined || max === null || isNaN(Number(max))) ? null : Number(max);
 
-    let isInTolerance1 = false;
-    if (typeof tolerance1TempMin === 'number' && typeof tolerance1TempMax === 'number') {
-      isInTolerance1 = temp >= tolerance1TempMin && temp <= tolerance1TempMax;
-    } else if (typeof tolerance1TempMin === 'number') {
-      isInTolerance1 = temp >= tolerance1TempMin;
-    } else if (typeof tolerance1TempMax === 'number') {
-      isInTolerance1 = temp <= tolerance1TempMax;
+      if (lower !== null && upper !== null) return numVal >= lower && numVal <= upper;
+      if (lower !== null) return numVal >= lower;
+      if (upper !== null) return numVal <= upper;
+      return false; // No valid range defined
+    };
+
+    if ((targetTempMin !== undefined || targetTempMax !== undefined) && isInRange(temp, targetTempMin, targetTempMax)) {
+      return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 hover:bg-green-300 dark:hover:bg-green-600' };
     }
-    if (isInTolerance1) return { label: "Tolérance 1", colorClass: 'bg-blue-200 dark:bg-blue-800/60 hover:bg-blue-300 dark:hover:bg-blue-600' };
-    
-    let isInTolerance2 = false;
-    if (typeof tolerance2TempMin === 'number' && typeof tolerance2TempMax === 'number') {
-      isInTolerance2 = temp >= tolerance2TempMin && temp <= tolerance2TempMax;
-    } else if (typeof tolerance2TempMin === 'number') {
-      isInTolerance2 = temp >= tolerance2TempMin;
-    } else if (typeof tolerance2TempMax === 'number') {
-      isInTolerance2 = temp <= tolerance2TempMax;
+    if ((tolerance1TempMin !== undefined || tolerance1TempMax !== undefined) && isInRange(temp, tolerance1TempMin, tolerance1TempMax)) {
+      return { label: "Tol. 1", colorClass: 'bg-blue-200 dark:bg-blue-800/60 hover:bg-blue-300 dark:hover:bg-blue-600' };
     }
-    if (isInTolerance2) return { label: "Tolérance 2", colorClass: 'bg-yellow-200 dark:bg-yellow-800/60 hover:bg-yellow-300 dark:hover:bg-yellow-600' };
+    if ((tolerance2TempMin !== undefined || tolerance2TempMax !== undefined) && isInRange(temp, tolerance2TempMin, tolerance2TempMax)) {
+      return { label: "Tol. 2", colorClass: 'bg-yellow-200 dark:bg-yellow-800/60 hover:bg-yellow-300 dark:hover:bg-yellow-600' };
+    }
 
     return { label: "Rejet", colorClass: 'bg-red-200 dark:bg-red-800/60 hover:bg-red-300 dark:hover:bg-red-600' };
   }, []);
@@ -205,14 +214,14 @@ export default function TemperatureMonitoring() {
       let newTime = dayRecord.time || '';
       let newOperator = dayRecord.operator || '';
 
-      if (newMarkedTemp !== null) { // If a temp is selected (or changed)
-        if (!newTime) { // Only set time if it's not already set for this day
+      if (newMarkedTemp !== null) { 
+        if (!newTime || isCurrentlySelected) { 
           newTime = format(new Date(), 'HH:mm');
         }
-        if (!newOperator && loggedInUsername) { // Only set operator if not already set and user is logged in
+        if ((!newOperator || isCurrentlySelected) && loggedInUsername) { 
           newOperator = loggedInUsername.substring(0,3).toUpperCase();
         }
-      } else { // If temp is deselected
+      } else { 
         newTime = '';
         newOperator = '';
       }
@@ -231,7 +240,7 @@ export default function TemperatureMonitoring() {
   
   const handleInputChange = (dayDate: string, field: 'time' | 'operator', value: string) => {
      setRecords(prev => {
-      const dayRecord = prev[dayDate] || {};
+      const dayRecord = prev[dayDate] || { markedTemp: null, time: '', operator: '' }; // Ensure dayRecord has structure
       return {
         ...prev,
         [dayDate]: {
@@ -269,7 +278,9 @@ export default function TemperatureMonitoring() {
     toast({ title: "PDF Non Implémenté", description: "La génération PDF pour ce tableau est en cours de développement." });
   };
 
-  if (isLoading && equipmentList.length === 0 && !selectedEquipmentId) {
+  const isUIDisabled = isLoadingConfig || isLoadingRecords || isSaving;
+
+  if (isLoadingConfig && equipmentList.length === 0) {
     return (
         <Card className="shadow-lg">
             <CardHeader><CardTitle className="flex items-center gap-2"><ThermometerIcon className="w-6 h-6 text-primary"/>Suivi des Températures</CardTitle></CardHeader>
@@ -287,13 +298,14 @@ export default function TemperatureMonitoring() {
         </CardTitle>
         <CardDescription>
           Sélectionnez un équipement, un mois et une année. Cochez la température relevée pour chaque jour.
+          Les zones (Cible, Tolérance, Rejet) sont définies dans les Paramètres PMS.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end mb-4">
           <div>
             <Label htmlFor="equipment-select">Équipement</Label>
-            <Select value={selectedEquipmentId} onValueChange={setSelectedEquipmentId} disabled={isLoading || isSaving || equipmentList.length === 0}>
+            <Select value={selectedEquipmentId} onValueChange={setSelectedEquipmentId} disabled={isUIDisabled || equipmentList.length === 0}>
               <SelectTrigger id="equipment-select"><SelectValue placeholder={equipmentList.length === 0 ? "Aucun équipement configuré" : "Sélectionner équipement"} /></SelectTrigger>
               <SelectContent>
                 {equipmentList.map(eq => <SelectItem key={eq.id} value={eq.id}>{eq.name}</SelectItem>)}
@@ -302,28 +314,31 @@ export default function TemperatureMonitoring() {
           </div>
           <div>
             <Label htmlFor="year-select-temp">Année</Label>
-            <Select value={selectedYear} onValueChange={setSelectedYear} disabled={isLoading || isSaving}>
+            <Select value={selectedYear} onValueChange={setSelectedYear} disabled={isUIDisabled}>
               <SelectTrigger id="year-select-temp"><SelectValue /></SelectTrigger>
               <SelectContent>{yearsArray.map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div>
             <Label htmlFor="month-select-temp">Mois</Label>
-            <Select value={selectedMonth} onValueChange={setSelectedMonth} disabled={isLoading || isSaving}>
+            <Select value={selectedMonth} onValueChange={setSelectedMonth} disabled={isUIDisabled}>
               <SelectTrigger id="month-select-temp"><SelectValue /></SelectTrigger>
               <SelectContent>{monthsArray.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 md:col-span-1 md:justify-self-end">
-            <Button onClick={generatePdf} disabled={isLoading || isSaving || !selectedEquipmentId} className="w-full sm:w-auto">
+            <Button onClick={generatePdf} disabled={isUIDisabled || !selectedEquipmentId} className="w-full sm:w-auto">
               {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
               Générer PDF
             </Button>
           </div>
         </div>
 
-        {isLoading && selectedEquipmentId ? (
-            <div className="flex justify-center items-center p-10"><Loader2 className="mr-2 h-5 w-5 animate-spin"/>Chargement des relevés...</div>
+        {(isLoadingConfig || (isLoadingRecords && selectedEquipmentId)) ? (
+            <div className="flex justify-center items-center p-10">
+                <Loader2 className="mr-2 h-5 w-5 animate-spin"/>
+                {isLoadingConfig ? "Chargement des configurations d'équipement..." : "Chargement des relevés..."}
+            </div>
         ) : !selectedEquipmentId ? (
              <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
                 <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -337,7 +352,7 @@ export default function TemperatureMonitoring() {
             <Table className="min-w-max border-collapse">
               <TableHeader className="sticky top-0 z-10 bg-card shadow-sm">
                 <TableRow>
-                  <TableHead className="w-[150px] min-w-[150px] sticky left-0 z-20 bg-card text-xs p-1 text-center border-r">T°C / Zone</TableHead>
+                  <TableHead className="w-[180px] min-w-[180px] sticky left-0 z-20 bg-card text-xs p-1 text-center border-r">T°C / Zone</TableHead>
                   {monthDays.map(day => (
                     <TableHead key={day.date} className={cn("w-[40px] min-w-[40px] text-center text-xs p-1 border-r", day.isWeekend && "bg-muted/50")}>
                       {day.dayOfMonth}<br/>{day.dayName.substring(0,3)}
@@ -352,25 +367,25 @@ export default function TemperatureMonitoring() {
                     <TableRow key={temp}>
                       <TableCell className={cn(
                           "sticky left-0 z-10 font-medium text-xs p-1 text-center border-r h-8", 
-                          zoneInfo.colorClass
+                          zoneInfo.colorClass // This applies the dynamic color
                         )}>
                         <div className="flex items-center justify-center h-full">
-                          {temp}°C - {zoneInfo.label}
+                          {temp}°C {zoneInfo.label && `- ${zoneInfo.label}`}
                         </div>
                       </TableCell>
                       {monthDays.map(day => {
-                        const dayRecord = records[day.date] || {};
+                        const dayRecord = records[day.date] || { markedTemp: null, time: '', operator: '' };
                         const isSelected = dayRecord.markedTemp === temp;
                         return (
                           <TableCell
                             key={`${day.date}-${temp}`}
                             className={cn(
                               "w-[40px] h-8 p-0 text-center cursor-pointer border-r",
-                              zoneInfo.colorClass, // Apply zone color to all cells in row (except first header)
+                              zoneInfo.colorClass, 
                               day.isWeekend && "opacity-70 cursor-not-allowed",
                               isSelected && "ring-2 ring-primary ring-inset"
                             )}
-                            onClick={() => !day.isWeekend && handleCellClick(day.date, temp)}
+                            onClick={() => !day.isWeekend && !isSaving && handleCellClick(day.date, temp)}
                           >
                             {isSelected && <Check className="h-4 w-4 mx-auto text-foreground" />}
                           </TableCell>
@@ -387,7 +402,7 @@ export default function TemperatureMonitoring() {
                         type="time"
                         value={records[day.date]?.time || ""}
                         onChange={e => handleInputChange(day.date, 'time', e.target.value)}
-                        className="h-7 text-xs w-full text-center"
+                        className="h-7 text-xs w-full text-center bg-background/50 focus:bg-background"
                         disabled={day.isWeekend || isSaving}
                       />
                     </TableCell>
@@ -399,10 +414,10 @@ export default function TemperatureMonitoring() {
                     <TableCell key={`operator-${day.date}`} className="p-0.5 border-r">
                       <Input
                         type="text"
-                        placeholder="Initiales"
+                        placeholder="Op."
                         value={records[day.date]?.operator || ""}
                         onChange={e => handleInputChange(day.date, 'operator', e.target.value)}
-                        className="h-7 text-xs w-full text-center"
+                        className="h-7 text-xs w-full text-center bg-background/50 focus:bg-background"
                         disabled={day.isWeekend || isSaving}
                         maxLength={5}
                       />
@@ -413,11 +428,11 @@ export default function TemperatureMonitoring() {
             </Table>
           </div>
         )}
-        {selectedEquipmentId && !isLoading && (
+        {selectedEquipmentId && !isLoadingConfig && !isLoadingRecords && (
             <div className="mt-4 flex justify-end">
                 <Button variant="destructive" onClick={handleClearMonthData} size="sm" disabled={isSaving || Object.keys(records).length === 0}>
                     {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4"/>}
-                    Effacer Relevés du Mois ({selectedEquipmentConfig?.name})
+                    Effacer Relevés ({selectedEquipmentConfig?.name || 'Mois'})
                 </Button>
             </div>
         )}
