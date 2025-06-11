@@ -32,7 +32,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { firestore } from '@/lib/firebase';
-import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore'; // Removed writeBatch as direct setDoc is used.
+import { doc, getDoc, setDoc } from 'firebase/firestore'; // Removed collection, getDocs as they are not directly used for main save/load anymore here.
 
 const FIRESTORE_COLLECTION_NAME = "pmsConfigurations";
 const FIRESTORE_DOCUMENT_ID = "mainConfig";
@@ -109,17 +109,19 @@ export default function PmsConfigManager() {
           });
           setPmsConfigs(loadedConfigs);
         } else {
+          // If doc doesn't exist, initialize it with the default structure
+          await setDoc(docRef, initialConfigsStructure);
           setPmsConfigs(initialConfigsStructure);
         }
       } catch (error) {
         console.error("Error loading PMS configs from Firestore:", error);
-        setPmsConfigs(initialConfigsStructure);
-        toast({ title: "Erreur de chargement", description: "Configurations PMS corrompues. Réinitialisation.", variant: "destructive" });
+        setPmsConfigs(initialConfigsStructure); // Fallback to initial structure on error
+        toast({ title: "Erreur de chargement", description: "Configurations PMS corrompues ou non trouvées. Initialisation.", variant: "destructive" });
       }
       setIsLoading(false);
     };
     loadConfigsFromFirestore();
-  }, [toast]);
+  }, [toast]); // Removed initialConfigsStructure from deps as it's stable
 
 
   useEffect(() => {
@@ -181,12 +183,12 @@ export default function PmsConfigManager() {
 
   const handleZoneSubmit = (data: ZoneFormData | TemperatureEquipmentFormData) => {
     if (!currentCategoryKey) return;
-    const currentItems = pmsConfigs[currentCategoryKey] || []; 
+    const originalPmsConfigs = JSON.parse(JSON.stringify(pmsConfigs)); // Deep copy for rollback
+    const currentItems = originalPmsConfigs[currentCategoryKey] || []; 
     const itemLabel = currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone";
     
     let updatedItemData: PmsZone;
     let newItems: PmsZone[];
-    const originalPmsConfigs = JSON.parse(JSON.stringify(pmsConfigs)); // For potential rollback
 
     if (editingZone) {
       updatedItemData = { ...editingZone, name: data.name, id: editingZone.id, tasks: editingZone.tasks || [] };
@@ -226,7 +228,7 @@ export default function PmsConfigManager() {
       newItems = [...currentItems, updatedItemData];
     }
     
-    const newConfigs = { ...pmsConfigs, [currentCategoryKey]: newItems };
+    const newConfigs = { ...originalPmsConfigs, [currentCategoryKey]: newItems };
     setPmsConfigs(newConfigs); // Optimistic update
 
     saveConfigsToFirestore(newConfigs)
@@ -289,7 +291,10 @@ export default function PmsConfigManager() {
       return item;
     });
 
-    if (!zoneFoundAndUpdated) return;
+    if (!zoneFoundAndUpdated) {
+      console.warn("Zone not found for task update:", currentZoneForTask.id);
+      return;
+    }
 
     const newConfigs = { ...originalPmsConfigs, [currentCategoryKey]: updatedItems };
     setPmsConfigs(newConfigs); // Optimistic update
@@ -318,7 +323,10 @@ export default function PmsConfigManager() {
       return item;
     });
 
-    if (!zoneFoundAndUpdated) return;
+    if (!zoneFoundAndUpdated) {
+      console.warn("Zone not found for task deletion:", zoneId);
+      return;
+    }
 
     const newConfigs = { ...originalPmsConfigs, [categoryKey]: updatedItems };
     setPmsConfigs(newConfigs); // Optimistic update
@@ -385,7 +393,9 @@ export default function PmsConfigManager() {
                         <span>
                           {item.name}
                           {categoryKey === PMS_TEMPERATURE_MONITORING_KEY && (item as PmsEquipmentDefinition).equipmentType && (
-                            <span className="text-xs text-muted-foreground ml-2">({(item as PmsEquipmentDefinition).equipmentType === 'freezer' ? 'Congélateur' : 'Réfrigérateur'})</span>
+                            <span className="text-xs text-muted-foreground ml-2">
+                              ({(item as PmsEquipmentDefinition).equipmentType === 'freezer' ? 'Congélateur' : 'Réfrigérateur'})
+                            </span>
                           )}
                         </span>
                         {categoryKey === PMS_TEMPERATURE_MONITORING_KEY && (
@@ -619,3 +629,4 @@ export default function PmsConfigManager() {
     </div>
   );
 }
+
