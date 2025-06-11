@@ -181,8 +181,13 @@ export default function TemperatureMonitoring() {
     if (selectedEquipmentConfig?.equipmentType === 'refrigerator') {
       // Range: 16°C down to -10°C (inclusive)
       return Array.from({ length: 16 - (-10) + 1 }, (_, i) => 16 - i);
+    } else if (selectedEquipmentConfig?.equipmentType === 'freezer') {
+      // Range for Freezers: -10°C down to -25°C (inclusive)
+      const freezerMaxTemp = -10;
+      const freezerMinTemp = -25;
+      return Array.from({ length: freezerMaxTemp - freezerMinTemp + 1 }, (_, i) => freezerMaxTemp - i);
     }
-    // Default/Freezer range: 16°C down to -25°C (inclusive)
+    // Default range if type is not specified or unknown: 16°C down to -25°C (inclusive)
     return Array.from({ length: 16 - (-25) + 1 }, (_, i) => 16 - i);
   }, [selectedEquipmentConfig]);
 
@@ -191,33 +196,33 @@ export default function TemperatureMonitoring() {
       return { label: '', colorClass: 'bg-background hover:bg-muted/50' };
     }
     
-    const parseIfNumber = (val: any): number | undefined => {
-        if (typeof val === 'number' && !isNaN(val)) return val;
-        if (typeof val === 'string') {
-            const num = parseFloat(val);
-            if (!isNaN(num)) return num;
-        }
-        return undefined;
+    const parseAndValidate = (val: any): number | undefined => {
+      if (typeof val === 'number' && !isNaN(val)) return val;
+      if (typeof val === 'string' && val.trim() !== '') {
+          const num = parseFloat(val);
+          if (!isNaN(num)) return num;
+      }
+      return undefined;
     };
     
-    const targetMin = parseIfNumber(currentConfig.targetTempMin);
-    const targetMax = parseIfNumber(currentConfig.targetTempMax);
-    const tol1Min = parseIfNumber(currentConfig.tolerance1TempMin);
-    const tol1Max = parseIfNumber(currentConfig.tolerance1TempMax);
-    const tol2Min = parseIfNumber(currentConfig.tolerance2TempMin);
-    const tol2Max = parseIfNumber(currentConfig.tolerance2TempMax);
+    const targetMin = parseAndValidate(currentConfig.targetTempMin);
+    const targetMax = parseAndValidate(currentConfig.targetTempMax);
+    const tol1Min = parseAndValidate(currentConfig.tolerance1TempMin);
+    const tol1Max = parseAndValidate(currentConfig.tolerance1TempMax);
+    const tol2Min = parseAndValidate(currentConfig.tolerance2TempMin);
+    const tol2Max = parseAndValidate(currentConfig.tolerance2TempMax);
 
     if (typeof targetMin === 'number' && typeof targetMax === 'number' && temp >= targetMin && temp <= targetMax) {
-      return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-700 text-green-900 dark:text-green-100 hover:bg-green-300 dark:hover:bg-green-600' };
+      return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 text-green-900 dark:text-green-100 hover:bg-green-300 dark:hover:bg-green-700/60' };
     }
     if (typeof tol1Min === 'number' && typeof tol1Max === 'number' && temp >= tol1Min && temp <= tol1Max) {
-      return { label: "Tol. 1", colorClass: 'bg-blue-200 dark:bg-blue-700 text-blue-900 dark:text-blue-100 hover:bg-blue-300 dark:hover:bg-blue-600' };
+      return { label: "Tol. 1", colorClass: 'bg-blue-200 dark:bg-blue-800/60 text-blue-900 dark:text-blue-100 hover:bg-blue-300 dark:hover:bg-blue-700/60' };
     }
     if (typeof tol2Min === 'number' && typeof tol2Max === 'number' && temp >= tol2Min && temp <= tol2Max) {
-      return { label: "Tol. 2", colorClass: 'bg-yellow-200 dark:bg-yellow-700 text-yellow-900 dark:text-yellow-100 hover:bg-yellow-300 dark:hover:bg-yellow-600' };
+      return { label: "Tol. 2", colorClass: 'bg-yellow-200 dark:bg-yellow-800/60 text-yellow-900 dark:text-yellow-100 hover:bg-yellow-300 dark:hover:bg-yellow-700/60' };
     }
     
-    return { label: "Rejet", colorClass: 'bg-red-200 dark:bg-red-700 text-red-900 dark:text-red-100 hover:bg-red-300 dark:hover:bg-red-600' };
+    return { label: "Rejet", colorClass: 'bg-red-200 dark:bg-red-800/60 text-red-900 dark:text-red-100 hover:bg-red-300 dark:hover:bg-red-700/60' };
   }, []);
 
 
@@ -456,3 +461,4 @@ export default function TemperatureMonitoring() {
     </Card>
   );
 }
+
