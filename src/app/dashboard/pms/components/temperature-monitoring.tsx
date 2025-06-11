@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, FileText, Trash2, Thermometer as ThermometerIcon, AlertCircle, Check } from 'lucide-react'; // Check import is present
+import { Loader2, FileText, Trash2, Thermometer as ThermometerIcon, AlertCircle, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format, getYear, getMonth, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -147,11 +147,8 @@ export default function TemperatureMonitoring() {
     if (!isLoadingConfig && selectedEquipmentId) {
         loadTemperatureRecords();
     } else if (!isLoadingConfig && !selectedEquipmentId && equipmentList.length > 0) {
-        // If no equipment is selected but list is available, attempt to select the first one
-        // This might trigger another loadTemperatureRecords call via selectedEquipmentId dependency
         setSelectedEquipmentId(equipmentList[0].id);
     } else if (!isLoadingConfig && equipmentList.length === 0) {
-        // No equipment configured, so clear records and stop loading
         setRecords({});
         setIsLoadingRecords(false);
     }
@@ -194,21 +191,26 @@ export default function TemperatureMonitoring() {
     } = currentConfig;
 
     // Check Cible
-    if (typeof targetTempMin === 'number' && typeof targetTempMax === 'number' && !isNaN(targetTempMin) && !isNaN(targetTempMax) &&
+    if (typeof targetTempMin === 'number' && !isNaN(targetTempMin) &&
+        typeof targetTempMax === 'number' && !isNaN(targetTempMax) &&
         temp >= targetTempMin && temp <= targetTempMax) {
         return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 hover:bg-green-300 dark:hover:bg-green-600' };
     }
+
     // Check Tolérance 1
-    if (typeof tolerance1TempMin === 'number' && typeof tolerance1TempMax === 'number' && !isNaN(tolerance1TempMin) && !isNaN(tolerance1TempMax) &&
+    if (typeof tolerance1TempMin === 'number' && !isNaN(tolerance1TempMin) &&
+        typeof tolerance1TempMax === 'number' && !isNaN(tolerance1TempMax) &&
         temp >= tolerance1TempMin && temp <= tolerance1TempMax) {
         return { label: "Tol. 1", colorClass: 'bg-blue-200 dark:bg-blue-800/60 hover:bg-blue-300 dark:hover:bg-blue-600' };
     }
+
     // Check Tolérance 2
-    if (typeof tolerance2TempMin === 'number' && typeof tolerance2TempMax === 'number' && !isNaN(tolerance2TempMin) && !isNaN(tolerance2TempMax) &&
+    if (typeof tolerance2TempMin === 'number' && !isNaN(tolerance2TempMin) &&
+        typeof tolerance2TempMax === 'number' && !isNaN(tolerance2TempMax) &&
         temp >= tolerance2TempMin && temp <= tolerance2TempMax) {
         return { label: "Tol. 2", colorClass: 'bg-yellow-200 dark:bg-yellow-800/60 hover:bg-yellow-300 dark:hover:bg-yellow-600' };
     }
-    // Default to Rejet
+    
     return { label: "Rejet", colorClass: 'bg-red-200 dark:bg-red-800/60 hover:bg-red-300 dark:hover:bg-red-600' };
   }, []);
 
