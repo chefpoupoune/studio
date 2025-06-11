@@ -81,7 +81,7 @@ export default function TemperatureMonitoring() {
         const currentSelectionStillValid = newSelectedEquipmentId && fetchedEquipment.some(eq => eq.id === newSelectedEquipmentId);
         
         if (fetchedEquipment.length === 0) {
-            newSelectedEquipmentId = undefined; // Explicitly reset if list is empty
+            newSelectedEquipmentId = undefined; 
         } else if (!currentSelectionStillValid) {
           newSelectedEquipmentId = fetchedEquipment[0].id;
         }
@@ -145,8 +145,18 @@ export default function TemperatureMonitoring() {
     const yearNum = parseInt(selectedYear, 10);
     const monthNum = parseInt(selectedMonth, 10);
     setMonthDays(getMonthDays(yearNum, monthNum));
-    loadTemperatureRecords();
-  }, [selectedYear, selectedMonth, loadTemperatureRecords]); 
+    // Only load records if equipment is selected AND configurations are loaded (to avoid race conditions)
+    if (!isLoadingConfig && selectedEquipmentId) {
+        loadTemperatureRecords();
+    } else if (!isLoadingConfig && !selectedEquipmentId && equipmentList.length > 0) {
+        // Auto-select first equipment if none is selected after config load
+        setSelectedEquipmentId(equipmentList[0].id);
+    } else if (!isLoadingConfig && equipmentList.length === 0) {
+        // No equipment configured, clear records and stop loading
+        setRecords({});
+        setIsLoadingRecords(false);
+    }
+  }, [selectedYear, selectedMonth, loadTemperatureRecords, isLoadingConfig, selectedEquipmentId, equipmentList]); 
 
   useEffect(() => {
     if (isLoadingConfig || isLoadingRecords || isSaving || !selectedEquipmentId) return;
@@ -187,22 +197,28 @@ export default function TemperatureMonitoring() {
       const lower = (min === undefined || min === null || isNaN(Number(min))) ? null : Number(min);
       const upper = (max === undefined || max === null || isNaN(Number(max))) ? null : Number(max);
 
+      // For Target, Tol1, Tol2, we now require both min and max to be defined for the range to be valid.
       if (lower !== null && upper !== null) return numVal >= lower && numVal <= upper;
-      if (lower !== null) return numVal >= lower;
-      if (upper !== null) return numVal <= upper;
+      // If we are considering an open-ended range (e.g. for Rejet below/above all defined zones),
+      // this part of isInRange logic would need to be adapted or handled outside.
+      // For specific zones (Target, Tol1, Tol2), requiring both bounds simplifies and clarifies.
       return false; 
     };
 
-    if ((targetTempMin !== undefined || targetTempMax !== undefined) && isInRange(temp, targetTempMin, targetTempMax)) {
+    // Check Target Zone - Requires both min and max to be defined
+    if (targetTempMin !== undefined && targetTempMax !== undefined && isInRange(temp, targetTempMin, targetTempMax)) {
       return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 hover:bg-green-300 dark:hover:bg-green-600' };
     }
-    if ((tolerance1TempMin !== undefined || tolerance1TempMax !== undefined) && isInRange(temp, tolerance1TempMin, tolerance1TempMax)) {
+    // Check Tolerance 1 Zone - Requires both min and max to be defined
+    if (tolerance1TempMin !== undefined && tolerance1TempMax !== undefined && isInRange(temp, tolerance1TempMin, tolerance1TempMax)) {
       return { label: "Tol. 1", colorClass: 'bg-blue-200 dark:bg-blue-800/60 hover:bg-blue-300 dark:hover:bg-blue-600' };
     }
-    if ((tolerance2TempMin !== undefined || tolerance2TempMax !== undefined) && isInRange(temp, tolerance2TempMin, tolerance2TempMax)) {
+    // Check Tolerance 2 Zone - Requires both min and max to be defined
+    if (tolerance2TempMin !== undefined && tolerance2TempMax !== undefined && isInRange(temp, tolerance2TempMin, tolerance2TempMax)) {
       return { label: "Tol. 2", colorClass: 'bg-yellow-200 dark:bg-yellow-800/60 hover:bg-yellow-300 dark:hover:bg-yellow-600' };
     }
 
+    // If none of the above (and assuming defined ranges are mutually exclusive), it's Rejet
     return { label: "Rejet", colorClass: 'bg-red-200 dark:bg-red-800/60 hover:bg-red-300 dark:hover:bg-red-600' };
   }, []);
 
@@ -217,13 +233,17 @@ export default function TemperatureMonitoring() {
       let newOperator = dayRecord.operator || '';
 
       if (newMarkedTemp !== null) { 
+        // If selecting a new temperature or re-selecting the same one,
+        // update time if it's empty or if it's a re-selection (to capture new time)
         if (!newTime || isCurrentlySelected) { 
           newTime = format(new Date(), 'HH:mm');
         }
+        // Update operator if it's empty or if it's a re-selection
         if ((!newOperator || isCurrentlySelected) && loggedInUsername) { 
           newOperator = loggedInUsername.substring(0,3).toUpperCase();
         }
       } else { 
+        // Deselecting: clear time and operator
         newTime = '';
         newOperator = '';
       }
