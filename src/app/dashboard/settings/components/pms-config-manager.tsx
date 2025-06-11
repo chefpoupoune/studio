@@ -166,6 +166,7 @@ export default function PmsConfigManager() {
     try {
       await setDoc(docRef, updatedConfigs);
       setPmsConfigs(updatedConfigs); // Update local state after successful save
+      window.dispatchEvent(new CustomEvent('pmsConfigUpdated'));
       // toast({ title: "Configurations PMS Enregistrées", description: "Les modifications ont été sauvegardées." }); // Can be too noisy
     } catch (error) {
       console.error("Error saving PMS configs to Firestore:", error);
@@ -572,5 +573,3 @@ export default function PmsConfigManager() {
   );
 }
 
-
-    
