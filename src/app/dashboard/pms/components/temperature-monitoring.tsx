@@ -33,9 +33,6 @@ const monthsArray = Array.from({ length: 12 }, (_, i) => ({
   label: format(new Date(currentFullYear, i), "MMMM", { locale: fr }),
 }));
 
-// Extended temperature range: 16°C down to -25°C (16 - (-25) + 1 = 42 items)
-const TEMPERATURE_ROWS = Array.from({ length: 42 }, (_, i) => 16 - i); 
-
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
 export default function TemperatureMonitoring() {
@@ -180,11 +177,20 @@ export default function TemperatureMonitoring() {
     return equipmentList.find(eq => eq.id === selectedEquipmentId);
   }, [selectedEquipmentId, equipmentList]);
 
+  const temperatureRowsToDisplay = useMemo(() => {
+    if (selectedEquipmentConfig?.equipmentType === 'refrigerator') {
+      // Range: 16°C down to -10°C (inclusive)
+      return Array.from({ length: 16 - (-10) + 1 }, (_, i) => 16 - i);
+    }
+    // Default/Freezer range: 16°C down to -25°C (inclusive)
+    return Array.from({ length: 16 - (-25) + 1 }, (_, i) => 16 - i);
+  }, [selectedEquipmentConfig]);
+
   const getEquipmentZoneInfo = useCallback((temp: number, currentConfig?: PmsEquipmentDefinition): { label: string; colorClass: string } => {
     if (!currentConfig) {
       return { label: '', colorClass: 'bg-background hover:bg-muted/50' };
     }
-
+    
     const parseIfNumber = (val: any): number | undefined => {
         if (typeof val === 'number' && !isNaN(val)) return val;
         if (typeof val === 'string') {
@@ -194,24 +200,24 @@ export default function TemperatureMonitoring() {
         return undefined;
     };
     
-    const targetTempMin = parseIfNumber(currentConfig.targetTempMin);
-    const targetTempMax = parseIfNumber(currentConfig.targetTempMax);
-    const tolerance1TempMin = parseIfNumber(currentConfig.tolerance1TempMin);
-    const tolerance1TempMax = parseIfNumber(currentConfig.tolerance1TempMax);
-    const tolerance2TempMin = parseIfNumber(currentConfig.tolerance2TempMin);
-    const tolerance2TempMax = parseIfNumber(currentConfig.tolerance2TempMax);
+    const targetMin = parseIfNumber(currentConfig.targetTempMin);
+    const targetMax = parseIfNumber(currentConfig.targetTempMax);
+    const tol1Min = parseIfNumber(currentConfig.tolerance1TempMin);
+    const tol1Max = parseIfNumber(currentConfig.tolerance1TempMax);
+    const tol2Min = parseIfNumber(currentConfig.tolerance2TempMin);
+    const tol2Max = parseIfNumber(currentConfig.tolerance2TempMax);
 
-    if (typeof targetTempMin === 'number' && typeof targetTempMax === 'number' && temp >= targetTempMin && temp <= targetTempMax) {
-      return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 hover:bg-green-300 dark:hover:bg-green-600' };
+    if (typeof targetMin === 'number' && typeof targetMax === 'number' && temp >= targetMin && temp <= targetMax) {
+      return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-700 text-green-900 dark:text-green-100 hover:bg-green-300 dark:hover:bg-green-600' };
     }
-    if (typeof tolerance1TempMin === 'number' && typeof tolerance1TempMax === 'number' && temp >= tolerance1TempMin && temp <= tolerance1TempMax) {
-      return { label: "Tol. 1", colorClass: 'bg-blue-200 dark:bg-blue-800/60 hover:bg-blue-300 dark:hover:bg-blue-600' };
+    if (typeof tol1Min === 'number' && typeof tol1Max === 'number' && temp >= tol1Min && temp <= tol1Max) {
+      return { label: "Tol. 1", colorClass: 'bg-blue-200 dark:bg-blue-700 text-blue-900 dark:text-blue-100 hover:bg-blue-300 dark:hover:bg-blue-600' };
     }
-    if (typeof tolerance2TempMin === 'number' && typeof tolerance2TempMax === 'number' && temp >= tolerance2TempMin && temp <= tolerance2TempMax) {
-      return { label: "Tol. 2", colorClass: 'bg-yellow-200 dark:bg-yellow-800/60 hover:bg-yellow-300 dark:hover:bg-yellow-600' };
+    if (typeof tol2Min === 'number' && typeof tol2Max === 'number' && temp >= tol2Min && temp <= tol2Max) {
+      return { label: "Tol. 2", colorClass: 'bg-yellow-200 dark:bg-yellow-700 text-yellow-900 dark:text-yellow-100 hover:bg-yellow-300 dark:hover:bg-yellow-600' };
     }
     
-    return { label: "Rejet", colorClass: 'bg-red-200 dark:bg-red-800/60 hover:bg-red-300 dark:hover:bg-red-600' };
+    return { label: "Rejet", colorClass: 'bg-red-200 dark:bg-red-700 text-red-900 dark:text-red-100 hover:bg-red-300 dark:hover:bg-red-600' };
   }, []);
 
 
@@ -318,7 +324,7 @@ export default function TemperatureMonitoring() {
             <Select value={selectedEquipmentId} onValueChange={setSelectedEquipmentId} disabled={isUIDisabled || equipmentList.length === 0}>
               <SelectTrigger id="equipment-select"><SelectValue placeholder={equipmentList.length === 0 ? "Aucun équipement configuré" : "Sélectionner équipement"} /></SelectTrigger>
               <SelectContent>
-                {equipmentList.map(eq => <SelectItem key={eq.id} value={eq.id}>{eq.name}</SelectItem>)}
+                {equipmentList.map(eq => <SelectItem key={eq.id} value={eq.id}>{eq.name} ({eq.equipmentType === 'freezer' ? 'Congél.' : 'Réfrig.'})</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -371,7 +377,7 @@ export default function TemperatureMonitoring() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {TEMPERATURE_ROWS.map(temp => {
+                {temperatureRowsToDisplay.map(temp => {
                   const zoneInfo = getEquipmentZoneInfo(temp, selectedEquipmentConfig);
                   return (
                     <TableRow key={temp}>
@@ -450,4 +456,3 @@ export default function TemperatureMonitoring() {
     </Card>
   );
 }
-
