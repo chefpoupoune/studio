@@ -33,7 +33,8 @@ const monthsArray = Array.from({ length: 12 }, (_, i) => ({
   label: format(new Date(currentFullYear, i), "MMMM", { locale: fr }),
 }));
 
-const TEMPERATURE_ROWS = Array.from({ length: 27 }, (_, i) => 16 - i); 
+// Extended temperature range: 16°C down to -25°C (16 - (-25) + 1 = 42 items)
+const TEMPERATURE_ROWS = Array.from({ length: 42 }, (_, i) => 16 - i); 
 
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
@@ -147,10 +148,8 @@ export default function TemperatureMonitoring() {
     if (!isLoadingConfig && selectedEquipmentId) {
         loadTemperatureRecords();
     } else if (!isLoadingConfig && !selectedEquipmentId && equipmentList.length > 0) {
-        // If no equipment is selected but list is available, select the first one
         setSelectedEquipmentId(equipmentList[0].id); 
     } else if (!isLoadingConfig && equipmentList.length === 0) {
-        // If no equipment is configured, clear records and stop loading.
         setRecords({});
         setIsLoadingRecords(false);
     }
@@ -183,47 +182,33 @@ export default function TemperatureMonitoring() {
 
   const getEquipmentZoneInfo = useCallback((temp: number, currentConfig?: PmsEquipmentDefinition): { label: string; colorClass: string } => {
     if (!currentConfig) {
-        return { label: '', colorClass: 'bg-background hover:bg-muted/50' };
+      return { label: '', colorClass: 'bg-background hover:bg-muted/50' };
     }
 
-    const {
-        targetTempMin: rawTargetMin, targetTempMax: rawTargetMax,
-        tolerance1TempMin: rawTol1Min, tolerance1TempMax: rawTol1Max,
-        tolerance2TempMin: rawTol2Min, tolerance2TempMax: rawTol2Max
-    } = currentConfig;
-
-    const parseAndValidate = (val: any): number | undefined => {
+    const parseIfNumber = (val: any): number | undefined => {
         if (typeof val === 'number' && !isNaN(val)) return val;
-        if (typeof val === 'string' && val.trim() !== '') {
+        if (typeof val === 'string') {
             const num = parseFloat(val);
             if (!isNaN(num)) return num;
         }
         return undefined;
     };
+    
+    const targetTempMin = parseIfNumber(currentConfig.targetTempMin);
+    const targetTempMax = parseIfNumber(currentConfig.targetTempMax);
+    const tolerance1TempMin = parseIfNumber(currentConfig.tolerance1TempMin);
+    const tolerance1TempMax = parseIfNumber(currentConfig.tolerance1TempMax);
+    const tolerance2TempMin = parseIfNumber(currentConfig.tolerance2TempMin);
+    const tolerance2TempMax = parseIfNumber(currentConfig.tolerance2TempMax);
 
-    const targetTempMin = parseAndValidate(rawTargetMin);
-    const targetTempMax = parseAndValidate(rawTargetMax);
-    const tolerance1TempMin = parseAndValidate(rawTol1Min);
-    const tolerance1TempMax = parseAndValidate(rawTol1Max);
-    const tolerance2TempMin = parseAndValidate(rawTol2Min);
-    const tolerance2TempMax = parseAndValidate(rawTol2Max);
-
-    // Check Cible
-    if (typeof targetTempMin === 'number' && typeof targetTempMax === 'number' &&
-        temp >= targetTempMin && temp <= targetTempMax) {
-        return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 hover:bg-green-300 dark:hover:bg-green-600' };
+    if (typeof targetTempMin === 'number' && typeof targetTempMax === 'number' && temp >= targetTempMin && temp <= targetTempMax) {
+      return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 hover:bg-green-300 dark:hover:bg-green-600' };
     }
-
-    // Check Tolérance 1
-    if (typeof tolerance1TempMin === 'number' && typeof tolerance1TempMax === 'number' &&
-        temp >= tolerance1TempMin && temp <= tolerance1TempMax) {
-        return { label: "Tol. 1", colorClass: 'bg-blue-200 dark:bg-blue-800/60 hover:bg-blue-300 dark:hover:bg-blue-600' };
+    if (typeof tolerance1TempMin === 'number' && typeof tolerance1TempMax === 'number' && temp >= tolerance1TempMin && temp <= tolerance1TempMax) {
+      return { label: "Tol. 1", colorClass: 'bg-blue-200 dark:bg-blue-800/60 hover:bg-blue-300 dark:hover:bg-blue-600' };
     }
-
-    // Check Tolérance 2
-    if (typeof tolerance2TempMin === 'number' && typeof tolerance2TempMax === 'number' &&
-        temp >= tolerance2TempMin && temp <= tolerance2TempMax) {
-        return { label: "Tol. 2", colorClass: 'bg-yellow-200 dark:bg-yellow-800/60 hover:bg-yellow-300 dark:hover:bg-yellow-600' };
+    if (typeof tolerance2TempMin === 'number' && typeof tolerance2TempMax === 'number' && temp >= tolerance2TempMin && temp <= tolerance2TempMax) {
+      return { label: "Tol. 2", colorClass: 'bg-yellow-200 dark:bg-yellow-800/60 hover:bg-yellow-300 dark:hover:bg-yellow-600' };
     }
     
     return { label: "Rejet", colorClass: 'bg-red-200 dark:bg-red-800/60 hover:bg-red-300 dark:hover:bg-red-600' };
@@ -300,7 +285,6 @@ export default function TemperatureMonitoring() {
       toast({ title: "Équipement non sélectionné", variant: "destructive" });
       return;
     }
-    // Placeholder - PDF generation logic can be complex and depends on specific requirements
     toast({ title: "PDF Non Implémenté", description: "La génération PDF pour ce tableau est en cours de développement." });
   };
 
@@ -466,3 +450,4 @@ export default function TemperatureMonitoring() {
     </Card>
   );
 }
+
