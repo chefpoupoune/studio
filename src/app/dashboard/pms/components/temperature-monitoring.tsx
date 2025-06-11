@@ -99,7 +99,7 @@ export default function TemperatureMonitoring() {
         setSelectedEquipmentId(newSelectedEquipmentId);
     }
     setIsLoadingConfig(false);
-  }, [toast, selectedEquipmentId]); // selectedEquipmentId is dependency to re-evaluate newSelectedEquipmentId based on current state
+  }, [toast, selectedEquipmentId]); 
 
   useEffect(() => {
     loadPmsConfigurations(); 
@@ -147,8 +147,11 @@ export default function TemperatureMonitoring() {
     if (!isLoadingConfig && selectedEquipmentId) {
         loadTemperatureRecords();
     } else if (!isLoadingConfig && !selectedEquipmentId && equipmentList.length > 0) {
+        // If no equipment is selected but list is available, attempt to select the first one
+        // This might trigger another loadTemperatureRecords call via selectedEquipmentId dependency
         setSelectedEquipmentId(equipmentList[0].id);
     } else if (!isLoadingConfig && equipmentList.length === 0) {
+        // No equipment configured, so clear records and stop loading
         setRecords({});
         setIsLoadingRecords(false);
     }
@@ -184,26 +187,28 @@ export default function TemperatureMonitoring() {
         return { label: '', colorClass: 'bg-background hover:bg-muted/50' };
     }
 
-    const { 
-        targetTempMin, targetTempMax, 
-        tolerance1TempMin, tolerance1TempMax, 
-        tolerance2TempMin, tolerance2TempMax 
+    const {
+        targetTempMin, targetTempMax,
+        tolerance1TempMin, tolerance1TempMax,
+        tolerance2TempMin, tolerance2TempMax
     } = currentConfig;
 
-    const hasTarget = targetTempMin !== undefined && targetTempMax !== undefined;
-    const hasTol1 = tolerance1TempMin !== undefined && tolerance1TempMax !== undefined;
-    const hasTol2 = tolerance2TempMin !== undefined && tolerance2TempMax !== undefined;
-
-    if (hasTarget && temp >= targetTempMin! && temp <= targetTempMax!) {
+    // Check Cible
+    if (typeof targetTempMin === 'number' && typeof targetTempMax === 'number' && !isNaN(targetTempMin) && !isNaN(targetTempMax) &&
+        temp >= targetTempMin && temp <= targetTempMax) {
         return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 hover:bg-green-300 dark:hover:bg-green-600' };
     }
-    if (hasTol1 && temp >= tolerance1TempMin! && temp <= tolerance1TempMax!) {
+    // Check Tolérance 1
+    if (typeof tolerance1TempMin === 'number' && typeof tolerance1TempMax === 'number' && !isNaN(tolerance1TempMin) && !isNaN(tolerance1TempMax) &&
+        temp >= tolerance1TempMin && temp <= tolerance1TempMax) {
         return { label: "Tol. 1", colorClass: 'bg-blue-200 dark:bg-blue-800/60 hover:bg-blue-300 dark:hover:bg-blue-600' };
     }
-    if (hasTol2 && temp >= tolerance2TempMin! && temp <= tolerance2TempMax!) {
+    // Check Tolérance 2
+    if (typeof tolerance2TempMin === 'number' && typeof tolerance2TempMax === 'number' && !isNaN(tolerance2TempMin) && !isNaN(tolerance2TempMax) &&
+        temp >= tolerance2TempMin && temp <= tolerance2TempMax) {
         return { label: "Tol. 2", colorClass: 'bg-yellow-200 dark:bg-yellow-800/60 hover:bg-yellow-300 dark:hover:bg-yellow-600' };
     }
-    
+    // Default to Rejet
     return { label: "Rejet", colorClass: 'bg-red-200 dark:bg-red-800/60 hover:bg-red-300 dark:hover:bg-red-600' };
   }, []);
 
@@ -221,7 +226,7 @@ export default function TemperatureMonitoring() {
         if (!newTime || isCurrentlySelected) { 
           newTime = format(new Date(), 'HH:mm');
         }
-        if ((!newOperator || isCurrentlySelected) && loggedInUsername) { 
+        if ((!newOperator || (isCurrentlySelected && !newOperator)) && loggedInUsername) { 
           newOperator = loggedInUsername.substring(0,3).toUpperCase();
         }
       } else { 
@@ -278,6 +283,7 @@ export default function TemperatureMonitoring() {
       toast({ title: "Équipement non sélectionné", variant: "destructive" });
       return;
     }
+    // Placeholder - PDF generation logic can be complex and depends on specific requirements
     toast({ title: "PDF Non Implémenté", description: "La génération PDF pour ce tableau est en cours de développement." });
   };
 
