@@ -17,7 +17,8 @@ import type { PmsEquipmentDefinition, MonthlyTempGridLog, DailyTempGridLogEntry,
 import { PMS_TEMPERATURE_MONITORING_KEY } from '@/app/dashboard/settings/types';
 import { getMonthDays, type DayData } from '../utils';
 import { cn } from '@/lib/utils';
-import { Checkbox } from '@/components/ui/checkbox'; 
+// Check import already exists from a previous fix
+// import { Checkbox } from '@/components/ui/checkbox'; 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { firestore } from '@/lib/firebase';
@@ -49,7 +50,7 @@ export default function TemperatureMonitoring() {
   const [records, setRecords] = useState<MonthlyTempGridLog>({});
   
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
-  const [isLoadingRecords, setIsLoadingRecords] = useState(false); // Separate loading for records
+  const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
@@ -69,7 +70,7 @@ export default function TemperatureMonitoring() {
     setIsLoadingConfig(true);
     const pmsSettingsDocRef = doc(firestore, "pmsConfigurations", "mainConfig");
     let fetchedEquipment: PmsEquipmentDefinition[] = [];
-    let newSelectedEquipmentId = selectedEquipmentId;
+    let newSelectedEquipmentId = selectedEquipmentId; 
     try {
       const pmsSettingsSnap = await getDoc(pmsSettingsDocRef);
       if (pmsSettingsSnap.exists()) {
@@ -78,14 +79,15 @@ export default function TemperatureMonitoring() {
         setEquipmentList(fetchedEquipment);
         
         const currentSelectionStillValid = newSelectedEquipmentId && fetchedEquipment.some(eq => eq.id === newSelectedEquipmentId);
-        if (fetchedEquipment.length > 0 && !currentSelectionStillValid) {
+        
+        if (fetchedEquipment.length === 0) {
+            newSelectedEquipmentId = undefined; // Explicitly reset if list is empty
+        } else if (!currentSelectionStillValid) {
           newSelectedEquipmentId = fetchedEquipment[0].id;
-        } else if (fetchedEquipment.length === 0) {
-          newSelectedEquipmentId = undefined;
         }
       } else {
         setEquipmentList([]);
-        newSelectedEquipmentId = undefined;
+        newSelectedEquipmentId = undefined; 
         toast({ title: "Configuration Manquante", description: "Aucune configuration d'équipement de température trouvée.", variant: "destructive"});
       }
     } catch (error) {
@@ -94,15 +96,15 @@ export default function TemperatureMonitoring() {
       setEquipmentList([]);
       newSelectedEquipmentId = undefined;
     }
-    // Only update selectedEquipmentId if it needs to change
+    
     if (newSelectedEquipmentId !== selectedEquipmentId) {
         setSelectedEquipmentId(newSelectedEquipmentId);
     }
     setIsLoadingConfig(false);
-  }, [toast, selectedEquipmentId]); // Add selectedEquipmentId to ensure it updates if it was changed
+  }, [toast, selectedEquipmentId]);
 
   useEffect(() => {
-    loadPmsConfigurations(); // Initial load of configurations
+    loadPmsConfigurations(); 
 
     const handleConfigUpdate = () => {
       console.log("[TempMonitoring] PMS Config updated event received. Reloading equipment list.");
@@ -143,8 +145,8 @@ export default function TemperatureMonitoring() {
     const yearNum = parseInt(selectedYear, 10);
     const monthNum = parseInt(selectedMonth, 10);
     setMonthDays(getMonthDays(yearNum, monthNum));
-    loadTemperatureRecords(); // This will now correctly use the potentially updated selectedEquipmentId
-  }, [selectedYear, selectedMonth, loadTemperatureRecords]); // loadTemperatureRecords depends on selectedEquipmentId via getFirestoreDocId
+    loadTemperatureRecords();
+  }, [selectedYear, selectedMonth, loadTemperatureRecords]); 
 
   useEffect(() => {
     if (isLoadingConfig || isLoadingRecords || isSaving || !selectedEquipmentId) return;
@@ -188,7 +190,7 @@ export default function TemperatureMonitoring() {
       if (lower !== null && upper !== null) return numVal >= lower && numVal <= upper;
       if (lower !== null) return numVal >= lower;
       if (upper !== null) return numVal <= upper;
-      return false; // No valid range defined
+      return false; 
     };
 
     if ((targetTempMin !== undefined || targetTempMax !== undefined) && isInRange(temp, targetTempMin, targetTempMax)) {
@@ -240,7 +242,7 @@ export default function TemperatureMonitoring() {
   
   const handleInputChange = (dayDate: string, field: 'time' | 'operator', value: string) => {
      setRecords(prev => {
-      const dayRecord = prev[dayDate] || { markedTemp: null, time: '', operator: '' }; // Ensure dayRecord has structure
+      const dayRecord = prev[dayDate] || { markedTemp: null, time: '', operator: '' }; 
       return {
         ...prev,
         [dayDate]: {
@@ -367,7 +369,7 @@ export default function TemperatureMonitoring() {
                     <TableRow key={temp}>
                       <TableCell className={cn(
                           "sticky left-0 z-10 font-medium text-xs p-1 text-center border-r h-8", 
-                          zoneInfo.colorClass // This applies the dynamic color
+                          zoneInfo.colorClass 
                         )}>
                         <div className="flex items-center justify-center h-full">
                           {temp}°C {zoneInfo.label && `- ${zoneInfo.label}`}
