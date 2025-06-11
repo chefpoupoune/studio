@@ -6,8 +6,7 @@ import type { PmsZone, PmsTaskDefinition, PmsConfigurations, PmsEquipmentDefinit
 import { 
   PMS_KITCHEN_CLEANING_KEY, 
   PMS_RESTAURANT_CLEANING_KEY, 
-  PMS_TEMPERATURE_MONITORING_KEY, 
-  // PMS_CONFIG_STORAGE_KEY is removed as we now use Firestore
+  PMS_TEMPERATURE_MONITORING_KEY,
 } from '../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,7 +32,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { firestore } from '@/lib/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore'; // Removed writeBatch as direct setDoc is used.
 
 const FIRESTORE_COLLECTION_NAME = "pmsConfigurations";
 const FIRESTORE_DOCUMENT_ID = "mainConfig";
@@ -111,8 +110,6 @@ export default function PmsConfigManager() {
           setPmsConfigs(loadedConfigs);
         } else {
           setPmsConfigs(initialConfigsStructure);
-          // Optionally create the document with initial structure if it doesn't exist
-          // await setDoc(docRef, initialConfigsStructure);
         }
       } catch (error) {
         console.error("Error loading PMS configs from Firestore:", error);
@@ -122,7 +119,7 @@ export default function PmsConfigManager() {
       setIsLoading(false);
     };
     loadConfigsFromFirestore();
-  }, [toast]); // initialConfigsStructure is stable
+  }, [toast]);
 
 
   useEffect(() => {
@@ -159,18 +156,18 @@ export default function PmsConfigManager() {
     }
   }, [isZoneDialogOpen, currentCategoryKey, editingZone, form]);
 
-  const saveConfigsToFirestore = useCallback(async (updatedConfigs: PmsConfigurations) => {
-    if (isSaving) return;
+  const saveConfigsToFirestore = useCallback(async (configsToSave: PmsConfigurations) => {
+    if (isSaving) return Promise.reject(new Error("Sauvegarde déjà en cours."));
     setIsSaving(true);
     const docRef = doc(firestore, FIRESTORE_COLLECTION_NAME, FIRESTORE_DOCUMENT_ID);
     try {
-      await setDoc(docRef, updatedConfigs);
-      setPmsConfigs(updatedConfigs); // Update local state after successful save
+      await setDoc(docRef, configsToSave);
       window.dispatchEvent(new CustomEvent('pmsConfigUpdated'));
-      // toast({ title: "Configurations PMS Enregistrées", description: "Les modifications ont été sauvegardées." }); // Can be too noisy
+      return Promise.resolve();
     } catch (error) {
       console.error("Error saving PMS configs to Firestore:", error);
       toast({ title: "Erreur de Sauvegarde", description: "Impossible d'enregistrer les configurations PMS.", variant: "destructive"});
+      return Promise.reject(error);
     } finally {
       setIsSaving(false);
     }
@@ -189,6 +186,7 @@ export default function PmsConfigManager() {
     
     let updatedItemData: PmsZone;
     let newItems: PmsZone[];
+    const originalPmsConfigs = JSON.parse(JSON.stringify(pmsConfigs)); // For potential rollback
 
     if (editingZone) {
       updatedItemData = { ...editingZone, name: data.name, id: editingZone.id, tasks: editingZone.tasks || [] };
@@ -206,7 +204,6 @@ export default function PmsConfigManager() {
         } as PmsEquipmentDefinition;
       }
       newItems = currentItems.map(item => item.id === editingZone.id ? updatedItemData : item);
-      toast({ title: `${itemLabel} Modifié(e)`, description: `Le/La ${itemLabel.toLowerCase()} "${data.name}" a été mis(e) à jour.` });
     } else {
       const newItemId = `${currentCategoryKey}_item_${Date.now()}`;
       let baseNewItem: PmsZone = { name: data.name, id: newItemId, tasks: [] };
@@ -227,20 +224,39 @@ export default function PmsConfigManager() {
         updatedItemData = { ...baseNewItem };
       }
       newItems = [...currentItems, updatedItemData];
-      toast({ title: `${itemLabel} Ajouté(e)`, description: `Le/La ${itemLabel.toLowerCase()} "${data.name}" a été ajouté(e).` });
     }
-    saveConfigsToFirestore({ ...pmsConfigs, [currentCategoryKey]: newItems });
+    
+    const newConfigs = { ...pmsConfigs, [currentCategoryKey]: newItems };
+    setPmsConfigs(newConfigs); // Optimistic update
+
+    saveConfigsToFirestore(newConfigs)
+        .then(() => {
+            toast({ title: `${itemLabel} ${editingZone ? "Modifié(e)" : "Ajouté(e)"}`, description: `Le/La ${itemLabel.toLowerCase()} "${data.name}" a été ${editingZone ? "mis(e) à jour." : "ajouté(e)."}` });
+        })
+        .catch(() => {
+            setPmsConfigs(originalPmsConfigs); // Rollback
+            toast({ title: "Erreur", description: `Échec de la sauvegarde pour ${itemLabel.toLowerCase()} "${data.name}".`, variant: "destructive" });
+        });
     setIsZoneDialogOpen(false);
   };
 
   const handleDeleteZone = (categoryKey: string, itemId: string, itemName: string) => {
-    if (!currentCategoryKey) return; 
-    const itemLabelSingular = categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "cet équipement" : "cette zone";
-    
-    const currentItems = pmsConfigs[categoryKey] || [];
+    const originalPmsConfigs = JSON.parse(JSON.stringify(pmsConfigs));
+    const currentItems = originalPmsConfigs[categoryKey] || [];
     const updatedItems = currentItems.filter(item => item.id !== itemId);
-    saveConfigsToFirestore({ ...pmsConfigs, [categoryKey]: updatedItems }); 
-    toast({ title: `${categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone"} Supprimé(e)`, description: `L'élément "${itemName}" a été supprimé.`, variant: "destructive" });
+    const newConfigs = { ...originalPmsConfigs, [categoryKey]: updatedItems };
+    
+    setPmsConfigs(newConfigs); // Optimistic update
+
+    saveConfigsToFirestore(newConfigs)
+      .then(() => {
+        toast({ title: `${categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone"} Supprimé(e)`, description: `L'élément "${itemName}" a été supprimé.`, variant: "destructive" });
+      })
+      .catch((error) => {
+        setPmsConfigs(originalPmsConfigs); // Rollback
+        console.error("Error deleting zone/equipment, UI rolled back:", error);
+        toast({ title: "Erreur de Suppression", description: "La suppression a échoué, l'élément a été restauré.", variant: "destructive"});
+      });
   };
 
   const handleOpenTaskDialog = (categoryKey: string, zone: PmsZone, task?: PmsTaskDefinition) => {
@@ -253,38 +269,69 @@ export default function PmsConfigManager() {
 
   const handleTaskSubmit = (data: TaskFormData) => {
     if (!currentCategoryKey || !currentZoneForTask) return;
-    const currentItems = pmsConfigs[currentCategoryKey] || [];
+    
+    const originalPmsConfigs = JSON.parse(JSON.stringify(pmsConfigs));
+    const currentItems = originalPmsConfigs[currentCategoryKey] || [];
+    let zoneFoundAndUpdated = false;
     
     const updatedItems = currentItems.map(item => {
       if (item.id === currentZoneForTask.id) {
+        zoneFoundAndUpdated = true;
         let updatedTasks: PmsTaskDefinition[];
         if (editingTask) {
           updatedTasks = (item.tasks || []).map(t => t.id === editingTask.id ? { ...t, ...data } : t);
-          toast({ title: "Tâche Modifiée", description: `L'élément "${data.name}" a été mis à jour.` });
         } else {
           const newTask: PmsTaskDefinition = { ...data, id: `${currentCategoryKey}_task_${Date.now()}` };
           updatedTasks = [...(item.tasks || []), newTask];
-          toast({ title: "Tâche Ajoutée", description: `L'élément "${data.name}" a été ajouté(e) à ${item.name}.` });
         }
         return { ...item, tasks: updatedTasks };
       }
       return item;
     });
-    saveConfigsToFirestore({ ...pmsConfigs, [currentCategoryKey]: updatedItems });
+
+    if (!zoneFoundAndUpdated) return;
+
+    const newConfigs = { ...originalPmsConfigs, [currentCategoryKey]: updatedItems };
+    setPmsConfigs(newConfigs); // Optimistic update
+
+    saveConfigsToFirestore(newConfigs)
+      .then(() => {
+        toast({ title: `Tâche ${editingTask ? "Modifiée" : "Ajoutée"}`, description: `L'élément "${data.name}" a été ${editingTask ? "mis à jour." : `ajouté(e) à ${currentZoneForTask.name}`}.` });
+      })
+      .catch(() => {
+        setPmsConfigs(originalPmsConfigs); // Rollback
+         toast({ title: "Erreur", description: `Échec de la sauvegarde pour la tâche "${data.name}".`, variant: "destructive" });
+      });
     setIsTaskDialogOpen(false);
   };
 
   const handleDeleteTask = (categoryKey: string, zoneId: string, taskId: string, taskName: string) => {
-    if (!currentCategoryKey) return; 
-    const currentItems = pmsConfigs[categoryKey] || [];
+    const originalPmsConfigs = JSON.parse(JSON.stringify(pmsConfigs));
+    const currentItems = originalPmsConfigs[categoryKey] || [];
+    let zoneFoundAndUpdated = false;
+
     const updatedItems = currentItems.map(item => {
       if (item.id === zoneId) {
+        zoneFoundAndUpdated = true;
         return { ...item, tasks: (item.tasks || []).filter(t => t.id !== taskId) };
       }
       return item;
     });
-    saveConfigsToFirestore({ ...pmsConfigs, [currentCategoryKey]: updatedItems });
-    toast({ title: "Tâche Supprimée", description: `L'élément "${taskName}" a été supprimé.`, variant: "destructive" });
+
+    if (!zoneFoundAndUpdated) return;
+
+    const newConfigs = { ...originalPmsConfigs, [categoryKey]: updatedItems };
+    setPmsConfigs(newConfigs); // Optimistic update
+
+    saveConfigsToFirestore(newConfigs)
+      .then(() => {
+        toast({ title: "Tâche Supprimée", description: `L'élément "${taskName}" a été supprimé.`, variant: "destructive" });
+      })
+      .catch((error) => {
+        setPmsConfigs(originalPmsConfigs); // Rollback
+        console.error("Error deleting task, UI rolled back:", error);
+        toast({ title: "Erreur de Suppression", description: "La suppression de la tâche a échoué, l'élément a été restauré.", variant: "destructive"});
+      });
   };
 
   const getTemperatureSummary = (item: PmsEquipmentDefinition): string => {
@@ -368,7 +415,7 @@ export default function PmsConfigManager() {
                           <AlertDialogFooter>
                             <AlertDialogCancel>Annuler</AlertDialogCancel>
                             <AlertDialogAction onClick={() => handleDeleteZone(categoryKey, item.id, item.name)} disabled={isLoading || isSaving}>
-                              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Supprimer
+                              {(isLoading || isSaving) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Supprimer
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
@@ -406,7 +453,7 @@ export default function PmsConfigManager() {
                                     <AlertDialogFooter>
                                       <AlertDialogCancel>Annuler</AlertDialogCancel>
                                       <AlertDialogAction onClick={() => handleDeleteTask(categoryKey, item.id, task.id, task.name)} disabled={isLoading || isSaving}>
-                                        {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Supprimer {taskItemLabel}
+                                        {(isLoading || isSaving) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Supprimer {taskItemLabel}
                                       </AlertDialogAction>
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
@@ -436,7 +483,7 @@ export default function PmsConfigManager() {
     );
   }
   
-  if (isLoading && Object.keys(pmsConfigs).length === 0) { // Show loader only on initial full load
+  if (isLoading && Object.keys(pmsConfigs).length === 0) {
     return (
       <Card className="shadow-lg">
         <CardHeader><CardTitle>Configuration PMS</CardTitle></CardHeader>
@@ -526,7 +573,7 @@ export default function PmsConfigManager() {
 
               <DialogFooter>
                 <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                <Button type="submit" disabled={isSaving}>{isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingZone ? "Enregistrer" : "Ajouter"}</Button>
+                <Button type="submit" disabled={isSaving}>{(isSaving) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingZone ? "Enregistrer" : "Ajouter"}</Button>
               </DialogFooter>
             </form>
           </Form>
@@ -552,7 +599,7 @@ export default function PmsConfigManager() {
                 )} />
                 <DialogFooter>
                     <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                    <Button type="submit" disabled={isSaving}>{isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingTask ? "Enregistrer" : "Ajouter"}</Button>
+                    <Button type="submit" disabled={isSaving}>{(isSaving) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingTask ? "Enregistrer" : "Ajouter"}</Button>
                 </DialogFooter>
                 </form>
             </Form>
@@ -572,4 +619,3 @@ export default function PmsConfigManager() {
     </div>
   );
 }
-
