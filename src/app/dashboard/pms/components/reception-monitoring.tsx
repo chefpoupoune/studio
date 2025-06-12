@@ -17,6 +17,7 @@ import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // Added Select
 import { format, parseISO, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
@@ -64,6 +65,17 @@ const receptionEntrySchema = z.object({
 type ReceptionFormData = z.infer<typeof receptionEntrySchema>;
 
 const FIRESTORE_COLLECTION = "pmsReceptionLog";
+
+// Define a list of predefined suppliers. This could come from a config or Firestore later.
+const PREDEFINED_SUPPLIERS = [
+  { id: "promocash", name: "Promocash" },
+  { id: "metro", name: "Metro" },
+  { id: "transgourmet", name: "Transgourmet" },
+  { id: "boucherie_locale", name: "Boucherie Locale Dupont" },
+  { id: "primeur_regional", name: "Primeur Régional Sarl" },
+  { id: "autre", name: "Autre (à préciser)" },
+];
+
 
 export default function ReceptionMonitoring() {
   const [receptionEntries, setReceptionEntries] = useState<ReceptionEntry[]>([]);
@@ -141,7 +153,6 @@ export default function ReceptionMonitoring() {
     const entryDataForFirestore = { 
       ...data, 
       dateTime: Timestamp.fromDate(data.dateTime),
-      // Ensure optional fields are either set or explicitly null if not provided
       vehicleObservations: data.vehicleObservations || '',
       productTemperature: data.productTemperature || '',
       dlcDluo: data.dlcDluo || '',
@@ -214,7 +225,7 @@ export default function ReceptionMonitoring() {
           headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
         }
       } else {
-        headStyles.fillColor = [144, 202, 249]; // Default blueish if no primary color
+        headStyles.fillColor = [144, 202, 249]; 
         headStyles.textColor = [0,0,0];
       }
 
@@ -325,7 +336,26 @@ export default function ReceptionMonitoring() {
                             />
                         </PopoverContent></Popover><FormMessage /></FormItem>
                     )} />
-                    <FormField control={form.control} name="supplierName" render={({ field }) => (<FormItem><FormLabel>Nom du fournisseur</FormLabel><FormControl><Input placeholder="Ex: Fournisseur ABC" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="supplierName" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Nom du fournisseur</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <FormControl>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Sélectionner un fournisseur" />
+                                </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                {PREDEFINED_SUPPLIERS.map(supplier => (
+                                    <SelectItem key={supplier.id} value={supplier.name}>
+                                    {supplier.name}
+                                    </SelectItem>
+                                ))}
+                                </SelectContent>
+                            </Select>
+                            <FormMessage />
+                        </FormItem>
+                    )} />
                     <FormField control={form.control} name="productNameControlled" render={({ field }) => (<FormItem><FormLabel>Dénomination du produit contrôlé</FormLabel><FormControl><Input placeholder="Ex: Poulet entier" {...field} /></FormControl><FormMessage /></FormItem>)} />
                     <FormField control={form.control} name="vehicleObservations" render={({ field }) => (<FormItem><FormLabel>Véhicule (propreté, température)</FormLabel><FormControl><Textarea placeholder="Ex: Camion propre, température ok" {...field} rows={2}/></FormControl><FormMessage /></FormItem>)} />
                     </div>
@@ -447,5 +477,3 @@ export default function ReceptionMonitoring() {
   );
 }
 
-
-    
