@@ -17,7 +17,7 @@ import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // Added Select
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format, parseISO, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
@@ -53,7 +53,7 @@ const receptionEntrySchema = z.object({
   lotNumber: z.string().optional(),
   packagingAspect: z.string().optional(),
   quantity: z.string().optional(),
-  productLabeling: z.string().optional(),
+  productLabeling: z.enum(['conforme', 'non_conforme', '']).default('').optional(),
   refused: z.boolean().default(false),
   refusalReason: z.string().optional(),
   visa: z.string().optional(),
@@ -66,7 +66,6 @@ type ReceptionFormData = z.infer<typeof receptionEntrySchema>;
 
 const FIRESTORE_COLLECTION = "pmsReceptionLog";
 
-// Define a list of predefined suppliers. This could come from a config or Firestore later.
 const PREDEFINED_SUPPLIERS = [
   { id: "promocash", name: "Promocash" },
   { id: "metro", name: "Metro" },
@@ -136,6 +135,7 @@ export default function ReceptionMonitoring() {
       form.reset({
         ...entry,
         dateTime: parseISO(entry.dateTime), 
+        productLabeling: entry.productLabeling === 'conforme' || entry.productLabeling === 'non_conforme' ? entry.productLabeling : '',
       });
     } else {
       form.reset({
@@ -259,7 +259,7 @@ export default function ReceptionMonitoring() {
         entry.lotNumber || '-',
         entry.packagingAspect || '-',
         entry.quantity || '-',
-        entry.productLabeling || '-',
+        entry.productLabeling === 'conforme' ? 'Conforme' : entry.productLabeling === 'non_conforme' ? 'Non Conforme' : '-',
         entry.refused ? `Oui${entry.refusalReason ? ` (${entry.refusalReason})` : ''}` : 'Non',
         entry.visa || '-',
       ]);
@@ -339,7 +339,7 @@ export default function ReceptionMonitoring() {
                     <FormField control={form.control} name="supplierName" render={({ field }) => (
                         <FormItem>
                             <FormLabel>Nom du fournisseur</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <Select onValueChange={field.onChange} value={field.value || undefined}>
                                 <FormControl>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Sélectionner un fournisseur" />
@@ -366,7 +366,24 @@ export default function ReceptionMonitoring() {
                     <FormField control={form.control} name="lotNumber" render={({ field }) => (<FormItem><FormLabel>N° du lot</FormLabel><FormControl><Input placeholder="Ex: LOT12345" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
                     <FormField control={form.control} name="packagingAspect" render={({ field }) => (<FormItem><FormLabel>Aspect et emballage</FormLabel><FormControl><Input placeholder="Ex: Emballage intact" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
                     <FormField control={form.control} name="quantity" render={({ field }) => (<FormItem><FormLabel>Quantité</FormLabel><FormControl><Input placeholder="Ex: 10 kg" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={form.control} name="productLabeling" render={({ field }) => (<FormItem><FormLabel>Étiquetage du produit</FormLabel><FormControl><Input placeholder="Ex: Conforme" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="productLabeling" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Étiquetage du produit</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ''}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Sélectionner statut étiquetage..." />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="">Non renseigné</SelectItem>
+                            <SelectItem value="conforme">Conforme</SelectItem>
+                            <SelectItem value="non_conforme">Non Conforme</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
                     </div>
                      <FormField control={form.control} name="refused" render={({ field }) => (
                         <FormItem className="flex flex-row items-center space-x-2 pt-2">
@@ -429,7 +446,7 @@ export default function ReceptionMonitoring() {
                     <TableCell>{entry.lotNumber || '-'}</TableCell>
                     <TableCell>{entry.packagingAspect || '-'}</TableCell>
                     <TableCell>{entry.quantity || '-'}</TableCell>
-                    <TableCell>{entry.productLabeling || '-'}</TableCell>
+                    <TableCell>{entry.productLabeling === 'conforme' ? 'Conforme' : entry.productLabeling === 'non_conforme' ? 'Non Conforme' : '-'}</TableCell>
                     <TableCell className={entry.refused ? 'text-destructive font-semibold' : ''}>
                       {entry.refused ? `Oui${entry.refusalReason ? ` (${entry.refusalReason})` : ''}` : 'Non'}
                     </TableCell>
