@@ -75,6 +75,7 @@ const PREDEFINED_SUPPLIERS = [
   { id: "autre", name: "Autre (à préciser)" },
 ];
 
+const PRODUCT_LABELING_NONE_VALUE = "_NONE_"; // Special value for "Non renseigné"
 
 export default function ReceptionMonitoring() {
   const [receptionEntries, setReceptionEntries] = useState<ReceptionEntry[]>([]);
@@ -95,7 +96,7 @@ export default function ReceptionMonitoring() {
       lotNumber: '',
       packagingAspect: '',
       quantity: '',
-      productLabeling: '',
+      productLabeling: '', // Zod default is '', which means "Non renseigné"
       refused: false,
       refusalReason: '',
       visa: '',
@@ -366,24 +367,33 @@ export default function ReceptionMonitoring() {
                     <FormField control={form.control} name="lotNumber" render={({ field }) => (<FormItem><FormLabel>N° du lot</FormLabel><FormControl><Input placeholder="Ex: LOT12345" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
                     <FormField control={form.control} name="packagingAspect" render={({ field }) => (<FormItem><FormLabel>Aspect et emballage</FormLabel><FormControl><Input placeholder="Ex: Emballage intact" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
                     <FormField control={form.control} name="quantity" render={({ field }) => (<FormItem><FormLabel>Quantité</FormLabel><FormControl><Input placeholder="Ex: 10 kg" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={form.control} name="productLabeling" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Étiquetage du produit</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ''}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Sélectionner statut étiquetage..." />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="">Non renseigné</SelectItem>
-                            <SelectItem value="conforme">Conforme</SelectItem>
-                            <SelectItem value="non_conforme">Non Conforme</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
+                    <FormField
+                        control={form.control}
+                        name="productLabeling"
+                        render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Étiquetage du produit</FormLabel>
+                            <Select
+                            onValueChange={(valueFromSelect) => {
+                                field.onChange(valueFromSelect === PRODUCT_LABELING_NONE_VALUE ? "" : valueFromSelect);
+                            }}
+                            value={field.value === "" ? PRODUCT_LABELING_NONE_VALUE : field.value || ""}
+                            >
+                            <FormControl>
+                                <SelectTrigger>
+                                <SelectValue placeholder="Sélectionner statut étiquetage..." />
+                                </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                                <SelectItem value={PRODUCT_LABELING_NONE_VALUE}>Non renseigné</SelectItem>
+                                <SelectItem value="conforme">Conforme</SelectItem>
+                                <SelectItem value="non_conforme">Non Conforme</SelectItem>
+                            </SelectContent>
+                            </Select>
+                            <FormMessage />
+                        </FormItem>
+                        )}
+                    />
                     </div>
                      <FormField control={form.control} name="refused" render={({ field }) => (
                         <FormItem className="flex flex-row items-center space-x-2 pt-2">
@@ -493,4 +503,3 @@ export default function ReceptionMonitoring() {
     </Card>
   );
 }
-
