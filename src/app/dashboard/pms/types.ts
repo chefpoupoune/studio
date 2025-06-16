@@ -4,26 +4,23 @@ export interface PmsTaskDefinition {
   name: string;
 }
 
-export interface PmsZoneWithTasksDefinition {
+export interface PmsZone { // Can also represent an "Equipment" or a "Control Point" or a "Supplier"
   id: string;
   name: string;
-  tasks: PmsTaskDefinition[];
-}
+  tasks?: PmsTaskDefinition[]; // Renamed from criteria, can be "Verifications" for delivery, or empty for suppliers/equipment
 
-export interface PmsEquipmentDefinition {
-  id: string;
-  name: string;
-  equipmentType: 'refrigerator' | 'freezer';
+  // Fields specific to Temperature Monitoring Equipment
+  equipmentType?: 'refrigerator' | 'freezer';
   targetTempMin?: number;
   targetTempMax?: number;
-  tolerance1TempMin?: number;
-  tolerance1TempMax?: number;
-  tolerance2TempMin?: number;
-  tolerance2TempMax?: number;
+  tolerance1TempMin?: number; 
+  tolerance1TempMax?: number; 
+  tolerance2TempMin?: number; 
+  tolerance2TempMax?: number; 
 }
 
 export interface PmsConfigurations {
-  [categoryKey: string]: (PmsZoneWithTasksDefinition | PmsEquipmentDefinition)[];
+  [categoryKey: string]: PmsZone[];
 }
 
 export interface SimplifiedTaskRecord {
@@ -64,7 +61,7 @@ export interface ReceptionEntry {
   lotNumber?: string;
   packagingAspect?: string;
   quantity?: string;
-  productLabeling?: string;
+  productLabeling?: 'conforme' | 'non_conforme' | ''; // Updated for Select
   refused: boolean;
   refusalReason?: string;
   visa?: string;
@@ -139,3 +136,10 @@ export interface PicnicDepartureEntry {
 
 
 export const NO_STATUS_SELECT_VALUE = "_aucun_statut_";
+export const PMS_SUPPLIER_MANAGEMENT_KEY = 'supplierManagement_v1'; // Added for consistency with settings/types.ts
+
+// Alias PmsZone for use as PmsEquipmentDefinition or PmsSupplierDefinition if structure is compatible
+export type PmsEquipmentDefinition = PmsZone; 
+export type PmsSupplierDefinition = PmsZone; 
+export type PmsZoneWithTasksDefinition = PmsZone;
+

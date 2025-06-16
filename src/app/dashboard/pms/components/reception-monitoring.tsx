@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import type { ReceptionEntry } from '../types';
+import type { ReceptionEntry, PmsZone as PmsSupplierDefinition, PmsConfigurations } from '../types'; // Updated PmsZone alias
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -38,6 +38,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { firestore } from '@/lib/firebase';
 import { collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy, Timestamp } from 'firebase/firestore';
+import { PMS_SUPPLIER_MANAGEMENT_KEY } from '@/app/dashboard/settings/types'; // Import new key
+
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -55,7 +57,7 @@ const receptionEntrySchema = z.object({
   lotNumber: z.string().optional(),
   packagingAspect: z.string().optional(),
   quantity: z.string().optional(),
-  productLabeling: z.enum(['conforme', 'non_conforme', '']).default('').optional(),
+  productLabeling: z.enum(['conforme', 'non_conforme', PRODUCT_LABELING_NONE_VALUE, '']).default('').optional(),
   refused: z.boolean().default(false),
   refusalReason: z.string().optional(),
   visa: z.string().optional(),
@@ -67,21 +69,16 @@ const receptionEntrySchema = z.object({
 type ReceptionFormData = z.infer<typeof receptionEntrySchema>;
 
 const FIRESTORE_COLLECTION = "pmsReceptionLog";
+const FIRESTORE_PMS_CONFIG_COLLECTION = "pmsConfigurations";
+const FIRESTORE_PMS_CONFIG_DOC_ID = "mainConfig";
 
-const PREDEFINED_SUPPLIERS = [
-  { id: "promocash", name: "Promocash" },
-  { id: "metro", name: "Metro" },
-  { id: "transgourmet", name: "Transgourmet" },
-  { id: "boucherie_locale", name: "Boucherie Locale Dupont" },
-  { id: "primeur_regional", name: "Primeur Régional Sarl" },
-  { id: "autre", name: "Autre (à préciser)" },
-];
 
 export default function ReceptionMonitoring() {
   const [receptionEntries, setReceptionEntries] = useState<ReceptionEntry[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<ReceptionEntry | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [configuredSuppliers, setConfiguredSuppliers] = useState<PmsSupplierDefinition[]>([]);
   const { toast } = useToast();
 
   const form = useForm<ReceptionFormData>({
@@ -102,6 +99,25 @@ export default function ReceptionMonitoring() {
       visa: 'JD',
     },
   });
+
+  const loadSuppliersFromPmsConfig = useCallback(async () => {
+    const docRef = doc(firestore, FIRESTORE_PMS_CONFIG_COLLECTION, FIRESTORE_PMS_CONFIG_DOC_ID);
+    try {
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const pmsSettings = docSnap.data() as PmsConfigurations;
+        const suppliers = pmsSettings[PMS_SUPPLIER_MANAGEMENT_KEY] || [];
+        setConfiguredSuppliers(suppliers.sort((a, b) => a.name.localeCompare(b.name)));
+      } else {
+        setConfiguredSuppliers([]);
+        toast({ title: "Config Fournisseurs Manquante", description: "Veuillez définir des fournisseurs dans Paramètres PMS.", variant: "destructive" });
+      }
+    } catch (error) {
+      console.error("Error loading suppliers from PMS config:", error);
+      setConfiguredSuppliers([]);
+      toast({ title: "Erreur Chargement Fournisseurs", variant: "destructive" });
+    }
+  }, [toast]);
 
   const fetchReceptionEntries = useCallback(async () => {
     setIsLoading(true);
@@ -127,8 +143,17 @@ export default function ReceptionMonitoring() {
   }, [toast]);
 
   useEffect(() => {
+    loadSuppliersFromPmsConfig();
     fetchReceptionEntries();
-  }, [fetchReceptionEntries]);
+    
+    const handlePmsConfigUpdated = () => {
+        console.log("[ReceptionMonitoring] pmsConfigUpdated event received. Reloading suppliers.");
+        loadSuppliersFromPmsConfig();
+    };
+    window.addEventListener('pmsConfigUpdated', handlePmsConfigUpdated);
+    return () => window.removeEventListener('pmsConfigUpdated', handlePmsConfigUpdated);
+
+  }, [loadSuppliersFromPmsConfig, fetchReceptionEntries]);
 
   const handleOpenDialog = (entry?: ReceptionEntry) => {
     setEditingEntry(entry || null);
@@ -163,7 +188,7 @@ export default function ReceptionMonitoring() {
       dlcDluo: data.dlcDluo || '',
       lotNumber: data.lotNumber || '',
       quantity: data.quantity || '',
-      productLabeling: data.productLabeling || '',
+      productLabeling: data.productLabeling === PRODUCT_LABELING_NONE_VALUE ? '' : data.productLabeling || '',
       refusalReason: data.refused ? (data.refusalReason || '') : '',
       visa: data.visa || '',
     };
@@ -350,11 +375,11 @@ export default function ReceptionMonitoring() {
                                 </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                {PREDEFINED_SUPPLIERS.map(supplier => (
+                                {configuredSuppliers.length > 0 ? configuredSuppliers.map(supplier => (
                                     <SelectItem key={supplier.id} value={supplier.name}>
                                     {supplier.name}
                                     </SelectItem>
-                                ))}
+                                )) : <SelectItem value="disabled" disabled>Aucun fournisseur configuré</SelectItem>}
                                 </SelectContent>
                             </Select>
                             <FormMessage />
