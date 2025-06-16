@@ -49,6 +49,7 @@ export default function TemperatureMonitoring() {
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const { toast } = useToast();
   const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
 
@@ -180,21 +181,20 @@ export default function TemperatureMonitoring() {
 
   const temperatureRowsToDisplay = useMemo(() => {
     if (selectedEquipmentConfig?.equipmentType === 'refrigerator') {
-      const fridgeMaxTemp = 12;
-      const fridgeMinTemp = -5;
+      const fridgeMaxTemp = 12; // Updated
+      const fridgeMinTemp = -5; // Updated
       return Array.from({ length: fridgeMaxTemp - fridgeMinTemp + 1 }, (_, i) => fridgeMaxTemp - i);
     } else if (selectedEquipmentConfig?.equipmentType === 'freezer') {
       const freezerMaxTemp = -10;
       const freezerMinTemp = -25;
       return Array.from({ length: freezerMaxTemp - freezerMinTemp + 1 }, (_, i) => freezerMaxTemp - i);
     }
-    // Default range if type is not specified or unknown: 16°C down to -25°C (inclusive)
     return Array.from({ length: 16 - (-25) + 1 }, (_, i) => 16 - i);
   }, [selectedEquipmentConfig]);
 
-  const getEquipmentZoneInfo = useCallback((temp: number, currentConfig?: PmsEquipmentDefinition): { label: string; colorClass: string } => {
+  const getEquipmentZoneInfo = useCallback((temp: number, currentConfig?: PmsEquipmentDefinition): { label: string; colorClass: string, pdfColor?: [number,number,number] } => {
     if (!currentConfig) {
-      return { label: '', colorClass: 'bg-background hover:bg-muted/50' };
+      return { label: '', colorClass: 'bg-background hover:bg-muted/50', pdfColor: [255,255,255] };
     }
     
     const parseAndValidate = (val: any): number | undefined => {
@@ -214,16 +214,16 @@ export default function TemperatureMonitoring() {
     const tol2Max = parseAndValidate(currentConfig.tolerance2TempMax);
 
     if (typeof targetMin === 'number' && typeof targetMax === 'number' && temp >= targetMin && temp <= targetMax) {
-      return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 text-green-900 dark:text-green-100 hover:bg-green-300 dark:hover:bg-green-700/60' };
+      return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 text-green-900 dark:text-green-100 hover:bg-green-300 dark:hover:bg-green-700/60', pdfColor: [200, 230, 201] }; // Light Green
     }
     if (typeof tol1Min === 'number' && typeof tol1Max === 'number' && temp >= tol1Min && temp <= tol1Max) {
-      return { label: "Tol. 1", colorClass: 'bg-blue-200 dark:bg-blue-800/60 text-blue-900 dark:text-blue-100 hover:bg-blue-300 dark:hover:bg-blue-700/60' };
+      return { label: "Tol. 1", colorClass: 'bg-blue-200 dark:bg-blue-800/60 text-blue-900 dark:text-blue-100 hover:bg-blue-300 dark:hover:bg-blue-700/60', pdfColor: [173, 216, 230] }; // Light Blue
     }
     if (typeof tol2Min === 'number' && typeof tol2Max === 'number' && temp >= tol2Min && temp <= tol2Max) {
-      return { label: "Tol. 2", colorClass: 'bg-yellow-200 dark:bg-yellow-800/60 text-yellow-900 dark:text-yellow-100 hover:bg-yellow-300 dark:hover:bg-yellow-700/60' };
+      return { label: "Tol. 2", colorClass: 'bg-yellow-200 dark:bg-yellow-800/60 text-yellow-900 dark:text-yellow-100 hover:bg-yellow-300 dark:hover:bg-yellow-700/60', pdfColor: [254, 249, 195] }; // Light Yellow
     }
     
-    return { label: "Rejet", colorClass: 'bg-red-200 dark:bg-red-800/60 text-red-900 dark:text-red-100 hover:bg-red-300 dark:hover:bg-red-700/60' };
+    return { label: "Rejet", colorClass: 'bg-red-200 dark:bg-red-800/60 text-red-900 dark:text-red-100 hover:bg-red-300 dark:hover:bg-red-700/60', pdfColor: [254, 202, 202] }; // Light Red
   }, []);
 
 
@@ -297,7 +297,161 @@ export default function TemperatureMonitoring() {
       toast({ title: "Équipement non sélectionné", variant: "destructive" });
       return;
     }
-    toast({ title: "PDF Non Implémenté", description: "La génération PDF pour ce tableau est en cours de développement." });
+    setIsGeneratingPdf(true);
+    try {
+      const pdfSettings = getPdfLayoutSettings('pms_temperature_monitoring_monthly');
+      const doc = new jsPDF({
+        orientation: pdfSettings.orientation || 'landscape',
+        unit: 'pt',
+        format: pdfSettings.pageSize || 'a4', // Default to A4 landscape if not specified
+      }) as jsPDFWithAutoTable;
+      doc.setFont(pdfSettings.fontFamily);
+      const monthLabel = monthsArray.find(m => m.value === selectedMonth)?.label || '';
+      const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
+
+      let currentY = pdfSettings.marginTop;
+
+      // Header (Logo & Text)
+      if (pdfSettings.headerText) {
+        const headerRows = pdfSettings.headerText.split('\n').map(rowText => rowText.split('|').map(cellText => cellText.trim()));
+        const headerTableBody = headerRows.map(row => row.map(cell => cell === '{logo}' ? '' : cell));
+        doc.autoTable({
+          body: headerTableBody, startY: currentY, theme: 'plain',
+          styles: { fontSize: pdfSettings.headerFontSize, cellPadding: 1, font: pdfSettings.fontFamily },
+          columnStyles: { 0: { cellWidth: 'auto'} },
+          margin: { top: pdfSettings.marginTop, left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
+          didDrawCell: (data) => {
+            if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image') && headerRows[data.row.index][data.column.index] === '{logo}') {
+              try {
+                const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+                const formatType = imgProps.fileType.toUpperCase();
+                const cellPaddingVal = 2;
+                let imgWidth = data.cell.width - 2 * cellPaddingVal; let imgHeight = data.cell.height - 2 * cellPaddingVal;
+                const cellAspectRatio = data.cell.width / data.cell.height; const imgAspectRatio = imgProps.width / imgProps.height;
+                if (imgAspectRatio > cellAspectRatio) imgHeight = imgWidth / imgAspectRatio; else imgWidth = imgHeight * imgAspectRatio;
+                const imgX = data.cell.x + (data.cell.width - imgWidth) / 2; const imgY = data.cell.y + (data.cell.height - imgHeight) / 2;
+                doc.addImage(pdfSettings.logoUrl, formatType, imgX, imgY, imgWidth, imgHeight);
+              } catch (e: any) { console.error("Error drawing logo in PDF header table:", e); }
+            }
+          },
+        });
+        currentY = (doc as any).lastAutoTable.finalY + 5;
+      } else if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
+        try {
+          const imgProps = doc.getImageProperties(pdfSettings.logoUrl); const formatType = imgProps.fileType.toUpperCase();
+          const desiredHeight = 30; const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
+          doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
+          currentY += desiredHeight + 5;
+        } catch(e: any) { console.error("Error drawing standalone logo in PDF:", e); }
+      }
+      
+      const moduleDefaultTitle = `Relevé Températures - ${selectedEquipmentConfig.name} - ${monthLabel} ${selectedYear}`;
+      let title;
+      if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
+        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
+      } else {
+        title = moduleDefaultTitle;
+      }
+      doc.setFontSize(pdfSettings.documentTitleFontSize);
+      doc.text(title, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
+      currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+      doc.setFontSize(pdfSettings.defaultFontSize);
+      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
+      currentY += pdfSettings.defaultFontSize + 7;
+
+      const headStyles: any = {
+        fontStyle: 'bold',
+        fontSize: pdfSettings.tableHeaderFontSize || 7, // Smaller default for dense table
+        halign: 'center',
+        valign: 'middle',
+        cellPadding: 1,
+      };
+      if (pdfSettings.primaryColor) {
+        const rgb = hexToRgb(pdfSettings.primaryColor);
+        if (rgb) { headStyles.fillColor = rgb;
+        const brightness = (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000;
+        headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];}
+      } else {
+         headStyles.fillColor = [220,220,220]; headStyles.textColor = [0,0,0];
+      }
+
+      const tableHead = [
+        { content: 'T°C / Zone', styles: headStyles },
+        ...monthDays.map(day => ({
+          content: `${day.dayOfMonth}\n${day.dayName.substring(0,3)}`,
+          styles: { ...headStyles, fillColor: day.isWeekend ? [230,230,230] : headStyles.fillColor, textColor: day.isWeekend ? [100,100,100] : headStyles.textColor }
+        }))
+      ];
+
+      const tableBody = temperatureRowsToDisplay.map(temp => {
+        const zoneInfo = getEquipmentZoneInfo(temp, selectedEquipmentConfig);
+        const firstCell = {
+          content: `${temp}°C ${zoneInfo.label ? `(${zoneInfo.label})` : ''}`,
+          styles: {
+            fontStyle: 'bold',
+            fontSize: (pdfSettings.tableBodyFontSize || 7) - 1, // Slightly smaller
+            fillColor: zoneInfo.pdfColor || [255,255,255],
+            textColor: (zoneInfo.pdfColor && (zoneInfo.pdfColor[0]*299 + zoneInfo.pdfColor[1]*587 + zoneInfo.pdfColor[2]*114)/1000 > 125) ? [0,0,0] : [0,0,0], // Black text on light bg
+            valign: 'middle',
+            halign: 'center'
+          }
+        };
+        const tempCells = monthDays.map(day => {
+          const record = records[day.date];
+          let cellContent = '';
+          let cellFillColor = day.isWeekend ? [240,240,240] : [255,255,255];
+          if (record && record.markedTemp === temp) {
+            cellContent = 'X'; // Using 'X' for marked
+            const markedTempZone = getEquipmentZoneInfo(record.markedTemp, selectedEquipmentConfig);
+            cellFillColor = markedTempZone.pdfColor || cellFillColor;
+          }
+          return { content: cellContent, styles: { fillColor: cellFillColor, halign: 'center' } };
+        });
+        return [firstCell, ...tempCells];
+      });
+
+      const footerRowStyles = { fontSize: (pdfSettings.tableBodyFontSize || 7) -1, fontStyle: 'italic', halign: 'center', cellPadding: 1 };
+      const timeRow = [{ content: 'Heure', styles: {...footerRowStyles, fontStyle: 'bold'} }, ...monthDays.map(day => ({ content: records[day.date]?.time || '-', styles: footerRowStyles }))];
+      const operatorRow = [{ content: 'Opérateur', styles: {...footerRowStyles, fontStyle: 'bold'} }, ...monthDays.map(day => ({ content: records[day.date]?.operator || '-', styles: footerRowStyles }))];
+      
+      tableBody.push(timeRow, operatorRow);
+      
+      const firstColWidth = 70; // For "T°C / Zone"
+      const availableWidthForDays = (doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - firstColWidth);
+      const dayColumnWidth = Math.max(15, availableWidthForDays / monthDays.length); // Min width for readability
+
+      const columnStyles: {[key: string]: any} = { 0: { cellWidth: firstColWidth, fontStyle: 'bold' } };
+      monthDays.forEach((_, index) => {
+        columnStyles[index + 1] = { cellWidth: dayColumnWidth, halign: 'center' };
+      });
+
+      doc.autoTable({
+        head: [tableHead],
+        body: tableBody,
+        startY: currentY,
+        theme: 'grid',
+        styles: { fontSize: pdfSettings.tableBodyFontSize || 7, cellPadding: 0.5, valign: 'middle', font: pdfSettings.fontFamily }, // Very small padding
+        columnStyles: columnStyles,
+        margin: { top: pdfSettings.marginTop, right: pdfSettings.marginRight, bottom: pdfSettings.marginBottom, left: pdfSettings.marginLeft },
+        didDrawPage: (data) => {
+          const pageCount = doc.internal.getNumberOfPages();
+          if (pdfSettings.footerText) {
+            let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', data.pageNumber.toString()).replace('{totalPages}', pageCount.toString());
+            doc.setFontSize(pdfSettings.footerFontSize || 8);
+            doc.text(footerStr, pdfSettings.marginLeft, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
+          }
+        }
+      });
+
+      doc.save(`Releve_Temperature_${selectedEquipmentConfig.name.replace(/\s+/g, '_')}_${monthLabel}_${selectedYear}.pdf`);
+      toast({ title: "PDF Généré", description: `Le relevé de température pour ${selectedEquipmentConfig.name} a été téléchargé.` });
+
+    } catch (error) {
+      console.error("Error generating temperature PDF:", error);
+      toast({ title: "Erreur PDF", description: "La génération du PDF a échoué.", variant: "destructive" });
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
   const isUIDisabled = isLoadingConfig || isLoadingRecords || isSaving;
@@ -349,8 +503,8 @@ export default function TemperatureMonitoring() {
             </Select>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 md:col-span-1 md:justify-self-end">
-            <Button onClick={generatePdf} disabled={isUIDisabled || !selectedEquipmentId} className="w-full sm:w-auto">
-              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+            <Button onClick={generatePdf} disabled={isUIDisabled || !selectedEquipmentId || isGeneratingPdf} className="w-full sm:w-auto">
+              {isGeneratingPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
               Générer PDF
             </Button>
           </div>
@@ -398,14 +552,20 @@ export default function TemperatureMonitoring() {
                       {monthDays.map(day => {
                         const dayRecord = records[day.date] || { markedTemp: null, time: '', operator: '' };
                         const isSelected = dayRecord.markedTemp === temp;
+                        let cellEffectiveBgClass = zoneInfo.colorClass;
+                        if(day.isWeekend) cellEffectiveBgClass = "bg-muted/30 opacity-70 cursor-not-allowed";
+                        else if(isSelected) {
+                            const markedTempZone = getEquipmentZoneInfo(temp, selectedEquipmentConfig);
+                            cellEffectiveBgClass = markedTempZone.colorClass;
+                        }
+                        
                         return (
                           <TableCell
                             key={`${day.date}-${temp}`}
                             className={cn(
                               "w-[40px] h-8 p-0 text-center cursor-pointer border-r",
-                              zoneInfo.colorClass, 
-                              day.isWeekend && "opacity-70 cursor-not-allowed",
-                              isSelected && "ring-2 ring-primary ring-inset"
+                              cellEffectiveBgClass,
+                              isSelected && "ring-2 ring-primary ring-inset" 
                             )}
                             onClick={() => !day.isWeekend && !isSaving && handleCellClick(day.date, temp)}
                           >
@@ -431,7 +591,7 @@ export default function TemperatureMonitoring() {
                   ))}
                 </TableRow>
                 <TableRow className="bg-muted/20">
-                  <TableCell className="sticky left-0 z-10 font-semibold text-xs p-1 text-center border-r bg-muted/20">Personnel</TableCell>
+                  <TableCell className="sticky left-0 z-10 font-semibold text-xs p-1 text-center border-r bg-muted/20">Opérateur</TableCell>
                   {monthDays.map(day => (
                     <TableCell key={`operator-${day.date}`} className="p-0.5 border-r">
                       <Input
@@ -463,3 +623,4 @@ export default function TemperatureMonitoring() {
   );
 }
 
+    
