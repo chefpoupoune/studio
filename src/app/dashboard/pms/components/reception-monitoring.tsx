@@ -47,7 +47,7 @@ import {
   query, 
   orderBy, 
   Timestamp,
-  getDoc // Added getDoc
+  getDoc
 } from 'firebase/firestore';
 import { PMS_SUPPLIER_MANAGEMENT_KEY } from '@/app/dashboard/settings/types'; 
 
@@ -243,7 +243,11 @@ export default function ReceptionMonitoring() {
     setIsLoading(true);
     try {
       const pdfSettings = getPdfLayoutSettings('pms_reception_monitoring'); 
-      const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
+      const doc = new jsPDF({ 
+        orientation: 'landscape', // Force landscape for this specific PDF
+        unit: 'pt', 
+        format: pdfSettings.pageSize || 'a4',
+      }) as jsPDFWithAutoTable;
       doc.setFont(pdfSettings.fontFamily || 'helvetica');
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
@@ -254,7 +258,7 @@ export default function ReceptionMonitoring() {
       doc.setFontSize(pdfSettings.documentTitleFontSize || 16); doc.text("Suivi de Réception des Marchandises", pdfSettings.marginLeft || 40, currentY); currentY += (pdfSettings.documentTitleFontSize || 16) * 0.7 + 5;
       doc.setFontSize(pdfSettings.defaultFontSize || 10); doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft || 40, currentY); currentY += (pdfSettings.defaultFontSize || 10) + 7;
 
-      const headStyles: any = { fontSize: pdfSettings.tableHeaderFontSize || 8, fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1.5 };
+      const headStyles: any = { fontSize: pdfSettings.tableHeaderFontSize || 7, fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1 };
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
         if (primaryColorRgb) {
@@ -307,13 +311,23 @@ export default function ReceptionMonitoring() {
         body: body,
         startY: currentY,
         theme: 'grid',
-        styles: { fontSize: pdfSettings.tableBodyFontSize || 7, cellPadding: 1.5, valign: 'middle', font: pdfSettings.fontFamily || 'helvetica' },
-        headStyles: {halign: 'center', valign: 'middle', fontStyle: 'bold', fillColor: headStyles.fillColor, textColor: headStyles.textColor, fontSize: pdfSettings.tableHeaderFontSize || 7, cellPadding: 1.5}, 
+        styles: { fontSize: pdfSettings.tableBodyFontSize || 6.5, cellPadding: 1, valign: 'middle', font: pdfSettings.fontFamily || 'helvetica', overflow: 'linebreak' }, // Added overflow
+        headStyles: headStyles, 
         columnStyles: { 
-          0: { cellWidth: 30 }, 1: { cellWidth: 40 }, 2: { cellWidth: 40 }, 3: { cellWidth: 40 },
-          4: { cellWidth: 15 }, 5: { cellWidth: 25 }, 6: { cellWidth: 25 }, 7: { cellWidth: 35 }, 8: { cellWidth: 20 }, 9: { cellWidth: 35 },
-          10: { cellWidth: 30 }, 11: { cellWidth: 15 },
+          0: { cellWidth: 35, halign: 'center' }, // Date et heure
+          1: { cellWidth: 50 }, // Fournisseur
+          2: { cellWidth: 55 }, // Dénomination
+          3: { cellWidth: 50 }, // Véhicule
+          4: { cellWidth: 20, halign: 'center' }, // T°C
+          5: { cellWidth: 35, halign: 'center' }, // DLC DLUO
+          6: { cellWidth: 35, halign: 'center' }, // N° Lot
+          7: { cellWidth: 45 }, // Aspect
+          8: { cellWidth: 25, halign: 'center' }, // Quantité
+          9: { cellWidth: 35, halign: 'center' }, // Étiquetage
+          10: { cellWidth: 40 }, // Refusé
+          11: { cellWidth: 20, halign: 'center' }, // Visa
         },
+        tableWidth: 'wrap', // Ensure table wraps content and respects column widths
         margin: {
           top: pdfSettings.marginTop || 40,
           right: pdfSettings.marginRight || 40,
