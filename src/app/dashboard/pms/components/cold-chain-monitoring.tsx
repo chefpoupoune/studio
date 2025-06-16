@@ -39,7 +39,6 @@ interface jsPDFWithAutoTable extends jsPDF {
 }
 
 const todayKey = format(new Date(), 'yyyy-MM-dd');
-// COOLDOWN_LOG_STORAGE_KEY_PREFIX and DELIVERY_LOG_STORAGE_KEY_PREFIX removed
 
 // Schemas
 const coolDownEntrySchema = z.object({
@@ -128,9 +127,7 @@ export default function ColdChainMonitoring() {
         }
         setIsSaving(false);
       };
-      // Debounce or save on specific actions if needed, for now direct save.
-      // saveCoolDown(); // This would save on every change, might be too frequent.
-      // A button or a debounced effect is better. For now, we'll rely on explicit save via PDF button or dialog close.
+      // saveCoolDown(); // Debounced or button-triggered save is better
     }
   }, [coolDownEntries, isLoading, isSaving, coolDownDocRef, toast]);
 
@@ -146,7 +143,7 @@ export default function ColdChainMonitoring() {
         }
         setIsSaving(false);
       };
-      // saveDelivery(); // Similar to cooldown, direct save might be too frequent.
+      // saveDelivery(); // Debounced or button-triggered save is better
     }
   }, [deliveryEntries, isLoading, isSaving, deliveryDocRef, toast]);
 
@@ -158,8 +155,6 @@ export default function ColdChainMonitoring() {
       } else {
         await setDoc(deliveryDocRef(), { entries: deliveryEntries });
       }
-      // Toast for individual saves can be too noisy, consider removing or making it less frequent.
-      // toast({ title: `Données ${type} sauvegardées` }); 
     } catch (error) {
       console.error(`Error saving ${type} entries to Firestore:`, error);
       toast({ title: `Erreur sauvegarde (${type})`, variant: "destructive" });
@@ -192,7 +187,7 @@ export default function ColdChainMonitoring() {
   const handleDeleteCoolDownEntry = (entryId: string) => {
     setCoolDownEntries(prev => {
       const newEntries = prev.filter(e => e.id !== entryId);
-      saveDataToFirestore('cooldown'); // Save immediately after setting state (or before)
+      saveDataToFirestore('cooldown'); 
       return newEntries;
     });
     toast({ title: "Entrée Supprimée", variant: "destructive" });
@@ -229,7 +224,7 @@ export default function ColdChainMonitoring() {
   };
   
   const generatePdf = (dataType: 'cooldown' | 'delivery') => {
-    setIsLoading(true); // Use general isLoading for PDF generation to disable buttons
+    setIsLoading(true); 
     try {
       const isCooldown = dataType === 'cooldown';
       const dataToExport = isCooldown ? coolDownEntries : deliveryEntries;
@@ -244,46 +239,61 @@ export default function ColdChainMonitoring() {
       }
 
       const pdfSettings = getPdfLayoutSettings(settingsKey); 
-      const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
+      const doc = new jsPDF({
+        orientation: pdfSettings.orientation || 'landscape',
+        unit: 'pt',
+        format: pdfSettings.pageSize || 'a4',
+      }) as jsPDFWithAutoTable;
+      doc.setFont(pdfSettings.fontFamily || 'helvetica');
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
-      let currentY = 15;
-      if (pdfSettings.headerText) { doc.setFontSize(10); doc.text(pdfSettings.headerText, 14, currentY); currentY += 10; }
-      if (pdfSettings.logoUrl) { doc.setFontSize(8); doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY); currentY += 5; }
+      let currentY = pdfSettings.marginTop || 15;
+      if (pdfSettings.headerText) { doc.setFontSize(pdfSettings.headerFontSize || 10); doc.text(pdfSettings.headerText, pdfSettings.marginLeft || 14, currentY); currentY += (pdfSettings.headerFontSize || 10) + 5; }
+      if (pdfSettings.logoUrl) { doc.setFontSize(8); doc.text(`Logo: ${pdfSettings.logoUrl}`, pdfSettings.marginLeft || 14, currentY); currentY += 5; }
       
-      doc.setFontSize(16); doc.text(`${title} - ${format(new Date(), "dd/MM/yyyy", {locale: fr})}`, 14, currentY); currentY += 8;
-      doc.setFontSize(10); doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY); currentY += 7;
+      doc.setFontSize(pdfSettings.documentTitleFontSize || 16); doc.text(`${title} - ${format(new Date(), "dd/MM/yyyy", {locale: fr})}`, pdfSettings.marginLeft || 14, currentY); currentY += (pdfSettings.documentTitleFontSize || 16) * 0.7 + 5;
+      doc.setFontSize(pdfSettings.defaultFontSize || 10); doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft || 14, currentY); currentY += (pdfSettings.defaultFontSize || 10) + 7;
 
-      const baseHeadStyles: any = { fontSize: 9, fontStyle: 'bold', halign: 'center', valign: 'middle' };
+      const headStyles: any = { 
+        fontStyle: 'bold', 
+        halign: 'center', 
+        valign: 'middle',
+        fontSize: pdfSettings.tableHeaderFontSize || 7.5, // Reduced header font size
+        cellPadding: 1, // Reduced cell padding
+      };
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
-        if (primaryColorRgb) baseHeadStyles.fillColor = primaryColorRgb;
-        baseHeadStyles.textColor = (hexToRgb(pdfSettings.primaryColor)![0] * 299 + hexToRgb(pdfSettings.primaryColor)![1] * 587 + hexToRgb(pdfSettings.primaryColor)![2] * 114) / 1000 > 125 ? [0,0,0] : [255,255,255];
+        if (primaryColorRgb) headStyles.fillColor = primaryColorRgb;
+        headStyles.textColor = (hexToRgb(pdfSettings.primaryColor)![0] * 299 + hexToRgb(pdfSettings.primaryColor)![1] * 587 + hexToRgb(pdfSettings.primaryColor)![2] * 114) / 1000 > 125 ? [0,0,0] : [255,255,255];
+      } else {
+        headStyles.fillColor = [220,220,220]; // Default grey if no primary color
+        headStyles.textColor = [0,0,0];
       }
-
-      let head: any[], body: any[][], columnStyles: any = {}, cellStyles: any = {};
       
-      const orangeBg = [239, 121, 40]; 
-      const blueBg = [155, 194, 230];   
-      const greyBg = [200, 200, 200];   
+      let head: any[], body: any[][], columnStyles: any = {};
+      const orangeBg = hexToRgb('#FFA500') || [255, 165, 0]; 
+      const blueBg = hexToRgb('#ADD8E6') || [173, 216, 230];   
+      const greyBg = hexToRgb('#D3D3D3') || [211, 211, 211];   
+      const greenBg = hexToRgb('#90EE90') || [144, 238, 144]; 
+      const yellowBg = hexToRgb('#FFFFE0') || [255, 255, 224]; 
       const whiteText: [number, number, number] = [255,255,255];
       const blackText: [number, number, number] = [0,0,0];
+      const coloredHeadStyle = (bgColor: [number,number,number] | string, textColor: [number,number,number]) => ({ ...headStyles, fillColor: bgColor, textColor: textColor });
 
-      const coloredHeadStyle = (bgColor: [number,number,number], textColor: [number,number,number]) => ({ ...baseHeadStyles, fillColor: bgColor, textColor: textColor, fontSize: 8 });
 
       if (isCooldown) {
         head = [
           [ 
-            { content: 'Produits', rowSpan: 2, styles: baseHeadStyles }, 
-            { content: 'Quantité', rowSpan: 2, styles: baseHeadStyles },
-            { content: 'Pièces / Plats', rowSpan: 2, styles: baseHeadStyles },
-            { content: 'Debut', colSpan: 2, styles: coloredHeadStyle(orangeBg, whiteText) },
+            { content: 'Produits', rowSpan: 2, styles: headStyles }, 
+            { content: 'Quantité', rowSpan: 2, styles: headStyles },
+            { content: 'Pièces / Plats', rowSpan: 2, styles: headStyles },
+            { content: 'Debut', colSpan: 2, styles: coloredHeadStyle(orangeBg, blackText) },
             { content: 'Fin', colSpan: 2, styles: coloredHeadStyle(blueBg, blackText) },
             { content: 'VISA', colSpan: 1, styles: coloredHeadStyle(greyBg, blackText) }, 
           ],
           [ 
-            { content: 'heure', styles: coloredHeadStyle(orangeBg, whiteText) },
-            { content: 'Temperature', styles: coloredHeadStyle(orangeBg, whiteText) },
+            { content: 'heure', styles: coloredHeadStyle(orangeBg, blackText) },
+            { content: 'Temperature', styles: coloredHeadStyle(orangeBg, blackText) },
             { content: 'heure', styles: coloredHeadStyle(blueBg, blackText) },
             { content: 'Temperature', styles: coloredHeadStyle(blueBg, blackText) },
             { content: 'Signature', styles: coloredHeadStyle(greyBg, blackText) },
@@ -299,13 +309,22 @@ export default function ColdChainMonitoring() {
             { content: e.endTemp || '-', styles: { fillColor: blueBg } }, 
             { content: e.visa || '-', styles: { fillColor: greyBg } }
         ]);
+        columnStyles = { // Sum of widths should be less than page width minus margins
+          0: { cellWidth: 120 }, // Produits
+          1: { cellWidth: 50 },  // Quantité
+          2: { cellWidth: 70 },  // Pièces / Plats
+          3: { cellWidth: 40 },  // Debut heure
+          4: { cellWidth: 60 },  // Debut Temp
+          5: { cellWidth: 40 },  // Fin heure
+          6: { cellWidth: 60 },  // Fin Temp
+          7: { cellWidth: 50 },  // VISA
+        };
       } else { 
-        const greenBg = [209, 250, 229]; const yellowBg = [254, 249, 195]; 
         head = [
           [ 
-            { content: 'Produits', rowSpan: 2, styles: baseHeadStyles },
-            { content: 'Quantité', rowSpan: 2, styles: baseHeadStyles },
-            { content: 'Pièces / Plats', rowSpan: 2, styles: baseHeadStyles },
+            { content: 'Produits', rowSpan: 2, styles: headStyles },
+            { content: 'Quantité', rowSpan: 2, styles: headStyles },
+            { content: 'Pièces / Plats', rowSpan: 2, styles: headStyles },
             { content: 'Départ', colSpan: 2, styles: coloredHeadStyle(greenBg, blackText) },
             { content: 'Arrivé', colSpan: 2, styles: coloredHeadStyle(yellowBg, blackText) },
             { content: 'VISA', colSpan: 2, styles: coloredHeadStyle(greyBg, blackText) }
@@ -330,11 +349,34 @@ export default function ColdChainMonitoring() {
           { content: e.visaLivreur || '-', styles: { fillColor: greyBg } }, 
           { content: e.visaClient || '-', styles: { fillColor: greyBg } }
         ]);
+         columnStyles = { // Sum of widths should be less than page width minus margins (A4 Landscape ~842pt - 60pt margins = ~780pt)
+          0: { cellWidth: 120 }, // Produits
+          1: { cellWidth: 50 },  // Quantité
+          2: { cellWidth: 80 },  // Pièces / Plats
+          3: { cellWidth: 40 },  // Départ heure
+          4: { cellWidth: 70 },  // Départ Temp
+          5: { cellWidth: 40 },  // Arrivé heure
+          6: { cellWidth: 70 },  // Arrivé Temp
+          7: { cellWidth: 50 },  // VISA Livreur
+          8: { cellWidth: 50 },  // VISA Client
+        };
       }
 
       doc.autoTable({
         head, body, startY: currentY, theme: 'grid', 
-        styles: { fontSize: 8, cellPadding: 1.5, valign: 'middle', halign: 'center' },
+        styles: { 
+            fontSize: pdfSettings.tableBodyFontSize || 7, // Reduced body font size
+            cellPadding: 1, // Reduced cell padding
+            valign: 'middle', 
+            halign: 'center' 
+        },
+        columnStyles: columnStyles,
+        margin: { 
+          top: pdfSettings.marginTop || 15, 
+          right: pdfSettings.marginRight || 15, 
+          bottom: pdfSettings.marginBottom || 15, 
+          left: pdfSettings.marginLeft || 15
+        },
         didDrawPage: (hookData) => { 
              const pageCount = doc.internal.getNumberOfPages();
              if (pdfSettings.footerText) {
@@ -342,8 +384,8 @@ export default function ColdChainMonitoring() {
                 .replace('{date}', generationDateFormatted)
                 .replace('{pageNumber}', hookData.pageNumber.toString())
                 .replace('{totalPages}', pageCount.toString());
-                doc.setFontSize(9);
-                doc.text(footerStr, hookData.settings.margin.left, doc.internal.pageSize.height - 10);
+                doc.setFontSize(pdfSettings.footerFontSize || 9);
+                doc.text(footerStr, hookData.settings.margin.left, doc.internal.pageSize.height - ((pdfSettings.marginBottom || 15)/2));
             }
         }
       });
@@ -396,7 +438,7 @@ export default function ColdChainMonitoring() {
                     </div>
                     <h4 className="text-sm font-medium pt-1 text-center">VISA</h4>
                     <FormField control={coolDownForm.control} name="visa" render={({ field }) => (<FormItem><FormLabel>Signature</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit">{editingCoolDownEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
+                    <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingCoolDownEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
                   </form>
                 </Form>
               </DialogContent>
@@ -484,7 +526,7 @@ export default function ColdChainMonitoring() {
                         <FormField control={deliveryForm.control} name="visaLivreur" render={({ field }) => (<FormItem><FormLabel>Visa Livreur</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                         <FormField control={deliveryForm.control} name="visaClient" render={({ field }) => (<FormItem><FormLabel>Visa Client</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                     </div>
-                    <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit">{editingDeliveryEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
+                    <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingDeliveryEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
                   </form>
                 </Form>
               </DialogContent>
