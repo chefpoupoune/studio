@@ -43,6 +43,8 @@ interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
 }
 
+const PRODUCT_LABELING_NONE_VALUE = "_NONE_"; // Constant for "Non renseigné"
+
 const receptionEntrySchema = z.object({
   dateTime: z.date({ required_error: "Date et heure sont requises." }),
   supplierName: z.string().min(1, "Nom du fournisseur requis."),
@@ -75,8 +77,6 @@ const PREDEFINED_SUPPLIERS = [
   { id: "autre", name: "Autre (à préciser)" },
 ];
 
-const PRODUCT_LABELING_NONE_VALUE = "_NONE_"; 
-
 export default function ReceptionMonitoring() {
   const [receptionEntries, setReceptionEntries] = useState<ReceptionEntry[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -90,11 +90,11 @@ export default function ReceptionMonitoring() {
       dateTime: new Date(),
       supplierName: '',
       productNameControlled: '',
-      vehicleObservations: 'RAS', // Default value set here
+      vehicleObservations: 'RAS', 
       productTemperature: '',
       dlcDluo: '',
       lotNumber: '',
-      packagingAspect: '',
+      packagingAspect: 'RAS', // Default to RAS
       quantity: '',
       productLabeling: '', 
       refused: false,
@@ -137,13 +137,14 @@ export default function ReceptionMonitoring() {
         ...entry,
         dateTime: parseISO(entry.dateTime), 
         productLabeling: entry.productLabeling === 'conforme' || entry.productLabeling === 'non_conforme' ? entry.productLabeling : '',
-        vehicleObservations: entry.vehicleObservations || 'RAS', // Ensure RAS if undefined/empty when editing
+        vehicleObservations: entry.vehicleObservations || 'RAS',
+        packagingAspect: entry.packagingAspect || 'RAS', // Ensure RAS if undefined/empty when editing
       });
     } else {
-      form.reset({ // Default values for new entry
+      form.reset({ 
         dateTime: new Date(), 
-        supplierName: '', productNameControlled: '', vehicleObservations: 'RAS', // Default RAS
-        productTemperature: '', dlcDluo: '', lotNumber: '', packagingAspect: '',
+        supplierName: '', productNameControlled: '', vehicleObservations: 'RAS', 
+        productTemperature: '', dlcDluo: '', lotNumber: '', packagingAspect: 'RAS', // Default RAS for new
         quantity: '', productLabeling: '', refused: false, refusalReason: '', visa: '',
       });
     }
@@ -155,11 +156,11 @@ export default function ReceptionMonitoring() {
     const entryDataForFirestore = { 
       ...data, 
       dateTime: Timestamp.fromDate(data.dateTime),
-      vehicleObservations: data.vehicleObservations || 'RAS', // Ensure RAS if empty
+      vehicleObservations: data.vehicleObservations || 'RAS', 
+      packagingAspect: data.packagingAspect || 'RAS', // Save RAS if empty
       productTemperature: data.productTemperature || '',
       dlcDluo: data.dlcDluo || '',
       lotNumber: data.lotNumber || '',
-      packagingAspect: data.packagingAspect || '',
       quantity: data.quantity || '',
       productLabeling: data.productLabeling || '',
       refusalReason: data.refused ? (data.refusalReason || '') : '',
@@ -359,14 +360,14 @@ export default function ReceptionMonitoring() {
                         </FormItem>
                     )} />
                     <FormField control={form.control} name="productNameControlled" render={({ field }) => (<FormItem><FormLabel>Dénomination du produit contrôlé</FormLabel><FormControl><Input placeholder="Ex: Poulet entier" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={form.control} name="vehicleObservations" render={({ field }) => (<FormItem><FormLabel>Véhicule (propreté, température)</FormLabel><FormControl><Textarea placeholder="Ex: Camion propre, température ok" {...field} rows={2}/></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="vehicleObservations" render={({ field }) => (<FormItem><FormLabel>Véhicule (propreté, température)</FormLabel><FormControl><Textarea placeholder="Ex: Camion propre, température ok" {...field} rows={2} value={field.value ?? ''}/></FormControl><FormMessage /></FormItem>)} />
                     </div>
                     <h4 className="text-md font-semibold pt-2 border-t mt-3">Détails Produits</h4>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <FormField control={form.control} name="productTemperature" render={({ field }) => (<FormItem><FormLabel>T° C Produit</FormLabel><FormControl><Input placeholder="Ex: 3°C" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
                     <FormField control={form.control} name="dlcDluo" render={({ field }) => (<FormItem><FormLabel>DLC / DLUO</FormLabel><FormControl><Input placeholder="Ex: 25/12/2024" {...field} value={field.value || ''}/></FormControl><FormMessage /></FormItem>)} />
                     <FormField control={form.control} name="lotNumber" render={({ field }) => (<FormItem><FormLabel>N° du lot</FormLabel><FormControl><Input placeholder="Ex: LOT12345" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={form.control} name="packagingAspect" render={({ field }) => (<FormItem><FormLabel>Aspect et emballage</FormLabel><FormControl><Input placeholder="Ex: Emballage intact" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="packagingAspect" render={({ field }) => (<FormItem><FormLabel>Aspect et emballage</FormLabel><FormControl><Input placeholder="Ex: Emballage intact" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                     <FormField control={form.control} name="quantity" render={({ field }) => (<FormItem><FormLabel>Quantité</FormLabel><FormControl><Input placeholder="Ex: 10 kg" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
                     <FormField
                         control={form.control}
@@ -504,4 +505,3 @@ export default function ReceptionMonitoring() {
     </Card>
   );
 }
-
