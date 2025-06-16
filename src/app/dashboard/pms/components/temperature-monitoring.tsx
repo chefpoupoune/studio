@@ -181,8 +181,8 @@ export default function TemperatureMonitoring() {
 
   const temperatureRowsToDisplay = useMemo(() => {
     if (selectedEquipmentConfig?.equipmentType === 'refrigerator') {
-      const fridgeMaxTemp = 12; // Updated
-      const fridgeMinTemp = -5; // Updated
+      const fridgeMaxTemp = 12; 
+      const fridgeMinTemp = -5; 
       return Array.from({ length: fridgeMaxTemp - fridgeMinTemp + 1 }, (_, i) => fridgeMaxTemp - i);
     } else if (selectedEquipmentConfig?.equipmentType === 'freezer') {
       const freezerMaxTemp = -10;
@@ -301,9 +301,9 @@ export default function TemperatureMonitoring() {
     try {
       const pdfSettings = getPdfLayoutSettings('pms_temperature_monitoring_monthly');
       const doc = new jsPDF({
-        orientation: pdfSettings.orientation || 'landscape',
+        orientation: 'landscape', // Force landscape for this specific PDF
         unit: 'pt',
-        format: pdfSettings.pageSize || 'a4', // Default to A4 landscape if not specified
+        format: pdfSettings.pageSize || 'a4',
       }) as jsPDFWithAutoTable;
       doc.setFont(pdfSettings.fontFamily);
       const monthLabel = monthsArray.find(m => m.value === selectedMonth)?.label || '';
@@ -361,10 +361,10 @@ export default function TemperatureMonitoring() {
 
       const headStyles: any = {
         fontStyle: 'bold',
-        fontSize: pdfSettings.tableHeaderFontSize || 7, // Smaller default for dense table
+        fontSize: pdfSettings.tableHeaderFontSize || 6.5, // Adjusted for smaller font
         halign: 'center',
         valign: 'middle',
-        cellPadding: 1,
+        cellPadding: 0.5, // Reduced padding
       };
       if (pdfSettings.primaryColor) {
         const rgb = hexToRgb(pdfSettings.primaryColor);
@@ -378,7 +378,7 @@ export default function TemperatureMonitoring() {
       const tableHead = [
         { content: 'T°C / Zone', styles: headStyles },
         ...monthDays.map(day => ({
-          content: `${day.dayOfMonth}\n${day.dayName.substring(0,3)}`,
+          content: `${day.dayOfMonth}\n${day.dayName.substring(0,1)}`, // Use only first letter of day
           styles: { ...headStyles, fillColor: day.isWeekend ? [230,230,230] : headStyles.fillColor, textColor: day.isWeekend ? [100,100,100] : headStyles.textColor }
         }))
       ];
@@ -386,12 +386,12 @@ export default function TemperatureMonitoring() {
       const tableBody = temperatureRowsToDisplay.map(temp => {
         const zoneInfo = getEquipmentZoneInfo(temp, selectedEquipmentConfig);
         const firstCell = {
-          content: `${temp}°C ${zoneInfo.label ? `(${zoneInfo.label})` : ''}`,
+          content: `${temp}°C${zoneInfo.label ? `\n(${zoneInfo.label})` : ''}`,
           styles: {
             fontStyle: 'bold',
-            fontSize: (pdfSettings.tableBodyFontSize || 7) - 1, // Slightly smaller
+            fontSize: (pdfSettings.tableBodyFontSize || 6.5) -1, // Adjusted
             fillColor: zoneInfo.pdfColor || [255,255,255],
-            textColor: (zoneInfo.pdfColor && (zoneInfo.pdfColor[0]*299 + zoneInfo.pdfColor[1]*587 + zoneInfo.pdfColor[2]*114)/1000 > 125) ? [0,0,0] : [0,0,0], // Black text on light bg
+            textColor: (zoneInfo.pdfColor && (zoneInfo.pdfColor[0]*299 + zoneInfo.pdfColor[1]*587 + zoneInfo.pdfColor[2]*114)/1000 > 125) ? [0,0,0] : [0,0,0],
             valign: 'middle',
             halign: 'center'
           }
@@ -401,24 +401,24 @@ export default function TemperatureMonitoring() {
           let cellContent = '';
           let cellFillColor = day.isWeekend ? [240,240,240] : [255,255,255];
           if (record && record.markedTemp === temp) {
-            cellContent = 'X'; // Using 'X' for marked
+            cellContent = 'X';
             const markedTempZone = getEquipmentZoneInfo(record.markedTemp, selectedEquipmentConfig);
             cellFillColor = markedTempZone.pdfColor || cellFillColor;
           }
-          return { content: cellContent, styles: { fillColor: cellFillColor, halign: 'center' } };
+          return { content: cellContent, styles: { fillColor: cellFillColor, halign: 'center', minCellHeight: 10 } }; // Ensure min height for 'X'
         });
         return [firstCell, ...tempCells];
       });
 
-      const footerRowStyles = { fontSize: (pdfSettings.tableBodyFontSize || 7) -1, fontStyle: 'italic', halign: 'center', cellPadding: 1 };
+      const footerRowStyles = { fontSize: (pdfSettings.tableBodyFontSize || 6.5) -1, fontStyle: 'italic', halign: 'center', cellPadding: 0.5, minCellHeight: 10 };
       const timeRow = [{ content: 'Heure', styles: {...footerRowStyles, fontStyle: 'bold'} }, ...monthDays.map(day => ({ content: records[day.date]?.time || '-', styles: footerRowStyles }))];
       const operatorRow = [{ content: 'Opérateur', styles: {...footerRowStyles, fontStyle: 'bold'} }, ...monthDays.map(day => ({ content: records[day.date]?.operator || '-', styles: footerRowStyles }))];
       
       tableBody.push(timeRow, operatorRow);
       
-      const firstColWidth = 70; // For "T°C / Zone"
+      const firstColWidth = 50; // Reduced "T°C / Zone"
       const availableWidthForDays = (doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - firstColWidth);
-      const dayColumnWidth = Math.max(15, availableWidthForDays / monthDays.length); // Min width for readability
+      const dayColumnWidth = Math.max(12, availableWidthForDays / monthDays.length); // Adjusted min width
 
       const columnStyles: {[key: string]: any} = { 0: { cellWidth: firstColWidth, fontStyle: 'bold' } };
       monthDays.forEach((_, index) => {
@@ -430,8 +430,9 @@ export default function TemperatureMonitoring() {
         body: tableBody,
         startY: currentY,
         theme: 'grid',
-        styles: { fontSize: pdfSettings.tableBodyFontSize || 7, cellPadding: 0.5, valign: 'middle', font: pdfSettings.fontFamily }, // Very small padding
+        styles: { fontSize: pdfSettings.tableBodyFontSize || 6.5, cellPadding: 0.5, valign: 'middle', font: pdfSettings.fontFamily }, 
         columnStyles: columnStyles,
+        tableWidth: 'auto', // Let autoTable manage width based on content and column styles
         margin: { top: pdfSettings.marginTop, right: pdfSettings.marginRight, bottom: pdfSettings.marginBottom, left: pdfSettings.marginLeft },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
@@ -531,7 +532,7 @@ export default function TemperatureMonitoring() {
                   <TableHead className="w-[180px] min-w-[180px] sticky left-0 z-20 bg-card text-xs p-1 text-center border-r">T°C / Zone</TableHead>
                   {monthDays.map(day => (
                     <TableHead key={day.date} className={cn("w-[40px] min-w-[40px] text-center text-xs p-1 border-r", day.isWeekend && "bg-muted/50")}>
-                      {day.dayOfMonth}<br/>{day.dayName.substring(0,3)}
+                      {day.dayOfMonth}<br/>{day.dayName.substring(0,1)}
                     </TableHead>
                   ))}
                 </TableRow>
@@ -623,4 +624,3 @@ export default function TemperatureMonitoring() {
   );
 }
 
-    
