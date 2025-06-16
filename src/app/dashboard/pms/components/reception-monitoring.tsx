@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -47,7 +46,7 @@ import {
   query, 
   orderBy, 
   Timestamp,
-  getDoc
+  getDoc // Added getDoc import
 } from 'firebase/firestore';
 import { PMS_SUPPLIER_MANAGEMENT_KEY } from '@/app/dashboard/settings/types'; 
 
@@ -327,7 +326,7 @@ export default function ReceptionMonitoring() {
           10: { cellWidth: 80, halign: 'left' },     // Refusé
           11: { cellWidth: 30, halign: 'center' },    // Visa
         },
-        tableWidth: 'auto', 
+        tableWidth: 'auto',
         margin: {
           top: pdfSettings.marginTop || 40,
           right: pdfSettings.marginRight || 40,
