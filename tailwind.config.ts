@@ -14,12 +14,8 @@ export default {
       fontFamily: {
         sans: ['var(--font-geist-sans)', ...defaultTheme.fontFamily.sans],
         serif: ['var(--font-playfair-display)', ...defaultTheme.fontFamily.serif],
-        // Removed mono: ['var(--font-geist-mono)', ...defaultTheme.fontFamily.mono],
-        // If you want a specific mono font, ensure Geist_Mono is loaded and set as --font-mono here.
-        // Otherwise, Tailwind's default mono stack will be used.
-        // Example if you want to keep Geist Mono as the default mono:
-        mono: ['var(--font-geist-mono, ui-monospace, SFMono-Regular)', ...defaultTheme.fontFamily.mono],
-
+        // Mise à jour de la police mono pour ne pas dépendre de --font-geist-mono si non chargé
+        mono: ['ui-monospace', 'SFMono-Regular', ...defaultTheme.fontFamily.mono],
       },
   		colors: {
   			background: 'hsl(var(--background))',
@@ -109,4 +105,3 @@ export default {
   },
   plugins: [require("tailwindcss-animate")],
 } satisfies Config;
-
