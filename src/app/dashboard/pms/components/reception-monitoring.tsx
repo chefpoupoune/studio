@@ -96,11 +96,11 @@ export default function ReceptionMonitoring() {
       dateTime: new Date(),
       supplierName: '',
       productNameControlled: '',
-      vehicleObservations: 'RAS', 
+      vehicleObservations: 'RAS',
       productTemperature: '',
       dlcDluo: '',
       lotNumber: '',
-      packagingAspect: 'RAS', 
+      packagingAspect: 'RAS',
       quantity: '',
       productLabeling: '', 
       refused: false,
@@ -170,7 +170,7 @@ export default function ReceptionMonitoring() {
       form.reset({
         ...entry,
         dateTime: parseISO(entry.dateTime), 
-        productLabeling: entry.productLabeling === 'conforme' || entry.productLabeling === 'non_conforme' ? entry.productLabeling : '',
+        productLabeling: entry.productLabeling === 'conforme' || entry.productLabeling === 'non_conforme' ? entry.productLabeling : PRODUCT_LABELING_NONE_VALUE,
         vehicleObservations: entry.vehicleObservations || 'RAS',
         packagingAspect: entry.packagingAspect || 'RAS', 
         visa: entry.visa || 'JD',
@@ -180,7 +180,7 @@ export default function ReceptionMonitoring() {
         dateTime: new Date(), 
         supplierName: '', productNameControlled: '', vehicleObservations: 'RAS', 
         productTemperature: '', dlcDluo: '', lotNumber: '', packagingAspect: 'RAS', 
-        quantity: '', productLabeling: '', refused: false, refusalReason: '', visa: 'JD',
+        quantity: '', productLabeling: PRODUCT_LABELING_NONE_VALUE, refused: false, refusalReason: '', visa: 'JD',
       });
     }
     setIsDialogOpen(true);
@@ -314,20 +314,20 @@ export default function ReceptionMonitoring() {
         styles: { fontSize: pdfSettings.tableBodyFontSize || 6.5, cellPadding: 1, valign: 'middle', font: pdfSettings.fontFamily || 'helvetica', overflow: 'linebreak' },
         headStyles: headStyles, 
         columnStyles: { 
-          0: { cellWidth: 35, halign: 'center' }, 
-          1: { cellWidth: 'auto' }, 
-          2: { cellWidth: 'auto' }, 
-          3: { cellWidth: 'auto' }, 
-          4: { cellWidth: 20, halign: 'center' }, 
-          5: { cellWidth: 35, halign: 'center' }, 
-          6: { cellWidth: 35, halign: 'center' }, 
-          7: { cellWidth: 'auto' }, 
-          8: { cellWidth: 25, halign: 'center' }, 
-          9: { cellWidth: 35, halign: 'center' }, 
-          10: { cellWidth: 'auto' }, 
-          11: { cellWidth: 20, halign: 'center' }, 
+          0: { cellWidth: 55, halign: 'center' },     // Date et heure
+          1: { cellWidth: 100, halign: 'left' },     // Nom du fournisseur
+          2: { cellWidth: 100, halign: 'left' },     // Dénomination du produit contrôlé
+          3: { cellWidth: 80, halign: 'left' },      // Véhicule: propreté température
+          4: { cellWidth: 30, halign: 'center' },     // Produits T° C
+          5: { cellWidth: 50, halign: 'center' },     // Produits DLC DLUO
+          6: { cellWidth: 50, halign: 'center' },     // Produits N° du lot
+          7: { cellWidth: 80, halign: 'left' },      // Produits Aspect et emballage
+          8: { cellWidth: 40, halign: 'center' },     // Produits Quantité
+          9: { cellWidth: 50, halign: 'center' },     // Produits Étiquetage Du produit
+          10: { cellWidth: 80, halign: 'left' },     // Refusé
+          11: { cellWidth: 30, halign: 'center' },    // Visa
         },
-        tableWidth: 'auto', // Changed from 'wrap' to 'auto'
+        tableWidth: 'auto', 
         margin: {
           top: pdfSettings.marginTop || 40,
           right: pdfSettings.marginRight || 40,
@@ -344,9 +344,9 @@ export default function ReceptionMonitoring() {
       });
       doc.save(`Suivi_Reception_Marchandises_${format(new Date(), "yyyyMMdd")}.pdf`);
       toast({ title: "PDF Généré", description: "Le PDF du suivi des réceptions a été téléchargé." });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error generating PDF:", error);
-      toast({ title: "Erreur PDF", description: "La génération du PDF a échoué.", variant: "destructive" });
+      toast({ title: "Erreur PDF", description: `La génération du PDF a échoué: ${error.message || String(error)}`, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
