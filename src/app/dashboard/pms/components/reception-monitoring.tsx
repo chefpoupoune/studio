@@ -244,7 +244,7 @@ export default function ReceptionMonitoring() {
     try {
       const pdfSettings = getPdfLayoutSettings('pms_reception_monitoring'); 
       const doc = new jsPDF({ 
-        orientation: 'landscape', // Force landscape for this specific PDF
+        orientation: 'landscape', 
         unit: 'pt', 
         format: pdfSettings.pageSize || 'a4',
       }) as jsPDFWithAutoTable;
@@ -311,23 +311,23 @@ export default function ReceptionMonitoring() {
         body: body,
         startY: currentY,
         theme: 'grid',
-        styles: { fontSize: pdfSettings.tableBodyFontSize || 6.5, cellPadding: 1, valign: 'middle', font: pdfSettings.fontFamily || 'helvetica', overflow: 'linebreak' }, // Added overflow
+        styles: { fontSize: pdfSettings.tableBodyFontSize || 6.5, cellPadding: 1, valign: 'middle', font: pdfSettings.fontFamily || 'helvetica', overflow: 'linebreak' },
         headStyles: headStyles, 
         columnStyles: { 
-          0: { cellWidth: 35, halign: 'center' }, // Date et heure
-          1: { cellWidth: 50 }, // Fournisseur
-          2: { cellWidth: 55 }, // Dénomination
-          3: { cellWidth: 50 }, // Véhicule
-          4: { cellWidth: 20, halign: 'center' }, // T°C
-          5: { cellWidth: 35, halign: 'center' }, // DLC DLUO
-          6: { cellWidth: 35, halign: 'center' }, // N° Lot
-          7: { cellWidth: 45 }, // Aspect
-          8: { cellWidth: 25, halign: 'center' }, // Quantité
-          9: { cellWidth: 35, halign: 'center' }, // Étiquetage
-          10: { cellWidth: 40 }, // Refusé
-          11: { cellWidth: 20, halign: 'center' }, // Visa
+          0: { cellWidth: 35, halign: 'center' }, 
+          1: { cellWidth: 'auto' }, 
+          2: { cellWidth: 'auto' }, 
+          3: { cellWidth: 'auto' }, 
+          4: { cellWidth: 20, halign: 'center' }, 
+          5: { cellWidth: 35, halign: 'center' }, 
+          6: { cellWidth: 35, halign: 'center' }, 
+          7: { cellWidth: 'auto' }, 
+          8: { cellWidth: 25, halign: 'center' }, 
+          9: { cellWidth: 35, halign: 'center' }, 
+          10: { cellWidth: 'auto' }, 
+          11: { cellWidth: 20, halign: 'center' }, 
         },
-        tableWidth: 'wrap', // Ensure table wraps content and respects column widths
+        tableWidth: 'auto', // Changed from 'wrap' to 'auto'
         margin: {
           top: pdfSettings.marginTop || 40,
           right: pdfSettings.marginRight || 40,
