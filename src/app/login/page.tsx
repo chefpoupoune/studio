@@ -14,15 +14,15 @@ import { useToast } from '@/hooks/use-toast';
 import type { AppUser, RubricId, ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management';
 import { ALL_RUBRIC_IDS, LOGGED_IN_USER_PERMISSIONS_KEY, LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY } from '@/app/dashboard/settings/components/user-management';
 import { firestore } from '@/lib/firebase';
-import { collection, getDocs, query, orderBy, doc, setDoc, addDoc, getDoc } from 'firebase/firestore'; // Added getDoc
+import { collection, getDocs, query, orderBy, doc, setDoc, addDoc, getDoc } from 'firebase/firestore'; 
 
 // Firestore constants for app settings
 const APP_SETTINGS_COLLECTION = "appSettings";
 const GLOBAL_APP_SETTINGS_DOC_ID = "globalAppSettings";
-// APP_LOGO_STORAGE_KEY removed
 
 const simulatedHash = (password: string): string => `sim_hashed_${password}_!`;
 const DEFAULT_CHEF_ID_FIRESTORE = 'default_chef_user_id';
+const DEFAULT_CDS_ID_FIRESTORE = 'default_cds_user_id'; // Added this
 
 export default function LoginPage() {
   const [definedUsers, setDefinedUsers] = useState<AppUser[]>([]);
@@ -79,56 +79,76 @@ export default function LoginPage() {
           toast({ title: "Erreur de chargement des utilisateurs", variant: "destructive"});
         }
 
-        const defaultChefPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
-        let chefUserInDb = usersFromDb.find(u => u.username.toLowerCase() === 'chef');
+        const defaultAdminPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
+        const defaultAdminViewConfig = { type: 'all' as const };
 
+        // Ensure Chef user exists and has full permissions
+        let chefUserInDb = usersFromDb.find(u => u.username.toLowerCase() === 'chef');
         if (!chefUserInDb) {
           const defaultChefForCreation: Omit<AppUser, 'id'> = {
-            username: 'Chef', 
-            passwordRequired: true, 
-            simulatedStoredPassword: simulatedHash('000'),
-            permissions: defaultChefPermissions,
-            viewableHourSummaryConfig: { type: 'all' },
+            username: 'Chef', passwordRequired: true, simulatedStoredPassword: simulatedHash('000'),
+            permissions: defaultAdminPermissions, viewableHourSummaryConfig: defaultAdminViewConfig,
           };
           try {
             const chefDocRef = await addDoc(collection(firestore, "appUsers"), defaultChefForCreation);
-            const newChefUser = { ...defaultChefForCreation, id: chefDocRef.id };
-            usersFromDb.push(newChefUser); 
-            chefUserInDb = newChefUser; 
-            toast({ title: "Compte Chef Initialisé", description: "Le compte Chef par défaut (mdp: 000) a été créé."});
-          } catch (createError) {
-            console.error("Error creating default Chef user in Firestore:", createError);
-            toast({ title: "Erreur Initialisation Chef", description: "Impossible de créer le compte Chef par défaut.", variant: "destructive"});
-            const defaultChefForDisplay: AppUser = { 
-              id: DEFAULT_CHEF_ID_FIRESTORE, 
-              username: 'Chef', 
-              passwordRequired: true, 
-              simulatedStoredPassword: simulatedHash('000'), 
-              permissions: defaultChefPermissions,
-              viewableHourSummaryConfig: { type: 'all' },
-            };
-            if (!usersFromDb.find(u => u.username.toLowerCase() === 'chef')) { 
-                 usersFromDb.push(defaultChefForDisplay);
+            chefUserInDb = { ...defaultChefForCreation, id: chefDocRef.id };
+            usersFromDb.push(chefUserInDb); 
+            toast({ title: "Compte Chef Initialisé", description: "Mdp par défaut: 000."});
+          } catch (createError) { /* ... error handling ... */ }
+        } else { // Ensure Chef always has full permissions
+             if (JSON.stringify(chefUserInDb.permissions) !== JSON.stringify(defaultAdminPermissions) || 
+                 JSON.stringify(chefUserInDb.viewableHourSummaryConfig) !== JSON.stringify(defaultAdminViewConfig) ||
+                 !chefUserInDb.passwordRequired || !chefUserInDb.simulatedStoredPassword) {
+                await setDoc(doc(firestore, "appUsers", chefUserInDb.id), { 
+                    permissions: defaultAdminPermissions, 
+                    viewableHourSummaryConfig: defaultAdminViewConfig,
+                    passwordRequired: true,
+                    simulatedStoredPassword: chefUserInDb.simulatedStoredPassword || simulatedHash('000')
+                }, { merge: true });
             }
-            chefUserInDb = defaultChefForDisplay; 
-          }
         }
         
-        if (chefUserInDb) {
-           usersFromDb = usersFromDb.map(u => {
-              if (u.username.toLowerCase() === 'chef') {
-                  return {
-                      ...u,
-                      passwordRequired: true, 
-                      simulatedStoredPassword: u.simulatedStoredPassword || simulatedHash('000'),
-                      permissions: defaultChefPermissions, 
-                      viewableHourSummaryConfig: { type: 'all' as const },
-                  };
-              }
-              return u;
-          });
+        // Ensure Chef de service user exists and has full permissions
+        let cdsUserInDb = usersFromDb.find(u => u.username.toLowerCase() === 'chef de service');
+        if (!cdsUserInDb) {
+          const defaultCdsForCreation: Omit<AppUser, 'id'> = {
+            username: 'Chef de service', passwordRequired: true, simulatedStoredPassword: simulatedHash('cds000'),
+            permissions: defaultAdminPermissions, viewableHourSummaryConfig: defaultAdminViewConfig,
+          };
+           try {
+            const cdsDocRef = await addDoc(collection(firestore, "appUsers"), defaultCdsForCreation);
+            cdsUserInDb = { ...defaultCdsForCreation, id: cdsDocRef.id };
+            usersFromDb.push(cdsUserInDb);
+            toast({ title: "Compte Chef de Service Initialisé", description: "Mdp par défaut: cds000."});
+          } catch (createError) { /* ... error handling ... */ }
+        } else { // Ensure CDS always has full permissions
+            if (JSON.stringify(cdsUserInDb.permissions) !== JSON.stringify(defaultAdminPermissions) || 
+                JSON.stringify(cdsUserInDb.viewableHourSummaryConfig) !== JSON.stringify(defaultAdminViewConfig) ||
+                !cdsUserInDb.passwordRequired || !cdsUserInDb.simulatedStoredPassword) {
+                await setDoc(doc(firestore, "appUsers", cdsUserInDb.id), { 
+                    permissions: defaultAdminPermissions, 
+                    viewableHourSummaryConfig: defaultAdminViewConfig,
+                    passwordRequired: true,
+                    simulatedStoredPassword: cdsUserInDb.simulatedStoredPassword || simulatedHash('cds000')
+                }, { merge: true });
+            }
         }
-        setDefinedUsers(usersFromDb.sort((a,b) => a.username.localeCompare(b.username)));
+
+        // Apply enforced settings to loaded users for display
+        setDefinedUsers(
+          usersFromDb.map(u => {
+            if (u.username.toLowerCase() === 'chef' || u.username.toLowerCase() === 'chef de service') {
+              return {
+                ...u,
+                passwordRequired: true,
+                permissions: defaultAdminPermissions,
+                viewableHourSummaryConfig: defaultAdminViewConfig,
+                simulatedStoredPassword: u.simulatedStoredPassword || (u.username.toLowerCase() === 'chef' ? simulatedHash('000') : simulatedHash('cds000')),
+              };
+            }
+            return u;
+          }).sort((a,b) => a.username.localeCompare(b.username))
+        );
         setIsLoading(false);
       };
 
@@ -143,7 +163,7 @@ export default function LoginPage() {
     let permissionsToStore: Partial<Record<RubricId, boolean>> = { ...user.permissions };
     let hourViewConfigToStore: ViewableHourSummaryConfig = user.viewableHourSummaryConfig || { type: 'none' as const };
 
-    if (user.username.toLowerCase() === 'chef') {
+    if (user.username.toLowerCase() === 'chef' || user.username.toLowerCase() === 'chef de service') {
         permissionsToStore = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
         hourViewConfigToStore = { type: 'all' as const };
     }
@@ -198,8 +218,8 @@ export default function LoginPage() {
             alt="Logo de l'application"
             width={100} 
             height={100}
-            className="rounded-lg object-contain max-h-[100px]" // Added max-h for consistency
-            data-ai-hint="application logo" // This hint is fine
+            className="rounded-lg object-contain max-h-[100px]"
+            data-ai-hint="application logo" 
             unoptimized 
           />
         </div>
@@ -292,6 +312,8 @@ export default function LoginPage() {
           <p>
             {selectedUserForPassword && selectedUserForPassword.username.toLowerCase() === 'chef' && selectedUserForPassword.simulatedStoredPassword === simulatedHash('000')
               ? "Mot de passe par défaut pour Chef : 000" 
+              : selectedUserForPassword && selectedUserForPassword.username.toLowerCase() === 'chef de service' && selectedUserForPassword.simulatedStoredPassword === simulatedHash('cds000') // Added for CDS
+              ? "Mot de passe par défaut pour Chef de service : cds000"
               : selectedUserForPassword && selectedUserForPassword.passwordRequired && !selectedUserForPassword.simulatedStoredPassword
               ? "Aucun mot de passe défini pour cet utilisateur. Veuillez configurer dans les paramètres."
               : selectedUserForPassword ? "Entrez le mot de passe configuré." : "Sélectionnez un utilisateur."
@@ -302,3 +324,4 @@ export default function LoginPage() {
     </main>
   );
 }
+

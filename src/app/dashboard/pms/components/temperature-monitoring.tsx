@@ -68,53 +68,52 @@ export default function TemperatureMonitoring() {
     setIsLoadingConfig(true);
     const pmsSettingsDocRef = doc(firestore, "pmsConfigurations", "mainConfig");
     let fetchedEquipment: PmsEquipmentDefinition[] = [];
-    let newSelectedEquipmentId = selectedEquipmentId; 
     try {
       const pmsSettingsSnap = await getDoc(pmsSettingsDocRef);
       if (pmsSettingsSnap.exists()) {
         const pmsSettings = pmsSettingsSnap.data() as PmsConfigurations;
         fetchedEquipment = (pmsSettings[PMS_TEMPERATURE_MONITORING_KEY] || []) as PmsEquipmentDefinition[];
-        setEquipmentList(fetchedEquipment);
-        
-        const currentSelectionStillValid = newSelectedEquipmentId && fetchedEquipment.some(eq => eq.id === newSelectedEquipmentId);
-        
-        if (fetchedEquipment.length === 0) {
-            newSelectedEquipmentId = undefined; 
-        } else if (!currentSelectionStillValid) {
-          newSelectedEquipmentId = fetchedEquipment[0].id;
-        }
       } else {
-        setEquipmentList([]);
-        newSelectedEquipmentId = undefined; 
         toast({ title: "Configuration Manquante", description: "Aucune configuration d'équipement de température trouvée.", variant: "destructive"});
       }
     } catch (error) {
       console.error("Error loading PMS equipment configurations:", error);
       toast({ title: "Erreur Config Équipement", variant: "destructive" });
-      setEquipmentList([]);
-      newSelectedEquipmentId = undefined;
     }
-    
-    if (newSelectedEquipmentId !== selectedEquipmentId) {
-        setSelectedEquipmentId(newSelectedEquipmentId);
-    }
+    setEquipmentList(fetchedEquipment);
     setIsLoadingConfig(false);
-  }, [toast, selectedEquipmentId]); 
+    // Return fetchedEquipment so the calling effect can use it immediately
+    return fetchedEquipment; 
+  }, [toast]);
 
+  // Effect to handle initial load and config updates
   useEffect(() => {
-    loadPmsConfigurations(); 
+    const initialize = async () => {
+      const currentEquipment = await loadPmsConfigurations();
+      if (currentEquipment.length > 0 && (!selectedEquipmentId || !currentEquipment.some(eq => eq.id === selectedEquipmentId))) {
+        setSelectedEquipmentId(currentEquipment[0].id);
+      } else if (currentEquipment.length === 0) {
+        setSelectedEquipmentId(undefined);
+      }
+    };
+    initialize();
 
-    const handleConfigUpdate = () => {
+    const handleConfigUpdate = async () => {
       console.log("[TempMonitoring] PMS Config updated event received. Reloading equipment list.");
-      loadPmsConfigurations();
+      const updatedEquipment = await loadPmsConfigurations(); // Re-fetch and get the list
+      // Logic to re-select or clear selection based on updatedEquipment
+       if (updatedEquipment.length > 0 && (!selectedEquipmentId || !updatedEquipment.some(eq => eq.id === selectedEquipmentId))) {
+        setSelectedEquipmentId(updatedEquipment[0].id);
+      } else if (updatedEquipment.length === 0) {
+        setSelectedEquipmentId(undefined);
+      }
     };
     window.addEventListener('pmsConfigUpdated', handleConfigUpdate);
     return () => window.removeEventListener('pmsConfigUpdated', handleConfigUpdate);
-  }, [loadPmsConfigurations]);
-
+  }, [loadPmsConfigurations, selectedEquipmentId]); // Add selectedEquipmentId to re-run if it changes externally
 
   const loadTemperatureRecords = useCallback(async () => {
-    if (!selectedEquipmentId) {
+    if (!selectedEquipmentId) { // No need to check isLoadingConfig here, as this is called when selectedEquipmentId is set
       setRecords({});
       setIsLoadingRecords(false);
       return;
@@ -139,21 +138,21 @@ export default function TemperatureMonitoring() {
     setIsLoadingRecords(false);
   }, [selectedEquipmentId, getFirestoreDocId, toast]);
   
+  // Effect to load records when year, month, or selectedEquipmentId changes
   useEffect(() => {
     const yearNum = parseInt(selectedYear, 10);
     const monthNum = parseInt(selectedMonth, 10);
     setMonthDays(getMonthDays(yearNum, monthNum));
     
-    if (!isLoadingConfig && selectedEquipmentId) {
+    if (selectedEquipmentId && !isLoadingConfig) { // Ensure config is loaded before trying to load records
         loadTemperatureRecords();
-    } else if (!isLoadingConfig && !selectedEquipmentId && equipmentList.length > 0) {
-        setSelectedEquipmentId(equipmentList[0].id); 
-    } else if (!isLoadingConfig && equipmentList.length === 0) {
-        setRecords({});
+    } else if (!selectedEquipmentId) {
+        setRecords({}); // Clear records if no equipment is selected
         setIsLoadingRecords(false);
     }
-  }, [selectedYear, selectedMonth, loadTemperatureRecords, isLoadingConfig, selectedEquipmentId, equipmentList]); 
+  }, [selectedYear, selectedMonth, selectedEquipmentId, loadTemperatureRecords, isLoadingConfig]); 
 
+  // Auto-save effect
   useEffect(() => {
     if (isLoadingConfig || isLoadingRecords || isSaving || !selectedEquipmentId) return;
 
@@ -189,7 +188,7 @@ export default function TemperatureMonitoring() {
       const freezerMinTemp = -25;
       return Array.from({ length: freezerMaxTemp - freezerMinTemp + 1 }, (_, i) => freezerMaxTemp - i);
     }
-    return Array.from({ length: 16 - (-25) + 1 }, (_, i) => 16 - i);
+    return Array.from({ length: 16 - (-25) + 1 }, (_, i) => 16 - i); // Default wider range if type undefined
   }, [selectedEquipmentConfig]);
 
   const getEquipmentZoneInfo = useCallback((temp: number, currentConfig?: PmsEquipmentDefinition): { label: string; colorClass: string, pdfColor?: [number,number,number] } => {
@@ -301,7 +300,7 @@ export default function TemperatureMonitoring() {
     try {
       const pdfSettings = getPdfLayoutSettings('pms_temperature_monitoring_monthly');
       const doc = new jsPDF({
-        orientation: 'landscape', // Force landscape for this specific PDF
+        orientation: pdfSettings.orientation || 'landscape', // Default to landscape if not specified
         unit: 'pt',
         format: pdfSettings.pageSize || 'a4',
       }) as jsPDFWithAutoTable;
@@ -361,10 +360,10 @@ export default function TemperatureMonitoring() {
 
       const headStyles: any = {
         fontStyle: 'bold',
-        fontSize: pdfSettings.tableHeaderFontSize || 6.5, // Adjusted for smaller font
+        fontSize: pdfSettings.tableHeaderFontSize || 6.5, 
         halign: 'center',
         valign: 'middle',
-        cellPadding: 0.5, // Reduced padding
+        cellPadding: 0.5, 
       };
       if (pdfSettings.primaryColor) {
         const rgb = hexToRgb(pdfSettings.primaryColor);
@@ -378,7 +377,7 @@ export default function TemperatureMonitoring() {
       const tableHead = [
         { content: 'T°C / Zone', styles: headStyles },
         ...monthDays.map(day => ({
-          content: `${day.dayOfMonth}\n${day.dayName.substring(0,1)}`, // Use only first letter of day
+          content: `${day.dayOfMonth}\n${day.dayName.substring(0,1)}`, 
           styles: { ...headStyles, fillColor: day.isWeekend ? [230,230,230] : headStyles.fillColor, textColor: day.isWeekend ? [100,100,100] : headStyles.textColor }
         }))
       ];
@@ -389,7 +388,7 @@ export default function TemperatureMonitoring() {
           content: `${temp}°C${zoneInfo.label ? `\n(${zoneInfo.label})` : ''}`,
           styles: {
             fontStyle: 'bold',
-            fontSize: (pdfSettings.tableBodyFontSize || 6.5) -1, // Adjusted
+            fontSize: (pdfSettings.tableBodyFontSize || 6.5) -1, 
             fillColor: zoneInfo.pdfColor || [255,255,255],
             textColor: (zoneInfo.pdfColor && (zoneInfo.pdfColor[0]*299 + zoneInfo.pdfColor[1]*587 + zoneInfo.pdfColor[2]*114)/1000 > 125) ? [0,0,0] : [0,0,0],
             valign: 'middle',
@@ -405,7 +404,7 @@ export default function TemperatureMonitoring() {
             const markedTempZone = getEquipmentZoneInfo(record.markedTemp, selectedEquipmentConfig);
             cellFillColor = markedTempZone.pdfColor || cellFillColor;
           }
-          return { content: cellContent, styles: { fillColor: cellFillColor, halign: 'center', minCellHeight: 10 } }; // Ensure min height for 'X'
+          return { content: cellContent, styles: { fillColor: cellFillColor, halign: 'center', minCellHeight: 10 } }; 
         });
         return [firstCell, ...tempCells];
       });
@@ -416,9 +415,9 @@ export default function TemperatureMonitoring() {
       
       tableBody.push(timeRow, operatorRow);
       
-      const firstColWidth = 50; // Reduced "T°C / Zone"
+      const firstColWidth = 60; // Adjusted T°C / Zone width
       const availableWidthForDays = (doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - firstColWidth);
-      const dayColumnWidth = Math.max(12, availableWidthForDays / monthDays.length); // Adjusted min width
+      const dayColumnWidth = Math.max(15, availableWidthForDays / monthDays.length); // Adjusted min width
 
       const columnStyles: {[key: string]: any} = { 0: { cellWidth: firstColWidth, fontStyle: 'bold' } };
       monthDays.forEach((_, index) => {
@@ -432,7 +431,7 @@ export default function TemperatureMonitoring() {
         theme: 'grid',
         styles: { fontSize: pdfSettings.tableBodyFontSize || 6.5, cellPadding: 0.5, valign: 'middle', font: pdfSettings.fontFamily }, 
         columnStyles: columnStyles,
-        tableWidth: 'auto', // Let autoTable manage width based on content and column styles
+        tableWidth: 'auto', 
         margin: { top: pdfSettings.marginTop, right: pdfSettings.marginRight, bottom: pdfSettings.marginBottom, left: pdfSettings.marginLeft },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
@@ -568,7 +567,7 @@ export default function TemperatureMonitoring() {
                               cellEffectiveBgClass,
                               isSelected && "ring-2 ring-primary ring-inset" 
                             )}
-                            onClick={() => !day.isWeekend && !isSaving && handleCellClick(day.date, temp)}
+                            onClick={() => !day.isWeekend && !isSaving && !isOverallLoading && handleCellClick(day.date, temp)}
                           >
                             {isSelected && <Check className="h-4 w-4 mx-auto text-foreground" />}
                           </TableCell>
@@ -586,7 +585,7 @@ export default function TemperatureMonitoring() {
                         value={records[day.date]?.time || ""}
                         onChange={e => handleInputChange(day.date, 'time', e.target.value)}
                         className="h-7 text-xs w-full text-center bg-background/50 focus:bg-background"
-                        disabled={day.isWeekend || isSaving}
+                        disabled={day.isWeekend || isSaving || isOverallLoading}
                       />
                     </TableCell>
                   ))}
@@ -601,7 +600,7 @@ export default function TemperatureMonitoring() {
                         value={records[day.date]?.operator || ""}
                         onChange={e => handleInputChange(day.date, 'operator', e.target.value)}
                         className="h-7 text-xs w-full text-center bg-background/50 focus:bg-background"
-                        disabled={day.isWeekend || isSaving}
+                        disabled={day.isWeekend || isSaving || isOverallLoading}
                         maxLength={5}
                       />
                     </TableCell>
@@ -623,4 +622,5 @@ export default function TemperatureMonitoring() {
     </Card>
   );
 }
+
 

@@ -83,7 +83,7 @@ function AppSidebar({ appLogoUrl }: { appLogoUrl: string | null }) {
       const username = localStorage.getItem('loggedInUsername');
       setLoggedInUsername(username);
 
-      if (username?.toLowerCase() === 'chef') {
+      if (username?.toLowerCase() === 'chef' || username?.toLowerCase() === 'chef de service') { // Updated to include Chef de service
         setVisibleNavItems(allNavItems);
       } else if (storedPermissionsRaw) {
         try {
@@ -156,7 +156,7 @@ function AppSidebar({ appLogoUrl }: { appLogoUrl: string | null }) {
               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}
-           {visibleNavItems.length === 0 && typeof window !== 'undefined' && loggedInUsername?.toLowerCase() !== 'chef' && (
+           {visibleNavItems.length === 0 && typeof window !== 'undefined' && loggedInUsername?.toLowerCase() !== 'chef' && loggedInUsername?.toLowerCase() !== 'chef de service' && (
             <SidebarMenuItem>
                 <div className="p-2 text-xs text-sidebar-foreground/60 text-center">
                     Aucune rubrique accessible. Contactez un administrateur.
@@ -287,8 +287,8 @@ export default function DashboardLayout({
     if (isClient && authChecked && !settingsLoading) { // Ensure auth and settings are done
       console.log("[DashboardLayout EFFECT Permissions] Auth & settings checked, verifying route access for pathname:", pathname);
       const username = localStorage.getItem('loggedInUsername');
-      if (username?.toLowerCase() === 'chef') {
-        console.log("[DashboardLayout EFFECT Permissions] User is Chef, access granted.");
+      if (username?.toLowerCase() === 'chef' || username?.toLowerCase() === 'chef de service') { // Updated to include Chef de service
+        console.log("[DashboardLayout EFFECT Permissions] User is Admin (Chef or Chef de service), access granted.");
         return; 
       }
 
@@ -363,3 +363,4 @@ export default function DashboardLayout({
     </SidebarProvider>
   );
 }
+

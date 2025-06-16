@@ -54,23 +54,22 @@ const LOCAL_ONLY_APP_SPECIFIC_KEYS = [
   'isLoggedIn',       
   LOGGED_IN_USER_PERMISSIONS_KEY, 
   LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY,
+  // Legacy keys that might still be around and safe to export/import if needed
+  'time_tracking_members_v2',    
+  'time_tracking_entries',
+  'picnic_nb_pn_data_v1', // Note: this is for a single week, might not be ideal for generic export
+  'picnic_client_orders_data_v3', // Same as above
+  'picnic_base_bread_number_v1', // Same as above
 ];
+// Prefixes for keys that are dynamic (e.g., date-based) but still local
 const LOCAL_ONLY_APP_SPECIFIC_PREFIXES: string[] = [
-    'cost_analysis_',
-    'menu_planning_',
-    'time_tracking_members_v2', // Legacy, but some components might still use it directly initially
-    'time_tracking_entries',    // Legacy
-    'picnic_nb_pn_data_v1_',
-    'picnic_client_orders_data_v3_',
-    'picnic_base_bread_number_v1_',
-    // Keys for new PMS modules that were saving to localStorage
-    'pms_fryer_maintenance_log_v1',
-    'pms_fryer_oil_tpm_log_v1',
-    'pms_reception_log_v1',
-    'pms_defrosting_log_v1',
-    'pms_picnic_departure_forms_v1',
-    'pms_cooldown_log_', // Note the trailing underscore for date-based keys
-    'pms_delivery_log_',  // Note the trailing underscore for date-based keys
+    'cost_analysis_', // For monthly cost analysis suppliers & daily coeffs
+    'menu_planning_', // For monthly menu data
+    // Note: PMS module data (pms_cooldown_log_, pms_delivery_log_, etc.)
+    // are now Firestore-based and should NOT be included in local-only export/import.
+    // The PdfLayoutManager uses 'pdf_layout_configurations_v2' which is also local.
+    'pdf_layout_configurations_v2',
+    // Benefit tracking data is now Firestore based: monthlyBenefitData/benefit_tracking_YYYY_MM
 ];
 
 
@@ -117,7 +116,7 @@ export default function ApplicationSettingsManager() {
     
 
     const loadSettingsFromFirestore = async () => {
-      setIsLoadingSettings(true); // Ensure it's true at the start of any attempt
+      setIsLoadingSettings(true); 
       console.log("[ASM LoadEffect FN Start] setIsLoadingSettings(true) called.");
       const docRef = getAppSettingsDocRef();
       try {

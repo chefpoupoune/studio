@@ -15,7 +15,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord, PmsZoneWithTasksDefinition, PmsConfigurations } from '../types';
-import { PMS_KITCHEN_CLEANING_KEY, PMS_CONFIG_STORAGE_KEY } from '@/app/dashboard/settings/types';
+import { PMS_KITCHEN_CLEANING_KEY } from '@/app/dashboard/settings/types';
 import { getMonthDays, type DayData } from '../utils';
 import { cn } from '@/lib/utils';
 import { Checkbox } from '@/components/ui/checkbox'; 
@@ -43,7 +43,8 @@ export default function KitchenCleaningMonitoring() {
   const [selectedZoneId, setSelectedZoneId] = useState<string | undefined>(undefined);
   const [monthData, setMonthData] = useState<DayData[]>([]);
   const [cleaningRecords, setCleaningRecords] = useState<SimplifiedMonthlyKitchenCleaningRecord>({});
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingConfig, setIsLoadingConfig] = useState(true);
+  const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
@@ -57,116 +58,80 @@ export default function KitchenCleaningMonitoring() {
   const getFirestoreRecordsDocId = useCallback(() => `records_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
 
   const loadPmsConfigurations = useCallback(async () => {
-    setIsLoading(true); 
-    console.log("[KitchenClean] Loading PMS configurations...");
+    setIsLoadingConfig(true); 
     const docRef = doc(firestore, "pmsConfigurations", "mainConfig");
     try {
       const docSnap = await getDoc(docRef);
+      let newConfiguredZones: PmsZoneWithTasksDefinition[] = [];
       if (docSnap.exists()) {
         const pmsSettings = docSnap.data() as PmsConfigurations;
-        const kitchenZones = pmsSettings[PMS_KITCHEN_CLEANING_KEY] || [];
-        setConfiguredZones(kitchenZones);
-        console.log("[KitchenClean] PMS configurations loaded:", kitchenZones.length, "zones");
+        newConfiguredZones = pmsSettings[PMS_KITCHEN_CLEANING_KEY] || [];
       } else {
-        setConfiguredZones([]);
-        console.log("[KitchenClean] No PMS configurations found in Firestore.");
         toast({ title: "Configuration Manquante", description: "Aucune configuration PMS trouvée. Veuillez la définir dans les paramètres.", variant: "destructive" });
+      }
+      setConfiguredZones(newConfiguredZones);
+      if (newConfiguredZones.length > 0 && (!selectedZoneId || !newConfiguredZones.some(z => z.id === selectedZoneId))) {
+        setSelectedZoneId(newConfiguredZones[0].id);
+      } else if (newConfiguredZones.length === 0) {
+        setSelectedZoneId(undefined);
       }
     } catch (error) {
       console.error("Error loading PMS configurations for kitchen cleaning:", error);
       toast({ title: "Erreur Chargement Config", description: "Impossible de charger les configurations des zones.", variant: "destructive" });
       setConfiguredZones([]);
+      setSelectedZoneId(undefined);
     }
-  }, [toast]);
+    setIsLoadingConfig(false);
+  }, [toast, selectedZoneId]); // Added selectedZoneId
+
+  useEffect(() => {
+    loadPmsConfigurations();
+    const handleConfigUpdate = () => loadPmsConfigurations();
+    window.addEventListener('pmsConfigUpdated', handleConfigUpdate);
+    return () => window.removeEventListener('pmsConfigUpdated', handleConfigUpdate);
+  }, [loadPmsConfigurations]);
 
   const loadCleaningRecords = useCallback(async () => {
-    if (!selectedZoneId) {
+    if (!selectedZoneId || isLoadingConfig) { // Wait for config and selection
       setCleaningRecords({});
-      setIsLoading(false); 
-      console.log("[KitchenClean] No zone selected, records not loaded, loading finished.");
+      setIsLoadingRecords(false); 
       return;
     }
-    setIsLoading(true); 
-    console.log(`[KitchenClean] Loading cleaning records for zone ${selectedZoneId}, period ${selectedYear}-${selectedMonth}`);
+    setIsLoadingRecords(true); 
     const docId = getFirestoreRecordsDocId();
     const docRef = doc(firestore, "pmsKitchenCleaningRecords", docId);
     try {
       const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        setCleaningRecords(docSnap.data() as SimplifiedMonthlyKitchenCleaningRecord);
-        console.log("[KitchenClean] Cleaning records loaded.");
-      } else {
-        setCleaningRecords({});
-        console.log("[KitchenClean] No cleaning records found for this period.");
-      }
+      setCleaningRecords(docSnap.exists() ? (docSnap.data() as SimplifiedMonthlyKitchenCleaningRecord) : {});
     } catch (error) {
       console.error("Error loading kitchen cleaning records:", error);
       toast({ title: "Erreur Chargement Enregistrements", description: "Impossible de charger les enregistrements de nettoyage.", variant: "destructive" });
       setCleaningRecords({});
     }
-    setIsLoading(false); 
-    console.log("[KitchenClean] Cleaning records loading process finished.");
-  }, [selectedZoneId, selectedYear, selectedMonth, getFirestoreRecordsDocId, toast]);
-
-  useEffect(() => {
-    loadPmsConfigurations();
-    const handleConfigUpdate = () => {
-      console.log(`[KitchenCleaning] Received pmsConfigUpdated event. Refetching configurations.`);
-      loadPmsConfigurations();
-    };
-    window.addEventListener('pmsConfigUpdated', handleConfigUpdate);
-    return () => window.removeEventListener('pmsConfigUpdated', handleConfigUpdate);
-  }, [loadPmsConfigurations]);
-
-  useEffect(() => {
-    console.log("[KitchenClean] Evaluating selectedZoneId. Current:", selectedZoneId, "Available zones:", configuredZones.length);
-    if (configuredZones.length > 0) {
-      const currentSelectionIsValid = selectedZoneId && configuredZones.some(z => z.id === selectedZoneId);
-      if (!currentSelectionIsValid) {
-        const newSelectedId = configuredZones[0].id;
-        console.log("[KitchenClean] Invalid or no selectedZoneId, setting to first available zone:", newSelectedId);
-        setSelectedZoneId(newSelectedId);
-      } else {
-        console.log("[KitchenClean] selectedZoneId is still valid:", selectedZoneId);
-      }
-    } else {
-      console.log("[KitchenClean] No configured zones, clearing selectedZoneId.");
-      setSelectedZoneId(undefined);
-    }
-  }, [configuredZones, selectedZoneId]); 
+    setIsLoadingRecords(false); 
+  }, [selectedZoneId, getFirestoreRecordsDocId, toast, isLoadingConfig]);
 
   useEffect(() => {
     const yearNum = parseInt(selectedYear, 10);
     const monthNum = parseInt(selectedMonth, 10);
     setMonthData(getMonthDays(yearNum, monthNum));
-    console.log(`[KitchenClean] Month data (days structure) generated for ${selectedYear}-${selectedMonth}.`);
+    loadCleaningRecords();
+  }, [selectedYear, selectedMonth, loadCleaningRecords]);
 
-    if (selectedZoneId) {
-      console.log(`[KitchenClean] Triggering record load for zone: ${selectedZoneId}`);
-      loadCleaningRecords();
-    } else {
-      console.log("[KitchenClean] No zone selected. Clearing records and setting loading to false.");
-      setCleaningRecords({}); 
-      setIsLoading(false); 
-    }
-  }, [selectedZoneId, selectedYear, selectedMonth, loadCleaningRecords]);
 
   useEffect(() => {
-    if (isLoading || isSaving) return; 
+    if (isLoadingConfig || isLoadingRecords || isSaving) return; 
 
     const saveRecordsToFirestore = async () => {
-      if (Object.keys(cleaningRecords).length === 0 && !doc(firestore, "pmsKitchenCleaningRecords", getFirestoreRecordsDocId())) {
-        console.log("[KitchenClean SaveDebounce] No records to save and no existing document, skipping save.");
+      const docId = getFirestoreRecordsDocId();
+      if (Object.keys(cleaningRecords).length === 0 && !doc(firestore, "pmsKitchenCleaningRecords", docId )) {
         return;
       }
       
       setIsSaving(true);
-      console.log("[KitchenClean SaveDebounce] Attempting to save cleaning records to Firestore for doc:", getFirestoreRecordsDocId());
-      const docId = getFirestoreRecordsDocId();
       const docRef = doc(firestore, "pmsKitchenCleaningRecords", docId);
       try {
         await setDoc(docRef, cleaningRecords);
-        console.log("[KitchenClean SaveDebounce] Records saved successfully.");
       } catch (error) {
         console.error("Error saving kitchen cleaning records to Firestore:", error);
         toast({ title: "Erreur de Sauvegarde (Net. Cuisine)", description: "Impossible d'enregistrer les données.", variant: "destructive" });
@@ -176,7 +141,7 @@ export default function KitchenCleaningMonitoring() {
 
     const timeoutId = setTimeout(saveRecordsToFirestore, 2000); 
     return () => clearTimeout(timeoutId);
-  }, [cleaningRecords, isLoading, isSaving, getFirestoreRecordsDocId, toast]);
+  }, [cleaningRecords, isLoadingConfig, isLoadingRecords, isSaving, getFirestoreRecordsDocId, toast]);
 
 
   const handleRecordChange = (date: string, zoneId: string, taskId: string, field: keyof SimplifiedTaskRecord, value: string) => {
@@ -221,7 +186,7 @@ export default function KitchenCleaningMonitoring() {
       toast({ title: "Aucune Zone Sélectionnée", description: "Veuillez sélectionner une zone pour générer le PDF.", variant: "destructive" });
       return;
     }
-    setIsLoading(true); 
+    setIsLoading(true); // Re-using isLoading for PDF generation state
     try {
       const pdfSettings = getPdfLayoutSettings('pms_kitchen_cleaning_monthly');
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
@@ -305,9 +270,11 @@ export default function KitchenCleaningMonitoring() {
       console.error("Error generating PDF for zone:", error);
       toast({ title: "Erreur PDF", description: "La génération du PDF a échoué.", variant: "destructive" });
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); // Re-use isLoading for PDF generation state
     }
   };
+  
+  const isOverallLoading = isLoadingConfig || isLoadingRecords;
 
   return (
     <Card className="shadow-lg">
@@ -324,31 +291,31 @@ export default function KitchenCleaningMonitoring() {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-end mb-4">
           <div>
             <Label htmlFor="year-select-kitchen-cleaning">Année</Label>
-            <Select value={selectedYear} onValueChange={setSelectedYear} disabled={isLoading || isSaving}>
+            <Select value={selectedYear} onValueChange={setSelectedYear} disabled={isOverallLoading || isSaving}>
               <SelectTrigger id="year-select-kitchen-cleaning"><SelectValue placeholder="Année" /></SelectTrigger>
               <SelectContent>{yearsArray.map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div>
             <Label htmlFor="month-select-kitchen-cleaning">Mois</Label>
-            <Select value={selectedMonth} onValueChange={setSelectedMonth} disabled={isLoading || isSaving}>
+            <Select value={selectedMonth} onValueChange={setSelectedMonth} disabled={isOverallLoading || isSaving}>
               <SelectTrigger id="month-select-kitchen-cleaning"><SelectValue placeholder="Mois" /></SelectTrigger>
               <SelectContent>{monthsArray.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 md:col-span-1 md:justify-self-end">
-             <Button onClick={generatePdfForZone} disabled={isLoading || isSaving || !selectedZoneData || monthData.length === 0 || configuredZones.length === 0} className="w-full sm:w-auto">
-                {(isLoading || isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+             <Button onClick={generatePdfForZone} disabled={isOverallLoading || isSaving || !selectedZoneData || monthData.length === 0 || configuredZones.length === 0} className="w-full sm:w-auto">
+                {(isOverallLoading || isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
                 Générer PDF Zone
             </Button>
-            <Button variant="destructive" onClick={handleClearMonthData} disabled={isLoading || isSaving || Object.keys(cleaningRecords).length === 0} className="w-full sm:w-auto">
+            <Button variant="destructive" onClick={handleClearMonthData} disabled={isOverallLoading || isSaving || Object.keys(cleaningRecords).length === 0} className="w-full sm:w-auto">
                 <Trash2 className="mr-2 h-4 w-4" />
                 Effacer Mois
             </Button>
           </div>
         </div>
         
-        {isLoading && configuredZones.length === 0 ? ( 
+        {isLoadingConfig ? ( 
           <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /> Chargement des configurations...</div>
         ) : configuredZones.length === 0 ? (
            <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
@@ -371,7 +338,7 @@ export default function KitchenCleaningMonitoring() {
                     variant={selectedZoneId === zone.id ? "default" : "outline"}
                     onClick={() => setSelectedZoneId(zone.id)}
                     size="sm"
-                    disabled={isLoading || isSaving}
+                    disabled={isOverallLoading || isSaving}
                   >
                     {zone.name}
                   </Button>
@@ -379,7 +346,7 @@ export default function KitchenCleaningMonitoring() {
               </div>
             </div>
 
-            {isLoading && selectedZoneId ? ( 
+            {isLoadingRecords && selectedZoneId ? ( 
                  <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /> Chargement des enregistrements pour "{selectedZoneData?.name}"...</div>
             ) : !selectedZoneId ? (
               <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
@@ -429,15 +396,13 @@ export default function KitchenCleaningMonitoring() {
                                         if (loggedInUsername && loggedInUsername.trim() !== "") {
                                           handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', loggedInUsername);
                                         } else {
-                                          // If no username, clear operator or set placeholder
-                                          handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', '');
+                                          handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', ''); 
                                         }
                                       } else {
-                                        // When unchecking, clear the operator field.
                                         handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', '');
                                       }
                                     }}
-                                    disabled={day.isWeekend || isSaving}
+                                    disabled={day.isWeekend || isSaving || isOverallLoading}
                                     className="h-5 w-5"
                                   />
                                 </div>
@@ -447,7 +412,7 @@ export default function KitchenCleaningMonitoring() {
                                   value={record.operator}
                                   onChange={(e) => handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', e.target.value)}
                                   className="h-7 text-xs"
-                                  disabled={day.isWeekend || isSaving}
+                                  disabled={day.isWeekend || isSaving || isOverallLoading}
                                   maxLength={15}
                                 />
                               </div>
