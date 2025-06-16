@@ -17,6 +17,7 @@ import type { PmsEquipmentDefinition, MonthlyTempGridLog, DailyTempGridLogEntry,
 import { PMS_TEMPERATURE_MONITORING_KEY } from '@/app/dashboard/settings/types';
 import { getMonthDays, type DayData } from '../utils';
 import { cn } from '@/lib/utils';
+import { Checkbox } from '@/components/ui/checkbox'; 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { firestore } from '@/lib/firebase';
@@ -179,10 +180,10 @@ export default function TemperatureMonitoring() {
 
   const temperatureRowsToDisplay = useMemo(() => {
     if (selectedEquipmentConfig?.equipmentType === 'refrigerator') {
-      // Range: 16°C down to -10°C (inclusive)
-      return Array.from({ length: 16 - (-10) + 1 }, (_, i) => 16 - i);
+      const fridgeMaxTemp = 12;
+      const fridgeMinTemp = -5;
+      return Array.from({ length: fridgeMaxTemp - fridgeMinTemp + 1 }, (_, i) => fridgeMaxTemp - i);
     } else if (selectedEquipmentConfig?.equipmentType === 'freezer') {
-      // Range for Freezers: -10°C down to -25°C (inclusive)
       const freezerMaxTemp = -10;
       const freezerMinTemp = -25;
       return Array.from({ length: freezerMaxTemp - freezerMinTemp + 1 }, (_, i) => freezerMaxTemp - i);
