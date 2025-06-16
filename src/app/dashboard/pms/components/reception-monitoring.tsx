@@ -43,7 +43,7 @@ interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
 }
 
-const PRODUCT_LABELING_NONE_VALUE = "_NONE_"; // Constant for "Non renseigné"
+const PRODUCT_LABELING_NONE_VALUE = "_NONE_"; 
 
 const receptionEntrySchema = z.object({
   dateTime: z.date({ required_error: "Date et heure sont requises." }),
@@ -94,12 +94,12 @@ export default function ReceptionMonitoring() {
       productTemperature: '',
       dlcDluo: '',
       lotNumber: '',
-      packagingAspect: 'RAS', // Default to RAS
+      packagingAspect: 'RAS', 
       quantity: '',
       productLabeling: '', 
       refused: false,
       refusalReason: '',
-      visa: '',
+      visa: 'JD',
     },
   });
 
@@ -138,14 +138,15 @@ export default function ReceptionMonitoring() {
         dateTime: parseISO(entry.dateTime), 
         productLabeling: entry.productLabeling === 'conforme' || entry.productLabeling === 'non_conforme' ? entry.productLabeling : '',
         vehicleObservations: entry.vehicleObservations || 'RAS',
-        packagingAspect: entry.packagingAspect || 'RAS', // Ensure RAS if undefined/empty when editing
+        packagingAspect: entry.packagingAspect || 'RAS', 
+        visa: entry.visa || 'JD',
       });
     } else {
       form.reset({ 
         dateTime: new Date(), 
         supplierName: '', productNameControlled: '', vehicleObservations: 'RAS', 
-        productTemperature: '', dlcDluo: '', lotNumber: '', packagingAspect: 'RAS', // Default RAS for new
-        quantity: '', productLabeling: '', refused: false, refusalReason: '', visa: '',
+        productTemperature: '', dlcDluo: '', lotNumber: '', packagingAspect: 'RAS', 
+        quantity: '', productLabeling: '', refused: false, refusalReason: '', visa: 'JD',
       });
     }
     setIsDialogOpen(true);
@@ -157,7 +158,7 @@ export default function ReceptionMonitoring() {
       ...data, 
       dateTime: Timestamp.fromDate(data.dateTime),
       vehicleObservations: data.vehicleObservations || 'RAS', 
-      packagingAspect: data.packagingAspect || 'RAS', // Save RAS if empty
+      packagingAspect: data.packagingAspect || 'RAS', 
       productTemperature: data.productTemperature || '',
       dlcDluo: data.dlcDluo || '',
       lotNumber: data.lotNumber || '',
@@ -505,3 +506,4 @@ export default function ReceptionMonitoring() {
     </Card>
   );
 }
+
