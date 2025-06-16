@@ -75,7 +75,7 @@ const PREDEFINED_SUPPLIERS = [
   { id: "autre", name: "Autre (à préciser)" },
 ];
 
-const PRODUCT_LABELING_NONE_VALUE = "_NONE_"; // Special value for "Non renseigné"
+const PRODUCT_LABELING_NONE_VALUE = "_NONE_"; 
 
 export default function ReceptionMonitoring() {
   const [receptionEntries, setReceptionEntries] = useState<ReceptionEntry[]>([]);
@@ -90,13 +90,13 @@ export default function ReceptionMonitoring() {
       dateTime: new Date(),
       supplierName: '',
       productNameControlled: '',
-      vehicleObservations: '',
+      vehicleObservations: 'RAS', // Default value set here
       productTemperature: '',
       dlcDluo: '',
       lotNumber: '',
       packagingAspect: '',
       quantity: '',
-      productLabeling: '', // Zod default is '', which means "Non renseigné"
+      productLabeling: '', 
       refused: false,
       refusalReason: '',
       visa: '',
@@ -137,11 +137,12 @@ export default function ReceptionMonitoring() {
         ...entry,
         dateTime: parseISO(entry.dateTime), 
         productLabeling: entry.productLabeling === 'conforme' || entry.productLabeling === 'non_conforme' ? entry.productLabeling : '',
+        vehicleObservations: entry.vehicleObservations || 'RAS', // Ensure RAS if undefined/empty when editing
       });
     } else {
-      form.reset({
+      form.reset({ // Default values for new entry
         dateTime: new Date(), 
-        supplierName: '', productNameControlled: '', vehicleObservations: '',
+        supplierName: '', productNameControlled: '', vehicleObservations: 'RAS', // Default RAS
         productTemperature: '', dlcDluo: '', lotNumber: '', packagingAspect: '',
         quantity: '', productLabeling: '', refused: false, refusalReason: '', visa: '',
       });
@@ -154,7 +155,7 @@ export default function ReceptionMonitoring() {
     const entryDataForFirestore = { 
       ...data, 
       dateTime: Timestamp.fromDate(data.dateTime),
-      vehicleObservations: data.vehicleObservations || '',
+      vehicleObservations: data.vehicleObservations || 'RAS', // Ensure RAS if empty
       productTemperature: data.productTemperature || '',
       dlcDluo: data.dlcDluo || '',
       lotNumber: data.lotNumber || '',
@@ -503,3 +504,4 @@ export default function ReceptionMonitoring() {
     </Card>
   );
 }
+
