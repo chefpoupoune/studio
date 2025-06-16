@@ -124,7 +124,8 @@ const userFormSchema = z.object({
 type UserFormData = z.infer<typeof userFormSchema>;
 
 const simulatedHash = (password: string): string => `sim_hashed_${password}_!`;
-const DEFAULT_CHEF_ID_FIRESTORE = 'chef_firestore_user'; 
+const DEFAULT_CHEF_ID_FIRESTORE = 'default_chef_user_id';
+const DEFAULT_CDS_ID_FIRESTORE = 'default_cds_user_id'; // For Chef de service
 
 export default function UserManagement() {
   const [appUsers, setAppUsers] = useState<AppUser[]>([]);
@@ -150,7 +151,7 @@ export default function UserManagement() {
   });
 
   const fetchBrigadeMembers = useCallback(async () => {
-    if (!isClient) return []; // Return empty array if not client
+    if (!isClient) return [];
     try {
       const membersCollectionRef = collection(firestore, 'brigadeMembers');
       const q = query(membersCollectionRef, orderBy("name"));
@@ -173,63 +174,81 @@ export default function UserManagement() {
       const querySnapshot = await getDocs(q);
       let loadedUsers = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppUser));
       
-      const defaultChefPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
-      let chefUserInDb = loadedUsers.find(u => u.username.toLowerCase() === 'chef');
+      const allPermissionsTrue = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
+      const allViewConfig = { type: 'all' as const };
 
+      // Ensure Chef user exists
+      let chefUserInDb = loadedUsers.find(u => u.username.toLowerCase() === 'chef');
       if (!chefUserInDb) {
-        console.log("UserManagement [FETCH USERS]: Chef user not found in Firestore. Attempting to create default Chef.");
-        const defaultChefForCreation: Omit<AppUser, 'id'> = {
-            username: 'Chef', 
-            passwordRequired: true, 
-            simulatedStoredPassword: simulatedHash('000'),
-            permissions: defaultChefPermissions,
-            viewableHourSummaryConfig: { type: 'all' },
+        const defaultChef: Omit<AppUser, 'id'> = {
+          username: 'Chef', passwordRequired: true, simulatedStoredPassword: simulatedHash('000'),
+          permissions: allPermissionsTrue, viewableHourSummaryConfig: allViewConfig,
         };
-        try {
-          const chefDocRef = await addDoc(collection(firestore, "appUsers"), defaultChefForCreation);
-          console.log("UserManagement [FETCH USERS]: Default Chef created in Firestore with ID:", chefDocRef.id);
-          const newChefUser = { ...defaultChefForCreation, id: chefDocRef.id };
-          loadedUsers.push(newChefUser); 
-          chefUserInDb = newChefUser; 
-          toast({title: "Utilisateur Chef Initialisé", description: "Le compte Chef par défaut (mdp: 000) a été créé."});
-        } catch (createError) {
-          console.error("Error creating default Chef user in Firestore:", createError);
-          toast({ title: "Erreur Initialisation Chef", description: "Impossible de créer le compte Chef par défaut.", variant: "destructive"});
-          const defaultChefForDisplay: AppUser = { 
-            id: DEFAULT_CHEF_ID_FIRESTORE, 
-            username: 'Chef', 
-            passwordRequired: true, 
-            simulatedStoredPassword: simulatedHash('000'), 
-            permissions: defaultChefPermissions,
-            viewableHourSummaryConfig: { type: 'all' },
-          };
-          if (!loadedUsers.find(u => u.username.toLowerCase() === 'chef')) { 
-               loadedUsers.push(defaultChefForDisplay);
-          }
-          chefUserInDb = defaultChefForDisplay; 
+        const chefDocRef = await addDoc(collection(firestore, "appUsers"), defaultChef);
+        loadedUsers.push({ ...defaultChef, id: chefDocRef.id });
+        toast({title: "Utilisateur Chef Initialisé", description: "Mdp: 000."});
+      } else {
+        // Enforce Chef's permissions and view config
+        const chefNeedsUpdate = JSON.stringify(chefUserInDb.permissions) !== JSON.stringify(allPermissionsTrue) || 
+                                JSON.stringify(chefUserInDb.viewableHourSummaryConfig) !== JSON.stringify(allViewConfig) ||
+                                !chefUserInDb.passwordRequired || !chefUserInDb.simulatedStoredPassword;
+        if(chefNeedsUpdate) {
+            const chefDocRef = doc(firestore, "appUsers", chefUserInDb.id);
+            await setDoc(chefDocRef, { 
+                permissions: allPermissionsTrue, 
+                viewableHourSummaryConfig: allViewConfig,
+                passwordRequired: true,
+                simulatedStoredPassword: chefUserInDb.simulatedStoredPassword || simulatedHash('000')
+            }, { merge: true });
         }
       }
       
-      if (chefUserInDb) {
-         loadedUsers = loadedUsers.map(u => {
-            if (u.username.toLowerCase() === 'chef') {
-                return {
-                    ...u,
-                    passwordRequired: true, 
-                    simulatedStoredPassword: u.simulatedStoredPassword || simulatedHash('000'),
-                    permissions: defaultChefPermissions, 
-                    viewableHourSummaryConfig: { type: 'all' as const },
-                };
-            }
-            return u;
-        });
+      // Ensure Chef de service user exists
+      let cdsUserInDb = loadedUsers.find(u => u.username.toLowerCase() === 'chef de service');
+      if (!cdsUserInDb) {
+        const defaultCds: Omit<AppUser, 'id'> = {
+          username: 'Chef de service', passwordRequired: true, simulatedStoredPassword: simulatedHash('cds000'),
+          permissions: allPermissionsTrue, viewableHourSummaryConfig: allViewConfig,
+        };
+        const cdsDocRef = await addDoc(collection(firestore, "appUsers"), defaultCds);
+        loadedUsers.push({ ...defaultCds, id: cdsDocRef.id });
+        toast({title: "Utilisateur Chef de service Initialisé", description: "Mdp: cds000."});
+      } else {
+         // Enforce Chef de service's permissions and view config
+         const cdsNeedsUpdate = JSON.stringify(cdsUserInDb.permissions) !== JSON.stringify(allPermissionsTrue) || 
+                                JSON.stringify(cdsUserInDb.viewableHourSummaryConfig) !== JSON.stringify(allViewConfig) ||
+                                !cdsUserInDb.passwordRequired || !cdsUserInDb.simulatedStoredPassword;
+
+        if(cdsNeedsUpdate) {
+            const cdsDocRef = doc(firestore, "appUsers", cdsUserInDb.id);
+            await setDoc(cdsDocRef, { 
+                permissions: allPermissionsTrue, 
+                viewableHourSummaryConfig: allViewConfig,
+                passwordRequired: true,
+                simulatedStoredPassword: cdsUserInDb.simulatedStoredPassword || simulatedHash('cds000')
+            }, { merge: true });
+        }
       }
+      
+      // Apply enforced settings to loaded users for display
+      loadedUsers = loadedUsers.map(u => {
+        if (u.username.toLowerCase() === 'chef' || u.username.toLowerCase() === 'chef de service') {
+            return {
+                ...u,
+                passwordRequired: true,
+                permissions: allPermissionsTrue,
+                viewableHourSummaryConfig: allViewConfig,
+            };
+        }
+        return u;
+      });
+
       setAppUsers(loadedUsers.sort((a, b) => a.username.localeCompare(b.username)));
       console.log(`UserManagement [FETCH USERS]: Fetched and set ${loadedUsers.length} app users.`);
     } catch (error) {
-      console.error("UserManagement [FETCH USERS]: Error fetching app users:", error);
+      console.error("UserManagement [FETCH USERS]: Error fetching/ensuring app users:", error);
       toast({ title: "Erreur de chargement des utilisateurs", variant: "destructive" });
-      setAppUsers([]); 
+      setAppUsers([]);
     } finally {
       setIsLoading(false);
     }
@@ -259,29 +278,30 @@ export default function UserManagement() {
   const handleOpenUserForm = (user?: AppUser) => {
     setEditingUser(user || null);
     const isCurrentUserChef = user?.username.toLowerCase() === 'chef';
+    const isCurrentUserCds = user?.username.toLowerCase() === 'chef de service';
     
     let defaultPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: false }), {});
     if (user) {
       defaultPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => {
-        acc[rubricId] = isCurrentUserChef ? true : !!user.permissions[rubricId];
+        acc[rubricId] = (isCurrentUserChef || isCurrentUserCds) ? true : !!user.permissions[rubricId];
         return acc;
       }, {} as Partial<Record<RubricId, boolean>>);
     }
 
     form.reset({
       selectedBrigadeMemberId: user?.brigadeMemberId,
-      passwordRequired: isCurrentUserChef ? true : (user?.passwordRequired || false),
+      passwordRequired: (isCurrentUserChef || isCurrentUserCds) ? true : (user?.passwordRequired || false),
       newPassword: '',
       confirmNewPassword: '',
       permissions: defaultPermissions,
-      viewableHourSummary_type: isCurrentUserChef ? 'all' : (user?.viewableHourSummaryConfig?.type || 'none'),
-      viewableHourSummary_specificMemberId: isCurrentUserChef ? undefined : (user?.viewableHourSummaryConfig?.specificMemberId || undefined),
+      viewableHourSummary_type: (isCurrentUserChef || isCurrentUserCds) ? 'all' : (user?.viewableHourSummaryConfig?.type || 'none'),
+      viewableHourSummary_specificMemberId: (isCurrentUserChef || isCurrentUserCds) ? undefined : (user?.viewableHourSummaryConfig?.specificMemberId || undefined),
     });
     setIsUserFormOpen(true);
   };
 
   const handleUserFormSubmit = async (data: UserFormData) => {
-    let passwordToStore: string | null = null; // Use null for Firestore
+    let passwordToStore: string | null = null;
     if (data.passwordRequired && data.newPassword) {
         passwordToStore = simulatedHash(data.newPassword);
     }
@@ -292,17 +312,20 @@ export default function UserManagement() {
     };
     
     const isCurrentEditingUserChef = editingUser?.username.toLowerCase() === 'chef';
-    let permissionsToSave = data.permissions;
+    const isCurrentEditingUserCds = editingUser?.username.toLowerCase() === 'chef de service';
 
-    if (isCurrentEditingUserChef) {
+    let permissionsToSave = data.permissions;
+    let summaryConfigToSave = summaryConfig;
+
+    if (isCurrentEditingUserChef || isCurrentEditingUserCds) {
         permissionsToSave = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
-        summaryConfig = { type: 'all' };
+        summaryConfigToSave = { type: 'all' };
     }
     
     const userCommonData = {
-      passwordRequired: isCurrentEditingUserChef ? true : data.passwordRequired,
+      passwordRequired: (isCurrentEditingUserChef || isCurrentEditingUserCds) ? true : data.passwordRequired,
       permissions: permissionsToSave,
-      viewableHourSummaryConfig: summaryConfig,
+      viewableHourSummaryConfig: summaryConfigToSave,
     };
 
     if (editingUser) {
@@ -324,7 +347,7 @@ export default function UserManagement() {
         const userDocRef = doc(firestore, "appUsers", editingUser.id);
         await setDoc(userDocRef, userToUpdate);
         fetchAppUsers(); 
-        localStorage.setItem(LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY, JSON.stringify(summaryConfig));
+        localStorage.setItem(LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY, JSON.stringify(summaryConfigToSave));
         window.dispatchEvent(new CustomEvent('loggedInUserHourViewConfigUpdated'));
         toast({ title: "Utilisateur Modifié", description: `L'utilisateur "${editingUser.username}" a été mis à jour.` });
       } catch (e: any) {
@@ -389,8 +412,8 @@ export default function UserManagement() {
     const userToDelete = appUsers.find(u => u.id === userId);
     if (!userToDelete) return;
 
-    if (userToDelete.username.toLowerCase() === 'chef') {
-      toast({ title: "Suppression Interdite", description: "L'utilisateur 'Chef' ne peut pas être supprimé.", variant: "destructive" });
+    if (userToDelete.username.toLowerCase() === 'chef' || userToDelete.username.toLowerCase() === 'chef de service') {
+      toast({ title: "Suppression Interdite", description: `L'utilisateur "${userToDelete.username}" ne peut pas être supprimé.`, variant: "destructive" });
       return;
     }
 
@@ -408,6 +431,8 @@ export default function UserManagement() {
   const formTimeTrackingPermissions = form.watch('permissions');
   const currentFormHasTimeTrackingPermission = TIME_TRACKING_SUB_RUBRICS.some(sr => !!formTimeTrackingPermissions[sr.id]);
   const isEditingChef = editingUser?.username.toLowerCase() === 'chef';
+  const isEditingCds = editingUser?.username.toLowerCase() === 'chef de service';
+
 
   if (!isClient || isLoading) {
     return (
@@ -437,7 +462,7 @@ export default function UserManagement() {
           <AlertTitle className="text-destructive font-semibold">Avertissement de Sécurité</AlertTitle>
           <AlertDescription className="text-destructive/90">
             Ce système utilise un stockage de mot de passe simulé et non sécurisé. Ne pas utiliser pour des mots de passe réels en production.
-            Le compte 'Chef' est administrateur avec tous les accès. Son mot de passe par défaut est '000' (s'il est créé par défaut).
+            Les comptes 'Chef' (mdp: 000) et 'Chef de service' (mdp: cds000) sont administrateurs avec tous les accès en visualisation.
           </AlertDescription>
         </Alert>
 
@@ -461,7 +486,7 @@ export default function UserManagement() {
                       <FormItem>
                         <FormLabel>Nom d'utilisateur</FormLabel>
                         <Input value={editingUser.username} disabled className="bg-muted/50"/>
-                        <FormDescription className="text-xs">Le nom d'utilisateur est lié au membre de la brigade (si applicable) et ne peut être modifié ici. L'utilisateur 'Chef' est un compte spécial.</FormDescription>
+                        <FormDescription className="text-xs">Le nom d'utilisateur est lié au membre de la brigade (si applicable) et ne peut être modifié ici. Les utilisateurs 'Chef' et 'Chef de service' sont des comptes spéciaux.</FormDescription>
                       </FormItem>
                     ) : (
                       <FormField control={form.control} name="selectedBrigadeMemberId" render={({ field }) => (
@@ -495,10 +520,10 @@ export default function UserManagement() {
                         <div className="space-y-0.5">
                           <FormLabel>Mot de passe requis ?</FormLabel>
                           <FormDescription className="text-xs">
-                            Si coché, un mot de passe sera nécessaire pour se connecter. (Obligatoire pour Chef)
+                            Si coché, un mot de passe sera nécessaire pour se connecter. (Obligatoire pour Chef et Chef de service)
                           </FormDescription>
                         </div>
-                        <FormControl><Switch checked={isEditingChef ? true : field.value} onCheckedChange={field.onChange} disabled={isEditingChef} /></FormControl>
+                        <FormControl><Switch checked={(isEditingChef || isEditingCds) ? true : field.value} onCheckedChange={field.onChange} disabled={isEditingChef || isEditingCds} /></FormControl>
                       </FormItem>
                     )} />
                     
@@ -533,9 +558,9 @@ export default function UserManagement() {
                               <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 hover:bg-muted/20">
                                 <FormControl>
                                   <Checkbox
-                                    checked={isEditingChef ? true : field.value}
+                                    checked={(isEditingChef || isEditingCds) ? true : field.value}
                                     onCheckedChange={field.onChange}
-                                    disabled={isEditingChef || (rubric.id === 'settings' && !isEditingChef)} 
+                                    disabled={(isEditingChef || isEditingCds) || (rubric.id === 'settings' && !isEditingChef && !isEditingCds)} 
                                   />
                                 </FormControl>
                                 <FormLabel className="font-normal text-sm cursor-pointer flex-grow">{rubric.label}</FormLabel>
@@ -556,9 +581,9 @@ export default function UserManagement() {
                                     <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 hover:bg-muted/20">
                                     <FormControl>
                                         <Checkbox
-                                        checked={isEditingChef ? true : field.value}
+                                        checked={(isEditingChef || isEditingCds) ? true : field.value}
                                         onCheckedChange={field.onChange}
-                                        disabled={isEditingChef}
+                                        disabled={(isEditingChef || isEditingCds)}
                                         />
                                     </FormControl>
                                     <FormLabel className="font-normal text-sm cursor-pointer flex-grow">{subRubric.label}</FormLabel>
@@ -570,17 +595,17 @@ export default function UserManagement() {
                       </div>
                     </div>
 
-                    {(currentFormHasTimeTrackingPermission || isEditingChef) && (
+                    {((currentFormHasTimeTrackingPermission || isEditingChef || isEditingCds)) && (
                         <>
                         <div className="pt-4 border-t">
                           <h3 className="text-md font-semibold mb-2 mt-2 flex items-center gap-1"><Eye className="w-4 h-4"/> Vue des Relevés d'Heures & Modèles Horaires</h3>
                            <FormDescription className="text-xs mb-2">
-                            Définir quels relevés d'heures et modèles d'horaires cet utilisateur peut consulter. (Chef voit tout par défaut)
+                            Définir quels relevés d'heures et modèles d'horaires cet utilisateur peut consulter. (Chef et Chef de service voient tout par défaut)
                           </FormDescription>
                           <FormField control={form.control} name="viewableHourSummary_type" render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Type de vue</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value} disabled={isEditingChef}>
+                                <Select onValueChange={field.onChange} value={field.value} disabled={(isEditingChef || isEditingCds)}>
                                 <FormControl><SelectTrigger><SelectValue placeholder="Choisir type de vue..." /></SelectTrigger></FormControl>
                                 <SelectContent>
                                     <SelectItem value="none">Aucun</SelectItem>
@@ -589,12 +614,12 @@ export default function UserManagement() {
                                     <SelectItem value="specific">Données d'un employé spécifique</SelectItem>
                                 </SelectContent>
                                 </Select>
-                                {isEditingChef && <FormDescription className="text-xs">Le Chef a toujours accès à toutes les données.</FormDescription>}
+                                {(isEditingChef || isEditingCds) && <FormDescription className="text-xs">Chef et Chef de service ont toujours accès à toutes les données.</FormDescription>}
                                 <FormMessage />
                             </FormItem>
                             )}
                           />
-                          {currentSelectedSummaryType === 'specific' && !isEditingChef && (
+                          {currentSelectedSummaryType === 'specific' && !(isEditingChef || isEditingCds) && (
                             <FormField control={form.control} name="viewableHourSummary_specificMemberId" render={({ field }) => (
                                 <FormItem className="mt-2">
                                 <FormLabel>Employé spécifique à visualiser</FormLabel>
@@ -633,7 +658,9 @@ export default function UserManagement() {
                 <CardHeader className="pb-2 pt-3 px-4">
                   <div className="flex justify-between items-start">
                     <CardTitle className="text-lg">{user.username}
-                      {user.username.toLowerCase() === 'chef' && <span className="text-xs text-primary ml-1">(Admin)</span>}
+                      {(user.username.toLowerCase() === 'chef' || user.username.toLowerCase() === 'chef de service') && 
+                        <span className="text-xs text-primary ml-1">({user.username.toLowerCase() === 'chef' ? 'Admin' : 'Superviseur'})</span>
+                      }
                     </CardTitle>
                     <div className="space-x-1">
                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleOpenUserForm(user)}>
@@ -641,7 +668,7 @@ export default function UserManagement() {
                       </Button>
                        <AlertDialog>
                         <AlertDialogTrigger asChild>
-                           <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" disabled={user.username.toLowerCase() === 'chef'}>
+                           <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" disabled={user.username.toLowerCase() === 'chef' || user.username.toLowerCase() === 'chef de service'}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </AlertDialogTrigger>
@@ -663,7 +690,7 @@ export default function UserManagement() {
                     <br/>
                     Mot de passe requis : {user.passwordRequired ? "Oui" : "Non"}
                     {user.passwordRequired && user.simulatedStoredPassword && <span className="ml-2 text-green-600">(Mot de passe défini)</span>}
-                    {user.passwordRequired && !user.simulatedStoredPassword && user.username.toLowerCase() !== 'chef' && <span className="ml-2 text-destructive">(Aucun mdp défini !)</span>}
+                    {user.passwordRequired && !user.simulatedStoredPassword && user.username.toLowerCase() !== 'chef' && user.username.toLowerCase() !== 'chef de service' && <span className="ml-2 text-destructive">(Aucun mdp défini !)</span>}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="px-4 pb-3">
@@ -671,14 +698,14 @@ export default function UserManagement() {
                     <div>
                         <p className="text-xs font-medium mb-1">Permissions rubriques :</p>
                         <ul className="list-disc list-inside pl-2 text-xs space-y-0.5">
-                            {RUBRICS.filter(rubric => user.permissions[rubric.id] || user.username.toLowerCase() === 'chef').map(rubric => (
+                            {RUBRICS.filter(rubric => user.permissions[rubric.id] || user.username.toLowerCase() === 'chef' || user.username.toLowerCase() === 'chef de service').map(rubric => (
                             <li key={rubric.id}>{rubric.label}</li>
                             ))}
-                            {TIME_TRACKING_SUB_RUBRICS.filter(subRubric => user.permissions[subRubric.id] || user.username.toLowerCase() === 'chef').map(subRubric => (
+                            {TIME_TRACKING_SUB_RUBRICS.filter(subRubric => user.permissions[subRubric.id] || user.username.toLowerCase() === 'chef' || user.username.toLowerCase() === 'chef de service').map(subRubric => (
                             <li key={subRubric.id} className="ml-4">{subRubric.label} (Suivi Heures)</li>
                             ))}
                             {[...RUBRICS, ...TIME_TRACKING_SUB_RUBRICS].filter(r => user.permissions[r.id]).length === 0 &&
-                             user.username.toLowerCase() !== 'chef' && ( 
+                             user.username.toLowerCase() !== 'chef' && user.username.toLowerCase() !== 'chef de service' && ( 
                                 <li className="italic text-muted-foreground">Aucune permission de rubrique.</li>
                             )}
                         </ul>
@@ -686,7 +713,7 @@ export default function UserManagement() {
                     <div>
                         <p className="text-xs font-medium mb-1">Vue Relevés d'Heures & Modèles Horaires :</p>
                         <p className="text-xs">
-                            {user.username.toLowerCase() === 'chef' ? "Tous (Admin)" :
+                            {(user.username.toLowerCase() === 'chef' || user.username.toLowerCase() === 'chef de service') ? "Tous (Admin/Superviseur)" :
                              user.viewableHourSummaryConfig?.type === 'none' ? "Aucun" :
                              user.viewableHourSummaryConfig?.type === 'own' ? "Ses propres données uniquement" :
                              user.viewableHourSummaryConfig?.type === 'all' ? "Données de tous les employés" :
