@@ -241,6 +241,7 @@ export default function AnnualCostAnalysisTable() {
     try {
       const pdfSettings = getPdfLayoutSettings('annual_cost');
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
+      doc.setFont(pdfSettings.fontFamily);
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
       
       let currentY = pdfSettings.marginTop;
@@ -259,8 +260,13 @@ export default function AnnualCostAnalysisTable() {
         try { const imgProps = doc.getImageProperties(pdfSettings.logoUrl); const formatType = imgProps.fileType.toUpperCase(); const desiredHeight = 30; const imgWidth = (imgProps.width * desiredHeight) / imgProps.height; doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight); currentY += desiredHeight + 5; } catch(e: any) { console.error(`Error drawing standalone logo in PDF: ${e.message || e}.`); }
       }
       
-      const baseDocTitle = pdfSettings.documentBaseTitle || "Récapitulatif Annuel Coût de Revient";
-      const title = `${baseDocTitle} - ${selectedYear}`;
+      const moduleDefaultTitle = `Récapitulatif Annuel Coût de Revient - ${selectedYear}`;
+      let title;
+      if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
+        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
+      } else {
+        title = moduleDefaultTitle;
+      }
       doc.setFontSize(pdfSettings.documentTitleFontSize); doc.text(title, pdfSettings.marginLeft, currentY); currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
       doc.setFontSize(pdfSettings.defaultFontSize); doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 7;
 

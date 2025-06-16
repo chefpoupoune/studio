@@ -153,15 +153,19 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
         currentY += 5;
       }
 
-
-      doc.setFontSize(pdfSettings.headerFontSize + 4);
-      doc.text("Bon de Commande Produit Cuisine Brebières", pdfSettings.marginLeft, currentY); 
-      currentY += pdfSettings.headerFontSize + 4 + 5;
+      const moduleDefaultTitle = `Bon de Commande N° ${po.orderNumber}`;
+      let title;
+      if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
+        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
+      } else {
+        title = moduleDefaultTitle;
+      }
+      doc.setFontSize(pdfSettings.documentTitleFontSize);
+      doc.text(title, pdfSettings.marginLeft, currentY);
+      currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
       
       doc.setFontSize(pdfSettings.defaultFontSize);
       doc.text(`Date de commande: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
-      currentY += pdfSettings.defaultFontSize + 2;
-      doc.text(`Numéro de commande: ${po.orderNumber}`, pdfSettings.marginLeft, currentY);
       currentY += pdfSettings.defaultFontSize + 2;
       doc.text(`Imprimé le: ${printDateFormatted}`, pdfSettings.marginLeft, currentY);
       currentY += pdfSettings.defaultFontSize + 5;

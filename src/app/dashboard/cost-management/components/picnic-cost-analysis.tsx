@@ -145,31 +145,37 @@ export default function PicnicCostAnalysis() {
     try {
       const pdfSettings = getPdfLayoutSettings('picnic_cost');
       const doc = new jsPDF() as jsPDFWithAutoTable;
+      doc.setFont(pdfSettings.fontFamily);
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
       
-      let currentY = 15;
+      let currentY = pdfSettings.marginTop;
       if (pdfSettings.headerText) {
-        doc.setFontSize(10);
-        doc.text(pdfSettings.headerText, 14, currentY);
-        currentY += 10;
+        doc.setFontSize(pdfSettings.headerFontSize);
+        doc.text(pdfSettings.headerText, pdfSettings.marginLeft, currentY);
+        currentY += pdfSettings.headerFontSize + 5;
       }
 
-      // Add Logo URL if available
       if (pdfSettings.logoUrl) {
-        doc.setFontSize(8); 
-        doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY);
-        currentY += 5; 
+        doc.setFontSize(pdfSettings.defaultFontSize -2); 
+        doc.text(`Logo: ${pdfSettings.logoUrl}`, pdfSettings.marginLeft, currentY);
+        currentY += (pdfSettings.defaultFontSize -2) + 5; 
       }
 
-      const title = `Coût de Revient - Repas ${mealTypeLabel}`;
-      doc.setFontSize(18);
-      doc.text(title, 14, currentY);
-      currentY += 8;
-      doc.setFontSize(10);
-      doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY);
-      currentY += 7;
+      const moduleDefaultTitle = `Coût de Revient - Repas ${mealTypeLabel}`;
+      let title;
+      if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
+        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
+      } else {
+        title = moduleDefaultTitle;
+      }
+      doc.setFontSize(pdfSettings.documentTitleFontSize);
+      doc.text(title, pdfSettings.marginLeft, currentY);
+      currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+      doc.setFontSize(pdfSettings.defaultFontSize);
+      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
+      currentY += pdfSettings.defaultFontSize + 7;
 
-      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontSize?: number } = { fontSize: pdfSettings.tableHeaderFontSize };
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
         if (primaryColorRgb) {
@@ -202,7 +208,8 @@ export default function PicnicCostAnalysis() {
         startY: currentY,
         theme: 'grid',
         headStyles: headStyles, 
-        footStyles: { fillColor: [220, 220, 220], textColor: [0,0,0] },
+        styles: { fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily },
+        footStyles: { fillColor: [220, 220, 220], textColor: [0,0,0], fontSize: pdfSettings.tableBodyFontSize },
         columnStyles: {
             0: { cellWidth: 'auto' }, 
             1: { cellWidth: 'auto' },
@@ -217,8 +224,8 @@ export default function PicnicCostAnalysis() {
               .replace('{date}', generationDateFormatted)
               .replace('{pageNumber}', data.pageNumber.toString())
               .replace('{totalPages}', pageCount.toString());
-            doc.setFontSize(9);
-            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+            doc.setFontSize(pdfSettings.footerFontSize);
+            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
           }
         }
       });

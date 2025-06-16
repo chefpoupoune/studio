@@ -118,7 +118,6 @@ export default function ManageStockMovements({ products, stockMovements, onAddSt
       doc.setFont(pdfSettings.fontFamily);
       
       const monthLabel = monthsArray.find(m => m.value === selectedMonthForPdf)?.label || '';
-      const titleText = `Historique des Mouvements de Stock - ${monthLabel} ${selectedYearForPdf}`;
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
       let currentY = pdfSettings.marginTop;
@@ -154,9 +153,16 @@ export default function ManageStockMovements({ products, stockMovements, onAddSt
         } catch(e) { console.error("Error adding standalone logo to PDF:", e); }
       }
 
-      doc.setFontSize(pdfSettings.headerFontSize + 2);
-      doc.text(titleText, pdfSettings.marginLeft, currentY);
-      currentY += (pdfSettings.headerFontSize + 2) * 0.7 + 5;
+      const moduleDefaultTitle = `Historique Mouvements Stock - ${monthLabel} ${selectedYearForPdf}`;
+      let title;
+      if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
+        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
+      } else {
+        title = moduleDefaultTitle;
+      }
+      doc.setFontSize(pdfSettings.documentTitleFontSize);
+      doc.text(title, pdfSettings.marginLeft, currentY);
+      currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
       doc.setFontSize(pdfSettings.defaultFontSize);
       doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
       currentY += pdfSettings.defaultFontSize + 5;

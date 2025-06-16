@@ -179,11 +179,16 @@ export default function MemberSummaryPdf({
         } catch (e) { console.error("Error drawing logo in PDF:", e); }
       }
 
-      const baseTitle = pdfSettings.documentBaseTitle || "Relevé d'Heures";
-      const title = `${baseTitle} - ${selectedMember.name} (${selectedMember.role}) - ${selectedMonthLabel} ${selectedYear}`;
-      doc.setFontSize(pdfSettings.documentTitleFontSize || 18);
+      const moduleDefaultTitle = `Relevé d'Heures - ${selectedMember.name} (${selectedMember.role}) - ${selectedMonthLabel} ${selectedYear}`;
+      let title;
+      if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
+        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
+      } else {
+        title = moduleDefaultTitle;
+      }
+      doc.setFontSize(pdfSettings.documentTitleFontSize);
       doc.text(title, pdfSettings.marginLeft || 40, currentY);
-      currentY += (pdfSettings.documentTitleFontSize || 18) * 0.7 + 5;
+      currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
       doc.setFontSize(pdfSettings.defaultFontSize || 10);
       doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft || 40, currentY);
       currentY += (pdfSettings.defaultFontSize || 10) + 10;

@@ -152,25 +152,34 @@ export default function OccasionalMealCostAnalysis() {
       const doc = new jsPDF() as jsPDFWithAutoTable;
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
-      let currentY = 15;
+      let currentY = pdfSettings.marginTop;
       if (pdfSettings.headerText) {
-        doc.setFontSize(10);
-        doc.text(pdfSettings.headerText, 14, currentY);
-        currentY += 10;
+        doc.setFontSize(pdfSettings.headerFontSize);
+        doc.text(pdfSettings.headerText, pdfSettings.marginLeft, currentY);
+        currentY += pdfSettings.headerFontSize + 5; 
       }
 
-      // Add Logo URL if available
       if (pdfSettings.logoUrl) {
-        doc.setFontSize(8); 
-        doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY);
-        currentY += 5; 
+        doc.setFontSize(pdfSettings.defaultFontSize - 2); 
+        doc.text(`Logo: ${pdfSettings.logoUrl}`, pdfSettings.marginLeft, currentY);
+        currentY += (pdfSettings.defaultFontSize -2) + 5; 
       }
       
-      const title = `Coût de Revient Repas Occasionnel (${numberOfPeople} personnes)`;
-      doc.setFontSize(18); doc.text(title, 14, currentY); currentY += 8;
-      doc.setFontSize(10); doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY); currentY += 7;
+      const moduleDefaultTitle = `Coût de Revient Repas Occasionnel (${numberOfPeople} personnes)`;
+      let title;
+      if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
+        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
+      } else {
+        title = moduleDefaultTitle;
+      }
+      doc.setFontSize(pdfSettings.documentTitleFontSize); 
+      doc.text(title, pdfSettings.marginLeft, currentY); 
+      currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+      doc.setFontSize(pdfSettings.defaultFontSize); 
+      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); 
+      currentY += pdfSettings.defaultFontSize + 7;
 
-      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontSize?: number } = { fontSize: pdfSettings.tableHeaderFontSize };
        if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
         if (primaryColorRgb) {
@@ -182,7 +191,9 @@ export default function OccasionalMealCostAnalysis() {
 
       const addSectionToPdf = (partLabel: string, ingredients: IngredientOccasional[], partCost: number) => {
         if (ingredients.length > 0) {
-          doc.setFontSize(14); doc.text(partLabel, 14, currentY); currentY += 7;
+          doc.setFontSize(pdfSettings.defaultFontSize + 2); 
+          doc.text(partLabel, pdfSettings.marginLeft, currentY); 
+          currentY += (pdfSettings.defaultFontSize + 2) * 0.7 + 3;
           doc.autoTable({
             head: [['Ingrédient', 'Unité', 'Prix/Unité (€)', 'Qté/Pers.', 'Coût/Pers. (€)']],
             body: ingredients.map(ing => [
@@ -192,7 +203,8 @@ export default function OccasionalMealCostAnalysis() {
             foot: [[{ content: `Total ${partLabel} / Pers.`, colSpan: 4, styles: { fontStyle: 'bold', halign: 'right' } }, { content: partCost.toFixed(2), styles: { fontStyle: 'bold', halign: 'right' } }]],
             startY: currentY, theme: 'grid', 
             headStyles: headStyles, 
-            footStyles: { fillColor: [230, 230, 230], textColor: [0,0,0] }
+            styles: { fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily },
+            footStyles: { fillColor: [230, 230, 230], textColor: [0,0,0], fontSize: pdfSettings.tableBodyFontSize }
           });
           currentY = (doc as any).lastAutoTable.finalY + 10;
         }
@@ -202,15 +214,15 @@ export default function OccasionalMealCostAnalysis() {
       addSectionToPdf("Plat Principal", mainIngredients, mainCostPerPerson);
       addSectionToPdf("Dessert", dessertIngredients, dessertCostPerPerson);
 
-      doc.setFontSize(12);
-      doc.text("Récapitulatif:", 14, currentY); currentY += 7;
-      doc.setFontSize(10);
-      doc.text(`Nombre de personnes: ${numberOfPeople}`, 14, currentY); currentY += 6;
-      doc.text(`Coût total par personne: ${totalCostPerPerson.toFixed(2)} €`, 14, currentY); currentY += 6;
-      doc.setFontSize(11); doc.setFont(undefined, 'bold');
-      doc.text(`Coût total pour ${numberOfPeople} personnes: ${totalCostForAllPeople.toFixed(2)} €`, 14, currentY);
+      doc.setFontSize(pdfSettings.defaultFontSize + 2);
+      doc.text("Récapitulatif:", pdfSettings.marginLeft, currentY); 
+      currentY += (pdfSettings.defaultFontSize + 2) * 0.7 + 3;
+      doc.setFontSize(pdfSettings.defaultFontSize);
+      doc.text(`Nombre de personnes: ${numberOfPeople}`, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.defaultFontSize * 0.7) + 2;
+      doc.text(`Coût total par personne: ${totalCostPerPerson.toFixed(2)} €`, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.defaultFontSize * 0.7) + 2;
+      doc.setFontSize(pdfSettings.defaultFontSize + 1); doc.setFont(undefined, 'bold');
+      doc.text(`Coût total pour ${numberOfPeople} personnes: ${totalCostForAllPeople.toFixed(2)} €`, pdfSettings.marginLeft, currentY);
 
-      // Footer
       const pageCount = doc.internal.getNumberOfPages();
       for (let i = 1; i <= pageCount; i++) {
           doc.setPage(i);
@@ -219,8 +231,8 @@ export default function OccasionalMealCostAnalysis() {
               .replace('{date}', generationDateFormatted)
               .replace('{pageNumber}', i.toString())
               .replace('{totalPages}', pageCount.toString());
-            doc.setFontSize(9);
-            doc.text(footerStr, 14, doc.internal.pageSize.height - 10);
+            doc.setFontSize(pdfSettings.footerFontSize);
+            doc.text(footerStr, pdfSettings.marginLeft, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
           }
       }
 

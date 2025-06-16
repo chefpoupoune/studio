@@ -29,7 +29,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { BrigadeMember } from '@/app/dashboard/time-tracking/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useIsMobile } from '@/hooks/use-mobile';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import jsPDF from 'jspdf';
@@ -601,7 +601,18 @@ export default function DeclarationHeurePage() {
     let currentY = pdfSettings.marginTop;
     if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { try { const imgProps = doc.getImageProperties(pdfSettings.logoUrl); const formatType = imgProps.fileType.toUpperCase(); const desiredHeight = 30; const imgWidth = (imgProps.width * desiredHeight) / imgProps.height; doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight); currentY += desiredHeight + 5; } catch(e){ console.error("Error drawing logo in PDF:", e); }}
     if (pdfSettings.headerText) { const headerLines = pdfSettings.headerText.split('\n'); doc.setFontSize(pdfSettings.headerFontSize); headerLines.forEach(line => { doc.text(line, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize * 0.7 + 2; }); currentY += 5; }
-    doc.setFontSize(18); doc.text("DEMANDE DE DEPASSEMENT D'HORAIRE", doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' }); currentY += 25;
+    
+    const moduleDefaultTitle = "Demande de Dépassement d'Horaire";
+    let pdfTitle;
+    if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
+      pdfTitle = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
+    } else {
+      pdfTitle = moduleDefaultTitle;
+    }
+    doc.setFontSize(pdfSettings.documentTitleFontSize); 
+    doc.text(pdfTitle, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' }); 
+    currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+
     doc.setFontSize(pdfSettings.defaultFontSize); doc.text(`Nom et prénom du salarié : ${request.employeeName || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
     doc.text(`Poste occupé à l'IME : ${request.position || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 20;
     const prestationText = (request.prestationTypes || []).map(pt => PRESTATION_TYPE_LABELS[pt] || pt).join(', ') + 
@@ -630,7 +641,17 @@ export default function DeclarationHeurePage() {
     if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { try { const imgProps = doc.getImageProperties(pdfSettings.logoUrl); const formatType = imgProps.fileType.toUpperCase(); const desiredHeight = 30; const imgWidth = (imgProps.width * desiredHeight) / imgProps.height; doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight); currentY += desiredHeight + 5; } catch(e){ console.error("Error drawing logo in PDF:", e); }}
     if (pdfSettings.headerText) { const headerLines = pdfSettings.headerText.split('\n'); doc.setFontSize(pdfSettings.headerFontSize); headerLines.forEach(line => { doc.text(line, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize * 0.7 + 2; }); currentY += 5; }
 
-    doc.setFontSize(18); doc.text("DEMANDE D'ABSENCE", doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' }); currentY += 25;
+    const moduleDefaultTitle = "Demande d'Absence";
+    let pdfTitle;
+    if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
+      pdfTitle = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
+    } else {
+      pdfTitle = moduleDefaultTitle;
+    }
+    doc.setFontSize(pdfSettings.documentTitleFontSize); 
+    doc.text(pdfTitle, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' }); 
+    currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+    
     doc.setFontSize(pdfSettings.defaultFontSize);
     doc.text(`Nom et prénom du salarié : ${request.employeeName || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
     doc.text(`Poste occupé à l'IME : ${request.position || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
@@ -722,4 +743,3 @@ export default function DeclarationHeurePage() {
 
     
     
-

@@ -237,9 +237,14 @@ export default function CostAnalysisTable() {
         } catch(e: any) { console.error("Error drawing standalone logo in PDF:", e); }
       }
       
-      const baseDocTitle = pdfSettings.documentBaseTitle || "Fiche de Coût de Revient Mensuel";
-      const title = `${baseDocTitle} - ${monthLabel} ${yearLabel}`;
-      doc.setFontSize(pdfSettings.documentTitleFontSize || 18);
+      const moduleDefaultTitle = `Fiche de Coût de Revient Mensuel - ${monthLabel} ${yearLabel}`;
+      let title;
+      if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
+        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
+      } else {
+        title = moduleDefaultTitle;
+      }
+      doc.setFontSize(pdfSettings.documentTitleFontSize);
       doc.text(title, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
       currentY += (pdfSettings.documentTitleFontSize || 18) * 0.7 + 5;
       doc.setFontSize(pdfSettings.defaultFontSize || 10);
@@ -545,6 +550,5 @@ export default function CostAnalysisTable() {
     </div>
   );
 }
-
     
     

@@ -22,7 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
-import { useIsMobile } from '@/hooks/use-mobile';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import { firestore } from '@/lib/firebase';
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import {
@@ -355,10 +355,16 @@ export default function MenuPlanningPage() {
          doc.setFontSize(pdfSettings.headerFontSize); doc.text(`[Logo URL: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize + 5;
       }
       
-      const title = `Planification des Menus - ${monthLabel} ${yearLabel}`;
-      doc.setFontSize(pdfSettings.headerFontSize);
+      const moduleDefaultTitle = `Planification des Menus - ${monthLabel} ${yearLabel}`;
+      let title;
+      if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
+        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
+      } else {
+        title = moduleDefaultTitle;
+      }
+      doc.setFontSize(pdfSettings.documentTitleFontSize);
       doc.text(title, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
-      currentY += pdfSettings.headerFontSize * 0.7 + 5; 
+      currentY += pdfSettings.documentTitleFontSize * 0.7 + 5; 
       doc.setFontSize(pdfSettings.defaultFontSize);
       doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
       currentY += pdfSettings.defaultFontSize + 5;

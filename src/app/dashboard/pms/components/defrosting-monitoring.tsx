@@ -157,24 +157,16 @@ export default function DefrostingMonitoring() {
   };
 
   const handleDeleteEntry = async (entryId: string) => {
-    const originalEntries = [...entries];
-    setEntries(prevEntries => prevEntries.filter(e => e.id !== entryId));
-    toast({ title: "Suppression en cours...", description: "L'élément est retiré de la vue.", duration: 2000 });
-
+    setIsLoading(true);
     try {
       await deleteDoc(doc(firestore, 'pmsDefrostingLog', entryId));
-      toast({ title: "Enregistrement Supprimé", description: "L'élément a été supprimé de la base de données.", variant: "default" });
-      // Optionally re-fetch for absolute consistency, though optimistic update handles UI.
-      // fetchDefrostingEntries(); 
+      toast({ title: "Enregistrement Supprimé", variant: "destructive" });
+      fetchDefrostingEntries();
     } catch (error) {
       console.error("Error deleting defrosting entry from Firestore:", error);
-      toast({ 
-        title: "Erreur de Suppression", 
-        description: `La suppression a échoué. Restauration de l'élément. Détail: ${error instanceof Error ? error.message : String(error)}`, 
-        variant: "destructive",
-        duration: 5000,
-      });
-      setEntries(originalEntries); // Rollback UI
+      toast({ title: "Erreur de Suppression", variant: "destructive"});
+    } finally {
+      setIsLoading(false);
     }
   };
   
@@ -183,22 +175,34 @@ export default function DefrostingMonitoring() {
     try {
       const pdfSettings = getPdfLayoutSettings('pms_defrosting_monitoring'); 
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable; 
+      doc.setFont(pdfSettings.fontFamily);
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
-      let currentY = 15;
-      if (pdfSettings.headerText) { doc.setFontSize(10); doc.text(pdfSettings.headerText, 14, currentY); currentY += 10; }
-      if (pdfSettings.logoUrl) { doc.setFontSize(8); doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY); currentY += 5; }
+      let currentY = pdfSettings.marginTop;
+      if (pdfSettings.headerText) { doc.setFontSize(pdfSettings.headerFontSize); doc.text(pdfSettings.headerText, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize + 5; }
+      if (pdfSettings.logoUrl) { doc.setFontSize(pdfSettings.defaultFontSize -2); doc.text(`Logo: ${pdfSettings.logoUrl}`, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.defaultFontSize -2) + 5; }
       
-      doc.setFontSize(16); doc.text("Suivi de Décongélation", 14, currentY); currentY += 8;
-      doc.setFontSize(10); doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY); currentY += 7;
+      const moduleDefaultTitle = "Suivi de Décongélation";
+      let title;
+      if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
+        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
+      } else {
+        title = moduleDefaultTitle;
+      }
+      doc.setFontSize(pdfSettings.documentTitleFontSize); 
+      doc.text(title, pdfSettings.marginLeft, currentY); 
+      currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+      doc.setFontSize(pdfSettings.defaultFontSize); 
+      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); 
+      currentY += pdfSettings.defaultFontSize + 7;
 
-      const headStylesBase = { fontSize: 8, fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1, textColor: [0,0,0] }; 
+      const headStylesBase = { fontSize: pdfSettings.tableHeaderFontSize || 8, fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1, textColor: [0,0,0] }; 
       
       const head: any[] = [
         [
-          { content: 'Date', styles: {...headStylesBase, fillColor: hexToRgb('#4A86E8')} }, 
-          { content: 'Produit', styles: {...headStylesBase, fillColor: hexToRgb('#4A86E8')} },
-          { content: 'Quantité', styles: {...headStylesBase, fillColor: hexToRgb('#4A86E8')} },
+          { content: 'Date', styles: {...headStylesBase, fillColor: hexToRgb(pdfSettings.primaryColor ||'#4A86E8')} }, 
+          { content: 'Produit', styles: {...headStylesBase, fillColor: hexToRgb(pdfSettings.primaryColor ||'#4A86E8')} },
+          { content: 'Quantité', styles: {...headStylesBase, fillColor: hexToRgb(pdfSettings.primaryColor ||'#4A86E8')} },
           { content: 'T° Sortie Cong.', styles: {...headStylesBase, fillColor: hexToRgb('#FF9900')} }, 
           { content: 'Heure Sortie', styles: {...headStylesBase, fillColor: hexToRgb('#FF9900')} },
           { content: 'Initial Dém.', styles: {...headStylesBase, fillColor: hexToRgb('#B6B6B6')} }, 
@@ -227,18 +231,18 @@ export default function DefrostingMonitoring() {
         body: body,
         startY: currentY,
         theme: 'grid',
-        styles: { fontSize: 7, cellPadding: 1.5, valign: 'middle', halign: 'center' },
-        headStyles: {halign: 'center', valign: 'middle', fontStyle: 'bold', cellPadding: 1.5, fontSize: 7 },
+        styles: { fontSize: pdfSettings.tableBodyFontSize || 7, cellPadding: 1.5, valign: 'middle', halign: 'center', font: pdfSettings.fontFamily },
+        headStyles: {halign: 'center', valign: 'middle', fontStyle: 'bold', cellPadding: 1.5, fontSize: pdfSettings.tableHeaderFontSize || 7 }, // Adjusted headStyles reference
         columnStyles: { 
-            0: { cellWidth: 18 }, 1: { cellWidth: 40 }, 2: { cellWidth: 20 }, 
-            3: { cellWidth: 20 }, 4: { cellWidth: 20 }, 5: { cellWidth: 20 },
-            6: { cellWidth: 20 }, 7: { cellWidth: 20 }, 8: { cellWidth: 20 }, 9: { cellWidth: 20 }
+            0: { cellWidth: 45 }, 1: { cellWidth: 100 }, 2: { cellWidth: 60 }, 
+            3: { cellWidth: 50 }, 4: { cellWidth: 50 }, 5: { cellWidth: 50 },
+            6: { cellWidth: 50 }, 7: { cellWidth: 50 }, 8: { cellWidth: 50 }, 9: { cellWidth: 50 }
         },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
           if (pdfSettings.footerText) {
             let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', data.pageNumber.toString()).replace('{totalPages}', pageCount.toString());
-            doc.setFontSize(9); doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+            doc.setFontSize(pdfSettings.footerFontSize); doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
           }
         },
       });
@@ -274,7 +278,7 @@ export default function DefrostingMonitoring() {
             <DialogTrigger asChild>
               <Button onClick={() => handleOpenDialog()}><PlusCircle className="mr-2 h-4 w-4"/> Ajouter Enregistrement</Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-2xl md:max-w-3xl">
+            <DialogContent className="sm:max-w-2xl md:max-w-3xl"> 
               <DialogHeader><DialogTitle>{editingEntry ? "Modifier" : "Nouvel"} Enregistrement de Décongélation</DialogTitle></DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-3 py-2 max-h-[75vh] overflow-y-auto pr-2">
@@ -402,4 +406,5 @@ export default function DefrostingMonitoring() {
     </Card>
   );
 }
+
 
