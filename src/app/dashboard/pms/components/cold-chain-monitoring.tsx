@@ -115,39 +115,8 @@ export default function ColdChainMonitoring() {
     loadData();
   }, [toast, coolDownDocRef, deliveryDocRef]);
 
-  useEffect(() => {
-    if (!isLoading && !isSaving) {
-      const saveCoolDown = async () => {
-        setIsSaving(true);
-        try {
-          await setDoc(coolDownDocRef(), { entries: coolDownEntries });
-        } catch (error) {
-          console.error("Error saving cooldown entries to Firestore:", error);
-          toast({ title: "Erreur sauvegarde (baisse temp.)", variant: "destructive" });
-        }
-        setIsSaving(false);
-      };
-      // saveCoolDown(); // Debounced or button-triggered save is better
-    }
-  }, [coolDownEntries, isLoading, isSaving, coolDownDocRef, toast]);
-
-  useEffect(() => {
-    if (!isLoading && !isSaving) {
-      const saveDelivery = async () => {
-        setIsSaving(true);
-        try {
-          await setDoc(deliveryDocRef(), { entries: deliveryEntries });
-        } catch (error) {
-          console.error("Error saving delivery entries to Firestore:", error);
-          toast({ title: "Erreur sauvegarde (livraison)", variant: "destructive" });
-        }
-        setIsSaving(false);
-      };
-      // saveDelivery(); // Debounced or button-triggered save is better
-    }
-  }, [deliveryEntries, isLoading, isSaving, deliveryDocRef, toast]);
-
   const saveDataToFirestore = async (type: 'cooldown' | 'delivery') => {
+    if (isSaving) return; // Prevent concurrent saves
     setIsSaving(true);
     try {
       if (type === 'cooldown') {
@@ -155,12 +124,36 @@ export default function ColdChainMonitoring() {
       } else {
         await setDoc(deliveryDocRef(), { entries: deliveryEntries });
       }
+      // Optional: Add a subtle save confirmation if needed, but can be too noisy for auto-save
+      // toast({ title: "Données sauvegardées", description: `Les modifications pour ${type} ont été enregistrées.`});
     } catch (error) {
       console.error(`Error saving ${type} entries to Firestore:`, error);
       toast({ title: `Erreur sauvegarde (${type})`, variant: "destructive" });
     }
     setIsSaving(false);
   };
+
+  // Auto-save for cooldown entries (debounced)
+  useEffect(() => {
+    if (isLoading || isSaving) return;
+    const handler = setTimeout(() => {
+        if (coolDownEntries.length > 0 || doc(firestore, 'pmsColdChainCooldown', todayKey)) { // Only save if there's data or doc exists
+           saveDataToFirestore('cooldown');
+        }
+    }, 1500); // Debounce time
+    return () => clearTimeout(handler);
+  }, [coolDownEntries, isLoading, isSaving, todayKey]); // Added todayKey to dependencies
+
+  // Auto-save for delivery entries (debounced)
+  useEffect(() => {
+    if (isLoading || isSaving) return;
+    const handler = setTimeout(() => {
+         if (deliveryEntries.length > 0 || doc(firestore, 'pmsColdChainDelivery', todayKey)) { // Only save if there's data or doc exists
+            saveDataToFirestore('delivery');
+         }
+    }, 1500); // Debounce time
+    return () => clearTimeout(handler);
+  }, [deliveryEntries, isLoading, isSaving, todayKey]); // Added todayKey to dependencies
 
 
   const handleOpenCoolDownDialog = (entry?: DailyCoolDownEntry) => {
@@ -180,14 +173,14 @@ export default function ColdChainMonitoring() {
       toast({ title: "Nouvelle Entrée Ajoutée", description: "Baisse en température enregistrée." });
     }
     setCoolDownEntries(updatedEntries);
-    saveDataToFirestore('cooldown');
+    // saveDataToFirestore('cooldown'); // Direct save on submit, auto-save will also catch it
     setIsCoolDownDialogOpen(false);
   };
 
   const handleDeleteCoolDownEntry = (entryId: string) => {
     setCoolDownEntries(prev => {
       const newEntries = prev.filter(e => e.id !== entryId);
-      saveDataToFirestore('cooldown'); 
+      // saveDataToFirestore('cooldown'); 
       return newEntries;
     });
     toast({ title: "Entrée Supprimée", variant: "destructive" });
@@ -210,14 +203,14 @@ export default function ColdChainMonitoring() {
       toast({ title: "Nouvelle Entrée Ajoutée", description: "Livraison enregistrée." });
     }
     setDeliveryEntries(updatedEntries);
-    saveDataToFirestore('delivery');
+    // saveDataToFirestore('delivery'); // Direct save on submit, auto-save will also catch it
     setIsDeliveryDialogOpen(false);
   };
 
   const handleDeleteDeliveryEntry = (entryId: string) => {
     setDeliveryEntries(prev => {
       const newEntries = prev.filter(e => e.id !== entryId);
-      saveDataToFirestore('delivery');
+      // saveDataToFirestore('delivery');
       return newEntries;
     });
     toast({ title: "Entrée Supprimée", variant: "destructive" });
@@ -254,19 +247,23 @@ export default function ColdChainMonitoring() {
       doc.setFontSize(pdfSettings.documentTitleFontSize || 16); doc.text(`${title} - ${format(new Date(), "dd/MM/yyyy", {locale: fr})}`, pdfSettings.marginLeft || 14, currentY); currentY += (pdfSettings.documentTitleFontSize || 16) * 0.7 + 5;
       doc.setFontSize(pdfSettings.defaultFontSize || 10); doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft || 14, currentY); currentY += (pdfSettings.defaultFontSize || 10) + 7;
 
+      const tableHeaderFontSize = pdfSettings.tableHeaderFontSize || 7; // Smaller base for headers
+      const tableBodyFontSize = pdfSettings.tableBodyFontSize || 6.5;   // Smaller base for body
+      const cellPadding = 1;
+
       const headStyles: any = { 
         fontStyle: 'bold', 
         halign: 'center', 
         valign: 'middle',
-        fontSize: pdfSettings.tableHeaderFontSize || 7.5, // Reduced header font size
-        cellPadding: 1, // Reduced cell padding
+        fontSize: tableHeaderFontSize,
+        cellPadding: cellPadding,
       };
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
         if (primaryColorRgb) headStyles.fillColor = primaryColorRgb;
         headStyles.textColor = (hexToRgb(pdfSettings.primaryColor)![0] * 299 + hexToRgb(pdfSettings.primaryColor)![1] * 587 + hexToRgb(pdfSettings.primaryColor)![2] * 114) / 1000 > 125 ? [0,0,0] : [255,255,255];
       } else {
-        headStyles.fillColor = [220,220,220]; // Default grey if no primary color
+        headStyles.fillColor = [220,220,220]; 
         headStyles.textColor = [0,0,0];
       }
       
@@ -276,10 +273,8 @@ export default function ColdChainMonitoring() {
       const greyBg = hexToRgb('#D3D3D3') || [211, 211, 211];   
       const greenBg = hexToRgb('#90EE90') || [144, 238, 144]; 
       const yellowBg = hexToRgb('#FFFFE0') || [255, 255, 224]; 
-      const whiteText: [number, number, number] = [255,255,255];
       const blackText: [number, number, number] = [0,0,0];
       const coloredHeadStyle = (bgColor: [number,number,number] | string, textColor: [number,number,number]) => ({ ...headStyles, fillColor: bgColor, textColor: textColor });
-
 
       if (isCooldown) {
         head = [
@@ -293,10 +288,10 @@ export default function ColdChainMonitoring() {
           ],
           [ 
             { content: 'heure', styles: coloredHeadStyle(orangeBg, blackText) },
-            { content: 'Temperature', styles: coloredHeadStyle(orangeBg, blackText) },
+            { content: 'T°', styles: coloredHeadStyle(orangeBg, blackText) },
             { content: 'heure', styles: coloredHeadStyle(blueBg, blackText) },
-            { content: 'Temperature', styles: coloredHeadStyle(blueBg, blackText) },
-            { content: 'Signature', styles: coloredHeadStyle(greyBg, blackText) },
+            { content: 'T°', styles: coloredHeadStyle(blueBg, blackText) },
+            { content: 'Sign.', styles: coloredHeadStyle(greyBg, blackText) },
           ]
         ];
         body = (dataToExport as DailyCoolDownEntry[]).map(e => [
@@ -309,33 +304,28 @@ export default function ColdChainMonitoring() {
             { content: e.endTemp || '-', styles: { fillColor: blueBg } }, 
             { content: e.visa || '-', styles: { fillColor: greyBg } }
         ]);
-        columnStyles = { // Sum of widths should be less than page width minus margins
-          0: { cellWidth: 120 }, // Produits
-          1: { cellWidth: 50 },  // Quantité
-          2: { cellWidth: 70 },  // Pièces / Plats
-          3: { cellWidth: 40 },  // Debut heure
-          4: { cellWidth: 60 },  // Debut Temp
-          5: { cellWidth: 40 },  // Fin heure
-          6: { cellWidth: 60 },  // Fin Temp
-          7: { cellWidth: 50 },  // VISA
+        columnStyles = { 
+          0: { cellWidth: 110 }, 1: { cellWidth: 40 }, 2: { cellWidth: 60 },
+          3: { cellWidth: 35 },  4: { cellWidth: 35 }, 5: { cellWidth: 35 },
+          6: { cellWidth: 35 },  7: { cellWidth: 40 },
         };
-      } else { 
+      } else { // Delivery
         head = [
           [ 
             { content: 'Produits', rowSpan: 2, styles: headStyles },
-            { content: 'Quantité', rowSpan: 2, styles: headStyles },
-            { content: 'Pièces / Plats', rowSpan: 2, styles: headStyles },
+            { content: 'Qté', rowSpan: 2, styles: headStyles },
+            { content: 'Pcs/Plats', rowSpan: 2, styles: headStyles },
             { content: 'Départ', colSpan: 2, styles: coloredHeadStyle(greenBg, blackText) },
             { content: 'Arrivé', colSpan: 2, styles: coloredHeadStyle(yellowBg, blackText) },
             { content: 'VISA', colSpan: 2, styles: coloredHeadStyle(greyBg, blackText) }
           ],
           [ 
-            { content: 'heure', styles: coloredHeadStyle(greenBg, blackText) },
-            { content: 'Temperature', styles: coloredHeadStyle(greenBg, blackText) },
-            { content: 'heure', styles: coloredHeadStyle(yellowBg, blackText) },
-            { content: 'Temperature', styles: coloredHeadStyle(yellowBg, blackText) },
-            { content: 'Livreur', styles: coloredHeadStyle(greyBg, blackText) },
-            { content: 'Client', styles: coloredHeadStyle(greyBg, blackText) }
+            { content: 'H', styles: coloredHeadStyle(greenBg, blackText) },
+            { content: 'T°', styles: coloredHeadStyle(greenBg, blackText) },
+            { content: 'H', styles: coloredHeadStyle(yellowBg, blackText) },
+            { content: 'T°', styles: coloredHeadStyle(yellowBg, blackText) },
+            { content: 'Livr.', styles: coloredHeadStyle(greyBg, blackText) },
+            { content: 'Cli.', styles: coloredHeadStyle(greyBg, blackText) }
           ]
         ];
         body = (dataToExport as DailyDeliveryEntry[]).map(e => [
@@ -349,24 +339,18 @@ export default function ColdChainMonitoring() {
           { content: e.visaLivreur || '-', styles: { fillColor: greyBg } }, 
           { content: e.visaClient || '-', styles: { fillColor: greyBg } }
         ]);
-         columnStyles = { // Sum of widths should be less than page width minus margins (A4 Landscape ~842pt - 60pt margins = ~780pt)
-          0: { cellWidth: 120 }, // Produits
-          1: { cellWidth: 50 },  // Quantité
-          2: { cellWidth: 80 },  // Pièces / Plats
-          3: { cellWidth: 40 },  // Départ heure
-          4: { cellWidth: 70 },  // Départ Temp
-          5: { cellWidth: 40 },  // Arrivé heure
-          6: { cellWidth: 70 },  // Arrivé Temp
-          7: { cellWidth: 50 },  // VISA Livreur
-          8: { cellWidth: 50 },  // VISA Client
+         columnStyles = { 
+          0: { cellWidth: 100 }, 1: { cellWidth: 35 },  2: { cellWidth: 60 },  
+          3: { cellWidth: 30 },  4: { cellWidth: 50 },  5: { cellWidth: 30 },  
+          6: { cellWidth: 50 },  7: { cellWidth: 40 },  8: { cellWidth: 40 },
         };
       }
 
       doc.autoTable({
         head, body, startY: currentY, theme: 'grid', 
         styles: { 
-            fontSize: pdfSettings.tableBodyFontSize || 7, // Reduced body font size
-            cellPadding: 1, // Reduced cell padding
+            fontSize: tableBodyFontSize, 
+            cellPadding: cellPadding, 
             valign: 'middle', 
             halign: 'center' 
         },
@@ -377,6 +361,7 @@ export default function ColdChainMonitoring() {
           bottom: pdfSettings.marginBottom || 15, 
           left: pdfSettings.marginLeft || 15
         },
+        tableWidth: 'auto', // Let the sum of column widths determine table width
         didDrawPage: (hookData) => { 
              const pageCount = doc.internal.getNumberOfPages();
              if (pdfSettings.footerText) {
@@ -424,21 +409,21 @@ export default function ColdChainMonitoring() {
                     <FormField control={coolDownForm.control} name="productName" render={({ field }) => (<FormItem><FormLabel>Nom du Produit</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                     <div className="grid grid-cols-2 gap-3">
                         <FormField control={coolDownForm.control} name="quantity" render={({ field }) => (<FormItem><FormLabel>Quantité</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField control={coolDownForm.control} name="piecesOrPlats" render={({ field }) => (<FormItem><FormLabel>Pièces / Plats</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField control={coolDownForm.control} name="piecesOrPlats" render={({ field }) => (<FormItem><FormLabel>Pièces / Plats</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                     </div>
                     <h4 className="text-sm font-medium pt-1 text-center">Debut</h4>
                     <div className="grid grid-cols-2 gap-3">
-                      <FormField control={coolDownForm.control} name="startTime" render={({ field }) => (<FormItem><FormLabel>Heure Début</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                      <FormField control={coolDownForm.control} name="startTemp" render={({ field }) => (<FormItem><FormLabel>T° Début (°C)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={coolDownForm.control} name="startTime" render={({ field }) => (<FormItem><FormLabel>Heure Début</FormLabel><FormControl><Input type="time" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={coolDownForm.control} name="startTemp" render={({ field }) => (<FormItem><FormLabel>T° Début (°C)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                     </div>
                     <h4 className="text-sm font-medium pt-1 text-center">Fin</h4>
                     <div className="grid grid-cols-2 gap-3">
-                      <FormField control={coolDownForm.control} name="endTime" render={({ field }) => (<FormItem><FormLabel>Heure Fin (&lt;2h)</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                      <FormField control={coolDownForm.control} name="endTemp" render={({ field }) => (<FormItem><FormLabel>T° Fin (&lt;10°C)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={coolDownForm.control} name="endTime" render={({ field }) => (<FormItem><FormLabel>Heure Fin (&lt;2h)</FormLabel><FormControl><Input type="time" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={coolDownForm.control} name="endTemp" render={({ field }) => (<FormItem><FormLabel>T° Fin (&lt;10°C)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                     </div>
                     <h4 className="text-sm font-medium pt-1 text-center">VISA</h4>
-                    <FormField control={coolDownForm.control} name="visa" render={({ field }) => (<FormItem><FormLabel>Signature</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingCoolDownEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
+                    <FormField control={coolDownForm.control} name="visa" render={({ field }) => (<FormItem><FormLabel>Signature</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                    <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isLoading || isSaving}>{ (isLoading || isSaving) && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingCoolDownEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
                   </form>
                 </Form>
               </DialogContent>
@@ -447,7 +432,7 @@ export default function ColdChainMonitoring() {
           <CardDescription>Suivi des produits mis en refroidissement rapide pour la journée en cours.</CardDescription>
         </CardHeader>
         <CardContent>
-          {(isLoading && !isSaving) ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : coolDownEntries.length === 0 ? <p className="text-center text-muted-foreground">Aucun produit en refroidissement.</p> : (
+          {(isLoading && !isSaving && coolDownEntries.length === 0) ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : coolDownEntries.length === 0 ? <p className="text-center text-muted-foreground">Aucun produit en refroidissement.</p> : (
             <div className="overflow-x-auto border rounded-md">
               <Table>
                 <TableHeader>
@@ -462,10 +447,10 @@ export default function ColdChainMonitoring() {
                     </TableRow>
                     <TableRow>
                         <TableHead className={cn("text-center", cellBgClasses.debut)}>heure</TableHead>
-                        <TableHead className={cn("text-center", cellBgClasses.debut)}>Temperature</TableHead>
+                        <TableHead className={cn("text-center", cellBgClasses.debut)}>T°</TableHead>
                         <TableHead className={cn("text-center", cellBgClasses.fin)}>heure</TableHead>
-                        <TableHead className={cn("text-center", cellBgClasses.fin)}>Temperature</TableHead>
-                        <TableHead className={cn("text-center", cellBgClasses.visa)}>Signature</TableHead>
+                        <TableHead className={cn("text-center", cellBgClasses.fin)}>T°</TableHead>
+                        <TableHead className={cn("text-center", cellBgClasses.visa)}>Sign.</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -508,25 +493,25 @@ export default function ColdChainMonitoring() {
                   <form onSubmit={deliveryForm.handleSubmit(handleDeliveryFormSubmit)} className="space-y-3 py-2 max-h-[70vh] overflow-y-auto pr-2">
                     <FormField control={deliveryForm.control} name="productName" render={({ field }) => (<FormItem><FormLabel>Produit/Plat</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                     <div className="grid grid-cols-2 gap-3">
-                        <FormField control={deliveryForm.control} name="quantity" render={({ field }) => (<FormItem><FormLabel>Quantité</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField control={deliveryForm.control} name="piecesOrPlats" render={({ field }) => (<FormItem><FormLabel>Pièces / Plats</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField control={deliveryForm.control} name="quantity" render={({ field }) => (<FormItem><FormLabel>Quantité</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField control={deliveryForm.control} name="piecesOrPlats" render={({ field }) => (<FormItem><FormLabel>Pièces / Plats</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                     </div>
                     <h4 className="text-sm font-medium pt-1 text-center">Départ</h4>
                     <div className="grid grid-cols-2 gap-3">
-                      <FormField control={deliveryForm.control} name="departureTime" render={({ field }) => (<FormItem><FormLabel>Heure Départ</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                      <FormField control={deliveryForm.control} name="departureTemp" render={({ field }) => (<FormItem><FormLabel>T° Départ (°C)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={deliveryForm.control} name="departureTime" render={({ field }) => (<FormItem><FormLabel>Heure Départ</FormLabel><FormControl><Input type="time" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={deliveryForm.control} name="departureTemp" render={({ field }) => (<FormItem><FormLabel>T° Départ (°C)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                     </div>
                      <h4 className="text-sm font-medium pt-1 text-center">Arrivé</h4>
                     <div className="grid grid-cols-2 gap-3">
-                      <FormField control={deliveryForm.control} name="arrivalTime" render={({ field }) => (<FormItem><FormLabel>Heure Arrivée</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                      <FormField control={deliveryForm.control} name="arrivalTemp" render={({ field }) => (<FormItem><FormLabel>T° Arrivée (°C)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={deliveryForm.control} name="arrivalTime" render={({ field }) => (<FormItem><FormLabel>Heure Arrivée</FormLabel><FormControl><Input type="time" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={deliveryForm.control} name="arrivalTemp" render={({ field }) => (<FormItem><FormLabel>T° Arrivée (°C)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                     </div>
                     <h4 className="text-sm font-medium pt-1 text-center">VISA</h4>
                     <div className="grid grid-cols-2 gap-3">
-                        <FormField control={deliveryForm.control} name="visaLivreur" render={({ field }) => (<FormItem><FormLabel>Visa Livreur</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField control={deliveryForm.control} name="visaClient" render={({ field }) => (<FormItem><FormLabel>Visa Client</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField control={deliveryForm.control} name="visaLivreur" render={({ field }) => (<FormItem><FormLabel>Visa Livreur</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField control={deliveryForm.control} name="visaClient" render={({ field }) => (<FormItem><FormLabel>Visa Client</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                     </div>
-                    <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingDeliveryEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
+                    <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isLoading || isSaving}>{(isLoading || isSaving) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingDeliveryEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
                   </form>
                 </Form>
               </DialogContent>
@@ -535,26 +520,26 @@ export default function ColdChainMonitoring() {
           <CardDescription>Suivi des livraisons pour la journée en cours.</CardDescription>
         </CardHeader>
         <CardContent>
-          {(isLoading && !isSaving) ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : deliveryEntries.length === 0 ? <p className="text-center text-muted-foreground">Aucune livraison enregistrée.</p> : (
+          {(isLoading && !isSaving && deliveryEntries.length === 0) ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : deliveryEntries.length === 0 ? <p className="text-center text-muted-foreground">Aucune livraison enregistrée.</p> : (
             <div className="overflow-x-auto border rounded-md">
               <Table>
                 <TableHeader>
                     <TableRow>
                         <TableHead rowSpan={2} className="text-center align-middle min-w-[150px]">Produits</TableHead>
-                        <TableHead rowSpan={2} className="text-center align-middle min-w-[80px]">Quantité</TableHead>
-                        <TableHead rowSpan={2} className="text-center align-middle min-w-[100px]">Pièces / Plats</TableHead>
+                        <TableHead rowSpan={2} className="text-center align-middle min-w-[80px]">Qté</TableHead>
+                        <TableHead rowSpan={2} className="text-center align-middle min-w-[100px]">Pcs/Plats</TableHead>
                         <TableHead colSpan={2} className={cn("text-center", cellBgClasses.depart)}>Départ</TableHead>
                         <TableHead colSpan={2} className={cn("text-center", cellBgClasses.arrive)}>Arrivé</TableHead>
                         <TableHead colSpan={2} className={cn("text-center", cellBgClasses.visa)}>VISA</TableHead>
                         <TableHead rowSpan={2} className="text-center align-middle min-w-[100px]">Actions</TableHead>
                     </TableRow>
                     <TableRow>
-                        <TableHead className={cn("text-center", cellBgClasses.depart)}>heure</TableHead>
-                        <TableHead className={cn("text-center", cellBgClasses.depart)}>Temperature</TableHead>
-                        <TableHead className={cn("text-center", cellBgClasses.arrive)}>heure</TableHead>
-                        <TableHead className={cn("text-center", cellBgClasses.arrive)}>Temperature</TableHead>
-                        <TableHead className={cn("text-center", cellBgClasses.visa)}>Livreur</TableHead>
-                        <TableHead className={cn("text-center", cellBgClasses.visa)}>Client</TableHead>
+                        <TableHead className={cn("text-center", cellBgClasses.depart)}>H</TableHead>
+                        <TableHead className={cn("text-center", cellBgClasses.depart)}>T°</TableHead>
+                        <TableHead className={cn("text-center", cellBgClasses.arrive)}>H</TableHead>
+                        <TableHead className={cn("text-center", cellBgClasses.arrive)}>T°</TableHead>
+                        <TableHead className={cn("text-center", cellBgClasses.visa)}>Livr.</TableHead>
+                        <TableHead className={cn("text-center", cellBgClasses.visa)}>Cli.</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
