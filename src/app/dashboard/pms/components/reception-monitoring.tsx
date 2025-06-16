@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { ReceptionEntry, PmsZone as PmsSupplierDefinition, PmsConfigurations } from '../types'; // Updated PmsZone alias
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,8 +38,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { firestore } from '@/lib/firebase';
 import { collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy, Timestamp } from 'firebase/firestore';
-import { PMS_SUPPLIER_MANAGEMENT_KEY } from '@/app/dashboard/settings/types'; // Import new key
-
+import { PMS_SUPPLIER_MANAGEMENT_KEY } from '@/app/dashboard/settings/types'; 
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -71,7 +70,6 @@ type ReceptionFormData = z.infer<typeof receptionEntrySchema>;
 const FIRESTORE_COLLECTION = "pmsReceptionLog";
 const FIRESTORE_PMS_CONFIG_COLLECTION = "pmsConfigurations";
 const FIRESTORE_PMS_CONFIG_DOC_ID = "mainConfig";
-
 
 export default function ReceptionMonitoring() {
   const [receptionEntries, setReceptionEntries] = useState<ReceptionEntry[]>([]);
@@ -106,7 +104,7 @@ export default function ReceptionMonitoring() {
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
         const pmsSettings = docSnap.data() as PmsConfigurations;
-        const suppliers = pmsSettings[PMS_SUPPLIER_MANAGEMENT_KEY] || [];
+        const suppliers = (pmsSettings[PMS_SUPPLIER_MANAGEMENT_KEY] || []).filter(s => s.name && s.name.trim() !== "");
         setConfiguredSuppliers(suppliers.sort((a, b) => a.name.localeCompare(b.name)));
       } else {
         setConfiguredSuppliers([]);
@@ -329,6 +327,10 @@ export default function ReceptionMonitoring() {
     }
   };
 
+  const validConfiguredSuppliers = useMemo(() => {
+    return configuredSuppliers.filter(s => s.name && s.name.trim() !== "");
+  }, [configuredSuppliers]);
+
   return (
     <Card className="shadow-lg">
       <CardHeader>
@@ -368,18 +370,21 @@ export default function ReceptionMonitoring() {
                     <FormField control={form.control} name="supplierName" render={({ field }) => (
                         <FormItem>
                             <FormLabel>Nom du fournisseur</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value || undefined}>
+                            <Select 
+                              onValueChange={field.onChange} 
+                              value={field.value || undefined}
+                            >
                                 <FormControl>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Sélectionner un fournisseur" />
                                 </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                {configuredSuppliers.length > 0 ? configuredSuppliers.map(supplier => (
+                                {validConfiguredSuppliers.length > 0 ? validConfiguredSuppliers.map(supplier => (
                                     <SelectItem key={supplier.id} value={supplier.name}>
                                     {supplier.name}
                                     </SelectItem>
-                                )) : <SelectItem value="disabled" disabled>Aucun fournisseur configuré</SelectItem>}
+                                )) : <SelectItem value="disabled_no_suppliers_in_select" disabled>Aucun fournisseur configuré</SelectItem>}
                                 </SelectContent>
                             </Select>
                             <FormMessage />
