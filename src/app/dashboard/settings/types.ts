@@ -13,6 +13,7 @@ export interface PdfLayoutSettings {
   // New fields
   fontFamily?: 'helvetica' | 'times' | 'courier' | 'arial' | 'verdana';
   documentBaseTitle?: string; // New: Base title for the document
+  showDocumentBaseTitle?: boolean; // New: Option to show/hide the base title
   documentTitleFontSize?: number; 
   headerFontSize?: number;
   footerFontSize?: number;

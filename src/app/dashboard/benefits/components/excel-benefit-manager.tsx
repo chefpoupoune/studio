@@ -264,8 +264,14 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
          doc.setFontSize(pdfSettings.defaultFontSize || 10); doc.text(`[Logo URL: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.defaultFontSize || 10) + 5;
       }
 
-      const baseTitle = pdfSettings.documentBaseTitle || "Suivi Avantages en Nature";
-      const title = `${baseTitle} - ${monthLabel} ${selectedYear}`;
+      const moduleDefaultTitle = "Suivi Avantages en Nature";
+      let title;
+      if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
+        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle} - ${monthLabel} ${selectedYear}`;
+      } else {
+        title = `${moduleDefaultTitle} - ${monthLabel} ${selectedYear}`;
+      }
+
       doc.setFontSize(pdfSettings.documentTitleFontSize || 18);
       doc.text(title, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.documentTitleFontSize || 18) * 0.7;
       doc.setFontSize(pdfSettings.defaultFontSize || 10);
@@ -387,7 +393,7 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
                 <AlertDialogHeader>
                   <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Êtes-vous sûr de vouloir effacer toutes les données pour {months[parseInt(selectedMonth)].label} {selectedYear} ? Cette action est irréversible.
+                    Êtes-vous sûr de vouloir effacer toutes les données pour ${months[parseInt(selectedMonth)].label} ${selectedYear} ? Cette action est irréversible.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

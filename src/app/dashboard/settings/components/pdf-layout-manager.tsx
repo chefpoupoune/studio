@@ -10,9 +10,10 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare, ArrowRightLeft, TextCursorInput, Eye, FileTextIcon, AlignHorizontalSpaceAround, Maximize, Minus, RefreshCw, UploadCloud, Heading1 } from 'lucide-react';
+import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare, ArrowRightLeft, TextCursorInput, Eye, FileTextIcon, AlignHorizontalSpaceAround, Maximize, Minus, RefreshCw, UploadCloud, Heading1, InfoIcon } from 'lucide-react';
 import type { PdfLayoutSettings } from '../types';
 import { useToast } from '@/hooks/use-toast';
+import { Switch } from '@/components/ui/switch';
 import {
   PDF_LAYOUT_CONFIGS_KEY,
   GENERAL_CONFIG_KEY,
@@ -24,6 +25,7 @@ import {
   DEFAULT_FONT_SIZE,
   DEFAULT_FONT_FAMILY,
   DEFAULT_DOCUMENT_BASE_TITLE,
+  DEFAULT_SHOW_DOCUMENT_BASE_TITLE,
   DEFAULT_DOCUMENT_TITLE_FONT_SIZE,
   DEFAULT_HEADER_FONT_SIZE,
   DEFAULT_FOOTER_FONT_SIZE,
@@ -98,6 +100,7 @@ const DEFAULT_SETTINGS: Required<PdfLayoutSettings> = {
   defaultFontSize: DEFAULT_FONT_SIZE,
   fontFamily: DEFAULT_FONT_FAMILY,
   documentBaseTitle: DEFAULT_DOCUMENT_BASE_TITLE,
+  showDocumentBaseTitle: DEFAULT_SHOW_DOCUMENT_BASE_TITLE,
   documentTitleFontSize: DEFAULT_DOCUMENT_TITLE_FONT_SIZE,
   headerFontSize: DEFAULT_HEADER_FONT_SIZE,
   footerFontSize: DEFAULT_FOOTER_FONT_SIZE,
@@ -124,6 +127,7 @@ export default function PdfLayoutManager() {
   const [defaultFontSizeInput, setDefaultFontSizeInput] = useState<string>(String(DEFAULT_SETTINGS.defaultFontSize));
   const [fontFamilyInput, setFontFamilyInput] = useState<NonNullable<PdfLayoutSettings['fontFamily']>>(DEFAULT_SETTINGS.fontFamily);
   const [documentBaseTitleInput, setDocumentBaseTitleInput] = useState<string>(DEFAULT_SETTINGS.documentBaseTitle);
+  const [showDocumentBaseTitleInput, setShowDocumentBaseTitleInput] = useState<boolean>(DEFAULT_SETTINGS.showDocumentBaseTitle);
   const [documentTitleFontSizeInput, setDocumentTitleFontSizeInput] = useState<string>(String(DEFAULT_SETTINGS.documentTitleFontSize));
   const [headerFontSizeInput, setHeaderFontSizeInput] = useState<string>(String(DEFAULT_SETTINGS.headerFontSize));
   const [footerFontSizeInput, setFooterFontSizeInput] = useState<string>(String(DEFAULT_SETTINGS.footerFontSize));
@@ -134,12 +138,6 @@ export default function PdfLayoutManager() {
 
   const { toast } = useToast();
   const logoFileInputRef = useRef<HTMLInputElement>(null);
-
-  const currentEffectiveSettings = useMemo(() => {
-    return fetchPdfSettings(selectedPdfType || GENERAL_CONFIG_KEY, pdfConfigs);
-  }, [selectedPdfType, pdfConfigs]);
-
-  const [previewSettingsForDisplay, setPreviewSettingsForDisplay] = useState<Required<PdfLayoutSettings>>(DEFAULT_SETTINGS);
 
   useEffect(() => {
     try {
@@ -159,6 +157,8 @@ export default function PdfLayoutManager() {
        setPdfConfigs({ [GENERAL_CONFIG_KEY]: { ...DEFAULT_SETTINGS } });
     }
   }, [toast]);
+
+  const [previewSettingsForDisplay, setPreviewSettingsForDisplay] = useState<Required<PdfLayoutSettings>>(DEFAULT_SETTINGS);
 
   useEffect(() => {
     const effectiveSettings = fetchPdfSettings(selectedPdfType || GENERAL_CONFIG_KEY, pdfConfigs);
@@ -180,6 +180,7 @@ export default function PdfLayoutManager() {
     setDefaultFontSizeInput(String(effectiveSettings.defaultFontSize));
     setFontFamilyInput(effectiveSettings.fontFamily);
     setDocumentBaseTitleInput(effectiveSettings.documentBaseTitle);
+    setShowDocumentBaseTitleInput(effectiveSettings.showDocumentBaseTitle);
     setDocumentTitleFontSizeInput(String(effectiveSettings.documentTitleFontSize));
     setHeaderFontSizeInput(String(effectiveSettings.headerFontSize));
     setFooterFontSizeInput(String(effectiveSettings.footerFontSize));
@@ -208,17 +209,18 @@ export default function PdfLayoutManager() {
 
     (Object.keys(newSpecificConfigWithUpdates) as Array<keyof PdfLayoutSettings>).forEach(key => {
         const valueToSave = newSpecificConfigWithUpdates[key];
-        let defaultValue: string | number | undefined;
+        let defaultValue: string | number | boolean | undefined;
 
         switch(key) {
             case 'logoUrl': defaultValue = DEFAULT_SETTINGS.logoUrl; break;
             case 'primaryColor': defaultValue = DEFAULT_SETTINGS.primaryColor; break;
             case 'headerText': defaultValue = DEFAULT_SETTINGS.headerText; break;
             case 'footerText': defaultValue = DEFAULT_SETTINGS.footerText; break;
-            case 'marginTop': case 'marginRight': case 'marginBottom': case 'marginLeft': defaultValue = DEFAULT_SETTINGS.marginTop; break; // Use marginTop for all margins as default is same
+            case 'marginTop': case 'marginRight': case 'marginBottom': case 'marginLeft': defaultValue = DEFAULT_SETTINGS.marginTop; break;
             case 'defaultFontSize': defaultValue = DEFAULT_SETTINGS.defaultFontSize; break;
             case 'fontFamily': defaultValue = DEFAULT_SETTINGS.fontFamily; break;
             case 'documentBaseTitle': defaultValue = DEFAULT_SETTINGS.documentBaseTitle; break;
+            case 'showDocumentBaseTitle': defaultValue = DEFAULT_SETTINGS.showDocumentBaseTitle; break;
             case 'documentTitleFontSize': defaultValue = DEFAULT_SETTINGS.documentTitleFontSize; break;
             case 'headerFontSize': defaultValue = DEFAULT_SETTINGS.headerFontSize; break;
             case 'footerFontSize': defaultValue = DEFAULT_SETTINGS.footerFontSize; break;
@@ -228,8 +230,8 @@ export default function PdfLayoutManager() {
             case 'pageSize': defaultValue = DEFAULT_SETTINGS.pageSize; break;
         }
         
-        const isDefaultValue = String(valueToSave) === String(defaultValue);
-        if (valueToSave === undefined || String(valueToSave).trim() === '' || (isDefaultValue && activeConfigKey !== GENERAL_CONFIG_KEY) ) {
+        const isDefaultValue = valueToSave === defaultValue; // Direct comparison for boolean, number, string
+        if (valueToSave === undefined || (typeof valueToSave === 'string' && String(valueToSave).trim() === '') || (isDefaultValue && activeConfigKey !== GENERAL_CONFIG_KEY) ) {
           delete newSpecificConfigWithUpdates[key];
         }
     });
@@ -279,8 +281,12 @@ export default function PdfLayoutManager() {
 
   const handleSaveHeaderText = () => saveConfig({ headerText: headerTextInput || undefined }, "Le texte d'en-tête");
   const handleSaveFooterText = () => saveConfig({ footerText: footerTextInput || undefined }, "Le texte de pied de page");
-  const handleSaveDocumentBaseTitle = () => saveConfig({ documentBaseTitle: documentBaseTitleInput || undefined }, "Le titre de base du document");
-
+  const handleSaveDocumentBaseTitle = () => {
+    saveConfig({
+      documentBaseTitle: documentBaseTitleInput || undefined,
+      showDocumentBaseTitle: showDocumentBaseTitleInput
+    }, "Le titre de base du document et son affichage");
+  };
 
   const handleSaveLayoutAndFontStyles = () => {
     const updates: Partial<PdfLayoutSettings> = {
@@ -291,6 +297,7 @@ export default function PdfLayoutManager() {
       marginLeft: parseFloat(marginLeftInput) || undefined,
       defaultFontSize: parseFloat(defaultFontSizeInput) || undefined,
       fontFamily: fontFamilyInput || undefined,
+      showDocumentBaseTitle: showDocumentBaseTitleInput, // Add this
       documentTitleFontSize: parseFloat(documentTitleFontSizeInput) || undefined,
       headerFontSize: parseFloat(headerFontSizeInput) || undefined,
       footerFontSize: parseFloat(footerFontSizeInput) || undefined,
@@ -315,6 +322,7 @@ export default function PdfLayoutManager() {
         defaultFontSize: parseFloat(defaultFontSizeInput) || DEFAULT_SETTINGS.defaultFontSize,
         fontFamily: fontFamilyInput || DEFAULT_SETTINGS.fontFamily,
         documentBaseTitle: documentBaseTitleInput || DEFAULT_SETTINGS.documentBaseTitle,
+        showDocumentBaseTitle: showDocumentBaseTitleInput,
         documentTitleFontSize: parseFloat(documentTitleFontSizeInput) || DEFAULT_SETTINGS.documentTitleFontSize,
         headerFontSize: parseFloat(headerFontSizeInput) || DEFAULT_SETTINGS.headerFontSize,
         footerFontSize: parseFloat(footerFontSizeInput) || DEFAULT_SETTINGS.footerFontSize,
@@ -564,8 +572,21 @@ export default function PdfLayoutManager() {
                     <p className="text-xs text-muted-foreground mt-1">Ce titre sera utilisé comme base. Des informations dynamiques (mois, année, etc.) pourront être ajoutées par chaque module.</p>
                     {previewSettingsForDisplay.documentBaseTitle && <p className="text-xs text-muted-foreground mt-1">Effectif : {previewSettingsForDisplay.documentBaseTitle}</p>}
                 </div>
+                <div className="flex items-center justify-between rounded-lg border p-3 shadow-sm">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="show-document-base-title-switch">Afficher le Titre de Base du Document</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Si activé, le "Titre de Base" sera inclus dans le titre principal du PDF.
+                    </p>
+                  </div>
+                  <Switch
+                    id="show-document-base-title-switch"
+                    checked={showDocumentBaseTitleInput}
+                    onCheckedChange={setShowDocumentBaseTitleInput}
+                  />
+                </div>
                 <Button onClick={handleSaveDocumentBaseTitle}>
-                    <Save className="mr-2 h-4 w-4"/> Enregistrer Titre de Base
+                    <Save className="mr-2 h-4 w-4"/> Enregistrer Titre de Base et Affichage
                 </Button>
                 <div>
                     <Label htmlFor="header-text-input" className="flex items-center gap-1"><Type className="w-4 h-4"/> Texte d'En-tête Personnalisé</Label>
@@ -630,6 +651,9 @@ export default function PdfLayoutManager() {
               Format: <span className="font-semibold">{previewSettingsForDisplay.pageSize.toUpperCase()}</span>,
               Police: <span className="font-semibold" style={{fontFamily: getFontFamilyCss(previewSettingsForDisplay.fontFamily)}}>{fontFamilies.find(f => f.value === previewSettingsForDisplay.fontFamily)?.label || previewSettingsForDisplay.fontFamily}</span>
             </div>
+            <div className="text-xs mb-2">
+                Afficher Titre de Base: <span className="font-semibold">{previewSettingsForDisplay.showDocumentBaseTitle ? 'Oui' : 'Non'}</span>
+            </div>
           <div 
             key={JSON.stringify(previewSettingsForDisplay)}
             className={cn(
@@ -656,7 +680,9 @@ export default function PdfLayoutManager() {
 
               {/* Document Title */}
               <div className="text-center font-bold leading-tight my-1" style={{fontSize: `${Math.max(4, (previewSettingsForDisplay.documentTitleFontSize) / 2.5)}pt`}}>
-                  {previewSettingsForDisplay.documentBaseTitle || "Titre du Document (Dynamique)"}
+                  {(previewSettingsForDisplay.showDocumentBaseTitle && previewSettingsForDisplay.documentBaseTitle) 
+                    ? `${previewSettingsForDisplay.documentBaseTitle} - Titre Module` 
+                    : "Titre Module (Dynamique)"}
               </div>
 
               {/* Dummy Content Area */}
@@ -697,7 +723,7 @@ export default function PdfLayoutManager() {
       </Card>
 
       <Alert variant="default" className="border-primary/50 bg-primary/10">
-        <FileCog className="h-5 w-5 text-primary" />
+        <InfoIcon className="h-5 w-5 text-primary" />
         <AlertTitle className="text-primary font-semibold">Note sur l'Application des Paramètres</AlertTitle>
         <AlertDescription>
           Les configurations enregistrées ici seront utilisées lors de la génération des PDFs correspondants.
