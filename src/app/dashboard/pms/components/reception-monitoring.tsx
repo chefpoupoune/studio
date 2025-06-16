@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import type { ReceptionEntry, PmsZone as PmsSupplierDefinition, PmsConfigurations } from '../types'; // Updated PmsZone alias
+import type { ReceptionEntry, PmsSupplierDefinition, PmsConfigurations } from '../types'; // Updated PmsZone alias
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -37,7 +37,18 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { firestore } from '@/lib/firebase';
-import { collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy, Timestamp } from 'firebase/firestore';
+import { 
+  collection, 
+  getDocs, 
+  addDoc, 
+  doc, 
+  setDoc, 
+  deleteDoc, 
+  query, 
+  orderBy, 
+  Timestamp,
+  getDoc // Added getDoc
+} from 'firebase/firestore';
 import { PMS_SUPPLIER_MANAGEMENT_KEY } from '@/app/dashboard/settings/types'; 
 
 interface jsPDFWithAutoTable extends jsPDF {
@@ -536,4 +547,3 @@ export default function ReceptionMonitoring() {
     </Card>
   );
 }
-
