@@ -28,10 +28,10 @@ export interface PmsTaskDefinition { // Renamed from PmsCriterion
   name: string;
 }
 
-export interface PmsZone { // Can also represent an "Equipment"
+export interface PmsZone { // Can also represent an "Equipment" or a "Control Point"
   id: string;
   name: string;
-  tasks?: PmsTaskDefinition[]; // Renamed from criteria
+  tasks?: PmsTaskDefinition[]; // Renamed from criteria, can be "Verifications" for delivery
 
   // Fields specific to Temperature Monitoring Equipment
   equipmentType?: 'refrigerator' | 'freezer';
@@ -50,6 +50,7 @@ export interface PmsConfigurations {
 export const PMS_KITCHEN_CLEANING_KEY = 'kitchenCleaning_v1';
 export const PMS_RESTAURANT_CLEANING_KEY = 'restaurantCleaning_v1';
 export const PMS_TEMPERATURE_MONITORING_KEY = 'temperatureMonitoring_v1';
+export const PMS_DELIVERY_MONITORING_KEY = 'deliveryMonitoring_v1'; // New key for delivery monitoring
 // Key for storing all PMS module configurations
 export const PMS_CONFIG_STORAGE_KEY = 'pms_module_configurations_v5'; // Incremented version
     

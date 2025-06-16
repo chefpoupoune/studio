@@ -7,12 +7,13 @@ import {
   PMS_KITCHEN_CLEANING_KEY, 
   PMS_RESTAURANT_CLEANING_KEY, 
   PMS_TEMPERATURE_MONITORING_KEY,
+  PMS_DELIVERY_MONITORING_KEY, // Import new key
 } from '../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { PlusCircle, Edit2, Trash2, ShieldAlert, ClipboardEdit, SprayCan, Sparkles, Thermometer, Flame, Loader2 } from 'lucide-react'; 
+import { PlusCircle, Edit2, Trash2, ShieldAlert, ClipboardEdit, SprayCan, Sparkles, Thermometer, Flame, Loader2, Truck } from 'lucide-react'; // Added Truck icon
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -32,13 +33,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { firestore } from '@/lib/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore'; // Removed collection, getDocs as they are not directly used for main save/load anymore here.
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 const FIRESTORE_COLLECTION_NAME = "pmsConfigurations";
 const FIRESTORE_DOCUMENT_ID = "mainConfig";
 
 const baseZoneSchema = z.object({
-  name: z.string().min(1, "Le nom de la zone/équipement est requis."),
+  name: z.string().min(1, "Le nom de la zone/équipement/point de contrôle est requis."),
 });
 
 const temperatureEquipmentSchema = baseZoneSchema.extend({
@@ -64,7 +65,7 @@ type ZoneFormData = z.infer<typeof baseZoneSchema>;
 type TemperatureEquipmentFormData = z.infer<typeof temperatureEquipmentSchema>;
 
 const taskSchema = z.object({
-  name: z.string().min(1, "Le nom de la tâche/point de contrôle est requis."),
+  name: z.string().min(1, "Le nom de la tâche/point de contrôle/vérification est requis."),
 });
 type TaskFormData = z.infer<typeof taskSchema>;
 
@@ -91,6 +92,7 @@ export default function PmsConfigManager() {
     [PMS_KITCHEN_CLEANING_KEY]: [],
     [PMS_RESTAURANT_CLEANING_KEY]: [],
     [PMS_TEMPERATURE_MONITORING_KEY]: [],
+    [PMS_DELIVERY_MONITORING_KEY]: [], // Add new key to initial structure
   };
 
   useEffect(() => {
@@ -109,19 +111,18 @@ export default function PmsConfigManager() {
           });
           setPmsConfigs(loadedConfigs);
         } else {
-          // If doc doesn't exist, initialize it with the default structure
           await setDoc(docRef, initialConfigsStructure);
           setPmsConfigs(initialConfigsStructure);
         }
       } catch (error) {
         console.error("Error loading PMS configs from Firestore:", error);
-        setPmsConfigs(initialConfigsStructure); // Fallback to initial structure on error
+        setPmsConfigs(initialConfigsStructure); 
         toast({ title: "Erreur de chargement", description: "Configurations PMS corrompues ou non trouvées. Initialisation.", variant: "destructive" });
       }
       setIsLoading(false);
     };
     loadConfigsFromFirestore();
-  }, [toast]); // Removed initialConfigsStructure from deps as it's stable
+  }, [toast]);
 
 
   useEffect(() => {
@@ -183,9 +184,10 @@ export default function PmsConfigManager() {
 
   const handleZoneSubmit = (data: ZoneFormData | TemperatureEquipmentFormData) => {
     if (!currentCategoryKey) return;
-    const originalPmsConfigs = JSON.parse(JSON.stringify(pmsConfigs)); // Deep copy for rollback
+    const originalPmsConfigs = JSON.parse(JSON.stringify(pmsConfigs)); 
     const currentItems = originalPmsConfigs[currentCategoryKey] || []; 
-    const itemLabel = currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone";
+    const itemLabel = currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : 
+                      currentCategoryKey === PMS_DELIVERY_MONITORING_KEY ? "Point de Contrôle" : "Zone";
     
     let updatedItemData: PmsZone;
     let newItems: PmsZone[];
@@ -229,14 +231,14 @@ export default function PmsConfigManager() {
     }
     
     const newConfigs = { ...originalPmsConfigs, [currentCategoryKey]: newItems };
-    setPmsConfigs(newConfigs); // Optimistic update
+    setPmsConfigs(newConfigs); 
 
     saveConfigsToFirestore(newConfigs)
         .then(() => {
             toast({ title: `${itemLabel} ${editingZone ? "Modifié(e)" : "Ajouté(e)"}`, description: `Le/La ${itemLabel.toLowerCase()} "${data.name}" a été ${editingZone ? "mis(e) à jour." : "ajouté(e)."}` });
         })
         .catch(() => {
-            setPmsConfigs(originalPmsConfigs); // Rollback
+            setPmsConfigs(originalPmsConfigs); 
             toast({ title: "Erreur", description: `Échec de la sauvegarde pour ${itemLabel.toLowerCase()} "${data.name}".`, variant: "destructive" });
         });
     setIsZoneDialogOpen(false);
@@ -247,16 +249,18 @@ export default function PmsConfigManager() {
     const currentItems = originalPmsConfigs[categoryKey] || [];
     const updatedItems = currentItems.filter(item => item.id !== itemId);
     const newConfigs = { ...originalPmsConfigs, [categoryKey]: updatedItems };
+    const itemLabel = currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : 
+                      currentCategoryKey === PMS_DELIVERY_MONITORING_KEY ? "Point de Contrôle" : "Zone";
     
-    setPmsConfigs(newConfigs); // Optimistic update
+    setPmsConfigs(newConfigs); 
 
     saveConfigsToFirestore(newConfigs)
       .then(() => {
-        toast({ title: `${categoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone"} Supprimé(e)`, description: `L'élément "${itemName}" a été supprimé.`, variant: "destructive" });
+        toast({ title: `${itemLabel} Supprimé(e)`, description: `L'élément "${itemName}" a été supprimé.`, variant: "destructive" });
       })
       .catch((error) => {
-        setPmsConfigs(originalPmsConfigs); // Rollback
-        console.error("Error deleting zone/equipment, UI rolled back:", error);
+        setPmsConfigs(originalPmsConfigs); 
+        console.error("Error deleting item, UI rolled back:", error);
         toast({ title: "Erreur de Suppression", description: "La suppression a échoué, l'élément a été restauré.", variant: "destructive"});
       });
   };
@@ -275,6 +279,7 @@ export default function PmsConfigManager() {
     const originalPmsConfigs = JSON.parse(JSON.stringify(pmsConfigs));
     const currentItems = originalPmsConfigs[currentCategoryKey] || [];
     let zoneFoundAndUpdated = false;
+    const taskItemLabel = currentCategoryKey === PMS_DELIVERY_MONITORING_KEY ? "Vérification" : "Tâche";
     
     const updatedItems = currentItems.map(item => {
       if (item.id === currentZoneForTask.id) {
@@ -297,15 +302,15 @@ export default function PmsConfigManager() {
     }
 
     const newConfigs = { ...originalPmsConfigs, [currentCategoryKey]: updatedItems };
-    setPmsConfigs(newConfigs); // Optimistic update
+    setPmsConfigs(newConfigs);
 
     saveConfigsToFirestore(newConfigs)
       .then(() => {
-        toast({ title: `Tâche ${editingTask ? "Modifiée" : "Ajoutée"}`, description: `L'élément "${data.name}" a été ${editingTask ? "mis à jour." : `ajouté(e) à ${currentZoneForTask.name}`}.` });
+        toast({ title: `${taskItemLabel} ${editingTask ? "Modifiée" : "Ajoutée"}`, description: `L'élément "${data.name}" a été ${editingTask ? "mis à jour." : `ajouté(e) à ${currentZoneForTask.name}`}.` });
       })
       .catch(() => {
-        setPmsConfigs(originalPmsConfigs); // Rollback
-         toast({ title: "Erreur", description: `Échec de la sauvegarde pour la tâche "${data.name}".`, variant: "destructive" });
+        setPmsConfigs(originalPmsConfigs); 
+         toast({ title: "Erreur", description: `Échec de la sauvegarde pour ${taskItemLabel.toLowerCase()} "${data.name}".`, variant: "destructive" });
       });
     setIsTaskDialogOpen(false);
   };
@@ -314,6 +319,7 @@ export default function PmsConfigManager() {
     const originalPmsConfigs = JSON.parse(JSON.stringify(pmsConfigs));
     const currentItems = originalPmsConfigs[categoryKey] || [];
     let zoneFoundAndUpdated = false;
+    const taskItemLabel = currentCategoryKey === PMS_DELIVERY_MONITORING_KEY ? "Vérification" : "Tâche";
 
     const updatedItems = currentItems.map(item => {
       if (item.id === zoneId) {
@@ -328,17 +334,17 @@ export default function PmsConfigManager() {
       return;
     }
 
-    const newConfigs = { ...originalPmsConfigs, [categoryKey]: updatedItems };
-    setPmsConfigs(newConfigs); // Optimistic update
+    const newConfigs = { ...originalPmsConfigs, [currentCategoryKey]: updatedItems };
+    setPmsConfigs(newConfigs); 
 
     saveConfigsToFirestore(newConfigs)
       .then(() => {
-        toast({ title: "Tâche Supprimée", description: `L'élément "${taskName}" a été supprimé.`, variant: "destructive" });
+        toast({ title: `${taskItemLabel} Supprimée`, description: `L'élément "${taskName}" a été supprimé.`, variant: "destructive" });
       })
       .catch((error) => {
-        setPmsConfigs(originalPmsConfigs); // Rollback
+        setPmsConfigs(originalPmsConfigs); 
         console.error("Error deleting task, UI rolled back:", error);
-        toast({ title: "Erreur de Suppression", description: "La suppression de la tâche a échoué, l'élément a été restauré.", variant: "destructive"});
+        toast({ title: "Erreur de Suppression", description: `La suppression de ${taskItemLabel.toLowerCase()} a échoué, l'élément a été restauré.`, variant: "destructive"});
       });
   };
 
@@ -377,7 +383,7 @@ export default function PmsConfigManager() {
         <CardContent>
           <div className="mb-4">
             <Button onClick={() => handleOpenZoneDialog(categoryKey)} disabled={isLoading || isSaving}>
-              <PlusCircle className="mr-2 h-4 w-4" /> Ajouter {itemLabel === "Zone" ? "une" : "un"} {itemLabel.toLowerCase()}
+              <PlusCircle className="mr-2 h-4 w-4" /> Ajouter {itemLabel === "Zone" || itemLabel === "Point de Contrôle" ? "un(e)" : "un"} {itemLabel.toLowerCase()}
             </Button>
           </div>
 
@@ -509,24 +515,33 @@ export default function PmsConfigManager() {
       {renderCategoryConfig(PMS_KITCHEN_CLEANING_KEY, "Suivi Nettoyage Cuisine", SprayCan, "Zone", "Tâche")}
       {renderCategoryConfig(PMS_RESTAURANT_CLEANING_KEY, "Suivi Nettoyage Restaurant", Sparkles, "Zone", "Tâche")}
       {renderCategoryConfig(PMS_TEMPERATURE_MONITORING_KEY, "Suivi des Températures", Thermometer, "Équipement")}
+      {renderCategoryConfig(PMS_DELIVERY_MONITORING_KEY, "Suivi de Livraison", Truck, "Point de Contrôle", "Vérification")}
       
       <Dialog open={isZoneDialogOpen} onOpenChange={setIsZoneDialogOpen}>
         <DialogContent className="sm:max-w-lg md:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{editingZone ? "Modifier" : "Nouvel"} {currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone"}</DialogTitle>
+            <DialogTitle>{editingZone ? "Modifier" : "Nouvel"} {
+                currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" :
+                currentCategoryKey === PMS_DELIVERY_MONITORING_KEY ? "Point de Contrôle" : "Zone"
+            }</DialogTitle>
             {currentCategoryKey && <CardDescription>Pour: {
                 currentCategoryKey === PMS_KITCHEN_CLEANING_KEY ? "Nettoyage Cuisine" : 
                 currentCategoryKey === PMS_RESTAURANT_CLEANING_KEY ? "Nettoyage Restaurant" :
-                currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Suivi des Températures" : ""
+                currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Suivi des Températures" :
+                currentCategoryKey === PMS_DELIVERY_MONITORING_KEY ? "Suivi de Livraison" : ""
             }</CardDescription>}
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handleZoneSubmit)} className="space-y-4 py-4">
               <FormField control={form.control} name="name" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Nom de l'{currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : "Zone"}</FormLabel>
+                  <FormLabel>Nom de l'{
+                    currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" :
+                    currentCategoryKey === PMS_DELIVERY_MONITORING_KEY ? "Point de Contrôle" : "Zone"
+                  }</FormLabel>
                   <FormControl><Input placeholder={
                       currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Ex: Frigo Positif Cuisine" : 
+                      currentCategoryKey === PMS_DELIVERY_MONITORING_KEY ? "Ex: État du véhicule" :
                       "Ex: Plans de travail"
                     } {...field} />
                   </FormControl>
@@ -590,19 +605,21 @@ export default function PmsConfigManager() {
         </DialogContent>
       </Dialog>
 
-      {currentCategoryKey !== PMS_TEMPERATURE_MONITORING_KEY && 
+      {(currentCategoryKey && currentCategoryKey !== PMS_TEMPERATURE_MONITORING_KEY) && 
         <Dialog open={isTaskDialogOpen} onOpenChange={setIsTaskDialogOpen}>
             <DialogContent className="sm:max-w-md">
             <DialogHeader>
-                <DialogTitle>{editingTask ? "Modifier la Tâche" : "Nouvelle Tâche"}</DialogTitle>
+                <DialogTitle>{editingTask ? "Modifier" : "Nouvelle"} {currentCategoryKey === PMS_DELIVERY_MONITORING_KEY ? "Vérification" : "Tâche"}</DialogTitle>
                 {currentZoneForTask && <CardDescription>Pour: {currentZoneForTask.name}</CardDescription>}
             </DialogHeader>
             <Form {...taskForm}>
                 <form onSubmit={taskForm.handleSubmit(handleTaskSubmit)} className="space-y-4 py-4">
                 <FormField control={taskForm.control} name="name" render={({ field }) => (
                     <FormItem>
-                    <FormLabel>Nom de la Tâche</FormLabel>
-                    <FormControl><Input placeholder={"Ex: Nettoyage et désinfection"} {...field} />
+                    <FormLabel>Nom de la {currentCategoryKey === PMS_DELIVERY_MONITORING_KEY ? "Vérification" : "Tâche"}</FormLabel>
+                    <FormControl><Input placeholder={
+                        currentCategoryKey === PMS_DELIVERY_MONITORING_KEY ? "Ex: Vérifier température du camion" : "Ex: Nettoyage et désinfection"
+                    } {...field} />
                     </FormControl>
                     <FormMessage />
                     </FormItem>
@@ -623,7 +640,7 @@ export default function PmsConfigManager() {
                 <ShieldAlert className="w-5 h-5 text-muted-foreground"/>
                 Configuration Autres Modules PMS
             </CardTitle>
-            <CardDescription>Définitions pour le suivi des livraisons, etc. (Bientôt disponible).</CardDescription>
+            <CardDescription>Définitions pour la liaison froide, la décongélation, etc. (Bientôt disponible).</CardDescription>
         </CardHeader>
       </Card>
     </div>
