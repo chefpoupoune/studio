@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
@@ -26,6 +27,7 @@ import {
   DEFAULT_FONT_FAMILY,
   DEFAULT_DOCUMENT_BASE_TITLE,
   DEFAULT_SHOW_DOCUMENT_BASE_TITLE,
+  DEFAULT_SHOW_MODULE_TITLE, // New import
   DEFAULT_DOCUMENT_TITLE_FONT_SIZE,
   DEFAULT_HEADER_FONT_SIZE,
   DEFAULT_FOOTER_FONT_SIZE,
@@ -101,6 +103,7 @@ const DEFAULT_SETTINGS: Required<PdfLayoutSettings> = {
   fontFamily: DEFAULT_FONT_FAMILY,
   documentBaseTitle: DEFAULT_DOCUMENT_BASE_TITLE,
   showDocumentBaseTitle: DEFAULT_SHOW_DOCUMENT_BASE_TITLE,
+  showModuleTitle: DEFAULT_SHOW_MODULE_TITLE, // New
   documentTitleFontSize: DEFAULT_DOCUMENT_TITLE_FONT_SIZE,
   headerFontSize: DEFAULT_HEADER_FONT_SIZE,
   footerFontSize: DEFAULT_FOOTER_FONT_SIZE,
@@ -128,6 +131,7 @@ export default function PdfLayoutManager() {
   const [fontFamilyInput, setFontFamilyInput] = useState<NonNullable<PdfLayoutSettings['fontFamily']>>(DEFAULT_SETTINGS.fontFamily);
   const [documentBaseTitleInput, setDocumentBaseTitleInput] = useState<string>(DEFAULT_SETTINGS.documentBaseTitle);
   const [showDocumentBaseTitleInput, setShowDocumentBaseTitleInput] = useState<boolean>(DEFAULT_SETTINGS.showDocumentBaseTitle);
+  const [showModuleTitleInput, setShowModuleTitleInput] = useState<boolean>(DEFAULT_SETTINGS.showModuleTitle); // New state
   const [documentTitleFontSizeInput, setDocumentTitleFontSizeInput] = useState<string>(String(DEFAULT_SETTINGS.documentTitleFontSize));
   const [headerFontSizeInput, setHeaderFontSizeInput] = useState<string>(String(DEFAULT_SETTINGS.headerFontSize));
   const [footerFontSizeInput, setFooterFontSizeInput] = useState<string>(String(DEFAULT_SETTINGS.footerFontSize));
@@ -191,6 +195,7 @@ export default function PdfLayoutManager() {
     setFontFamilyInput(effectiveSettings.fontFamily);
     setDocumentBaseTitleInput(effectiveSettings.documentBaseTitle);
     setShowDocumentBaseTitleInput(effectiveSettings.showDocumentBaseTitle);
+    setShowModuleTitleInput(effectiveSettings.showModuleTitle); // Load new setting
     setDocumentTitleFontSizeInput(String(effectiveSettings.documentTitleFontSize));
     setHeaderFontSizeInput(String(effectiveSettings.headerFontSize));
     setFooterFontSizeInput(String(effectiveSettings.footerFontSize));
@@ -199,12 +204,8 @@ export default function PdfLayoutManager() {
     setOrientationInput(effectiveSettings.orientation);
     setPageSizeInput(effectiveSettings.pageSize);
     
-    // This effect also populates the preview initially
-    setPreviewSettingsForDisplay(effectiveSettings);
-
   }, [selectedPdfType, pdfConfigs, isClient, isLoadingSettings]);
 
-  // Effect to dynamically update preview based on form inputs
   useEffect(() => {
     if (!isClient || isLoadingSettings) return;
 
@@ -221,6 +222,7 @@ export default function PdfLayoutManager() {
       fontFamily: fontFamilyInput || DEFAULT_SETTINGS.fontFamily,
       documentBaseTitle: documentBaseTitleInput || DEFAULT_SETTINGS.documentBaseTitle,
       showDocumentBaseTitle: showDocumentBaseTitleInput,
+      showModuleTitle: showModuleTitleInput, // Add to live settings
       documentTitleFontSize: parseFloat(documentTitleFontSizeInput) || DEFAULT_SETTINGS.documentTitleFontSize,
       headerFontSize: parseFloat(headerFontSizeInput) || DEFAULT_SETTINGS.headerFontSize,
       footerFontSize: parseFloat(footerFontSizeInput) || DEFAULT_SETTINGS.footerFontSize,
@@ -235,6 +237,7 @@ export default function PdfLayoutManager() {
     logoUrlInput, primaryColorInput, headerTextInput, footerTextInput,
     marginTopInput, marginRightInput, marginBottomInput, marginLeftInput,
     defaultFontSizeInput, fontFamilyInput, documentBaseTitleInput, showDocumentBaseTitleInput,
+    showModuleTitleInput, // Add new dependency
     documentTitleFontSizeInput, headerFontSizeInput, footerFontSizeInput,
     tableHeaderFontSizeInput, tableBodyFontSizeInput, orientationInput, pageSizeInput
   ]);
@@ -267,6 +270,7 @@ export default function PdfLayoutManager() {
             case 'fontFamily': defaultValue = DEFAULT_SETTINGS.fontFamily; break;
             case 'documentBaseTitle': defaultValue = DEFAULT_SETTINGS.documentBaseTitle; break;
             case 'showDocumentBaseTitle': defaultValue = DEFAULT_SETTINGS.showDocumentBaseTitle; break;
+            case 'showModuleTitle': defaultValue = DEFAULT_SETTINGS.showModuleTitle; break; // New
             case 'documentTitleFontSize': defaultValue = DEFAULT_SETTINGS.documentTitleFontSize; break;
             case 'headerFontSize': defaultValue = DEFAULT_SETTINGS.headerFontSize; break;
             case 'footerFontSize': defaultValue = DEFAULT_SETTINGS.footerFontSize; break;
@@ -326,11 +330,13 @@ export default function PdfLayoutManager() {
 
   const handleSaveHeaderText = () => saveConfig({ headerText: headerTextInput || undefined }, "Le texte d'en-tête");
   const handleSaveFooterText = () => saveConfig({ footerText: footerTextInput || undefined }, "Le texte de pied de page");
-  const handleSaveDocumentBaseTitle = () => {
+  
+  const handleSaveTitleOptions = () => {
     saveConfig({
       documentBaseTitle: documentBaseTitleInput || undefined,
-      showDocumentBaseTitle: showDocumentBaseTitleInput
-    }, "Le titre de base du document et son affichage");
+      showDocumentBaseTitle: showDocumentBaseTitleInput,
+      showModuleTitle: showModuleTitleInput // Save new option
+    }, "Les options de titre");
   };
 
   const handleSaveLayoutAndFontStyles = () => {
@@ -352,36 +358,7 @@ export default function PdfLayoutManager() {
     };
     saveConfig(updates, "Les styles de mise en page et de police");
   };
-
-  const handleRefreshPreview = () => {
-    const liveSettings: Required<PdfLayoutSettings> = {
-        logoUrl: logoUrlInput || DEFAULT_SETTINGS.logoUrl,
-        primaryColor: primaryColorInput || DEFAULT_SETTINGS.primaryColor,
-        headerText: headerTextInput || DEFAULT_SETTINGS.headerText,
-        footerText: footerTextInput || DEFAULT_SETTINGS.footerText,
-        marginTop: parseFloat(marginTopInput) || DEFAULT_SETTINGS.marginTop,
-        marginRight: parseFloat(marginRightInput) || DEFAULT_SETTINGS.marginRight,
-        marginBottom: parseFloat(marginBottomInput) || DEFAULT_SETTINGS.marginBottom,
-        marginLeft: parseFloat(marginLeftInput) || DEFAULT_SETTINGS.marginLeft,
-        defaultFontSize: parseFloat(defaultFontSizeInput) || DEFAULT_SETTINGS.defaultFontSize,
-        fontFamily: fontFamilyInput || DEFAULT_SETTINGS.fontFamily,
-        documentBaseTitle: documentBaseTitleInput || DEFAULT_SETTINGS.documentBaseTitle,
-        showDocumentBaseTitle: showDocumentBaseTitleInput,
-        documentTitleFontSize: parseFloat(documentTitleFontSizeInput) || DEFAULT_SETTINGS.documentTitleFontSize,
-        headerFontSize: parseFloat(headerFontSizeInput) || DEFAULT_SETTINGS.headerFontSize,
-        footerFontSize: parseFloat(footerFontSizeInput) || DEFAULT_SETTINGS.footerFontSize,
-        tableHeaderFontSize: parseFloat(tableHeaderFontSizeInput) || DEFAULT_SETTINGS.tableHeaderFontSize,
-        tableBodyFontSize: parseFloat(tableBodyFontSizeInput) || DEFAULT_SETTINGS.tableBodyFontSize,
-        orientation: orientationInput || DEFAULT_SETTINGS.orientation,
-        pageSize: pageSizeInput || DEFAULT_SETTINGS.pageSize,
-    };
-    setPreviewSettingsForDisplay(liveSettings);
-    toast({
-      title: "Aperçu Actualisé Manuellement",
-      description: "L'aperçu a été mis à jour avec les valeurs actuelles des champs.",
-    });
-  };
-
+  
   const renderPreviewHeaderText = () => {
     const headerToDisplay = previewSettingsForDisplay.headerText || '';
     const logoToDisplay = uploadedLogoPreview || (previewSettingsForDisplay.logoUrl?.startsWith('data:image') ? previewSettingsForDisplay.logoUrl : null);
@@ -451,6 +428,21 @@ export default function PdfLayoutManager() {
         </Card>
       </div>
     );
+  }
+
+  const baseTitleTextPreview = (previewSettingsForDisplay.showDocumentBaseTitle && previewSettingsForDisplay.documentBaseTitle && previewSettingsForDisplay.documentBaseTitle.trim() !== "")
+      ? previewSettingsForDisplay.documentBaseTitle.trim()
+      : "";
+  const moduleTitleTextPreview = previewSettingsForDisplay.showModuleTitle ? "Titre Module (Dynamique)" : "";
+  let fullTitlePreview = "";
+  if (baseTitleTextPreview && moduleTitleTextPreview) {
+      fullTitlePreview = `${baseTitleTextPreview} - ${moduleTitleTextPreview}`;
+  } else if (baseTitleTextPreview) {
+      fullTitlePreview = baseTitleTextPreview;
+  } else if (moduleTitleTextPreview) {
+      fullTitlePreview = moduleTitleTextPreview;
+  } else {
+      fullTitlePreview = "(Aucun titre configuré pour l'affichage)";
   }
 
   return (
@@ -617,11 +609,11 @@ export default function PdfLayoutManager() {
            <div className="p-6 border rounded-lg shadow-sm bg-card/50 hover:shadow-md transition-shadow">
               <div className="flex items-center gap-3 mb-3">
                 <FileCog className="w-6 h-6 text-accent" />
-                <h3 className="text-lg font-semibold text-foreground">Contenu En-têtes, Pieds de Page & Titres</h3>
+                <h3 className="text-lg font-semibold text-foreground">Contenu En-têtes, Pieds de Page & Options des Titres</h3>
               </div>
               <div className="space-y-4">
                 <div>
-                    <Label htmlFor="document-base-title-input" className="flex items-center gap-1"><Heading1 className="w-4 h-4"/> je voudrasi choisir si je veux afficher le titre de base avec un sélecteur : "oui ou non "</Label>
+                    <Label className="flex items-center gap-1" htmlFor="document-base-title-input"><Heading1 className="w-4 h-4"/> je voudrasi choisir si je veux afficher le titre de base avec un sélecteur : "oui ou non "</Label>
                     <Input 
                         id="document-base-title-input"
                         type="text"
@@ -637,7 +629,7 @@ export default function PdfLayoutManager() {
                   <div className="space-y-0.5">
                     <Label htmlFor="show-document-base-title-switch">je voudrais un syte oui ou non</Label>
                     <p className="text-xs text-muted-foreground">
-                      Si activé, le "Titre de Base" sera inclus dans le titre principal du PDF.
+                      Si activé, le "Titre de Base" ci-dessus sera inclus dans le titre principal du PDF.
                     </p>
                   </div>
                   <Switch
@@ -646,8 +638,21 @@ export default function PdfLayoutManager() {
                     onCheckedChange={setShowDocumentBaseTitleInput}
                   />
                 </div>
-                <Button onClick={handleSaveDocumentBaseTitle}>
-                    <Save className="mr-2 h-4 w-4"/> Enregistrer Titre de Base et Affichage
+                <div className="flex items-center justify-between rounded-lg border p-3 shadow-sm">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="show-module-title-switch">Afficher le Titre Spécifique au Module</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Si activé, le titre du module (ex: "Relevé d'Heures") sera inclus.
+                    </p>
+                  </div>
+                  <Switch
+                    id="show-module-title-switch"
+                    checked={showModuleTitleInput}
+                    onCheckedChange={setShowModuleTitleInput}
+                  />
+                </div>
+                <Button onClick={handleSaveTitleOptions}>
+                    <Save className="mr-2 h-4 w-4"/> Enregistrer Options des Titres
                 </Button>
                 <div>
                     <Label htmlFor="header-text-input" className="flex items-center gap-1"><Type className="w-4 h-4"/> Texte d'En-tête Personnalisé</Label>
@@ -686,9 +691,6 @@ export default function PdfLayoutManager() {
               </div>
             </div>
             <div className="flex justify-end mt-6 space-x-2">
-                <Button onClick={handleRefreshPreview} variant="outline">
-                    <RefreshCw className="mr-2 h-4 w-4" /> Actualiser l'Aperçu Manuellement
-                </Button>
                 <Button onClick={handleSaveLayoutAndFontStyles} size="lg">
                     <Save className="mr-2 h-5 w-5"/> Enregistrer Config. (Police, Couleur, Marges, Format)
                 </Button>
@@ -713,7 +715,8 @@ export default function PdfLayoutManager() {
               Police: <span className="font-semibold" style={{fontFamily: getFontFamilyCss(previewSettingsForDisplay.fontFamily)}}>{fontFamilies.find(f => f.value === previewSettingsForDisplay.fontFamily)?.label || previewSettingsForDisplay.fontFamily}</span>
             </div>
             <div className="text-xs mb-2">
-                Afficher Titre de Base: <span className="font-semibold">{previewSettingsForDisplay.showDocumentBaseTitle ? 'Oui' : 'Non'}</span>
+                Afficher Titre de Base: <span className="font-semibold">{previewSettingsForDisplay.showDocumentBaseTitle ? 'Oui' : 'Non'}</span>, 
+                Afficher Titre Module: <span className="font-semibold">{previewSettingsForDisplay.showModuleTitle ? 'Oui' : 'Non'}</span>
             </div>
           <div 
             key={JSON.stringify(previewSettingsForDisplay)} 
@@ -744,9 +747,7 @@ export default function PdfLayoutManager() {
                 className="text-center font-bold leading-tight my-1" 
                 style={{fontSize: `${Math.max(4, (previewSettingsForDisplay.documentTitleFontSize) / 2.5)}pt`}}
               >
-                {(previewSettingsForDisplay.showDocumentBaseTitle && previewSettingsForDisplay.documentBaseTitle && previewSettingsForDisplay.documentBaseTitle.trim() !== "") 
-                  ? `${previewSettingsForDisplay.documentBaseTitle.trim()} - Titre Module` 
-                  : "Titre Module (Dynamique)"}
+                {fullTitlePreview}
               </div>
 
               {/* Dummy Content Area */}
@@ -797,4 +798,5 @@ export default function PdfLayoutManager() {
     </div>
   );
 }
+
 

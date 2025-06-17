@@ -1,4 +1,5 @@
 
+
 import type { PdfLayoutSettings } from '@/app/dashboard/settings/types';
 import { DEFAULT_APP_PRIMARY_COLOR } from '@/config/colors';
 
@@ -12,8 +13,9 @@ export const DEFAULT_MARGIN = 30;
 export const DEFAULT_FONT_SIZE = 10;
 
 export const DEFAULT_FONT_FAMILY: NonNullable<PdfLayoutSettings['fontFamily']> = 'helvetica';
-export const DEFAULT_DOCUMENT_BASE_TITLE = ''; // New default
-export const DEFAULT_SHOW_DOCUMENT_BASE_TITLE = true; // New default
+export const DEFAULT_DOCUMENT_BASE_TITLE = ''; 
+export const DEFAULT_SHOW_DOCUMENT_BASE_TITLE = true; 
+export const DEFAULT_SHOW_MODULE_TITLE = true; // New default
 export const DEFAULT_DOCUMENT_TITLE_FONT_SIZE = 18; 
 export const DEFAULT_HEADER_FONT_SIZE = 10; 
 export const DEFAULT_FOOTER_FONT_SIZE = 8;
@@ -36,6 +38,7 @@ const DEFAULT_SETTINGS: Required<PdfLayoutSettings> = {
   fontFamily: DEFAULT_FONT_FAMILY,
   documentBaseTitle: DEFAULT_DOCUMENT_BASE_TITLE, 
   showDocumentBaseTitle: DEFAULT_SHOW_DOCUMENT_BASE_TITLE,
+  showModuleTitle: DEFAULT_SHOW_MODULE_TITLE, // New default
   documentTitleFontSize: DEFAULT_DOCUMENT_TITLE_FONT_SIZE, 
   headerFontSize: DEFAULT_HEADER_FONT_SIZE,
   footerFontSize: DEFAULT_FOOTER_FONT_SIZE,
@@ -87,6 +90,7 @@ export function getPdfLayoutSettings(pdfTypeKey: string, allConfigsParam?: Recor
     fontFamily: specificConfig.fontFamily ?? generalConfig.fontFamily ?? DEFAULT_SETTINGS.fontFamily,
     documentBaseTitle: specificConfig.documentBaseTitle ?? generalConfig.documentBaseTitle ?? DEFAULT_SETTINGS.documentBaseTitle,
     showDocumentBaseTitle: specificConfig.showDocumentBaseTitle ?? generalConfig.showDocumentBaseTitle ?? DEFAULT_SETTINGS.showDocumentBaseTitle,
+    showModuleTitle: specificConfig.showModuleTitle ?? generalConfig.showModuleTitle ?? DEFAULT_SETTINGS.showModuleTitle, // New
     documentTitleFontSize: specificConfig.documentTitleFontSize ?? generalConfig.documentTitleFontSize ?? DEFAULT_SETTINGS.documentTitleFontSize, 
     headerFontSize: specificConfig.headerFontSize ?? generalConfig.headerFontSize ?? DEFAULT_SETTINGS.headerFontSize,
     footerFontSize: specificConfig.footerFontSize ?? generalConfig.footerFontSize ?? DEFAULT_SETTINGS.footerFontSize,
@@ -96,3 +100,4 @@ export function getPdfLayoutSettings(pdfTypeKey: string, allConfigsParam?: Recor
     pageSize: specificConfig.pageSize ?? generalConfig.pageSize ?? DEFAULT_SETTINGS.pageSize,
   };
 }
+
