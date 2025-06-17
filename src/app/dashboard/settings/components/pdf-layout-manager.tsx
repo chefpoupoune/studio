@@ -138,8 +138,16 @@ export default function PdfLayoutManager() {
 
   const { toast } = useToast();
   const logoFileInputRef = useRef<HTMLInputElement>(null);
+  const [isClient, setIsClient] = useState(false);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
 
   useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isClient) return;
+    setIsLoadingSettings(true);
     try {
       const storedConfigs = localStorage.getItem(PDF_LAYOUT_CONFIGS_KEY);
       if (storedConfigs) {
@@ -156,11 +164,13 @@ export default function PdfLayoutManager() {
       });
        setPdfConfigs({ [GENERAL_CONFIG_KEY]: { ...DEFAULT_SETTINGS } });
     }
-  }, [toast]);
+    setIsLoadingSettings(false);
+  }, [isClient, toast]);
 
   const [previewSettingsForDisplay, setPreviewSettingsForDisplay] = useState<Required<PdfLayoutSettings>>(DEFAULT_SETTINGS);
 
   useEffect(() => {
+    if (!isClient) return;
     const effectiveSettings = fetchPdfSettings(selectedPdfType || GENERAL_CONFIG_KEY, pdfConfigs);
     
     setLogoUrlInput(effectiveSettings.logoUrl); 
@@ -189,9 +199,45 @@ export default function PdfLayoutManager() {
     setOrientationInput(effectiveSettings.orientation);
     setPageSizeInput(effectiveSettings.pageSize);
     
+    // This setPreviewSettingsForDisplay is important for the initial load of the preview.
     setPreviewSettingsForDisplay(effectiveSettings);
 
-  }, [selectedPdfType, pdfConfigs]);
+  }, [selectedPdfType, pdfConfigs, isClient]);
+
+  // New useEffect to update preview dynamically based on input changes
+  useEffect(() => {
+    if (!isClient || isLoadingSettings) return;
+
+    const liveSettings: Required<PdfLayoutSettings> = {
+      logoUrl: logoUrlInput || DEFAULT_SETTINGS.logoUrl,
+      primaryColor: primaryColorInput || DEFAULT_SETTINGS.primaryColor,
+      headerText: headerTextInput || DEFAULT_SETTINGS.headerText,
+      footerText: footerTextInput || DEFAULT_SETTINGS.footerText,
+      marginTop: parseFloat(marginTopInput) || DEFAULT_SETTINGS.marginTop,
+      marginRight: parseFloat(marginRightInput) || DEFAULT_SETTINGS.marginRight,
+      marginBottom: parseFloat(marginBottomInput) || DEFAULT_SETTINGS.marginBottom,
+      marginLeft: parseFloat(marginLeftInput) || DEFAULT_SETTINGS.marginLeft,
+      defaultFontSize: parseFloat(defaultFontSizeInput) || DEFAULT_SETTINGS.defaultFontSize,
+      fontFamily: fontFamilyInput || DEFAULT_SETTINGS.fontFamily,
+      documentBaseTitle: documentBaseTitleInput || DEFAULT_SETTINGS.documentBaseTitle,
+      showDocumentBaseTitle: showDocumentBaseTitleInput,
+      documentTitleFontSize: parseFloat(documentTitleFontSizeInput) || DEFAULT_SETTINGS.documentTitleFontSize,
+      headerFontSize: parseFloat(headerFontSizeInput) || DEFAULT_SETTINGS.headerFontSize,
+      footerFontSize: parseFloat(footerFontSizeInput) || DEFAULT_SETTINGS.footerFontSize,
+      tableHeaderFontSize: parseFloat(tableHeaderFontSizeInput) || DEFAULT_SETTINGS.tableHeaderFontSize,
+      tableBodyFontSize: parseFloat(tableBodyFontSizeInput) || DEFAULT_SETTINGS.tableBodyFontSize,
+      orientation: orientationInput || DEFAULT_SETTINGS.orientation,
+      pageSize: pageSizeInput || DEFAULT_SETTINGS.pageSize,
+    };
+    setPreviewSettingsForDisplay(liveSettings);
+  }, [
+    isClient, isLoadingSettings,
+    logoUrlInput, primaryColorInput, headerTextInput, footerTextInput,
+    marginTopInput, marginRightInput, marginBottomInput, marginLeftInput,
+    defaultFontSizeInput, fontFamilyInput, documentBaseTitleInput, showDocumentBaseTitleInput,
+    documentTitleFontSizeInput, headerFontSizeInput, footerFontSizeInput,
+    tableHeaderFontSizeInput, tableBodyFontSizeInput, orientationInput, pageSizeInput
+  ]);
 
   const selectedPdfLabel = useMemo(() => {
     if (selectedPdfType === GENERAL_CONFIG_KEY) {
@@ -230,7 +276,7 @@ export default function PdfLayoutManager() {
             case 'pageSize': defaultValue = DEFAULT_SETTINGS.pageSize; break;
         }
         
-        const isDefaultValue = valueToSave === defaultValue; // Direct comparison for boolean, number, string
+        const isDefaultValue = valueToSave === defaultValue;
         if (valueToSave === undefined || (typeof valueToSave === 'string' && String(valueToSave).trim() === '') || (isDefaultValue && activeConfigKey !== GENERAL_CONFIG_KEY) ) {
           delete newSpecificConfigWithUpdates[key];
         }
@@ -268,8 +314,8 @@ export default function PdfLayoutManager() {
         reader.onloadend = () => {
             const dataUrl = reader.result as string;
             setLogoUrlInput(dataUrl); 
-            setUploadedLogoPreview(dataUrl); 
-            setPreviewSettingsForDisplay(prev => ({...prev, logoUrl: dataUrl}));
+            setUploadedLogoPreview(dataUrl);
+            // No need to call setPreviewSettingsForDisplay here, the new useEffect will handle it
         };
         reader.readAsDataURL(file);
     }
@@ -297,7 +343,7 @@ export default function PdfLayoutManager() {
       marginLeft: parseFloat(marginLeftInput) || undefined,
       defaultFontSize: parseFloat(defaultFontSizeInput) || undefined,
       fontFamily: fontFamilyInput || undefined,
-      showDocumentBaseTitle: showDocumentBaseTitleInput, // Add this
+      showDocumentBaseTitle: showDocumentBaseTitleInput,
       documentTitleFontSize: parseFloat(documentTitleFontSizeInput) || undefined,
       headerFontSize: parseFloat(headerFontSizeInput) || undefined,
       footerFontSize: parseFloat(footerFontSizeInput) || undefined,
@@ -310,6 +356,10 @@ export default function PdfLayoutManager() {
   };
 
   const handleRefreshPreview = () => {
+    // This function is now less critical as the preview updates dynamically
+    // but can be kept for explicit user action if desired.
+    // The new useEffect already handles updating previewSettingsForDisplay.
+    // We just need to ensure its logic is sound.
     const liveSettings: Required<PdfLayoutSettings> = {
         logoUrl: logoUrlInput || DEFAULT_SETTINGS.logoUrl,
         primaryColor: primaryColorInput || DEFAULT_SETTINGS.primaryColor,
@@ -331,15 +381,16 @@ export default function PdfLayoutManager() {
         orientation: orientationInput || DEFAULT_SETTINGS.orientation,
         pageSize: pageSizeInput || DEFAULT_SETTINGS.pageSize,
     };
-    setPreviewSettingsForDisplay(liveSettings);
+    setPreviewSettingsForDisplay(liveSettings); // Update the preview
     toast({
-      title: "Aperçu Actualisé",
+      title: "Aperçu Actualisé Manuellement",
       description: "L'aperçu a été mis à jour avec les valeurs actuelles des champs.",
     });
   };
 
   const renderPreviewHeaderText = () => {
     const headerToDisplay = previewSettingsForDisplay.headerText || '';
+    // Use logoUrlInput for the preview if it's a data URL (newly uploaded), otherwise use the effective logoUrl from previewSettingsForDisplay
     const logoToDisplay = uploadedLogoPreview || (previewSettingsForDisplay.logoUrl?.startsWith('data:image') ? previewSettingsForDisplay.logoUrl : null);
 
     if (!headerToDisplay && !logoToDisplay) return <div className="h-4">&nbsp;</div>; 
@@ -391,6 +442,23 @@ export default function PdfLayoutManager() {
         return 'Helvetica, Arial, sans-serif';
     }
   };
+  
+  if (!isClient || isLoadingSettings) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Sélectionnez un type de PDF à configurer</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex justify-center items-center p-8">
+              <Loader2 className="h-6 w-6 animate-spin text-primary mr-2"/> Chargement des configurations...
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -626,10 +694,10 @@ export default function PdfLayoutManager() {
             </div>
             <div className="flex justify-end mt-6 space-x-2">
                 <Button onClick={handleRefreshPreview} variant="outline">
-                    <RefreshCw className="mr-2 h-4 w-4" /> Actualiser l'Aperçu
+                    <RefreshCw className="mr-2 h-4 w-4" /> Actualiser l'Aperçu Manuellement
                 </Button>
                 <Button onClick={handleSaveLayoutAndFontStyles} size="lg">
-                    <Save className="mr-2 h-5 w-5"/> Enregistrer Configurations Mise en Page, Police, Couleur & Marges
+                    <Save className="mr-2 h-5 w-5"/> Enregistrer Config. (Police, Couleur, Marges, Format)
                 </Button>
             </div>
         </CardContent>
@@ -642,7 +710,7 @@ export default function PdfLayoutManager() {
             Aperçu de la Mise en Page PDF
           </CardTitle>
           <CardDescription>
-            Visualisation basée sur les paramètres pour "{selectedPdfLabel}".
+            Visualisation basée sur les paramètres pour "{selectedPdfLabel}". L'aperçu se met à jour dynamiquement lorsque vous modifiez les champs.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -655,7 +723,7 @@ export default function PdfLayoutManager() {
                 Afficher Titre de Base: <span className="font-semibold">{previewSettingsForDisplay.showDocumentBaseTitle ? 'Oui' : 'Non'}</span>
             </div>
           <div 
-            key={JSON.stringify(previewSettingsForDisplay)}
+            key={JSON.stringify(previewSettingsForDisplay)} // Key to force re-render if the object reference changes deeply
             className={cn(
                 "bg-white dark:bg-neutral-800 p-1 rounded-sm shadow-inner w-full mx-auto overflow-hidden border border-muted",
                 previewSettingsForDisplay.orientation === 'landscape' ? 'aspect-[297/210] max-w-md' : 'aspect-[210/297] max-w-sm'
@@ -733,3 +801,4 @@ export default function PdfLayoutManager() {
     </div>
   );
 }
+
