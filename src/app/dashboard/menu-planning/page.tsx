@@ -22,7 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
-import { useIsMobile } from '@/hooks/use-is-mobile';
+import { useIsMobile } from '../../../hooks/use-is-mobile'; // Changed to relative path
 import { firestore } from '@/lib/firebase';
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import {
@@ -502,7 +502,7 @@ export default function MenuPlanningPage() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Confirmer la réinitialisation</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Êtes-vous sûr de vouloir réinitialiser tous les menus pour {months.find(m => m.value === selectedMonth)?.label} {selectedYear} ? Cette action est irréversible.
+                    Êtes-vous sûr de vouloir réinitialiser tous les menus pour ${months.find(m => m.value === selectedMonth)?.label} ${selectedYear} ? Cette action est irréversible.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
