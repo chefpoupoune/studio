@@ -37,18 +37,21 @@ const nextConfig: NextConfig = {
     ],
   },
   webpack: (config, { buildId, dev, isServer, defaultLoaders, webpack }) => {
+    // Ensure resolve.alias exists
+    config.resolve.alias = config.resolve.alias || {};
+
     // Add custom aliases
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      '@/components': path.resolve(__dirname, 'src/components'),
-      '@/hooks': path.resolve(__dirname, 'src/hooks'),
-      '@/lib': path.resolve(__dirname, 'src/lib'),
-      '@/config': path.resolve(__dirname, 'src/config'),
-      // You can add more aliases here if needed, e.g.,
-      // '@/app': path.resolve(__dirname, 'src/app'),
-    };
+    config.resolve.alias['@'] = path.resolve(__dirname, 'src');
+    config.resolve.alias['@/components'] = path.resolve(__dirname, 'src/components');
+    config.resolve.alias['@/hooks'] = path.resolve(__dirname, 'src/hooks');
+    config.resolve.alias['@/lib'] = path.resolve(__dirname, 'src/lib');
+    config.resolve.alias['@/config'] = path.resolve(__dirname, 'src/config');
+    // You can add more aliases here if needed, e.g.,
+    // config.resolve.alias['@/app'] = path.resolve(__dirname, 'src/app');
+    
     return config;
   },
 };
 
 export default nextConfig;
+
