@@ -238,6 +238,7 @@ export default function UserManagement() {
                 passwordRequired: true,
                 permissions: allPermissionsTrue,
                 viewableHourSummaryConfig: allViewConfig,
+                simulatedStoredPassword: u.simulatedStoredPassword || (u.username.toLowerCase() === 'chef' ? simulatedHash('000') : simulatedHash('cds000')),
             };
         }
         return u;
@@ -345,7 +346,7 @@ export default function UserManagement() {
       console.log("UserManagement [UPDATE USER SUBMIT]: Attempting to update user. Data:", userToUpdate);
       try {
         const userDocRef = doc(firestore, "appUsers", editingUser.id);
-        await setDoc(userDocRef, userToUpdate);
+        await setDoc(userDocRef, userToUpdate, { merge: true }); // USE MERGE: TRUE
         fetchAppUsers(); 
         localStorage.setItem(LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY, JSON.stringify(summaryConfigToSave));
         window.dispatchEvent(new CustomEvent('loggedInUserHourViewConfigUpdated'));
@@ -736,4 +737,4 @@ export default function UserManagement() {
   );
 }
     
-    
+
