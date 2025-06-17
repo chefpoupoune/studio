@@ -46,7 +46,7 @@ export default function KitchenCleaningMonitoring() {
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false); // State for PDF generation
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const { toast } = useToast();
   const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
 
@@ -187,7 +187,7 @@ export default function KitchenCleaningMonitoring() {
       toast({ title: "Aucune Zone Sélectionnée", description: "Veuillez sélectionner une zone pour générer le PDF.", variant: "destructive" });
       return;
     }
-    setIsGeneratingPdf(true); 
+    setIsGeneratingPdf(true);
     try {
       const pdfSettings = getPdfLayoutSettings('pms_kitchen_cleaning_monthly');
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
@@ -449,5 +449,3 @@ export default function KitchenCleaningMonitoring() {
   );
 }
 
-    
-    

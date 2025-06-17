@@ -170,7 +170,7 @@ export default function PdfLayoutManager() {
   const [previewSettingsForDisplay, setPreviewSettingsForDisplay] = useState<Required<PdfLayoutSettings>>(DEFAULT_SETTINGS);
 
   useEffect(() => {
-    if (!isClient) return;
+    if (!isClient || isLoadingSettings) return;
     const effectiveSettings = fetchPdfSettings(selectedPdfType || GENERAL_CONFIG_KEY, pdfConfigs);
     
     setLogoUrlInput(effectiveSettings.logoUrl); 
@@ -199,10 +199,12 @@ export default function PdfLayoutManager() {
     setOrientationInput(effectiveSettings.orientation);
     setPageSizeInput(effectiveSettings.pageSize);
     
+    // This effect also populates the preview initially
     setPreviewSettingsForDisplay(effectiveSettings);
 
-  }, [selectedPdfType, pdfConfigs, isClient]);
+  }, [selectedPdfType, pdfConfigs, isClient, isLoadingSettings]);
 
+  // Effect to dynamically update preview based on form inputs
   useEffect(() => {
     if (!isClient || isLoadingSettings) return;
 
@@ -340,7 +342,6 @@ export default function PdfLayoutManager() {
       marginLeft: parseFloat(marginLeftInput) || undefined,
       defaultFontSize: parseFloat(defaultFontSizeInput) || undefined,
       fontFamily: fontFamilyInput || undefined,
-      showDocumentBaseTitle: showDocumentBaseTitleInput,
       documentTitleFontSize: parseFloat(documentTitleFontSizeInput) || undefined,
       headerFontSize: parseFloat(headerFontSizeInput) || undefined,
       footerFontSize: parseFloat(footerFontSizeInput) || undefined,
@@ -620,7 +621,7 @@ export default function PdfLayoutManager() {
               </div>
               <div className="space-y-4">
                 <div>
-                    <Label htmlFor="document-base-title-input" className="flex items-center gap-1"><Heading1 className="w-4 h-4"/> Titre de Base du Document</Label>
+                    <Label htmlFor="document-base-title-input" className="flex items-center gap-1"><Heading1 className="w-4 h-4"/> je voudrasi choisir si je veux afficher le titre de base avec un sélecteur : "oui ou non "</Label>
                     <Input 
                         id="document-base-title-input"
                         type="text"
@@ -634,7 +635,7 @@ export default function PdfLayoutManager() {
                 </div>
                 <div className="flex items-center justify-between rounded-lg border p-3 shadow-sm">
                   <div className="space-y-0.5">
-                    <Label htmlFor="show-document-base-title-switch">Afficher le Titre de Base du Document</Label>
+                    <Label htmlFor="show-document-base-title-switch">je voudrais un syte oui ou non</Label>
                     <p className="text-xs text-muted-foreground">
                       Si activé, le "Titre de Base" sera inclus dans le titre principal du PDF.
                     </p>
@@ -743,8 +744,8 @@ export default function PdfLayoutManager() {
                 className="text-center font-bold leading-tight my-1" 
                 style={{fontSize: `${Math.max(4, (previewSettingsForDisplay.documentTitleFontSize) / 2.5)}pt`}}
               >
-                {(previewSettingsForDisplay.showDocumentBaseTitle && previewSettingsForDisplay.documentBaseTitle) 
-                  ? `${previewSettingsForDisplay.documentBaseTitle} - Titre Module` 
+                {(previewSettingsForDisplay.showDocumentBaseTitle && previewSettingsForDisplay.documentBaseTitle && previewSettingsForDisplay.documentBaseTitle.trim() !== "") 
+                  ? `${previewSettingsForDisplay.documentBaseTitle.trim()} - Titre Module` 
                   : "Titre Module (Dynamique)"}
               </div>
 
