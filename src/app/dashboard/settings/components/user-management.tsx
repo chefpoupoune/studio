@@ -338,15 +338,15 @@ export default function UserManagement() {
             : null;
 
       const userToUpdate: Omit<AppUser, 'id'> = {
-          username: editingUser.username, 
-          brigadeMemberId: editingUser.brigadeMemberId, 
+          username: editingUser.username,
+          brigadeMemberId: editingUser.brigadeMemberId ?? null, // Ensure null if undefined
           ...userCommonData,
           simulatedStoredPassword: updatedSimulatedPassword,
       };
       console.log("UserManagement [UPDATE USER SUBMIT]: Attempting to update user. Data:", userToUpdate);
       try {
         const userDocRef = doc(firestore, "appUsers", editingUser.id);
-        await setDoc(userDocRef, userToUpdate, { merge: true }); // USE MERGE: TRUE
+        await setDoc(userDocRef, userToUpdate, { merge: true }); 
         fetchAppUsers(); 
         localStorage.setItem(LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY, JSON.stringify(summaryConfigToSave));
         window.dispatchEvent(new CustomEvent('loggedInUserHourViewConfigUpdated'));
@@ -737,4 +737,3 @@ export default function UserManagement() {
   );
 }
     
-
