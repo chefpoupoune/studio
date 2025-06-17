@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare, ArrowRightLeft, TextCursorInput, Eye, FileTextIcon, AlignHorizontalSpaceAround, Maximize, Minus, RefreshCw, UploadCloud, Heading1, InfoIcon } from 'lucide-react';
+import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare, ArrowRightLeft, TextCursorInput, Eye, FileTextIcon, AlignHorizontalSpaceAround, Maximize, Minus, RefreshCw, UploadCloud, Heading1, InfoIcon, Loader2 } from 'lucide-react'; // Added Loader2 here
 import type { PdfLayoutSettings } from '../types';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
