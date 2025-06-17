@@ -14,7 +14,7 @@ import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
-import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord, PmsZoneWithTasksDefinition, PmsConfigurations } from '../types';
+import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord as SimplifiedMonthlyRestaurantCleaningRecord, PmsZoneWithTasksDefinition as PmsRestaurantZoneWithTasksDefinition, PmsConfigurations } from '../types';
 import { PMS_KITCHEN_CLEANING_KEY } from '@/app/dashboard/settings/types';
 import { getMonthDays, type DayData } from '../utils';
 import { cn } from '@/lib/utils';
@@ -39,13 +39,14 @@ const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 export default function KitchenCleaningMonitoring() {
   const [selectedYear, setSelectedYear] = useState<string>(getYear(new Date()).toString());
   const [selectedMonth, setSelectedMonth] = useState<string>(getMonth(new Date()).toString());
-  const [configuredZones, setConfiguredZones] = useState<PmsZoneWithTasksDefinition[]>([]);
+  const [configuredZones, setConfiguredZones] = useState<PmsRestaurantZoneWithTasksDefinition[]>([]);
   const [selectedZoneId, setSelectedZoneId] = useState<string | undefined>(undefined);
   const [monthData, setMonthData] = useState<DayData[]>([]);
-  const [cleaningRecords, setCleaningRecords] = useState<SimplifiedMonthlyKitchenCleaningRecord>({});
+  const [cleaningRecords, setCleaningRecords] = useState<SimplifiedMonthlyRestaurantCleaningRecord>({});
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false); // State for PDF generation
   const { toast } = useToast();
   const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
 
@@ -62,7 +63,7 @@ export default function KitchenCleaningMonitoring() {
     const docRef = doc(firestore, "pmsConfigurations", "mainConfig");
     try {
       const docSnap = await getDoc(docRef);
-      let newConfiguredZones: PmsZoneWithTasksDefinition[] = [];
+      let newConfiguredZones: PmsRestaurantZoneWithTasksDefinition[] = [];
       if (docSnap.exists()) {
         const pmsSettings = docSnap.data() as PmsConfigurations;
         newConfiguredZones = pmsSettings[PMS_KITCHEN_CLEANING_KEY] || [];
@@ -82,7 +83,7 @@ export default function KitchenCleaningMonitoring() {
       setSelectedZoneId(undefined);
     }
     setIsLoadingConfig(false);
-  }, [toast, selectedZoneId]); // Added selectedZoneId
+  }, [toast, selectedZoneId]); 
 
   useEffect(() => {
     loadPmsConfigurations();
@@ -92,7 +93,7 @@ export default function KitchenCleaningMonitoring() {
   }, [loadPmsConfigurations]);
 
   const loadCleaningRecords = useCallback(async () => {
-    if (!selectedZoneId || isLoadingConfig) { // Wait for config and selection
+    if (!selectedZoneId || isLoadingConfig) { 
       setCleaningRecords({});
       setIsLoadingRecords(false); 
       return;
@@ -102,7 +103,7 @@ export default function KitchenCleaningMonitoring() {
     const docRef = doc(firestore, "pmsKitchenCleaningRecords", docId);
     try {
       const docSnap = await getDoc(docRef);
-      setCleaningRecords(docSnap.exists() ? (docSnap.data() as SimplifiedMonthlyKitchenCleaningRecord) : {});
+      setCleaningRecords(docSnap.exists() ? (docSnap.data() as SimplifiedMonthlyRestaurantCleaningRecord) : {});
     } catch (error) {
       console.error("Error loading kitchen cleaning records:", error);
       toast({ title: "Erreur Chargement Enregistrements", description: "Impossible de charger les enregistrements de nettoyage.", variant: "destructive" });
@@ -186,7 +187,7 @@ export default function KitchenCleaningMonitoring() {
       toast({ title: "Aucune Zone Sélectionnée", description: "Veuillez sélectionner une zone pour générer le PDF.", variant: "destructive" });
       return;
     }
-    setIsLoading(true); // Re-using isLoading for PDF generation state
+    setIsGeneratingPdf(true); 
     try {
       const pdfSettings = getPdfLayoutSettings('pms_kitchen_cleaning_monthly');
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
@@ -270,7 +271,7 @@ export default function KitchenCleaningMonitoring() {
       console.error("Error generating PDF for zone:", error);
       toast({ title: "Erreur PDF", description: "La génération du PDF a échoué.", variant: "destructive" });
     } finally {
-      setIsLoading(false); // Re-use isLoading for PDF generation state
+      setIsGeneratingPdf(false); 
     }
   };
   
@@ -304,8 +305,8 @@ export default function KitchenCleaningMonitoring() {
             </Select>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 md:col-span-1 md:justify-self-end">
-             <Button onClick={generatePdfForZone} disabled={isOverallLoading || isSaving || !selectedZoneData || monthData.length === 0 || configuredZones.length === 0} className="w-full sm:w-auto">
-                {(isOverallLoading || isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+             <Button onClick={generatePdfForZone} disabled={isOverallLoading || isSaving || isGeneratingPdf || !selectedZoneData || monthData.length === 0 || configuredZones.length === 0} className="w-full sm:w-auto">
+                {(isOverallLoading || isSaving || isGeneratingPdf) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
                 Générer PDF Zone
             </Button>
             <Button variant="destructive" onClick={handleClearMonthData} disabled={isOverallLoading || isSaving || Object.keys(cleaningRecords).length === 0} className="w-full sm:w-auto">
