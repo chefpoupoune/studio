@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare, ArrowRightLeft, TextCursorInput, Eye, FileTextIcon, AlignHorizontalSpaceAround, Maximize, Minus, RefreshCw, UploadCloud, Heading1, InfoIcon, Loader2 } from 'lucide-react'; // Added Loader2 here
+import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare, ArrowRightLeft, TextCursorInput, Eye, FileTextIcon, AlignHorizontalSpaceAround, Maximize, Minus, RefreshCw, UploadCloud, Heading1, InfoIcon, Loader2 } from 'lucide-react';
 import type { PdfLayoutSettings } from '../types';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
@@ -199,12 +199,10 @@ export default function PdfLayoutManager() {
     setOrientationInput(effectiveSettings.orientation);
     setPageSizeInput(effectiveSettings.pageSize);
     
-    // This setPreviewSettingsForDisplay is important for the initial load of the preview.
     setPreviewSettingsForDisplay(effectiveSettings);
 
   }, [selectedPdfType, pdfConfigs, isClient]);
 
-  // New useEffect to update preview dynamically based on input changes
   useEffect(() => {
     if (!isClient || isLoadingSettings) return;
 
@@ -315,7 +313,6 @@ export default function PdfLayoutManager() {
             const dataUrl = reader.result as string;
             setLogoUrlInput(dataUrl); 
             setUploadedLogoPreview(dataUrl);
-            // No need to call setPreviewSettingsForDisplay here, the new useEffect will handle it
         };
         reader.readAsDataURL(file);
     }
@@ -356,10 +353,6 @@ export default function PdfLayoutManager() {
   };
 
   const handleRefreshPreview = () => {
-    // This function is now less critical as the preview updates dynamically
-    // but can be kept for explicit user action if desired.
-    // The new useEffect already handles updating previewSettingsForDisplay.
-    // We just need to ensure its logic is sound.
     const liveSettings: Required<PdfLayoutSettings> = {
         logoUrl: logoUrlInput || DEFAULT_SETTINGS.logoUrl,
         primaryColor: primaryColorInput || DEFAULT_SETTINGS.primaryColor,
@@ -381,7 +374,7 @@ export default function PdfLayoutManager() {
         orientation: orientationInput || DEFAULT_SETTINGS.orientation,
         pageSize: pageSizeInput || DEFAULT_SETTINGS.pageSize,
     };
-    setPreviewSettingsForDisplay(liveSettings); // Update the preview
+    setPreviewSettingsForDisplay(liveSettings);
     toast({
       title: "Aperçu Actualisé Manuellement",
       description: "L'aperçu a été mis à jour avec les valeurs actuelles des champs.",
@@ -390,7 +383,6 @@ export default function PdfLayoutManager() {
 
   const renderPreviewHeaderText = () => {
     const headerToDisplay = previewSettingsForDisplay.headerText || '';
-    // Use logoUrlInput for the preview if it's a data URL (newly uploaded), otherwise use the effective logoUrl from previewSettingsForDisplay
     const logoToDisplay = uploadedLogoPreview || (previewSettingsForDisplay.logoUrl?.startsWith('data:image') ? previewSettingsForDisplay.logoUrl : null);
 
     if (!headerToDisplay && !logoToDisplay) return <div className="h-4">&nbsp;</div>; 
@@ -723,7 +715,7 @@ export default function PdfLayoutManager() {
                 Afficher Titre de Base: <span className="font-semibold">{previewSettingsForDisplay.showDocumentBaseTitle ? 'Oui' : 'Non'}</span>
             </div>
           <div 
-            key={JSON.stringify(previewSettingsForDisplay)} // Key to force re-render if the object reference changes deeply
+            key={JSON.stringify(previewSettingsForDisplay)} 
             className={cn(
                 "bg-white dark:bg-neutral-800 p-1 rounded-sm shadow-inner w-full mx-auto overflow-hidden border border-muted",
                 previewSettingsForDisplay.orientation === 'landscape' ? 'aspect-[297/210] max-w-md' : 'aspect-[210/297] max-w-sm'
@@ -747,10 +739,13 @@ export default function PdfLayoutManager() {
               </div>
 
               {/* Document Title */}
-              <div className="text-center font-bold leading-tight my-1" style={{fontSize: `${Math.max(4, (previewSettingsForDisplay.documentTitleFontSize) / 2.5)}pt`}}>
-                  {(previewSettingsForDisplay.showDocumentBaseTitle && previewSettingsForDisplay.documentBaseTitle) 
-                    ? `${previewSettingsForDisplay.documentBaseTitle} - Titre Module` 
-                    : "Titre Module (Dynamique)"}
+              <div 
+                className="text-center font-bold leading-tight my-1" 
+                style={{fontSize: `${Math.max(4, (previewSettingsForDisplay.documentTitleFontSize) / 2.5)}pt`}}
+              >
+                {(previewSettingsForDisplay.showDocumentBaseTitle && previewSettingsForDisplay.documentBaseTitle) 
+                  ? `${previewSettingsForDisplay.documentBaseTitle} - Titre Module` 
+                  : "Titre Module (Dynamique)"}
               </div>
 
               {/* Dummy Content Area */}
