@@ -60,75 +60,13 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
   const [benefitData, setBenefitData] = useState<FullMonthlyBenefitData>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [initialDocExists, setInitialDocExists] = useState<boolean | null>(null); // Track if doc existed on load
+  const [initialDocExists, setInitialDocExists] = useState<boolean | null>(null);
   const { toast } = useToast();
 
   const getFirestoreDocId = useCallback(
     () => `benefit_tracking_${selectedYear}_${selectedMonth}`,
     [selectedYear, selectedMonth]
   );
-
-  // Load data from Firestore
-  useEffect(() => {
-    const loadData = async () => {
-      setIsLoading(true);
-      setInitialDocExists(null); // Reset for new month/year
-      const docId = getFirestoreDocId();
-      const docRef = doc(firestore, "monthlyBenefitData", docId);
-      try {
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setBenefitData(docSnap.data() as FullMonthlyBenefitData);
-          setInitialDocExists(true);
-        } else {
-          setBenefitData({});
-          setInitialDocExists(false);
-        }
-      } catch (error) {
-        console.error("Error loading benefit data from Firestore:", error);
-        setBenefitData({});
-        setInitialDocExists(false);
-        toast({ title: "Erreur de chargement", description: "Données d'avantages non chargées depuis Firestore.", variant: "destructive" });
-      }
-      setIsLoading(false);
-    };
-    loadData();
-  }, [selectedYear, selectedMonth, getFirestoreDocId, toast]);
-
-  // Save data to Firestore (debounced)
-  useEffect(() => {
-    const saveData = async () => {
-      if (isLoading || isSaving) return; // Don't save if loading or already saving
-
-      // Avoid saving initial empty state if doc didn't exist on load
-      if (initialDocExists === false && Object.keys(benefitData).length === 0) {
-        return;
-      }
-
-      setIsSaving(true);
-      const docId = getFirestoreDocId();
-      const docRef = doc(firestore, "monthlyBenefitData", docId);
-      try {
-        await setDoc(docRef, benefitData);
-        // Optional: Toast for successful save, can be too frequent for auto-save
-        // toast({ title: "Données Sauvegardées", description: "Modifications enregistrées dans Firestore." });
-      } catch (error) {
-        console.error("Error saving benefit data to Firestore:", error);
-        toast({ title: "Erreur de sauvegarde", description: "Impossible d'enregistrer les données dans Firestore.", variant: "destructive" });
-      }
-      setIsSaving(false);
-    };
-
-    // Debounce saving
-    const timeoutId = setTimeout(() => {
-      // Only save if initialDocExists is not null (meaning initial load is complete)
-      if (initialDocExists !== null) {
-        saveData();
-      }
-    }, 1500); // Save 1.5 seconds after the last change
-
-    return () => clearTimeout(timeoutId);
-  }, [benefitData, isLoading, isSaving, initialDocExists, getFirestoreDocId, toast]);
 
   const daysInSelectedMonth = useMemo(() => {
     const year = parseInt(selectedYear);
@@ -143,6 +81,93 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
       };
     });
   }, [selectedYear, selectedMonth]);
+
+  // Load data from Firestore
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      setInitialDocExists(null); 
+      const docId = getFirestoreDocId();
+      const docRef = doc(firestore, "monthlyBenefitData", docId);
+      try {
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setBenefitData(docSnap.data() as FullMonthlyBenefitData);
+          setInitialDocExists(true);
+        } else {
+          const initialData: FullMonthlyBenefitData = {};
+          const yearNum = parseInt(selectedYear);
+          const monthNum = parseInt(selectedMonth);
+
+          employeesToRender.forEach(employee => {
+            initialData[employee.id] = {};
+            daysInSelectedMonth.forEach(day => {
+              const dateKey = `${yearNum}-${(monthNum + 1).toString().padStart(2, '0')}-${day.dayNumber.toString().padStart(2, '0')}`;
+              initialData[employee.id][dateKey] = { planning: "X", repasPris: "" };
+            });
+          });
+          setBenefitData(initialData);
+          setInitialDocExists(false);
+        }
+      } catch (error) {
+        console.error("Error loading benefit data from Firestore:", error);
+        const initialDataOnError: FullMonthlyBenefitData = {};
+        const yearNumOnError = parseInt(selectedYear);
+        const monthNumOnError = parseInt(selectedMonth);
+        employeesToRender.forEach(employee => {
+            initialDataOnError[employee.id] = {};
+            daysInSelectedMonth.forEach(day => {
+              const dateKey = `${yearNumOnError}-${(monthNumOnError + 1).toString().padStart(2, '0')}-${day.dayNumber.toString().padStart(2, '0')}`;
+              initialDataOnError[employee.id][dateKey] = { planning: "X", repasPris: "" };
+            });
+        });
+        setBenefitData(initialDataOnError);
+        setInitialDocExists(false);
+        toast({ title: "Erreur de chargement", description: "Données d'avantages non chargées. Initialisation par défaut.", variant: "destructive" });
+      }
+      setIsLoading(false);
+    };
+    loadData();
+  }, [selectedYear, selectedMonth, getFirestoreDocId, toast, employeesToRender, daysInSelectedMonth]);
+
+  // Save data to Firestore (debounced)
+  useEffect(() => {
+    const saveData = async () => {
+      if (isLoading || isSaving) return; 
+
+      if (initialDocExists === false && Object.keys(benefitData).length === 0 && employeesToRender.length > 0) {
+        // This condition might need adjustment if we pre-fill.
+        // If pre-filling makes benefitData not empty, this check might prevent saving the pre-fill.
+        // However, if pre-filling is the desired state to save, this check is fine.
+        // The current logic aims to save if benefitData is NOT empty OR if the doc initially existed.
+        // If initialDocExists is false AND benefitData has content (like default 'X's), it will save.
+      } else if (initialDocExists === false && Object.keys(benefitData).length === 0) {
+         // If doc didn't exist and data is truly empty (e.g., after a clear), don't save empty shell.
+        return;
+      }
+
+
+      setIsSaving(true);
+      const docId = getFirestoreDocId();
+      const docRef = doc(firestore, "monthlyBenefitData", docId);
+      try {
+        await setDoc(docRef, benefitData);
+      } catch (error) {
+        console.error("Error saving benefit data to Firestore:", error);
+        toast({ title: "Erreur de sauvegarde", description: "Impossible d'enregistrer les données dans Firestore.", variant: "destructive" });
+      }
+      setIsSaving(false);
+    };
+
+    const timeoutId = setTimeout(() => {
+      if (initialDocExists !== null) {
+        saveData();
+      }
+    }, 1500); 
+
+    return () => clearTimeout(timeoutId);
+  }, [benefitData, isLoading, isSaving, initialDocExists, getFirestoreDocId, toast, employeesToRender]);
+
 
   const handleStatusChange = (
     employeeId: string,
@@ -178,7 +203,7 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
     try {
       await deleteDoc(docRef);
       setBenefitData({});
-      setInitialDocExists(false); // After deleting, the doc doesn't exist
+      setInitialDocExists(false); 
       toast({ title: "Données Effacées", description: `Les données pour ${months[parseInt(selectedMonth)].label} ${selectedYear} ont été effacées de Firestore.` });
     } catch (error) {
       console.error("Error deleting benefit data from Firestore:", error);
@@ -188,7 +213,7 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
   };
 
   const generatePdf = () => {
-    setIsLoading(true); // Use general isLoading for PDF generation as well
+    setIsLoading(true); 
     try {
       const pdfSettings = getPdfLayoutSettings('benefits');
       const doc = new jsPDF({
@@ -421,7 +446,7 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
         </div>
       </div>
 
-      {isLoading && initialDocExists === null ? ( // Show loading only if initialDocExists is not yet determined
+      {isLoading && initialDocExists === null ? ( 
         <div className="flex justify-center items-center py-10">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <span className="ml-2 text-muted-foreground">Chargement des données...</span>
@@ -440,7 +465,7 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
         <div className="overflow-x-auto border rounded-md shadow-sm">
           <Table className="min-w-full table-fixed">
             <TableHeader>
-              <TableRow className="bg-card"> {/* Ensure sticky headers also have a solid background */}
+              <TableRow className="bg-card"> 
                 <TableHead className="w-[180px] min-w-[180px] sticky left-0 z-30 bg-card">Employé</TableHead>
                 <TableHead className="w-[100px] min-w-[100px] sticky left-[180px] z-30 bg-card">Type</TableHead>
                 {daysInSelectedMonth.map(day => (
@@ -450,8 +475,8 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
                 ))}
                 <TableHead className="w-[70px] min-w-[70px] text-center sticky right-0 z-30 bg-card">TOTAL</TableHead>
               </TableRow>
-              <TableRow className="sticky top-10 z-20 bg-card"> {/* Increased z-index if necessary, ensure it's below the first header row if they overlap */}
-                <TableHead className="sticky left-0 z-10 bg-card"></TableHead> {/* z-index for cell should be lower than row's z-index if they are separate elements in stacking context */}
+              <TableRow className="sticky top-10 z-20 bg-card"> 
+                <TableHead className="sticky left-0 z-10 bg-card"></TableHead> 
                 <TableHead className="sticky left-[180px] z-10 bg-card"></TableHead>
                 {daysInSelectedMonth.map(day => (
                   <TableHead key={`header-letter-${day.dayNumber}`} className={cn("text-center p-1 text-xs font-semibold bg-card", day.isWeekend && "bg-blue-100 dark:bg-blue-800/30")}>
