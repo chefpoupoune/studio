@@ -46,7 +46,7 @@ export default function KitchenCleaningMonitoring() {
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false); // Correct state for PDF generation
   const { toast } = useToast();
   const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
 
@@ -187,7 +187,7 @@ export default function KitchenCleaningMonitoring() {
       toast({ title: "Aucune Zone Sélectionnée", description: "Veuillez sélectionner une zone pour générer le PDF.", variant: "destructive" });
       return;
     }
-    setIsGeneratingPdf(true);
+    setIsGeneratingPdf(true); // Use the correct state setter
     try {
       const pdfSettings = getPdfLayoutSettings('pms_kitchen_cleaning_monthly');
       const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
@@ -271,7 +271,7 @@ export default function KitchenCleaningMonitoring() {
       console.error("Error generating PDF for zone:", error);
       toast({ title: "Erreur PDF", description: "La génération du PDF a échoué.", variant: "destructive" });
     } finally {
-      setIsGeneratingPdf(false); 
+      setIsGeneratingPdf(false); // Use the correct state setter
     }
   };
   
@@ -292,14 +292,14 @@ export default function KitchenCleaningMonitoring() {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-end mb-4">
           <div>
             <Label htmlFor="year-select-kitchen-cleaning">Année</Label>
-            <Select value={selectedYear} onValueChange={setSelectedYear} disabled={isOverallLoading || isSaving}>
+            <Select value={selectedYear} onValueChange={setSelectedYear} disabled={isOverallLoading || isSaving || isGeneratingPdf}>
               <SelectTrigger id="year-select-kitchen-cleaning"><SelectValue placeholder="Année" /></SelectTrigger>
               <SelectContent>{yearsArray.map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div>
             <Label htmlFor="month-select-kitchen-cleaning">Mois</Label>
-            <Select value={selectedMonth} onValueChange={setSelectedMonth} disabled={isOverallLoading || isSaving}>
+            <Select value={selectedMonth} onValueChange={setSelectedMonth} disabled={isOverallLoading || isSaving || isGeneratingPdf}>
               <SelectTrigger id="month-select-kitchen-cleaning"><SelectValue placeholder="Mois" /></SelectTrigger>
               <SelectContent>{monthsArray.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
             </Select>
@@ -339,7 +339,7 @@ export default function KitchenCleaningMonitoring() {
                     variant={selectedZoneId === zone.id ? "default" : "outline"}
                     onClick={() => setSelectedZoneId(zone.id)}
                     size="sm"
-                    disabled={isOverallLoading || isSaving}
+                    disabled={isOverallLoading || isSaving || isGeneratingPdf}
                   >
                     {zone.name}
                   </Button>
@@ -403,7 +403,7 @@ export default function KitchenCleaningMonitoring() {
                                         handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', '');
                                       }
                                     }}
-                                    disabled={day.isWeekend || isSaving || isOverallLoading}
+                                    disabled={day.isWeekend || isSaving || isOverallLoading || isGeneratingPdf}
                                     className="h-5 w-5"
                                   />
                                 </div>
@@ -413,7 +413,7 @@ export default function KitchenCleaningMonitoring() {
                                   value={record.operator}
                                   onChange={(e) => handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', e.target.value)}
                                   className="h-7 text-xs"
-                                  disabled={day.isWeekend || isSaving || isOverallLoading}
+                                  disabled={day.isWeekend || isSaving || isOverallLoading || isGeneratingPdf}
                                   maxLength={15}
                                 />
                               </div>
