@@ -356,15 +356,24 @@ export default function MenuPlanningPage() {
       }
       
       const moduleDefaultTitle = `Planification des Menus - ${monthLabel} ${yearLabel}`;
-      let title;
+      let finalTitle = "";
       if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
-        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
-      } else {
-        title = moduleDefaultTitle;
+        finalTitle = pdfSettings.documentBaseTitle.trim();
       }
-      doc.setFontSize(pdfSettings.documentTitleFontSize);
-      doc.text(title, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
-      currentY += pdfSettings.documentTitleFontSize * 0.7 + 5; 
+      if (pdfSettings.showModuleTitle) {
+        if (finalTitle) {
+          finalTitle += ` - ${moduleDefaultTitle}`;
+        } else {
+          finalTitle = moduleDefaultTitle;
+        }
+      }
+      
+      if (finalTitle) {
+        doc.setFontSize(pdfSettings.documentTitleFontSize);
+        doc.text(finalTitle, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
+        currentY += pdfSettings.documentTitleFontSize * 0.7 + 5; 
+      }
+
       doc.setFontSize(pdfSettings.defaultFontSize);
       doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
       currentY += pdfSettings.defaultFontSize + 5;

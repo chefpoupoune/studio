@@ -185,9 +185,9 @@ export default function CostAnalysisTable() {
     try {
       const pdfSettings = getPdfLayoutSettings('monthly_cost');
       const doc = new jsPDF({
-        orientation: pdfSettings.orientation || 'landscape',
+        orientation: pdfSettings.orientation,
         unit: 'pt',
-        format: pdfSettings.pageSize || 'a3',
+        format: pdfSettings.pageSize,
       }) as jsPDFWithAutoTable;
       
       doc.setFont(pdfSettings.fontFamily || 'helvetica');
@@ -195,7 +195,7 @@ export default function CostAnalysisTable() {
       const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
       const yearLabel = selectedYear;
       
-      let currentY = pdfSettings.marginTop || 40;
+      let currentY = pdfSettings.marginTop;
 
       // PDF Header (Logo & Text)
       if (pdfSettings.headerText) {
@@ -203,9 +203,9 @@ export default function CostAnalysisTable() {
         const headerTableBody = headerRows.map(row => row.map(cell => cell === '{logo}' ? '' : cell));
         doc.autoTable({
           body: headerTableBody, startY: currentY, theme: 'plain',
-          styles: { fontSize: pdfSettings.headerFontSize || 10, cellPadding: 1, font: pdfSettings.fontFamily || 'helvetica' },
+          styles: { fontSize: pdfSettings.headerFontSize, cellPadding: 1, font: pdfSettings.fontFamily },
           columnStyles: { 0: { cellWidth: 'auto'} },
-          margin: { top: pdfSettings.marginTop || 40, left: pdfSettings.marginLeft || 40, right: pdfSettings.marginRight || 40 },
+          margin: { top: pdfSettings.marginTop, left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
           didDrawCell: (data) => {
             if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image') && headerRows[data.row.index][data.column.index] === '{logo}') {
               try {
@@ -232,30 +232,39 @@ export default function CostAnalysisTable() {
           const formatType = imgProps.fileType.toUpperCase();
           const desiredHeight = 30;
           const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
-          doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft || 40, currentY, imgWidth, desiredHeight);
+          doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
           currentY += desiredHeight + 5;
         } catch(e: any) { console.error("Error drawing standalone logo in PDF:", e); }
       }
       
       const moduleDefaultTitle = `Fiche de Coût de Revient Mensuel - ${monthLabel} ${yearLabel}`;
-      let title;
+      let finalTitle = "";
       if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
-        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
-      } else {
-        title = moduleDefaultTitle;
+        finalTitle = pdfSettings.documentBaseTitle.trim();
       }
-      doc.setFontSize(pdfSettings.documentTitleFontSize);
-      doc.text(title, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
-      currentY += (pdfSettings.documentTitleFontSize || 18) * 0.7 + 5;
+      if (pdfSettings.showModuleTitle) {
+        if (finalTitle) {
+          finalTitle += ` - ${moduleDefaultTitle}`;
+        } else {
+          finalTitle = moduleDefaultTitle;
+        }
+      }
+      
+      if(finalTitle) {
+        doc.setFontSize(pdfSettings.documentTitleFontSize);
+        doc.text(finalTitle, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
+        currentY += (pdfSettings.documentTitleFontSize || 18) * 0.7 + 5;
+      }
+
       doc.setFontSize(pdfSettings.defaultFontSize || 10);
-      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft || 40, currentY);
+      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
       currentY += (pdfSettings.defaultFontSize || 10) + 10;
 
       const tableHeadStyles: any = {
-        fontStyle: 'bold', fontSize: pdfSettings.tableHeaderFontSize || 9,
+        fontStyle: 'bold', fontSize: pdfSettings.tableHeaderFontSize,
         halign: 'center', valign: 'middle',
       };
-      const tableBodyStyles: any = { fontSize: pdfSettings.tableBodyFontSize || 8, valign: 'middle' };
+      const tableBodyStyles: any = { fontSize: pdfSettings.tableBodyFontSize, valign: 'middle' };
       const tableFooterStyles: any = { ...tableHeadStyles, fillColor: hexToRgb(pdfSettings.primaryColor || '#E0E0E0') || [220,220,220], textColor: [0,0,0] };
       
       if (pdfSettings.primaryColor) {
@@ -272,7 +281,7 @@ export default function CostAnalysisTable() {
 
       // Table 1: Données Fournisseurs
       doc.setFontSize((pdfSettings.defaultFontSize || 10) + 2);
-      doc.text("Tableau des Fournisseurs", pdfSettings.marginLeft || 40, currentY);
+      doc.text("Tableau des Fournisseurs", pdfSettings.marginLeft, currentY);
       currentY += ((pdfSettings.defaultFontSize || 10) + 2) * 0.7 + 3;
 
       const supplierTableHead = [['Fournisseur', 'HT (€)', 'TVA (€)', 'Avoir (€)']];
@@ -293,14 +302,14 @@ export default function CostAnalysisTable() {
         startY: currentY, theme: 'grid',
         headStyles: tableHeadStyles, styles: {...tableBodyStyles, halign: 'left'}, footStyles: tableFooterStyles,
         columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
-        margin: { left: pdfSettings.marginLeft || 40, right: pdfSettings.marginRight || 40 },
+        margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
         tableWidth: 'auto'
       });
       currentY = (doc as any).lastAutoTable.finalY + 10;
 
       // Table 2: Coefficients Journaliers
       doc.setFontSize((pdfSettings.defaultFontSize || 10) + 2);
-      doc.text("Tableau des Coefficients et Quantités Journaliers", pdfSettings.marginLeft || 40, currentY);
+      doc.text("Tableau des Coefficients et Quantités Journaliers", pdfSettings.marginLeft, currentY);
       currentY += ((pdfSettings.defaultFontSize || 10) + 2) * 0.7 + 3;
 
       const dailyCoeffTableHead = [['Jour', 'IMP', 'SAJ', 'IME', 'ESAT', 'Repas ++', 'Nous', 'Total Coeff.', 'PN', 'PN ESAT', 'Total PN', 'TOTAL GLOBAL JOUR.']];
@@ -347,7 +356,7 @@ export default function CostAnalysisTable() {
             10: { fontStyle: 'bold', fillColor: [191, 219, 254] }, // Total PN
             11: { fontStyle: 'bold', fillColor: [254, 202, 202] }  // TOTAL GLOBAL JOUR
         },
-        margin: { left: pdfSettings.marginLeft || 40, right: pdfSettings.marginRight || 40 },
+        margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
         didDrawPage: (data) => {
             const pageCount = doc.internal.getNumberOfPages();
             if (pdfSettings.footerText) {
@@ -360,16 +369,16 @@ export default function CostAnalysisTable() {
 
       // Récapitulatif Final
       doc.setFontSize((pdfSettings.defaultFontSize || 10) + 1);
-      doc.text("Calcul du Prix de Revient Mensuel", pdfSettings.marginLeft || 40, currentY);
+      doc.text("Calcul du Prix de Revient Mensuel", pdfSettings.marginLeft, currentY);
       currentY += ((pdfSettings.defaultFontSize || 10) + 1) * 0.7 + 3;
       doc.setFontSize(pdfSettings.defaultFontSize || 10);
       const coutMatierePrem = supplierTotals.totalHt - supplierTotals.totalAvoir;
-      doc.text(`Coût Matière Première (Total HT Fournisseurs - Total Avoir Fournisseurs): ${coutMatierePrem.toFixed(2)} €`, pdfSettings.marginLeft || 40, currentY);
+      doc.text(`Coût Matière Première (Total HT Fournisseurs - Total Avoir Fournisseurs): ${coutMatierePrem.toFixed(2)} €`, pdfSettings.marginLeft, currentY);
       currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 2;
-      doc.text(`Total du Mois (Σ TOTAL GLOBAL JOUR.): ${grandTotalGlobalJourValue.toFixed(2)}`, pdfSettings.marginLeft || 40, currentY);
+      doc.text(`Total du Mois (Σ TOTAL GLOBAL JOUR.): ${grandTotalGlobalJourValue.toFixed(2)}`, pdfSettings.marginLeft, currentY);
       currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 2;
       doc.setFontSize((pdfSettings.defaultFontSize || 10) + 1); doc.setFont(undefined, 'bold');
-      doc.text(`Prix de Revient du Mois: ${prixDeRevientMensuel.toFixed(2)} €`, pdfSettings.marginLeft || 40, currentY);
+      doc.text(`Prix de Revient du Mois: ${prixDeRevientMensuel.toFixed(2)} €`, pdfSettings.marginLeft, currentY);
       doc.setFont(undefined, 'normal');
 
       doc.save(`Cout_Revient_Mensuel_${monthLabel}_${yearLabel}.pdf`);

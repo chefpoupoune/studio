@@ -146,30 +146,50 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
 
     try {
       const pdfSettings = getPdfLayoutSettings('temperature_sheet_monthly');
-      const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
+      const doc = new jsPDF({
+        orientation: pdfSettings.orientation,
+        unit: 'pt',
+        format: pdfSettings.pageSize,
+      }) as jsPDFWithAutoTable;
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
       const monthYearStr = format(new Date(year, month), "MMMM yyyy", { locale: fr });
+      doc.setFont(pdfSettings.fontFamily);
       
-      let currentY = 15;
+      let currentY = pdfSettings.marginTop;
       if (pdfSettings.headerText) {
-        doc.setFontSize(10);
-        doc.text(pdfSettings.headerText, 14, currentY);
-        currentY += 10;
+        doc.setFontSize(pdfSettings.headerFontSize);
+        doc.text(pdfSettings.headerText, pdfSettings.marginLeft, currentY);
+        currentY += pdfSettings.headerFontSize + 5;
       }
 
       if (pdfSettings.logoUrl) {
-        doc.setFontSize(8); 
-        doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY);
-        currentY += 5; 
+        doc.setFontSize(pdfSettings.defaultFontSize -2); 
+        doc.text(`Logo: ${pdfSettings.logoUrl}`, pdfSettings.marginLeft, currentY);
+        currentY += (pdfSettings.defaultFontSize -2) + 5; 
       }
       
-      const mainTitle = `Fiche de Température Mensuelle - ${monthYearStr}`;
-      doc.setFontSize(18);
-      doc.text(mainTitle, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
-      currentY += 8;
-      doc.setFontSize(10);
-      doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY);
-      currentY += 7;
+      const moduleDefaultTitle = `Fiche de Température Mensuelle - ${monthYearStr}`;
+      let finalTitle = "";
+      if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
+        finalTitle = pdfSettings.documentBaseTitle.trim();
+      }
+      if (pdfSettings.showModuleTitle) {
+        if (finalTitle) {
+          finalTitle += ` - ${moduleDefaultTitle}`;
+        } else {
+          finalTitle = moduleDefaultTitle;
+        }
+      }
+      
+      if (finalTitle) {
+        doc.setFontSize(pdfSettings.documentTitleFontSize);
+        doc.text(finalTitle, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
+        currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+      }
+
+      doc.setFontSize(pdfSettings.defaultFontSize);
+      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
+      currentY += pdfSettings.defaultFontSize + 7;
 
       const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
       if (pdfSettings.primaryColor) {
@@ -187,13 +207,13 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
 
         const weekTitle = `Semaine ${week.weekNumberInMonth}: ${format(week.startDate, "dd LLLL", { locale: fr })} - ${format(week.endDate, "dd LLLL yyyy", { locale: fr })}`;
         
-        if (currentY + 20 > doc.internal.pageSize.getHeight() - 20) { 
+        if (currentY + 20 > doc.internal.pageSize.getHeight() - pdfSettings.marginBottom) { 
             doc.addPage();
-            currentY = 20;
+            currentY = pdfSettings.marginTop;
         }
-        doc.setFontSize(14);
-        doc.text(weekTitle, 14, currentY);
-        currentY += 7;
+        doc.setFontSize(pdfSettings.defaultFontSize + 2); // Slightly larger for week title
+        doc.text(weekTitle, pdfSettings.marginLeft, currentY);
+        currentY += (pdfSettings.defaultFontSize + 2) * 0.7 + 3;
 
         const head = [['Jour', 'Plat Concerné (Type: Nom)', 'Temp. 1er Serv. (°C)', 'Temp. 2ème Serv. (°C)', 'Temp. 3ème Serv. (°C)', 'Personnel']];
         const body: any[][] = [];
@@ -219,7 +239,7 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
               row.push({ content: dayDisplay, rowSpan: numMealPartsForThisDay, styles: { valign: 'middle' } });
             }
             
-            row.push({ content: `${mealPartDisplayNames[mealPartKey]}: ${mealItemName || '-'}`, styles: { valign: 'middle', cellWidth: 'wrap', fontSize: 8 } });
+            row.push({ content: `${mealPartDisplayNames[mealPartKey]}: ${mealItemName || '-'}`, styles: { valign: 'middle', cellWidth: 'wrap', fontSize: pdfSettings.tableBodyFontSize -1 } });
             row.push({ content: itemTempInputs.tempService1 || '-', styles: { halign: 'center', valign: 'middle' } });
             row.push({ content: itemTempInputs.tempService2 || '-', styles: { halign: 'center', valign: 'middle' } });
             row.push({ content: itemTempInputs.tempService3 || '-', styles: { halign: 'center', valign: 'middle' } });
@@ -237,8 +257,8 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
             body: body,
             startY: currentY,
             theme: 'grid',
-            headStyles: { ...headStyles, fontSize: 9 },
-            styles: { fontSize: 8, cellPadding: 1.5 },
+            headStyles: { ...headStyles, fontSize: pdfSettings.tableHeaderFontSize },
+            styles: { fontSize: pdfSettings.tableBodyFontSize, cellPadding: 1.5 },
             columnStyles: {
                 0: { cellWidth: 30 }, 
                 1: { cellWidth: 80 }, 
@@ -254,22 +274,22 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
                   .replace('{date}', generationDateFormatted)
                   .replace('{pageNumber}', data.pageNumber.toString())
                   .replace('{totalPages}', pageCount.toString());
-                doc.setFontSize(9);
-                doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+                doc.setFontSize(pdfSettings.footerFontSize);
+                doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
               }
             },
             pageBreak: 'auto', 
-            marginBottom: 15 
+            marginBottom: pdfSettings.marginBottom 
           });
           currentY = (doc as any).lastAutoTable.finalY + 10;
         } else {
-             if (currentY + 10 > doc.internal.pageSize.getHeight() - 20) {
+             if (currentY + 10 > doc.internal.pageSize.getHeight() - pdfSettings.marginBottom) {
                 doc.addPage();
-                currentY = 20;
+                currentY = pdfSettings.marginTop;
             }
-            doc.setFontSize(10);
-            doc.text("Aucun relevé de température pour cette semaine.", 14, currentY, { textColor: 'rgb(100,100,100)' });
-            currentY += 10;
+            doc.setFontSize(pdfSettings.defaultFontSize);
+            doc.text("Aucun relevé de température pour cette semaine.", pdfSettings.marginLeft, currentY, { textColor: 'rgb(100,100,100)' });
+            currentY += pdfSettings.defaultFontSize;
         }
       });
       

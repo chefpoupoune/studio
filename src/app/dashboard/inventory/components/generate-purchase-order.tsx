@@ -154,15 +154,23 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
       }
 
       const moduleDefaultTitle = `Bon de Commande N° ${po.orderNumber}`;
-      let title;
+      let finalTitle = "";
       if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
-        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
-      } else {
-        title = moduleDefaultTitle;
+        finalTitle = pdfSettings.documentBaseTitle.trim();
       }
-      doc.setFontSize(pdfSettings.documentTitleFontSize);
-      doc.text(title, pdfSettings.marginLeft, currentY);
-      currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+      if (pdfSettings.showModuleTitle) {
+        if (finalTitle) {
+          finalTitle += ` - ${moduleDefaultTitle}`;
+        } else {
+          finalTitle = moduleDefaultTitle;
+        }
+      }
+
+      if (finalTitle) {
+        doc.setFontSize(pdfSettings.documentTitleFontSize);
+        doc.text(finalTitle, pdfSettings.marginLeft, currentY);
+        currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+      }
       
       doc.setFontSize(pdfSettings.defaultFontSize);
       doc.text(`Date de commande: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);

@@ -42,7 +42,11 @@ export default function GenerateInventory({ products }: GenerateInventoryProps) 
     setIsPrinting(true);
     try {
       const pdfSettings = getPdfLayoutSettings('inventory_report');
-      const doc = new jsPDF() as jsPDFWithAutoTable;
+      const doc = new jsPDF({
+        orientation: pdfSettings.orientation,
+        unit: 'pt',
+        format: pdfSettings.pageSize,
+      }) as jsPDFWithAutoTable;
       doc.setFont(pdfSettings.fontFamily);
       const generationDateFormatted = format(generationDate, "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
@@ -60,15 +64,24 @@ export default function GenerateInventory({ products }: GenerateInventoryProps) 
       }
 
       const moduleDefaultTitle = "Inventaire des Stocks";
-      let title;
+      let finalTitle = "";
       if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
-        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
-      } else {
-        title = moduleDefaultTitle;
+        finalTitle = pdfSettings.documentBaseTitle.trim();
       }
-      doc.setFontSize(pdfSettings.documentTitleFontSize); 
-      doc.text(title, pdfSettings.marginLeft, currentY); 
-      currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+      if (pdfSettings.showModuleTitle) {
+        if (finalTitle) {
+          finalTitle += ` - ${moduleDefaultTitle}`;
+        } else {
+          finalTitle = moduleDefaultTitle;
+        }
+      }
+      
+      if (finalTitle) {
+        doc.setFontSize(pdfSettings.documentTitleFontSize); 
+        doc.text(finalTitle, pdfSettings.marginLeft, currentY); 
+        currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+      }
+
       doc.setFontSize(pdfSettings.defaultFontSize);
       doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
       currentY += pdfSettings.defaultFontSize + 7;

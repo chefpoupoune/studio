@@ -240,7 +240,11 @@ export default function AnnualCostAnalysisTable() {
     setIsLoading(true); // Re-use isLoading for PDF generation to disable buttons
     try {
       const pdfSettings = getPdfLayoutSettings('annual_cost');
-      const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
+      const doc = new jsPDF({
+        orientation: pdfSettings.orientation,
+        unit: 'pt',
+        format: pdfSettings.pageSize,
+      }) as jsPDFWithAutoTable;
       doc.setFont(pdfSettings.fontFamily);
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
       
@@ -261,13 +265,24 @@ export default function AnnualCostAnalysisTable() {
       }
       
       const moduleDefaultTitle = `Récapitulatif Annuel Coût de Revient - ${selectedYear}`;
-      let title;
+      let finalTitle = "";
       if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
-        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
-      } else {
-        title = moduleDefaultTitle;
+        finalTitle = pdfSettings.documentBaseTitle.trim();
       }
-      doc.setFontSize(pdfSettings.documentTitleFontSize); doc.text(title, pdfSettings.marginLeft, currentY); currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+      if (pdfSettings.showModuleTitle) {
+        if (finalTitle) {
+          finalTitle += ` - ${moduleDefaultTitle}`;
+        } else {
+          finalTitle = moduleDefaultTitle;
+        }
+      }
+
+      if(finalTitle) {
+        doc.setFontSize(pdfSettings.documentTitleFontSize); 
+        doc.text(finalTitle, pdfSettings.marginLeft, currentY); 
+        currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+      }
+
       doc.setFontSize(pdfSettings.defaultFontSize); doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 7;
 
       const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, fontSize?: number } = { fontStyle: 'bold', fontSize: pdfSettings.tableHeaderFontSize };
@@ -432,3 +447,4 @@ export default function AnnualCostAnalysisTable() {
     </div>
   );
 }
+

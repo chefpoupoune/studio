@@ -136,7 +136,7 @@ export default function OccasionalMealCostAnalysis() {
     const currentList = getIngredientsList(mealPart);
     const ingredientName = currentList.find(ing => ing.id === ingredientId)?.name || "L'ingrédient";
     if (confirm(`Êtes-vous sûr de vouloir supprimer "${ingredientName}" de ${mealPartLabels[mealPart]} ?`)) {
-      setIngredientsList(mealPart, currentList.filter(ing => ing.id !== ingredientId));
+      setIngredientsList(currentEditingMealPart, currentList.filter(ing => ing.id !== ingredientId));
       toast({ title: "Ingrédient Supprimé", description: `"${ingredientName}" a été supprimé de ${mealPartLabels[mealPart]}.`, variant: "destructive" });
     }
   };
@@ -149,7 +149,12 @@ export default function OccasionalMealCostAnalysis() {
     setIsLoading(true);
     try {
       const pdfSettings = getPdfLayoutSettings('occasional_meal_cost');
-      const doc = new jsPDF() as jsPDFWithAutoTable;
+      const doc = new jsPDF({
+        orientation: pdfSettings.orientation,
+        unit: 'pt',
+        format: pdfSettings.pageSize,
+      }) as jsPDFWithAutoTable;
+      doc.setFont(pdfSettings.fontFamily);
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
       let currentY = pdfSettings.marginTop;
@@ -160,21 +165,30 @@ export default function OccasionalMealCostAnalysis() {
       }
 
       if (pdfSettings.logoUrl) {
-        doc.setFontSize(pdfSettings.defaultFontSize - 2); 
+        doc.setFontSize(pdfSettings.defaultFontSize -2); 
         doc.text(`Logo: ${pdfSettings.logoUrl}`, pdfSettings.marginLeft, currentY);
         currentY += (pdfSettings.defaultFontSize -2) + 5; 
       }
       
       const moduleDefaultTitle = `Coût de Revient Repas Occasionnel (${numberOfPeople} personnes)`;
-      let title;
+      let finalTitle = "";
       if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
-        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
-      } else {
-        title = moduleDefaultTitle;
+        finalTitle = pdfSettings.documentBaseTitle.trim();
       }
-      doc.setFontSize(pdfSettings.documentTitleFontSize); 
-      doc.text(title, pdfSettings.marginLeft, currentY); 
-      currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+      if (pdfSettings.showModuleTitle) {
+        if (finalTitle) {
+          finalTitle += ` - ${moduleDefaultTitle}`;
+        } else {
+          finalTitle = moduleDefaultTitle;
+        }
+      }
+      
+      if (finalTitle) {
+        doc.setFontSize(pdfSettings.documentTitleFontSize); 
+        doc.text(finalTitle, pdfSettings.marginLeft, currentY); 
+        currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+      }
+
       doc.setFontSize(pdfSettings.defaultFontSize); 
       doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); 
       currentY += pdfSettings.defaultFontSize + 7;

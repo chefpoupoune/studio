@@ -103,7 +103,7 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
             initialData[employee.id] = {};
             daysInSelectedMonth.forEach(day => {
               const dateKey = `${yearNum}-${(monthNum + 1).toString().padStart(2, '0')}-${day.dayNumber.toString().padStart(2, '0')}`;
-              initialData[employee.id][dateKey] = { planning: "X", repasPris: "" };
+              initialData[employee.id][dateKey] = { planning: "X", repasPris: "" }; // Default "X" for planning
             });
           });
           setBenefitData(initialData);
@@ -118,7 +118,7 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
             initialDataOnError[employee.id] = {};
             daysInSelectedMonth.forEach(day => {
               const dateKey = `${yearNumOnError}-${(monthNumOnError + 1).toString().padStart(2, '0')}-${day.dayNumber.toString().padStart(2, '0')}`;
-              initialDataOnError[employee.id][dateKey] = { planning: "X", repasPris: "" };
+              initialDataOnError[employee.id][dateKey] = { planning: "X", repasPris: "" }; // Default "X" for planning
             });
         });
         setBenefitData(initialDataOnError);
@@ -202,9 +202,20 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
     const docRef = doc(firestore, "monthlyBenefitData", docId);
     try {
       await deleteDoc(docRef);
-      setBenefitData({});
+      // Re-initialize with defaults instead of just empty
+      const initialData: FullMonthlyBenefitData = {};
+      const yearNum = parseInt(selectedYear);
+      const monthNum = parseInt(selectedMonth);
+      employeesToRender.forEach(employee => {
+        initialData[employee.id] = {};
+        daysInSelectedMonth.forEach(day => {
+          const dateKey = `${yearNum}-${(monthNum + 1).toString().padStart(2, '0')}-${day.dayNumber.toString().padStart(2, '0')}`;
+          initialData[employee.id][dateKey] = { planning: "X", repasPris: "" };
+        });
+      });
+      setBenefitData(initialData);
       setInitialDocExists(false); 
-      toast({ title: "Données Effacées", description: `Les données pour ${months[parseInt(selectedMonth)].label} ${selectedYear} ont été effacées de Firestore.` });
+      toast({ title: "Données Effacées et Réinitialisées", description: `Les données pour ${months[parseInt(selectedMonth)].label} ${selectedYear} ont été effacées et réinitialisées par défaut.` });
     } catch (error) {
       console.error("Error deleting benefit data from Firestore:", error);
       toast({ title: "Erreur de suppression", description: "Impossible de supprimer les données de Firestore.", variant: "destructive" });
@@ -289,16 +300,25 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
          doc.setFontSize(pdfSettings.defaultFontSize || 10); doc.text(`[Logo URL: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.defaultFontSize || 10) + 5;
       }
 
-      const moduleDefaultTitle = "Suivi Avantages en Nature";
-      let title;
+      const moduleDefaultTitle = `Suivi Avantages en Nature - ${monthLabel} ${selectedYear}`;
+      let finalTitle = "";
       if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
-        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle} - ${monthLabel} ${selectedYear}`;
-      } else {
-        title = `${moduleDefaultTitle} - ${monthLabel} ${selectedYear}`;
+        finalTitle = pdfSettings.documentBaseTitle.trim();
+      }
+      if (pdfSettings.showModuleTitle) {
+        if (finalTitle) {
+          finalTitle += ` - ${moduleDefaultTitle}`;
+        } else {
+          finalTitle = moduleDefaultTitle;
+        }
       }
 
-      doc.setFontSize(pdfSettings.documentTitleFontSize || 18);
-      doc.text(title, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.documentTitleFontSize || 18) * 0.7;
+      if (finalTitle) {
+        doc.setFontSize(pdfSettings.documentTitleFontSize || 18);
+        doc.text(finalTitle, pdfSettings.marginLeft, currentY); 
+        currentY += (pdfSettings.documentTitleFontSize || 18) * 0.7 + 5;
+      }
+      
       doc.setFontSize(pdfSettings.defaultFontSize || 10);
       doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.defaultFontSize || 10) + 5;
 

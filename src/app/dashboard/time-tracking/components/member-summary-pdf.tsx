@@ -150,22 +150,22 @@ export default function MemberSummaryPdf({
     try {
       const pdfSettings = getPdfLayoutSettings('time_tracking_summary');
       const doc = new jsPDF({
-        orientation: pdfSettings.orientation || 'portrait',
+        orientation: pdfSettings.orientation,
         unit: 'pt',
-        format: pdfSettings.pageSize || 'a4',
+        format: pdfSettings.pageSize,
       }) as jsPDFWithAutoTable;
       doc.setFont(pdfSettings.fontFamily || 'helvetica');
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
       const selectedMonthLabel = monthsArray.find(m => m.value === selectedMonth)?.label || '';
 
-      let currentY = pdfSettings.marginTop || 40;
+      let currentY = pdfSettings.marginTop;
       
       if (pdfSettings.headerText) {
-        doc.setFontSize(pdfSettings.headerFontSize || 10);
+        doc.setFontSize(pdfSettings.headerFontSize);
         const headerLines = pdfSettings.headerText.split('\n');
         headerLines.forEach(line => {
-            doc.text(line, pdfSettings.marginLeft || 40, currentY);
-            currentY += (pdfSettings.headerFontSize || 10) * 0.7 + 2;
+            doc.text(line, pdfSettings.marginLeft, currentY);
+            currentY += pdfSettings.headerFontSize * 0.7 + 2;
         });
         currentY += 5;
       } else if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
@@ -174,46 +174,55 @@ export default function MemberSummaryPdf({
           const formatType = imgProps.fileType.toUpperCase();
           const desiredHeight = 30;
           const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
-          doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft || 40, currentY, imgWidth, desiredHeight);
+          doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
           currentY += desiredHeight + 5;
         } catch (e) { console.error("Error drawing logo in PDF:", e); }
       }
 
       const moduleDefaultTitle = `Relevé d'Heures - ${selectedMember.name} (${selectedMember.role}) - ${selectedMonthLabel} ${selectedYear}`;
-      let title;
+      let finalTitle = "";
       if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
-        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
-      } else {
-        title = moduleDefaultTitle;
+        finalTitle = pdfSettings.documentBaseTitle.trim();
       }
-      doc.setFontSize(pdfSettings.documentTitleFontSize);
-      doc.text(title, pdfSettings.marginLeft || 40, currentY);
-      currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
-      doc.setFontSize(pdfSettings.defaultFontSize || 10);
-      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft || 40, currentY);
-      currentY += (pdfSettings.defaultFontSize || 10) + 10;
+      if (pdfSettings.showModuleTitle) {
+        if (finalTitle) {
+          finalTitle += ` - ${moduleDefaultTitle}`;
+        } else {
+          finalTitle = moduleDefaultTitle;
+        }
+      }
 
-      doc.setFontSize(12);
-      doc.text("Récapitulatif des Heures pour la période:", pdfSettings.marginLeft || 40, currentY);
-      currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 3;
-      doc.setFontSize(pdfSettings.defaultFontSize || 10);
+      if(finalTitle) {
+        doc.setFontSize(pdfSettings.documentTitleFontSize);
+        doc.text(finalTitle, pdfSettings.marginLeft, currentY);
+        currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+      }
       
-      doc.text(`Solde Reporté (fin ${format(startOfMonth(new Date(parseInt(selectedYear), parseInt(selectedMonth), 1)), "MMMM yyyy", {locale: fr})} précédent): ${previousBalance.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft || 40, currentY);
-      currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 2;
-      doc.text(`Total Heures Ajoutées (${selectedMonthLabel} ${selectedYear}): ${statsForSelectedMonth.totalAddedThisMonth.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft || 40, currentY);
-      currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 2;
-      doc.text(`Total Heures Déduites (${selectedMonthLabel} ${selectedYear}): ${statsForSelectedMonth.totalDeductedThisMonth.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft || 40, currentY);
-      currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 2;
-      doc.text(`Solde du Mois (${selectedMonthLabel} ${selectedYear}): ${statsForSelectedMonth.netHoursThisMonth.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft || 40, currentY);
-      currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 2;
+      doc.setFontSize(pdfSettings.defaultFontSize);
+      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
+      currentY += pdfSettings.defaultFontSize + 10;
+
+      doc.setFontSize(pdfSettings.defaultFontSize + 2);
+      doc.text("Récapitulatif des Heures pour la période:", pdfSettings.marginLeft, currentY);
+      currentY += (pdfSettings.defaultFontSize + 2) * 0.7 + 3;
+      doc.setFontSize(pdfSettings.defaultFontSize);
       
-      doc.setFontSize((pdfSettings.defaultFontSize || 10) + 1);
+      doc.text(`Solde Reporté (fin ${format(startOfMonth(new Date(parseInt(selectedYear), parseInt(selectedMonth), 1)), "MMMM yyyy", {locale: fr})} précédent): ${previousBalance.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft, currentY);
+      currentY += pdfSettings.defaultFontSize * 0.7 + 2;
+      doc.text(`Total Heures Ajoutées (${selectedMonthLabel} ${selectedYear}): ${statsForSelectedMonth.totalAddedThisMonth.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft, currentY);
+      currentY += pdfSettings.defaultFontSize * 0.7 + 2;
+      doc.text(`Total Heures Déduites (${selectedMonthLabel} ${selectedYear}): ${statsForSelectedMonth.totalDeductedThisMonth.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft, currentY);
+      currentY += pdfSettings.defaultFontSize * 0.7 + 2;
+      doc.text(`Solde du Mois (${selectedMonthLabel} ${selectedYear}): ${statsForSelectedMonth.netHoursThisMonth.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft, currentY);
+      currentY += pdfSettings.defaultFontSize * 0.7 + 2;
+      
+      doc.setFontSize(pdfSettings.defaultFontSize + 1);
       doc.setFont(undefined, 'bold');
-      doc.text(`Nouveau Solde Cumulé (fin ${selectedMonthLabel} ${selectedYear}): ${cumulativeBalance.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft || 40, currentY);
-      currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 7;
+      doc.text(`Nouveau Solde Cumulé (fin ${selectedMonthLabel} ${selectedYear}): ${cumulativeBalance.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft, currentY);
+      currentY += (pdfSettings.defaultFontSize + 1) * 0.7 + 7;
       doc.setFont(undefined, 'normal');
 
-      const headStyles: any = { fontStyle: 'bold', fontSize: pdfSettings.tableHeaderFontSize || 9 };
+      const headStyles: any = { fontStyle: 'bold', fontSize: pdfSettings.tableHeaderFontSize };
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
         if (primaryColorRgb) {
@@ -234,12 +243,12 @@ export default function MemberSummaryPdf({
         ]),
         theme: 'grid',
         headStyles: headStyles,
-        styles: { fontSize: pdfSettings.tableBodyFontSize || 8, font: pdfSettings.fontFamily || 'helvetica' },
+        styles: { fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily },
         margin: {
-          top: pdfSettings.marginTop || 40,
-          right: pdfSettings.marginRight || 40,
-          bottom: pdfSettings.marginBottom || 40,
-          left: pdfSettings.marginLeft || 40,
+          top: pdfSettings.marginTop,
+          right: pdfSettings.marginRight,
+          bottom: pdfSettings.marginBottom,
+          left: pdfSettings.marginLeft,
         },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
@@ -248,8 +257,8 @@ export default function MemberSummaryPdf({
               .replace('{date}', generationDateFormatted)
               .replace('{pageNumber}', data.pageNumber.toString())
               .replace('{totalPages}', pageCount.toString());
-            doc.setFontSize(pdfSettings.footerFontSize || 8);
-            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - ((pdfSettings.marginBottom || 40) / 2));
+            doc.setFontSize(pdfSettings.footerFontSize);
+            doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
           }
         }
       });

@@ -39,7 +39,11 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
 
     try {
       const pdfSettings = getPdfLayoutSettings('weekly_order_sheet');
-      const doc = new jsPDF({ orientation: 'landscape', format: 'a3' }) as jsPDFWithAutoTable;
+      const doc = new jsPDF({ 
+        orientation: pdfSettings.orientation, 
+        unit: 'pt', 
+        format: pdfSettings.pageSize 
+      }) as jsPDFWithAutoTable;
       doc.setFont(pdfSettings.fontFamily);
 
       const pageHeight = doc.internal.pageSize.getHeight();
@@ -65,7 +69,7 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
             if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image') && headerRows[data.row.index][data.column.index] === '{logo}') {
                 try {
                     const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
-                    const format = imgProps.fileType.toUpperCase();
+                    const formatType = imgProps.fileType.toUpperCase();
                     const cellPadding = 2;
                     let imgWidth = data.cell.width - 2 * cellPadding;
                     let imgHeight = data.cell.height - 2 * cellPadding;
@@ -79,7 +83,7 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
                     }
                     const imgX = data.cell.x + (data.cell.width - imgWidth) / 2;
                     const imgY = data.cell.y + (data.cell.height - imgHeight) / 2;
-                    doc.addImage(pdfSettings.logoUrl, format, imgX, imgY, imgWidth, imgHeight);
+                    doc.addImage(pdfSettings.logoUrl, formatType, imgX, imgY, imgWidth, imgHeight);
                 } catch (e: any) { 
                     console.error(`Error drawing logo in PDF header table: ${e.message || e}. Cell:`, data.cell, {logoUrl: pdfSettings.logoUrl ? pdfSettings.logoUrl.substring(0, 50) + "..." : "N/A"});
                     doc.setFillColor(230, 230, 230); doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
@@ -95,10 +99,10 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
       } else if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { 
         try {
             const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
-            const format = imgProps.fileType.toUpperCase();
+            const formatType = imgProps.fileType.toUpperCase();
             const desiredHeight = 30; 
             const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
-            doc.addImage(pdfSettings.logoUrl, format, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
+            doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
             currentY += desiredHeight + 5;
         } catch(e: any) {
             console.error(`Error drawing standalone logo in PDF: ${e.message || e}.`, {logoUrl: pdfSettings.logoUrl ? pdfSettings.logoUrl.substring(0, 50) + "..." : "N/A"});
@@ -108,9 +112,24 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
          doc.setFontSize(pdfSettings.headerFontSize); doc.text(`[Logo URL: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize + 5;
       }
       
-      doc.setFontSize(pdfSettings.headerFontSize + 4); 
-      doc.text("Fiche de Commande Cuisine", pageWidth / 2, currentY + 5, { align: 'center' });
-      currentY += (pdfSettings.headerFontSize || 14) + 5;
+      const moduleDefaultTitle = "Fiche de Commande Cuisine";
+      let finalTitle = "";
+      if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
+        finalTitle = pdfSettings.documentBaseTitle.trim();
+      }
+      if (pdfSettings.showModuleTitle) {
+        if (finalTitle) {
+          finalTitle += ` - ${moduleDefaultTitle}`;
+        } else {
+          finalTitle = moduleDefaultTitle;
+        }
+      }
+      
+      if (finalTitle) {
+        doc.setFontSize(pdfSettings.documentTitleFontSize); 
+        doc.text(finalTitle, pageWidth / 2, currentY + 5, { align: 'center' });
+        currentY += (pdfSettings.documentTitleFontSize || 14) + 5;
+      }
       
       doc.setFontSize(pdfSettings.defaultFontSize);
       const semaineText = `Semaine du: ${format(week.startDate, "dd/MM/yyyy", { locale: fr })}  Au: ${format(week.endDate, "dd/MM/yyyy", { locale: fr })}`;
