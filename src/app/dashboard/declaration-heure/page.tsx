@@ -29,7 +29,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { BrigadeMember } from '@/app/dashboard/time-tracking/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useIsMobile } from '@/hooks/use-is-mobile'; // Corrected import path
+import { useIsMobile } from '@/hooks/use-mobile'; 
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import jsPDF from 'jspdf';
@@ -740,6 +740,3 @@ export default function DeclarationHeurePage() {
     </div>
   );
 }
-
-    
-    

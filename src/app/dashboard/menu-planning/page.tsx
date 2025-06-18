@@ -22,7 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
-import { useIsMobile } from '@/hooks/use-is-mobile'; // Corrected import path
+import { useIsMobile } from '@/hooks/use-mobile'; 
 import { firestore } from '@/lib/firebase';
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import {
@@ -671,6 +671,3 @@ export default function MenuPlanningPage() {
     </div>
   );
 }
-
-    
-    
