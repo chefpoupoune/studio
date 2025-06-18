@@ -82,11 +82,9 @@ export default function TemperatureMonitoring() {
     }
     setEquipmentList(fetchedEquipment);
     setIsLoadingConfig(false);
-    // Return fetchedEquipment so the calling effect can use it immediately
     return fetchedEquipment; 
   }, [toast]);
 
-  // Effect to handle initial load and config updates
   useEffect(() => {
     const initialize = async () => {
       const currentEquipment = await loadPmsConfigurations();
@@ -100,8 +98,7 @@ export default function TemperatureMonitoring() {
 
     const handleConfigUpdate = async () => {
       console.log("[TempMonitoring] PMS Config updated event received. Reloading equipment list.");
-      const updatedEquipment = await loadPmsConfigurations(); // Re-fetch and get the list
-      // Logic to re-select or clear selection based on updatedEquipment
+      const updatedEquipment = await loadPmsConfigurations();
        if (updatedEquipment.length > 0 && (!selectedEquipmentId || !updatedEquipment.some(eq => eq.id === selectedEquipmentId))) {
         setSelectedEquipmentId(updatedEquipment[0].id);
       } else if (updatedEquipment.length === 0) {
@@ -110,10 +107,10 @@ export default function TemperatureMonitoring() {
     };
     window.addEventListener('pmsConfigUpdated', handleConfigUpdate);
     return () => window.removeEventListener('pmsConfigUpdated', handleConfigUpdate);
-  }, [loadPmsConfigurations, selectedEquipmentId]); // Add selectedEquipmentId to re-run if it changes externally
+  }, [loadPmsConfigurations, selectedEquipmentId]);
 
   const loadTemperatureRecords = useCallback(async () => {
-    if (!selectedEquipmentId) { // No need to check isLoadingConfig here, as this is called when selectedEquipmentId is set
+    if (!selectedEquipmentId) { 
       setRecords({});
       setIsLoadingRecords(false);
       return;
@@ -138,21 +135,19 @@ export default function TemperatureMonitoring() {
     setIsLoadingRecords(false);
   }, [selectedEquipmentId, getFirestoreDocId, toast]);
   
-  // Effect to load records when year, month, or selectedEquipmentId changes
   useEffect(() => {
     const yearNum = parseInt(selectedYear, 10);
     const monthNum = parseInt(selectedMonth, 10);
     setMonthDays(getMonthDays(yearNum, monthNum));
     
-    if (selectedEquipmentId && !isLoadingConfig) { // Ensure config is loaded before trying to load records
+    if (selectedEquipmentId && !isLoadingConfig) { 
         loadTemperatureRecords();
     } else if (!selectedEquipmentId) {
-        setRecords({}); // Clear records if no equipment is selected
+        setRecords({}); 
         setIsLoadingRecords(false);
     }
   }, [selectedYear, selectedMonth, selectedEquipmentId, loadTemperatureRecords, isLoadingConfig]); 
 
-  // Auto-save effect
   useEffect(() => {
     if (isLoadingConfig || isLoadingRecords || isSaving || !selectedEquipmentId) return;
 
@@ -188,7 +183,7 @@ export default function TemperatureMonitoring() {
       const freezerMinTemp = -25;
       return Array.from({ length: freezerMaxTemp - freezerMinTemp + 1 }, (_, i) => freezerMaxTemp - i);
     }
-    return Array.from({ length: 16 - (-25) + 1 }, (_, i) => 16 - i); // Default wider range if type undefined
+    return Array.from({ length: 16 - (-25) + 1 }, (_, i) => 16 - i); 
   }, [selectedEquipmentConfig]);
 
   const getEquipmentZoneInfo = useCallback((temp: number, currentConfig?: PmsEquipmentDefinition): { label: string; colorClass: string, pdfColor?: [number,number,number] } => {
@@ -213,16 +208,16 @@ export default function TemperatureMonitoring() {
     const tol2Max = parseAndValidate(currentConfig.tolerance2TempMax);
 
     if (typeof targetMin === 'number' && typeof targetMax === 'number' && temp >= targetMin && temp <= targetMax) {
-      return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 text-green-900 dark:text-green-100 hover:bg-green-300 dark:hover:bg-green-700/60', pdfColor: [200, 230, 201] }; // Light Green
+      return { label: "Cible", colorClass: 'bg-green-200 dark:bg-green-800/60 text-green-900 dark:text-green-100 hover:bg-green-300 dark:hover:bg-green-700/60', pdfColor: [200, 230, 201] }; 
     }
     if (typeof tol1Min === 'number' && typeof tol1Max === 'number' && temp >= tol1Min && temp <= tol1Max) {
-      return { label: "Tol. 1", colorClass: 'bg-blue-200 dark:bg-blue-800/60 text-blue-900 dark:text-blue-100 hover:bg-blue-300 dark:hover:bg-blue-700/60', pdfColor: [173, 216, 230] }; // Light Blue
+      return { label: "Tol. 1", colorClass: 'bg-blue-200 dark:bg-blue-800/60 text-blue-900 dark:text-blue-100 hover:bg-blue-300 dark:hover:bg-blue-700/60', pdfColor: [173, 216, 230] }; 
     }
     if (typeof tol2Min === 'number' && typeof tol2Max === 'number' && temp >= tol2Min && temp <= tol2Max) {
-      return { label: "Tol. 2", colorClass: 'bg-yellow-200 dark:bg-yellow-800/60 text-yellow-900 dark:text-yellow-100 hover:bg-yellow-300 dark:hover:bg-yellow-700/60', pdfColor: [254, 249, 195] }; // Light Yellow
+      return { label: "Tol. 2", colorClass: 'bg-yellow-200 dark:bg-yellow-800/60 text-yellow-900 dark:text-yellow-100 hover:bg-yellow-300 dark:hover:bg-yellow-700/60', pdfColor: [254, 249, 195] }; 
     }
     
-    return { label: "Rejet", colorClass: 'bg-red-200 dark:bg-red-800/60 text-red-900 dark:text-red-100 hover:bg-red-300 dark:hover:bg-red-700/60', pdfColor: [254, 202, 202] }; // Light Red
+    return { label: "Rejet", colorClass: 'bg-red-200 dark:bg-red-800/60 text-red-900 dark:text-red-100 hover:bg-red-300 dark:hover:bg-red-700/60', pdfColor: [254, 202, 202] }; 
   }, []);
 
 
@@ -300,7 +295,7 @@ export default function TemperatureMonitoring() {
     try {
       const pdfSettings = getPdfLayoutSettings('pms_temperature_monitoring_monthly');
       const doc = new jsPDF({
-        orientation: pdfSettings.orientation || 'landscape', // Default to landscape if not specified
+        orientation: pdfSettings.orientation || 'landscape', 
         unit: 'pt',
         format: pdfSettings.pageSize || 'a4',
       }) as jsPDFWithAutoTable;
@@ -310,7 +305,6 @@ export default function TemperatureMonitoring() {
 
       let currentY = pdfSettings.marginTop;
 
-      // Header (Logo & Text)
       if (pdfSettings.headerText) {
         const headerRows = pdfSettings.headerText.split('\n').map(rowText => rowText.split('|').map(cellText => cellText.trim()));
         const headerTableBody = headerRows.map(row => row.map(cell => cell === '{logo}' ? '' : cell));
@@ -415,9 +409,9 @@ export default function TemperatureMonitoring() {
       
       tableBody.push(timeRow, operatorRow);
       
-      const firstColWidth = 60; // Adjusted T°C / Zone width
+      const firstColWidth = 60; 
       const availableWidthForDays = (doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - firstColWidth);
-      const dayColumnWidth = Math.max(15, availableWidthForDays / monthDays.length); // Adjusted min width
+      const dayColumnWidth = Math.max(15, availableWidthForDays / monthDays.length); 
 
       const columnStyles: {[key: string]: any} = { 0: { cellWidth: firstColWidth, fontStyle: 'bold' } };
       monthDays.forEach((_, index) => {
@@ -567,7 +561,7 @@ export default function TemperatureMonitoring() {
                               cellEffectiveBgClass,
                               isSelected && "ring-2 ring-primary ring-inset" 
                             )}
-                            onClick={() => !day.isWeekend && !isSaving && !isOverallLoading && handleCellClick(day.date, temp)}
+                            onClick={() => !day.isWeekend && !isSaving && !(isLoadingConfig || isLoadingRecords) && handleCellClick(day.date, temp)}
                           >
                             {isSelected && <Check className="h-4 w-4 mx-auto text-foreground" />}
                           </TableCell>
@@ -585,7 +579,7 @@ export default function TemperatureMonitoring() {
                         value={records[day.date]?.time || ""}
                         onChange={e => handleInputChange(day.date, 'time', e.target.value)}
                         className="h-7 text-xs w-full text-center bg-background/50 focus:bg-background"
-                        disabled={day.isWeekend || isSaving || isOverallLoading}
+                        disabled={day.isWeekend || isUIDisabled}
                       />
                     </TableCell>
                   ))}
@@ -600,7 +594,7 @@ export default function TemperatureMonitoring() {
                         value={records[day.date]?.operator || ""}
                         onChange={e => handleInputChange(day.date, 'operator', e.target.value)}
                         className="h-7 text-xs w-full text-center bg-background/50 focus:bg-background"
-                        disabled={day.isWeekend || isSaving || isOverallLoading}
+                        disabled={day.isWeekend || isUIDisabled}
                         maxLength={5}
                       />
                     </TableCell>
@@ -622,5 +616,4 @@ export default function TemperatureMonitoring() {
     </Card>
   );
 }
-
 
