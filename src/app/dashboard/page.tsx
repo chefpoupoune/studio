@@ -9,9 +9,10 @@ import WeeklyMenuSummary from './components/WeeklyMenuSummary';
 import OngoingTasksSummary from './components/OngoingTasksSummary';
 import EmployeeHoursSummary from './components/EmployeeHoursSummary';
 import PendingPurchaseOrdersSummary from './components/PendingPurchaseOrdersSummary';
-import PendingRequestsAlert from './components/PendingRequestsAlert'; // New Import
+import PendingRequestsAlert from './components/PendingRequestsAlert'; 
+import ChefNotepad from './components/ChefNotepad'; // Import the new component
 import { CurrentDate } from '@/components/current-date';
-import React, { useState, useEffect } from 'react'; // Added useEffect and useState
+import React, { useState, useEffect } from 'react'; 
 
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
@@ -35,6 +36,8 @@ export default function DashboardPage() {
     );
   }
 
+  const isChef = loggedInUsername?.toLowerCase() === 'chef';
+
   return (
     <div className="flex flex-col min-h-screen p-4 md:p-6 lg:p-8">
       <div className="mb-6">
@@ -45,9 +48,11 @@ export default function DashboardPage() {
         <CurrentDate />
       </div>
 
-      <PendingRequestsAlert loggedInUsername={loggedInUsername} /> {/* Added new component */}
+      <PendingRequestsAlert loggedInUsername={loggedInUsername} />
 
+      {/* Grid for summaries and notepad */}
       <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+        {isChef && <ChefNotepad />}
         <WeeklyMenuSummary />
         <OngoingTasksSummary />
         <EmployeeHoursSummary />
