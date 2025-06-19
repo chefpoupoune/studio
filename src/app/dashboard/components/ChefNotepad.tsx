@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Loader2, NotebookPen, ChefHat } from 'lucide-react';
@@ -29,8 +29,9 @@ export default function ChefNotepad() {
         const data = docSnap.data();
         setNoteContent(data.content || '');
         if (data.updatedAt instanceof Timestamp) {
-          // We'll only track manual saves for display now
-          // setLastSavedManually(data.updatedAt.toDate()); 
+           // Track manual saves for display
+           // For now, let's assume updatedAt is for manual saves if we only have manual save
+           setLastSavedManually(data.updatedAt.toDate()); 
         }
       } else {
         setNoteContent(''); 
@@ -69,18 +70,24 @@ export default function ChefNotepad() {
 
   return (
     <Card className="shadow-lg col-span-1 md:col-span-2 flex flex-col h-full">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+      <CardHeader className="pb-3 flex flex-row items-start justify-between">
+        <div>
           <CardTitle className="text-xl flex items-center gap-2">
             <NotebookPen className="w-5 h-5 text-primary" />
             Pense-bête du Chef
           </CardTitle>
-          {isSaving && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          <CardDescription className="text-xs mt-1">
+            Utilisez le bouton ci-contre pour sauvegarder vos notes.
+            {lastSavedManually && ` Dernière sauvegarde: ${lastSavedManually.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`}
+          </CardDescription>
         </div>
-        <CardDescription className="text-xs">
-          Utilisez le bouton ci-dessous pour sauvegarder vos notes.
-          {lastSavedManually && ` Dernière sauvegarde: ${lastSavedManually.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`}
-        </CardDescription>
+        <Button onClick={handleManualSave} disabled={isSaving || isLoading} size="icon" aria-label="Sauvegarder Manuellement" variant="ghost">
+          {(isSaving && !isLoading) ? ( 
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <ChefHat className="h-5 w-5 text-primary" />
+          )}
+        </Button>
       </CardHeader>
       <CardContent className="pt-2 flex-grow">
         {isLoading ? (
@@ -97,15 +104,7 @@ export default function ChefNotepad() {
           />
         )}
       </CardContent>
-      <CardFooter className="pt-4 border-t flex justify-end">
-        <Button onClick={handleManualSave} disabled={isSaving || isLoading} size="icon" aria-label="Sauvegarder Manuellement">
-          {(isSaving && !isLoading) ? ( 
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <ChefHat className="h-4 w-4" />
-          )}
-        </Button>
-      </CardFooter>
+      {/* CardFooter a été supprimé */}
     </Card>
   );
 }
