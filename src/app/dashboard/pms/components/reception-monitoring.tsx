@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -7,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PlusCircle, Edit2, Trash2, FileText, Loader2, Truck, CalendarIcon as LucideCalendarIcon } from 'lucide-react';
 import { useForm } from 'react-hook-form';
@@ -46,7 +47,8 @@ import {
   query, 
   orderBy, 
   Timestamp,
-  getDoc // Added getDoc import
+  writeBatch, // Added for batch delete
+  getDoc // Added for loading config
 } from 'firebase/firestore';
 import { PMS_SUPPLIER_MANAGEMENT_KEY } from '@/app/dashboard/settings/types'; 
 
@@ -229,6 +231,24 @@ export default function ReceptionMonitoring() {
     } catch (error) {
       console.error("Error deleting reception entry from Firestore:", error);
       toast({ title: "Erreur de Suppression", variant: "destructive"});
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteAllEntries = async () => {
+    setIsLoading(true);
+    try {
+      const entriesCollectionRef = collection(firestore, FIRESTORE_COLLECTION);
+      const querySnapshot = await getDocs(entriesCollectionRef);
+      const batch = writeBatch(firestore);
+      querySnapshot.docs.forEach(docSnapshot => batch.delete(docSnapshot.ref));
+      await batch.commit();
+      fetchReceptionEntries();
+      toast({ title: "Tous les Enregistrements Supprimés", description: "L'historique des réceptions a été vidé.", variant: "destructive" });
+    } catch (error) {
+      console.error("Error deleting all reception entries from Firestore:", error);
+      toast({ title: "Erreur de Suppression Globale", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -548,15 +568,38 @@ export default function ReceptionMonitoring() {
             </Table>
           </div>
         )}
-        {receptionEntries.length > 0 && (
-             <div className="mt-6 flex justify-end">
-                <Button onClick={generatePdf} disabled={isLoading}>
-                    {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileText className="mr-2 h-4 w-4"/>}
-                    Générer PDF du Suivi
-                </Button>
-            </div>
-        )}
       </CardContent>
+       <CardFooter className="flex justify-end gap-2 pt-4">
+            <Button onClick={generatePdf} disabled={isLoading || receptionEntries.length === 0}>
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileText className="mr-2 h-4 w-4"/>}
+                Générer PDF du Suivi
+            </Button>
+            {receptionEntries.length > 0 && (
+                <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                        <Button variant="destructive" disabled={isLoading}>
+                            <Trash2 className="mr-2 h-4 w-4"/> Supprimer Tout l'Historique
+                        </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Confirmer la suppression de tout l'historique?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                            Cette action est irréversible et supprimera tous les enregistrements de réception.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Annuler</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleDeleteAllEntries} disabled={isLoading}>
+                                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Supprimer Tout
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            )}
+        </CardFooter>
     </Card>
   );
 }
+
+    
