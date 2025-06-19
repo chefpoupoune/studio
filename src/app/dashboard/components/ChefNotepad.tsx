@@ -126,14 +126,13 @@ export default function ChefNotepad() {
           />
         )}
       </CardContent>
-      <CardFooter className="pt-4 border-t">
-        <Button onClick={handleManualSave} disabled={isSaving || isLoading} className="ml-auto">
-          {(isSaving && !isLoading) ? ( // Show loader only if saving, not if initial loading
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      <CardFooter className="pt-4 border-t flex justify-end">
+        <Button onClick={handleManualSave} disabled={isSaving || isLoading} size="icon" aria-label="Sauvegarder Manuellement">
+          {(isSaving && !isLoading) ? ( 
+            <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
-            <ChefHat className="mr-2 h-4 w-4" />
+            <ChefHat className="h-4 w-4" />
           )}
-          Sauvegarder Manuellement
         </Button>
       </CardFooter>
     </Card>
