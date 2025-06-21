@@ -451,10 +451,8 @@ export default function PicnicRecap() {
         
         doc.setFontSize((pdfSettings.headerFontSize || 14) + 4);
         doc.text(`Récapitulatif Pique Nique - ${weekDisplayString}`, pageWidth / 2, currentY, { align: 'center' });
-        currentY += ((pdfSettings.headerFontSize || 14) + 4) * 0.7 + 5;
+        currentY += ((pdfSettings.headerFontSize || 14) + 4) * 0.7 + 15;
         doc.setFontSize(pdfSettings.defaultFontSize || 10);
-        doc.text(`Généré le: ${generationDateFormatted}`, pageLeftMargin, currentY);
-        currentY += (pdfSettings.defaultFontSize || 10) + 10;
 
         const availableContentWidth = pageWidth - pageLeftMargin - pageRightMargin;
         const gapBetweenSideBySideTables = 20;
@@ -1012,4 +1010,3 @@ export default function PicnicRecap() {
   );
 }
     
-
