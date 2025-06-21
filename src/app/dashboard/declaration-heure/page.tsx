@@ -207,12 +207,14 @@ export default function DeclarationHeurePage() {
     
     const employeeNameToUse = editingOvertimeRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername || "Système";
     const positionToUse = data.position || (editingOvertimeRequest ? editingOvertimeRequest.position : (currentBrigadeMember?.role || ''));
+    const brigadeMemberIdToUse = editingOvertimeRequest?.brigadeMemberId || currentBrigadeMember?.id;
     const now = new Date();
 
     const requestDataToSave = {
       ...data,
       employeeName: employeeNameToUse,
       position: positionToUse,
+      brigadeMemberId: brigadeMemberIdToUse,
       requestDate: editingOvertimeRequest ? Timestamp.fromDate(new Date(editingOvertimeRequest.requestDate)) : Timestamp.fromDate(now),
       updatedAt: Timestamp.fromDate(now),
       employeeSignatureDate: data.employeeSignatureDate ? Timestamp.fromDate(new Date(data.employeeSignatureDate)) : null,
@@ -228,6 +230,23 @@ export default function DeclarationHeurePage() {
 
     try {
       if (editingOvertimeRequest) {
+        const originalStatus = editingOvertimeRequest.approvalStatus || 'pending';
+        const newStatus = data.approvalStatus;
+
+        if (newStatus && newStatus !== 'pending' && originalStatus === 'pending' && brigadeMemberIdToUse) {
+            const notifTitle = "Demande de dépassement traitée";
+            const notifMessage = `Votre demande de dépassement du ${format(parseISO(editingOvertimeRequest.requestDate), 'dd/MM/yyyy')} a été ${newStatus === 'accepted' ? 'acceptée' : 'refusée'}.`;
+            const notificationData = {
+                userId: brigadeMemberIdToUse,
+                title: notifTitle,
+                message: notifMessage,
+                link: '/dashboard/declaration-heure',
+                createdAt: Timestamp.fromDate(new Date()),
+                isRead: false,
+            };
+            await addDoc(collection(firestore, 'notifications'), notificationData);
+        }
+
         const docRef = doc(firestore, 'overtimeRequests', editingOvertimeRequest.id);
         await setDoc(docRef, requestDataToSave);
         toast({ title: "Demande Dépassement Modifiée" });
@@ -270,12 +289,14 @@ export default function DeclarationHeurePage() {
     
     const employeeNameToUse = editingAbsenceRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername || "Système";
     const positionToUse = data.position || (editingAbsenceRequest ? editingAbsenceRequest.position : (currentBrigadeMember?.role || ''));
+    const brigadeMemberIdToUse = editingAbsenceRequest?.brigadeMemberId || currentBrigadeMember?.id;
     const now = new Date();
 
     const requestDataToSave = {
       ...data,
       employeeName: employeeNameToUse,
       position: positionToUse,
+      brigadeMemberId: brigadeMemberIdToUse,
       requestDate: editingAbsenceRequest ? Timestamp.fromDate(new Date(editingAbsenceRequest.requestDate)) : Timestamp.fromDate(now),
       updatedAt: Timestamp.fromDate(now),
       startDate: data.startDate ? Timestamp.fromDate(new Date(data.startDate)) : Timestamp.fromDate(new Date()),
@@ -288,6 +309,23 @@ export default function DeclarationHeurePage() {
     
     try {
       if (editingAbsenceRequest) {
+          const originalStatus = editingAbsenceRequest.approvalStatus || 'pending';
+          const newStatus = data.approvalStatus;
+
+          if (newStatus && newStatus !== 'pending' && originalStatus === 'pending' && brigadeMemberIdToUse) {
+              const notifTitle = "Demande d'absence traitée";
+              const notifMessage = `Votre demande d'absence du ${format(parseISO(editingAbsenceRequest.startDate), 'dd/MM/yy')} au ${format(parseISO(editingAbsenceRequest.endDate), 'dd/MM/yy')} a été ${newStatus === 'accepted' ? 'acceptée' : 'refusée'}.`;
+              const notificationData = {
+                  userId: brigadeMemberIdToUse,
+                  title: notifTitle,
+                  message: notifMessage,
+                  link: '/dashboard/declaration-heure',
+                  createdAt: Timestamp.fromDate(new Date()),
+                  isRead: false,
+              };
+              await addDoc(collection(firestore, 'notifications'), notificationData);
+          }
+
           const docRef = doc(firestore, 'absenceRequests', editingAbsenceRequest.id);
           await setDoc(docRef, requestDataToSave);
           toast({ title: "Demande d'Absence Modifiée" });
@@ -684,11 +722,11 @@ export default function DeclarationHeurePage() {
   };
 
 
-  if (!isClient || !dataLoaded) {
+  if (!isClient || isLoadingMembers || isLoadingScheduleTemplates || isLoadingTimeEntries) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="text-lg text-muted-foreground ml-3">Chargement de la déclaration d'heures...</p>
+        <p className="text-lg text-muted-foreground ml-3">Chargement du suivi des heures...</p>
       </div>
     );
   }
@@ -740,3 +778,6 @@ export default function DeclarationHeurePage() {
     </div>
   );
 }
+
+
+    
