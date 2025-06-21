@@ -1,4 +1,3 @@
-
 "use client"; // Add this if not already present
 
 import Link from 'next/link';
@@ -15,7 +14,7 @@ import UserNotificationAlerts from './components/UserNotificationAlerts'; // New
 import { CurrentDate } from '@/components/current-date';
 import React, { useState, useEffect, useMemo } from 'react'; 
 import { firestore } from '@/lib/firebase';
-import { collection, getDocs, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import type { BrigadeMember } from './time-tracking/types';
 
 
