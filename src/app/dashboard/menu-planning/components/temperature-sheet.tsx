@@ -187,10 +187,6 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
         currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
       }
 
-      doc.setFontSize(pdfSettings.defaultFontSize);
-      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
-      currentY += pdfSettings.defaultFontSize + 7;
-
       const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
@@ -275,7 +271,7 @@ export default function TemperatureSheet({ year, month, menuData, isLoading: pag
                   .replace('{pageNumber}', data.pageNumber.toString())
                   .replace('{totalPages}', pageCount.toString());
                 doc.setFontSize(pdfSettings.footerFontSize);
-                doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
+                doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - ((pdfSettings.marginBottom || 40) / 2));
               }
             },
             pageBreak: 'auto', 
