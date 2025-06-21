@@ -22,6 +22,7 @@ export interface OvertimeDayDetail {
 export interface OvertimeRequest {
   id: string;
   employeeName: string;
+  brigadeMemberId: string;
   requestDate: string; // ISO string for creation date
   updatedAt?: string; // ISO string for last update
   
@@ -49,6 +50,7 @@ export interface OvertimeRequest {
 export interface AbsenceRequest {
   id: string;
   employeeName: string;
+  brigadeMemberId: string;
   requestDate: string; // ISO string for creation date
   updatedAt?: string; // ISO string for last update
 
@@ -73,4 +75,14 @@ export interface AbsenceRequest {
   approvalStatus?: 'pending' | 'accepted' | 'rejected'; 
   rejectionReason?: string; 
   decisionDate?: string | null; 
+}
+
+export interface AppNotification {
+  id: string; // Firestore document ID
+  userId: string; // The ID of the user (brigade member) this notification is for
+  title: string;
+  message: string;
+  link?: string; // Optional link to navigate to on click (e.g., '/dashboard/declaration-heure')
+  createdAt: string; // ISO String
+  isRead: boolean;
 }
