@@ -198,15 +198,11 @@ export default function MemberSummaryPdf({
         currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
       }
       
-      doc.setFontSize(pdfSettings.defaultFontSize);
-      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
-      currentY += pdfSettings.defaultFontSize + 10;
-
       doc.setFontSize(pdfSettings.defaultFontSize + 2);
       doc.text("Récapitulatif des Heures pour la période:", pdfSettings.marginLeft, currentY);
       currentY += (pdfSettings.defaultFontSize + 2) * 0.7 + 3;
-      doc.setFontSize(pdfSettings.defaultFontSize);
       
+      doc.setFontSize(pdfSettings.defaultFontSize);
       doc.text(`Solde Reporté (fin ${format(startOfMonth(new Date(parseInt(selectedYear), parseInt(selectedMonth), 1)), "MMMM yyyy", {locale: fr})} précédent): ${previousBalance.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft, currentY);
       currentY += pdfSettings.defaultFontSize * 0.7 + 2;
       doc.text(`Total Heures Ajoutées (${selectedMonthLabel} ${selectedYear}): ${statsForSelectedMonth.totalAddedThisMonth.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})} h`, pdfSettings.marginLeft, currentY);
