@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -9,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Bell, Loader2, X, CheckCircle, XCircle } from 'lucide-react';
 import type { AppNotification } from '@/app/dashboard/declaration-heure/types';
 import { firestore } from '@/lib/firebase';
-import { collection, query, where, getDocs, doc, updateDoc, orderBy } from 'firebase/firestore';
+import { collectionGroup, query, where, getDocs, doc, updateDoc, orderBy } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -38,9 +37,8 @@ export default function UserNotificationAlerts({ brigadeMemberId }: UserNotifica
     
     setIsLoading(true);
     try {
-      const notificationsCollectionRef = collection(firestore, 'notifications');
       const q = query(
-        notificationsCollectionRef,
+        collectionGroup(firestore, 'notifications'),
         where('userId', '==', brigadeMemberId),
         where('isRead', '==', false),
         orderBy('createdAt', 'desc')

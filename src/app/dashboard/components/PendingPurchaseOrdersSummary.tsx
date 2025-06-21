@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react'; 
@@ -10,7 +9,7 @@ import type { PurchaseOrder, PurchaseOrderItem } from '@/app/dashboard/inventory
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { firestore } from '@/lib/firebase'; 
-import { collection, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore'; 
+import { collectionGroup, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore'; 
 import { useToast } from '@/hooks/use-toast'; 
 
 export default function PendingPurchaseOrdersSummary() {
@@ -28,9 +27,8 @@ export default function PendingPurchaseOrdersSummary() {
     console.log("PendingPurchaseOrdersSummary: Attempting to fetch orders...");
     setIsLoading(true);
     try {
-      const ordersCollectionRef = collection(firestore, 'inventoryPurchaseOrders');
       const q = query(
-        ordersCollectionRef,
+        collectionGroup(firestore, 'inventoryPurchaseOrders'),
         where('status', '==', 'pending'),
         orderBy('date', 'desc')
       );
@@ -224,4 +222,3 @@ export default function PendingPurchaseOrdersSummary() {
     </Card>
   );
 }
-
