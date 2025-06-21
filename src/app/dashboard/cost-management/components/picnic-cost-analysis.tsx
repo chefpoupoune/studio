@@ -184,10 +184,6 @@ export default function PicnicCostAnalysis() {
         currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
       }
       
-      doc.setFontSize(pdfSettings.defaultFontSize);
-      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
-      currentY += pdfSettings.defaultFontSize + 7;
-
       const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontSize?: number } = { fontSize: pdfSettings.tableHeaderFontSize };
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
@@ -363,5 +359,7 @@ export default function PicnicCostAnalysis() {
   );
 }
 
+
+    
 
     
