@@ -174,8 +174,6 @@ export default function GeneratePurchaseOrder({ products, purchaseOrders, onAddP
       
       doc.setFontSize(pdfSettings.defaultFontSize);
       doc.text(`Date de commande: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
-      currentY += pdfSettings.defaultFontSize + 2;
-      doc.text(`Imprimé le: ${printDateFormatted}`, pdfSettings.marginLeft, currentY);
       currentY += pdfSettings.defaultFontSize + 5;
 
 
