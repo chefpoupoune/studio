@@ -146,7 +146,7 @@ export default function DefrostingMonitoring() {
         await addDoc(collection(firestore, 'pmsDefrostingLog'), entryDataForFirestore);
         toast({ title: "Enregistrement Ajouté", description: "Une nouvelle entrée de décongélation a été ajoutée." });
       }
-      fetchDefrostingEntries(); 
+      fetchEntries(); 
     } catch (error) {
       console.error("Error saving defrosting entry to Firestore:", error);
       toast({ title: "Erreur de Sauvegarde", variant: "destructive"});
@@ -161,7 +161,7 @@ export default function DefrostingMonitoring() {
     try {
       await deleteDoc(doc(firestore, 'pmsDefrostingLog', entryId));
       toast({ title: "Enregistrement Supprimé", variant: "destructive" });
-      fetchDefrostingEntries();
+      fetchEntries();
     } catch (error) {
       console.error("Error deleting defrosting entry from Firestore:", error);
       toast({ title: "Erreur de Suppression", variant: "destructive"});
@@ -191,10 +191,7 @@ export default function DefrostingMonitoring() {
       }
       doc.setFontSize(pdfSettings.documentTitleFontSize); 
       doc.text(title, pdfSettings.marginLeft, currentY); 
-      currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
-      doc.setFontSize(pdfSettings.defaultFontSize); 
-      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); 
-      currentY += pdfSettings.defaultFontSize + 7;
+      currentY += pdfSettings.documentTitleFontSize * 0.7 + 12;
 
       const headStylesBase = { fontSize: pdfSettings.tableHeaderFontSize || 8, fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1, textColor: [0,0,0] }; 
       
@@ -406,5 +403,6 @@ export default function DefrostingMonitoring() {
     </Card>
   );
 }
+
 
 
