@@ -27,10 +27,10 @@ export default function PendingPurchaseOrdersSummary() {
     console.log("PendingPurchaseOrdersSummary: Attempting to fetch orders...");
     setIsLoading(true);
     try {
+      // Changed query to avoid composite index error. Sorting is now done client-side.
       const q = query(
         collectionGroup(firestore, 'inventoryPurchaseOrders'),
-        where('status', '==', 'pending'),
-        orderBy('date', 'desc')
+        where('status', '==', 'pending')
       );
       const querySnapshot = await getDocs(q);
 
@@ -93,7 +93,11 @@ export default function PendingPurchaseOrdersSummary() {
             toast({ title: `Erreur Traitement Bon ${docSnap.id}`, description: `Impossible de traiter un bon de commande. Détails: ${mapError.message}`, variant: "destructive" });
             return null; // Skip this problematic document
           }
-        }).filter(Boolean) as PurchaseOrder[]; // Filter out nulls from problematic documents
+        }).filter(Boolean) as PurchaseOrder[]; 
+        
+        // Sort client-side
+        ordersList.sort((a, b) => b.date.getTime() - a.date.getTime());
+
         setPendingOrders(ordersList);
         console.log("PendingPurchaseOrdersSummary: Orders fetched and mapped successfully:", ordersList.length);
       }
