@@ -722,11 +722,11 @@ export default function DeclarationHeurePage() {
   };
 
 
-  if (!isClient || isLoadingMembers || isLoadingScheduleTemplates || isLoadingTimeEntries) {
+  if (!isClient || !dataLoaded) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="text-lg text-muted-foreground ml-3">Chargement du suivi des heures...</p>
+        <p className="text-lg text-muted-foreground ml-3">Chargement de la déclaration d'heures...</p>
       </div>
     );
   }
