@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Bell, Loader2, X, CheckCircle, XCircle } from 'lucide-react';
 import type { AppNotification } from '@/app/dashboard/declaration-heure/types';
 import { firestore } from '@/lib/firebase';
-import { collection, query, where, getDocs, doc, updateDoc, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -40,8 +40,7 @@ export default function UserNotificationAlerts({ brigadeMemberId }: UserNotifica
       const q = query(
         collection(firestore, 'notifications'),
         where('userId', '==', brigadeMemberId),
-        where('isRead', '==', false),
-        orderBy('createdAt', 'desc')
+        where('isRead', '==', false)
       );
       const querySnapshot = await getDocs(q);
       const fetchedNotifications = querySnapshot.docs.map(docSnap => ({
@@ -49,6 +48,9 @@ export default function UserNotificationAlerts({ brigadeMemberId }: UserNotifica
         ...docSnap.data(),
         createdAt: (docSnap.data().createdAt as any).toDate().toISOString(),
       } as AppNotification));
+
+      // Sort client-side to avoid complex index requirement
+      fetchedNotifications.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
       setNotifications(fetchedNotifications);
       console.log(`[UserNotificationAlerts] Fetched ${fetchedNotifications.length} unread notifications for user ${brigadeMemberId}`);
