@@ -12,7 +12,7 @@ export default {
   theme: {
   	extend: {
       fontFamily: {
-        sans: ['var(--font-geist-sans)', ...defaultTheme.fontFamily.sans],
+        sans: ['var(--font-sans)', ...defaultTheme.fontFamily.sans],
         serif: ['var(--font-playfair-display)', ...defaultTheme.fontFamily.serif],
         // Mise à jour de la police mono pour ne pas dépendre de --font-geist-mono si non chargé
         mono: ['ui-monospace', 'SFMono-Regular', ...defaultTheme.fontFamily.mono],
