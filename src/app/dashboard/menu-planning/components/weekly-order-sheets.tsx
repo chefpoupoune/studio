@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useMemo, useState } from 'react';
@@ -134,7 +133,6 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
       doc.setFontSize(pdfSettings.defaultFontSize);
       const semaineText = `Semaine du: ${format(week.startDate, "dd/MM/yyyy", { locale: fr })}  Au: ${format(week.endDate, "dd/MM/yyyy", { locale: fr })}`;
       doc.text(semaineText, pdfSettings.marginLeft, currentY + 10);
-      doc.text(`Généré le: ${generationDateFormatted}`, pageWidth - pdfSettings.marginRight, currentY + 10, { align: 'right'});
       currentY += (pdfSettings.defaultFontSize * 1.2) + 10;
 
 
@@ -319,4 +317,3 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
     </div>
   );
 }
-
