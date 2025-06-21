@@ -319,9 +319,6 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
         currentY += (pdfSettings.documentTitleFontSize || 18) * 0.7 + 5;
       }
       
-      doc.setFontSize(pdfSettings.defaultFontSize || 10);
-      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.defaultFontSize || 10) + 5;
-
       const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, fontSize?: number, font?: string } = {
         fontStyle: 'bold',
         fontSize: pdfSettings.tableHeaderFontSize,

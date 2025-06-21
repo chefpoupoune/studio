@@ -282,9 +282,7 @@ export default function AnnualCostAnalysisTable() {
         doc.text(finalTitle, pdfSettings.marginLeft, currentY); 
         currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
       }
-
-      doc.setFontSize(pdfSettings.defaultFontSize); doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.defaultFontSize + 7;
-
+      
       const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, fontSize?: number } = { fontStyle: 'bold', fontSize: pdfSettings.tableHeaderFontSize };
       if (pdfSettings.primaryColor) {
         const primaryRgb = hexToRgb(pdfSettings.primaryColor);
@@ -447,4 +445,5 @@ export default function AnnualCostAnalysisTable() {
     </div>
   );
 }
+
 

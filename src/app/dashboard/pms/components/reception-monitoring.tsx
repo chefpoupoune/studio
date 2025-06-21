@@ -274,9 +274,25 @@ export default function ReceptionMonitoring() {
       if (pdfSettings.headerText) { doc.setFontSize(pdfSettings.headerFontSize || 10); doc.text(pdfSettings.headerText, pdfSettings.marginLeft || 40, currentY); currentY += (pdfSettings.headerFontSize || 10) + 5; }
       if (pdfSettings.logoUrl) { doc.setFontSize(8); doc.text(`Logo: ${pdfSettings.logoUrl}`, pdfSettings.marginLeft || 40, currentY); currentY += 5; }
       
-      doc.setFontSize(pdfSettings.documentTitleFontSize || 16); doc.text("Suivi de Réception des Marchandises", pdfSettings.marginLeft || 40, currentY); currentY += (pdfSettings.documentTitleFontSize || 16) * 0.7 + 5;
-      doc.setFontSize(pdfSettings.defaultFontSize || 10); doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft || 40, currentY); currentY += (pdfSettings.defaultFontSize || 10) + 7;
+      const moduleDefaultTitle = "Suivi de Réception des Marchandises";
+      let finalTitle = "";
+      if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
+        finalTitle = pdfSettings.documentBaseTitle.trim();
+      }
+      if (pdfSettings.showModuleTitle) {
+        if (finalTitle) {
+          finalTitle += ` - ${moduleDefaultTitle}`;
+        } else {
+          finalTitle = moduleDefaultTitle;
+        }
+      }
 
+      if (finalTitle) {
+        doc.setFontSize(pdfSettings.documentTitleFontSize || 16); 
+        doc.text(finalTitle, pdfSettings.marginLeft || 40, currentY); 
+        currentY += (pdfSettings.documentTitleFontSize || 16) * 0.7 + 5;
+      }
+      
       const headStyles: any = { fontSize: pdfSettings.tableHeaderFontSize || 7, fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1 };
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
@@ -601,5 +617,3 @@ export default function ReceptionMonitoring() {
     </Card>
   );
 }
-
-    

@@ -256,10 +256,6 @@ export default function CostAnalysisTable() {
         currentY += (pdfSettings.documentTitleFontSize || 18) * 0.7 + 5;
       }
 
-      doc.setFontSize(pdfSettings.defaultFontSize || 10);
-      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
-      currentY += (pdfSettings.defaultFontSize || 10) + 10;
-
       const tableHeadStyles: any = {
         fontStyle: 'bold', fontSize: pdfSettings.tableHeaderFontSize,
         halign: 'center', valign: 'middle',
