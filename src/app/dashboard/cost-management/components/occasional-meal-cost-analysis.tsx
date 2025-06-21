@@ -186,12 +186,8 @@ export default function OccasionalMealCostAnalysis() {
       if (finalTitle) {
         doc.setFontSize(pdfSettings.documentTitleFontSize); 
         doc.text(finalTitle, pdfSettings.marginLeft, currentY); 
-        currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+        currentY += pdfSettings.documentTitleFontSize * 0.7 + 10;
       }
-
-      doc.setFontSize(pdfSettings.defaultFontSize); 
-      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY); 
-      currentY += pdfSettings.defaultFontSize + 7;
 
       const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontSize?: number } = { fontSize: pdfSettings.tableHeaderFontSize };
        if (pdfSettings.primaryColor) {
@@ -378,6 +374,3 @@ export default function OccasionalMealCostAnalysis() {
     </div>
   );
 }
-
-
-    
