@@ -244,8 +244,7 @@ export default function ColdChainMonitoring() {
       if (pdfSettings.headerText) { doc.setFontSize(pdfSettings.headerFontSize || 10); doc.text(pdfSettings.headerText, pdfSettings.marginLeft || 14, currentY); currentY += (pdfSettings.headerFontSize || 10) + 5; }
       if (pdfSettings.logoUrl) { doc.setFontSize(8); doc.text(`Logo: ${pdfSettings.logoUrl}`, pdfSettings.marginLeft || 14, currentY); currentY += 5; }
       
-      doc.setFontSize(pdfSettings.documentTitleFontSize || 16); doc.text(`${title} - ${format(new Date(), "dd/MM/yyyy", {locale: fr})}`, pdfSettings.marginLeft || 14, currentY); currentY += (pdfSettings.documentTitleFontSize || 16) * 0.7 + 5;
-      doc.setFontSize(pdfSettings.defaultFontSize || 10); doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft || 14, currentY); currentY += (pdfSettings.defaultFontSize || 10) + 7;
+      doc.setFontSize(pdfSettings.documentTitleFontSize || 16); doc.text(`${title} - ${format(new Date(), "dd/MM/yyyy", {locale: fr})}`, pdfSettings.marginLeft || 14, currentY); currentY += (pdfSettings.documentTitleFontSize || 16) * 0.7 + 12;
 
       const tableHeaderFontSize = pdfSettings.tableHeaderFontSize || 7; // Smaller base for headers
       const tableBodyFontSize = pdfSettings.tableBodyFontSize || 6.5;   // Smaller base for body
@@ -572,4 +571,3 @@ export default function ColdChainMonitoring() {
     </div>
   );
 }
-
