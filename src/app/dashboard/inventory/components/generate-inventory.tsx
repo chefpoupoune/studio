@@ -51,17 +51,6 @@ export default function GenerateInventory({ products }: GenerateInventoryProps) 
       const generationDateFormatted = format(generationDate, "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
       let currentY = pdfSettings.marginTop;
-      if (pdfSettings.headerText) {
-        doc.setFontSize(pdfSettings.headerFontSize);
-        doc.text(pdfSettings.headerText, pdfSettings.marginLeft, currentY);
-        currentY += pdfSettings.headerFontSize + 5;
-      }
-
-      if (pdfSettings.logoUrl) {
-        doc.setFontSize(pdfSettings.defaultFontSize -2); 
-        doc.text(`Logo: ${pdfSettings.logoUrl}`, pdfSettings.marginLeft, currentY);
-        currentY += (pdfSettings.defaultFontSize -2) + 5; 
-      }
 
       const moduleDefaultTitle = "Inventaire des Stocks";
       let finalTitle = "";
@@ -81,10 +70,6 @@ export default function GenerateInventory({ products }: GenerateInventoryProps) 
         doc.text(finalTitle, pdfSettings.marginLeft, currentY); 
         currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
       }
-
-      doc.setFontSize(pdfSettings.defaultFontSize);
-      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
-      currentY += pdfSettings.defaultFontSize + 7;
 
       const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontSize?: number } = { fontSize: pdfSettings.tableHeaderFontSize };
       if (pdfSettings.primaryColor) {
@@ -190,5 +175,4 @@ export default function GenerateInventory({ products }: GenerateInventoryProps) 
     </Card>
   );
 }
-
     
