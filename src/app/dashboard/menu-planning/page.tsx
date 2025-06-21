@@ -374,11 +374,6 @@ export default function MenuPlanningPage() {
         currentY += pdfSettings.documentTitleFontSize * 0.7 + 5; 
       }
 
-      doc.setFontSize(pdfSettings.defaultFontSize);
-      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
-      currentY += pdfSettings.defaultFontSize + 5;
-
-
       const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, fontSize?: number } = { 
         fontStyle: 'bold',
         fontSize: pdfSettings.tableHeaderFontSize,
