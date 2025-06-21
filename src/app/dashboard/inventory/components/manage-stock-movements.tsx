@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import type { Product, StockMovement } from '../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -154,18 +154,23 @@ export default function ManageStockMovements({ products, stockMovements, onAddSt
       }
 
       const moduleDefaultTitle = `Historique Mouvements Stock - ${monthLabel} ${selectedYearForPdf}`;
-      let title;
+      let title = "";
       if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
-        title = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
-      } else {
-        title = moduleDefaultTitle;
+        title = pdfSettings.documentBaseTitle.trim();
       }
-      doc.setFontSize(pdfSettings.documentTitleFontSize);
-      doc.text(title, pdfSettings.marginLeft, currentY);
-      currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
-      doc.setFontSize(pdfSettings.defaultFontSize);
-      doc.text(`Généré le: ${generationDateFormatted}`, pdfSettings.marginLeft, currentY);
-      currentY += pdfSettings.defaultFontSize + 5;
+      if (pdfSettings.showModuleTitle) {
+        if (title) {
+          title += ` - ${moduleDefaultTitle}`;
+        } else {
+          title = moduleDefaultTitle;
+        }
+      }
+      
+      if(title) {
+        doc.setFontSize(pdfSettings.documentTitleFontSize);
+        doc.text(title, pdfSettings.marginLeft, currentY);
+        currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+      }
 
       const headStyles: any = { fontStyle: 'bold', fontSize: pdfSettings.tableHeaderFontSize, halign: 'center' };
       if (pdfSettings.primaryColor) {
@@ -420,5 +425,3 @@ export default function ManageStockMovements({ products, stockMovements, onAddSt
     </div>
   );
 }
-
-    
