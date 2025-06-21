@@ -282,8 +282,7 @@ export default function FryerOilOverallMonitoring() {
         if (pdfSettings.headerText) { doc.setFontSize(10); doc.text(pdfSettings.headerText, 14, currentY); currentY += 10; }
         if (pdfSettings.logoUrl) { doc.setFontSize(8); doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY); currentY += 5; }
         
-        doc.setFontSize(16); doc.text(title, 14, currentY); currentY += 8;
-        doc.setFontSize(10); doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY); currentY += 7;
+        doc.setFontSize(16); doc.text(title, 14, currentY); currentY += 15;
 
         const headStyles: any = { fontSize: 9, fontStyle: 'bold', halign: 'center', valign: 'middle' };
         if (pdfSettings.primaryColor) {
@@ -548,4 +547,5 @@ export default function FryerOilOverallMonitoring() {
     </div>
   );
 }
+
     
