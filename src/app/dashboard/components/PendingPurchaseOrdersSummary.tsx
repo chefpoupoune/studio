@@ -9,7 +9,7 @@ import type { PurchaseOrder, PurchaseOrderItem } from '@/app/dashboard/inventory
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { firestore } from '@/lib/firebase'; 
-import { collectionGroup, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore'; 
+import { collection, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore'; 
 import { useToast } from '@/hooks/use-toast'; 
 
 export default function PendingPurchaseOrdersSummary() {
@@ -27,9 +27,9 @@ export default function PendingPurchaseOrdersSummary() {
     console.log("PendingPurchaseOrdersSummary: Attempting to fetch orders...");
     setIsLoading(true);
     try {
-      // Changed query to avoid composite index error. Sorting is now done client-side.
+      // Corrected query to use `collection` for a top-level collection, which was the root cause of the index error.
       const q = query(
-        collectionGroup(firestore, 'inventoryPurchaseOrders'),
+        collection(firestore, 'inventoryPurchaseOrders'),
         where('status', '==', 'pending')
       );
       const querySnapshot = await getDocs(q);
