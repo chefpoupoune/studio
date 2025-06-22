@@ -713,7 +713,7 @@ export default function DeclarationHeurePage() {
     doc.text(`Acceptée / Refusée : ${getStatusLabel(request.approvalStatus)}`, pdfSettings.marginLeft, currentY); currentY += 15;
     if (request.approvalStatus === 'rejected' && request.rejectionReason) { doc.text(`Si refusée, motif : ${request.rejectionReason}`, pdfSettings.marginLeft, currentY); currentY += 15; }
     doc.text(`Date : ${sigDate(request.decisionDate)}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    doc.text(`Signature de la Direction : `, pdfSettings.marginLeft, currentY); 
+    doc.text(`Signature de la Direction : Dernoncourt Julien / Chef de cuisine`, pdfSettings.marginLeft, currentY); 
 
     const pageCount = doc.internal.getNumberOfPages(); for (let i = 1; i <= pageCount; i++) { doc.setPage(i); if (pdfSettings.footerText) { let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', i.toString()).replace('{totalPages}', pageCount.toString()); doc.setFontSize(pdfSettings.footerFontSize); doc.text(footerStr, pdfSettings.marginLeft, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2)); }}
     doc.save(`Demande_Absence_${request.employeeName.replace(/\s+/g, '_')}_${format(parseISO(request.startDate), "yyyy-MM-dd")}.pdf`);
