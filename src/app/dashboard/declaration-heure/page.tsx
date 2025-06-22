@@ -65,7 +65,7 @@ interface DeclarationHeureTab {
 
 export default function DeclarationHeurePage() {
   const [isClient, setIsClient] = useState(false);
-  const [dataLoaded, setDataLoaded] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   
   const [overtimeRequests, setOvertimeRequests] = useState<OvertimeRequest[]>([]);
   const [isOvertimeFormOpen, setIsOvertimeFormOpen] = useState(false);
@@ -119,7 +119,6 @@ export default function DeclarationHeurePage() {
 
   const fetchOvertimeRequests = useCallback(async () => {
     if (!isClient) return;
-    setDataLoaded(false);
     try {
       const overtimeCollectionRef = collection(firestore, 'overtimeRequests');
       const q = query(overtimeCollectionRef, orderBy('requestDate', 'desc'));
@@ -147,14 +146,11 @@ export default function DeclarationHeurePage() {
       console.error("[DeclarationHeurePage LOAD OT] Error loading overtime requests from Firestore", e);
       setOvertimeRequests([]);
       toast({ title: "Erreur chargement demandes dépassement", variant: "destructive" });
-    } finally {
-      setDataLoaded(true);
     }
   }, [isClient, toast]);
 
   const fetchAbsenceRequests = useCallback(async () => {
     if (!isClient) return;
-    setDataLoaded(false);
     try {
       const absenceCollectionRef = collection(firestore, 'absenceRequests');
       const q = query(absenceCollectionRef, orderBy('requestDate', 'desc'));
@@ -180,15 +176,17 @@ export default function DeclarationHeurePage() {
       console.error("[DeclarationHeurePage LOAD ABS] Error loading absence requests from Firestore", e);
       setAbsenceRequests([]);
       toast({ title: "Erreur chargement demandes d'absence", variant: "destructive" });
-    } finally {
-      setDataLoaded(true);
     }
   }, [isClient, toast]);
 
   useEffect(() => {
     if (isClient) {
-      fetchOvertimeRequests();
-      fetchAbsenceRequests();
+      const loadAllData = async () => {
+        setIsLoading(true);
+        await Promise.allSettled([fetchOvertimeRequests(), fetchAbsenceRequests()]);
+        setIsLoading(false);
+      };
+      loadAllData();
     }
   }, [isClient, fetchOvertimeRequests, fetchAbsenceRequests]);
 
@@ -203,7 +201,7 @@ export default function DeclarationHeurePage() {
   const handleAddOrUpdateOvertimeRequest = useCallback(async (
     data: Partial<Omit<OvertimeRequest, 'id' | 'employeeName' | 'requestDate' | 'updatedAt' >>
   ) => {
-    if (!dataLoaded) { toast({ title: "Données non prêtes", variant: "default" }); return; }
+    if (isLoading) { toast({ title: "Données non prêtes", variant: "default" }); return; }
     
     const employeeNameToUse = editingOvertimeRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername || "Système";
     const positionToUse = data.position || (editingOvertimeRequest ? editingOvertimeRequest.position : (currentBrigadeMember?.role || ''));
@@ -261,10 +259,10 @@ export default function DeclarationHeurePage() {
       toast({ title: "Erreur sauvegarde demande dépassement", variant: "destructive"});
     }
     setEditingOvertimeRequest(null); 
-  }, [editingOvertimeRequest, loggedInUsername, currentBrigadeMember, toast, dataLoaded, fetchOvertimeRequests]);
+  }, [editingOvertimeRequest, loggedInUsername, currentBrigadeMember, toast, isLoading, fetchOvertimeRequests]);
   
   const handleDeleteOvertimeRequest = async (requestId: string) => {
-    if (!dataLoaded) return;
+    if (isLoading) return;
     try {
       await deleteDoc(doc(firestore, 'overtimeRequests', requestId));
       fetchOvertimeRequests();
@@ -285,7 +283,7 @@ export default function DeclarationHeurePage() {
   const handleAddOrUpdateAbsenceRequest = useCallback(async (
     data: Partial<Omit<AbsenceRequest, 'id' | 'employeeName' | 'requestDate' | 'updatedAt'>>
   ) => {
-    if (!dataLoaded) { toast({ title: "Données non prêtes", variant: "default"}); return; }
+    if (isLoading) { toast({ title: "Données non prêtes", variant: "default"}); return; }
     
     const employeeNameToUse = editingAbsenceRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername || "Système";
     const positionToUse = data.position || (editingAbsenceRequest ? editingAbsenceRequest.position : (currentBrigadeMember?.role || ''));
@@ -340,10 +338,10 @@ export default function DeclarationHeurePage() {
       toast({ title: "Erreur sauvegarde demande d'absence", variant: "destructive"});
     }
     setEditingAbsenceRequest(null);
-  }, [editingAbsenceRequest, loggedInUsername, currentBrigadeMember, toast, dataLoaded, fetchAbsenceRequests]);
+  }, [editingAbsenceRequest, loggedInUsername, currentBrigadeMember, toast, isLoading, fetchAbsenceRequests]);
 
   const handleDeleteAbsenceRequest = async (requestId: string) => {
-    if (!dataLoaded) return;
+    if (isLoading) return;
      try {
       await deleteDoc(doc(firestore, 'absenceRequests', requestId));
       fetchAbsenceRequests();
@@ -550,24 +548,24 @@ export default function DeclarationHeurePage() {
   );
 
   const employeeOvertimeRequests = useMemo(() => {
-    if (!isClient || !loggedInUsername || !dataLoaded) return [];
+    if (!isClient || !loggedInUsername || isLoading) return [];
     return overtimeRequests.filter(req => req.employeeName.toLowerCase() === loggedInUsername.toLowerCase());
-  }, [isClient, loggedInUsername, overtimeRequests, dataLoaded]);
+  }, [isClient, loggedInUsername, overtimeRequests, isLoading]);
 
   const employeeAbsenceRequests = useMemo(() => {
-    if (!isClient || !loggedInUsername || !dataLoaded) return [];
+    if (!isClient || !loggedInUsername || isLoading) return [];
     return absenceRequests.filter(req => req.employeeName.toLowerCase() === loggedInUsername.toLowerCase());
-  }, [isClient, loggedInUsername, absenceRequests, dataLoaded]);
+  }, [isClient, loggedInUsername, absenceRequests, isLoading]);
   
   const allOvertimeRequestsForChef = useMemo(() => {
-     if (!isClient || !dataLoaded) return [];
+     if (!isClient || isLoading) return [];
     return overtimeRequests;
-  }, [isClient, overtimeRequests, dataLoaded]);
+  }, [isClient, overtimeRequests, isLoading]);
 
   const allAbsenceRequestsForChef = useMemo(() => {
-     if (!isClient || !dataLoaded) return [];
+     if (!isClient || isLoading) return [];
     return absenceRequests;
-  }, [isClient, absenceRequests, dataLoaded]);
+  }, [isClient, absenceRequests, isLoading]);
   
   const declarationHeureTabsConfig: DeclarationHeureTab[] = [
     { value: "my-overtime-requests", label: "Dépassement Horaire", Icon: History },
@@ -589,7 +587,7 @@ export default function DeclarationHeurePage() {
               <div><CardTitle>Mes Demandes de Dépassement d'Horaire</CardTitle><CardDescription>Soumettez et suivez vos demandes.</CardDescription></div>
               <Button 
                 onClick={() => handleOpenOvertimeForm(undefined, false)} 
-                disabled={!dataLoaded || (!currentBrigadeMember && !isChef)}
+                disabled={isLoading || (!currentBrigadeMember && !isChef)}
               >
                 <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande Dépassement
               </Button>
@@ -604,7 +602,7 @@ export default function DeclarationHeurePage() {
               <div><CardTitle>Mes Demandes d'Absence</CardTitle><CardDescription>Soumettez et suivez vos demandes.</CardDescription></div>
               <Button 
                 onClick={() => handleOpenAbsenceForm(undefined, false)} 
-                disabled={!dataLoaded || (!currentBrigadeMember && !isChef)}
+                disabled={isLoading || (!currentBrigadeMember && !isChef)}
               >
                 <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande Absence
               </Button>
@@ -723,11 +721,11 @@ export default function DeclarationHeurePage() {
   };
 
 
-  if (!isClient || isLoadingMembers || isLoadingScheduleTemplates || isLoadingTimeEntries) {
+  if (!isClient || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="text-lg text-muted-foreground ml-3">Chargement du suivi des heures...</p>
+        <p className="text-lg text-muted-foreground ml-3">Chargement des déclarations...</p>
       </div>
     );
   }
@@ -779,6 +777,5 @@ export default function DeclarationHeurePage() {
     </div>
   );
 }
-
 
     
