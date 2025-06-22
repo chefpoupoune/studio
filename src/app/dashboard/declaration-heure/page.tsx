@@ -663,7 +663,8 @@ export default function DeclarationHeurePage() {
     doc.text(`Salarié(e) le : ${sigDate(request.employeeSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 15; doc.text(`Le Responsable Direct le : ${sigDate(request.directManagerSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 15; doc.text(`Le Directeur le : ${sigDate(request.directorSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 25;
     doc.setFont(undefined, 'bold'); doc.text("CADRE RESERVE A LA DIRECTION", pdfSettings.marginLeft, currentY); doc.setFont(undefined, 'normal'); currentY += 15; doc.text(`Acceptée / Refusée : ${getStatusLabel(request.approvalStatus)}`, pdfSettings.marginLeft, currentY); currentY += 15;
     if (request.approvalStatus === 'rejected' && request.rejectionReason) { doc.text(`Si refusée, motif : ${request.rejectionReason}`, pdfSettings.marginLeft, currentY); currentY += 15; }
-    doc.text(`Date : ${sigDate(request.decisionDate)}`, pdfSettings.marginLeft, currentY); currentY += 15; doc.text(`Signature de la Direction : `, pdfSettings.marginLeft, currentY); 
+    doc.text(`Date : ${sigDate(request.decisionDate)}`, pdfSettings.marginLeft, currentY); currentY += 15; 
+    doc.text(`Signature de la Direction : Dernoncourt Julien / Chef de cuisine`, pdfSettings.marginLeft, currentY);
     const pageCount = doc.internal.getNumberOfPages(); for (let i = 1; i <= pageCount; i++) { doc.setPage(i); if (pdfSettings.footerText) { let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', i.toString()).replace('{totalPages}', pageCount.toString()); doc.setFontSize(pdfSettings.footerFontSize); doc.text(footerStr, pdfSettings.marginLeft, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2)); }}
     doc.save(`Demande_Depassement_${request.employeeName.replace(/\s+/g, '_')}_${format(parseISO(request.requestDate), "yyyy-MM-dd")}.pdf`);
     toast({ title: "PDF Généré", description: `Le PDF pour la demande de ${request.employeeName} a été téléchargé.` });
@@ -722,11 +723,11 @@ export default function DeclarationHeurePage() {
   };
 
 
-  if (!isClient || !dataLoaded) {
+  if (!isClient || isLoadingMembers || isLoadingScheduleTemplates || isLoadingTimeEntries) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="text-lg text-muted-foreground ml-3">Chargement de la déclaration d'heures...</p>
+        <p className="text-lg text-muted-foreground ml-3">Chargement du suivi des heures...</p>
       </div>
     );
   }
