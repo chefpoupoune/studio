@@ -695,14 +695,54 @@ export default function DeclarationHeurePage() {
     
     const prestationAbsenceText = (request.prestationTypes || []).map(pt => PRESTATION_TYPE_LABELS[pt] || pt).join(', ') +
       ((request.prestationTypes || []).includes('autres') && request.prestationTypeAutresDetail ? ` (${request.prestationTypeAutresDetail})` : '');
-    doc.text(`Prestation correspondante : ${prestationAbsenceText || 'Logistique'}`, pdfSettings.marginLeft, currentY); currentY += 15;
+    doc.text(`Prestation correspondante : ${prestationAbsenceText || 'Logistique'}`, pdfSettings.marginLeft, currentY); currentY += 20;
 
-    doc.text(`Date de début : ${format(parseISO(request.startDate), "dd/MM/yyyy", { locale: fr })}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    doc.text(`Date de fin : ${format(parseISO(request.endDate), "dd/MM/yyyy", { locale: fr })}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    doc.text(`Nombre de jours d'absence : ${request.numberOfDays || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    if(request.hoursPerDay) { doc.text(`Nombre d'heures par jour d'absence : ${request.hoursPerDay}h`, pdfSettings.marginLeft, currentY); currentY += 15;}
-    if(request.totalAbsenceHours && request.totalAbsenceHours > 0) { doc.text(`Total heures d'absence : ${request.totalAbsenceHours.toFixed(1)}h`, pdfSettings.marginLeft, currentY); currentY += 15;}
-    if (request.reason) { doc.text("Motif :", pdfSettings.marginLeft, currentY); currentY += 15; doc.text(request.reason, pdfSettings.marginLeft + 10, currentY, { maxWidth: doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - 20 }); currentY += (doc.splitTextToSize(request.reason, doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - 20).length * (pdfSettings.defaultFontSize * 0.7)) + 10;}
+    doc.setFontSize((pdfSettings.defaultFontSize || 10) + 1);
+    doc.text("Récapitulatif de la demande :", pdfSettings.marginLeft, currentY);
+    currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 5;
+
+    const tableBody = [];
+    tableBody.push(['Date de début', format(parseISO(request.startDate), "dd/MM/yyyy", { locale: fr })]);
+    tableBody.push(['Date de fin', format(parseISO(request.endDate), "dd/MM/yyyy", { locale: fr })]);
+    tableBody.push(["Nombre de jours d'absence", request.numberOfDays?.toString() || 'N/A']);
+    if (request.hoursPerDay) {
+        tableBody.push(["Heures par jour", `${request.hoursPerDay}h`]);
+    }
+    if (request.totalAbsenceHours && request.totalAbsenceHours > 0) {
+        tableBody.push(["Total heures d'absence", `${request.totalAbsenceHours.toFixed(1)}h`]);
+    }
+    if (request.reason) {
+        tableBody.push(['Motif', request.reason]);
+    }
+
+    const headStyles: any = { fontSize: pdfSettings.tableHeaderFontSize, fontStyle: 'bold', fillColor: [230, 230, 230], textColor: [0,0,0] };
+    if (pdfSettings.primaryColor) {
+        const primaryRgb = hexToRgb(pdfSettings.primaryColor);
+        if (primaryRgb) {
+          headStyles.fillColor = primaryRgb;
+          const brightness = (primaryRgb[0] * 299 + primaryRgb[1] * 587 + primaryRgb[2] * 114) / 1000;
+          headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
+        }
+      }
+
+    doc.autoTable({
+        startY: currentY,
+        head: [['Détail', 'Information']],
+        body: tableBody,
+        theme: 'grid',
+        headStyles: headStyles,
+        styles: { 
+            fontSize: pdfSettings.tableBodyFontSize, 
+            font: pdfSettings.fontFamily,
+            cellPadding: 3,
+        },
+        columnStyles: {
+            0: { fontStyle: 'bold', cellWidth: 150 },
+            1: { cellWidth: 'auto' }
+        },
+        margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
+    });
+    currentY = (doc as any).lastAutoTable.finalY + 20;
     
     const sigDate = (dateStr: string | null | undefined) => dateStr && isValid(parseISO(dateStr)) ? format(parseISO(dateStr), "dd/MM/yyyy", { locale: fr }) : 'Non signé';
     doc.text(`Salarié(e) le : ${sigDate(request.employeeSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 15;
