@@ -18,6 +18,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { getMonthDays, DayData } from '@/app/dashboard/pms/utils';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { firestore } from '@/lib/firebase';
+
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -39,55 +42,136 @@ export default function CostAnalysisTable() {
   const [costData, setCostData] = useState<CostEntry[]>([]); 
   const [dailyCoeffData, setDailyCoeffData] = useState<DailyCoefficientEntry[]>([]); 
   
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
-  const getLocalStorageKeySuppliers = useCallback(() => `cost_analysis_suppliers_v11_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
-  const getLocalStorageKeyDailyCoeffs = useCallback(() => `cost_analysis_daily_coeffs_v11_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
+  const getFirestoreDocId = useCallback(() => `entry_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
 
   useEffect(() => {
-    setIsLoading(true);
-    try {
-      const storedSuppliers = localStorage.getItem(getLocalStorageKeySuppliers());
-      const parsedSuppliers = storedSuppliers ? JSON.parse(storedSuppliers) : [initialSupplierRow() as CostEntry];
-      setCostData(parsedSuppliers.length > 0 ? parsedSuppliers.map((s: any, index: number) => ({...initialSupplierRow(), ...s, id: s.id || `supplier_${Date.now()}_${index}`})) : [{...initialSupplierRow(), id: `supplier_init_${Date.now()}`}]);
+    const docId = getFirestoreDocId();
+    if (!docId) return;
 
-      const storedDailyCoeffs = localStorage.getItem(getLocalStorageKeyDailyCoeffs());
-      const daysInMonth = dfnsGetDaysInMonth(new Date(parseInt(selectedYear), parseInt(selectedMonth)));
-      
-      if (storedDailyCoeffs) {
-        const parsedCoeffs: DailyCoefficientEntry[] = JSON.parse(storedDailyCoeffs);
-        if (parsedCoeffs.length === daysInMonth && parsedCoeffs.every((entry, i) => entry.day === i + 1)) {
-          setDailyCoeffData(parsedCoeffs);
-        } else {
-          setDailyCoeffData(Array.from({ length: daysInMonth }, (_, i) => initialDailyCoefficientEntry(i + 1)));
+    const loadData = async () => {
+        setIsLoading(true);
+        setIsInitialLoad(true); // Prevents saving right after loading new month's data
+        const docRef = doc(firestore, "costAnalysisMonthlyEntries", docId);
+        try {
+            const docSnap = await getDoc(docRef);
+            const daysInMonth = dfnsGetDaysInMonth(new Date(parseInt(selectedYear), parseInt(selectedMonth)));
+
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                const suppliers = data.suppliers && data.suppliers.length > 0 ? data.suppliers : [{ ...initialSupplierRow(), id: `supplier_init_${Date.now()}` }];
+                setCostData(suppliers.map((s: any, index: number) => ({ ...initialSupplierRow(), ...s, id: s.id || `supplier_${Date.now()}_${index}` })));
+                
+                const dailyCoeffs = data.dailyCoefficients || Array.from({ length: daysInMonth }, (_, i) => initialDailyCoefficientEntry(i + 1));
+                setDailyCoeffData(dailyCoeffs.length !== daysInMonth ? Array.from({ length: daysInMonth }, (_, i) => initialDailyCoefficientEntry(i + 1)) : dailyCoeffs);
+            } else {
+                setCostData([{ ...initialSupplierRow(), id: `supplier_init_${Date.now()}` }]);
+                setDailyCoeffData(Array.from({ length: daysInMonth }, (_, i) => initialDailyCoefficientEntry(i + 1)));
+            }
+        } catch (error) {
+            console.error("Error loading data from Firestore:", error);
+            toast({ title: "Erreur de chargement", description: "Données mensuelles corrompues.", variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+            setIsInitialLoad(false);
         }
-      } else {
-        setDailyCoeffData(Array.from({ length: daysInMonth }, (_, i) => initialDailyCoefficientEntry(i + 1)));
-      }
-    } catch (error) {
-      console.error("Error loading data from localStorage:", error);
-      setCostData([{ ...initialSupplierRow(), id: `supplier_err_${Date.now()}` }]);
-      const daysInMonth = dfnsGetDaysInMonth(new Date(parseInt(selectedYear), parseInt(selectedMonth)));
-      setDailyCoeffData(Array.from({ length: daysInMonth }, (_, i) => initialDailyCoefficientEntry(i + 1)));
-      toast({ title: "Erreur de chargement", description: "Données locales corrompues, réinitialisation.", variant: "destructive" });
-    }
-    setIsLoading(false);
-  }, [selectedMonth, selectedYear, getLocalStorageKeySuppliers, getLocalStorageKeyDailyCoeffs, toast]);
+    };
+    loadData();
+  }, [selectedMonth, selectedYear, getFirestoreDocId, toast]);
 
-  useEffect(() => {
-    if (!isLoading && costData.length > 0) {
-      localStorage.setItem(getLocalStorageKeySuppliers(), JSON.stringify(costData));
-    } else if (!isLoading && costData.length === 0) {
-       localStorage.removeItem(getLocalStorageKeySuppliers()); 
-    }
-  }, [costData, getLocalStorageKeySuppliers, isLoading]);
+  const supplierTotals = useMemo(() => {
+    let totalHt = 0, totalTva = 0, totalAvoir = 0;
+    costData.forEach(row => {
+      totalHt += Number(row.ht) || 0;
+      totalTva += Number(row.tva) || 0;
+      totalAvoir += Number(row.avoir) || 0;
+    });
+    return { totalHt, totalTva, totalAvoir };
+  }, [costData]);
 
+  const dailyCoeffTotals = useMemo(() => {
+    const totals: { [K in keyof Omit<DailyCoefficientEntry, 'day'>]: number } & { totalCoeffJour: number[], totalPnJour: number[], totalGlobalJour: number[] } = {
+      imp: 0, saj: 0, ime: 0, esat: 0, repasPlus: 0, nous: 0, pn: 0, pnEsat: 0,
+      totalCoeffJour: Array(dailyCoeffData.length).fill(0),
+      totalPnJour: Array(dailyCoeffData.length).fill(0),
+      totalGlobalJour: Array(dailyCoeffData.length).fill(0),
+    };
+
+    dailyCoeffData.forEach((dayEntry, dayIndex) => {
+      let currentDayTotalCoeff = 0;
+      let currentDayTotalPn = 0;
+      (Object.keys(dayEntry) as Array<keyof DailyCoefficientEntry>).forEach(key => {
+        if (key !== 'day') {
+          const val = Number(dayEntry[key]) || 0;
+          (totals[key] as number) += val;
+          if (['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'].includes(key)) {
+            currentDayTotalCoeff += val;
+          }
+          if (['pn', 'pnEsat'].includes(key)) {
+            currentDayTotalPn += val;
+          }
+        }
+      });
+      totals.totalCoeffJour[dayIndex] = currentDayTotalCoeff;
+      totals.totalPnJour[dayIndex] = currentDayTotalPn;
+      totals.totalGlobalJour[dayIndex] = currentDayTotalCoeff + currentDayTotalPn;
+    });
+    return totals;
+  }, [dailyCoeffData]);
+  
+   const totalEffectifSumForMonth = useMemo(() => {
+    return (dailyCoeffTotals.pn || 0) + (dailyCoeffTotals.pnEsat || 0);
+  }, [dailyCoeffTotals]);
+  
+  const grandTotalGlobalJourValue = useMemo(() => {
+    return dailyCoeffTotals.totalGlobalJour.reduce((sum, val) => sum + val, 0);
+  }, [dailyCoeffTotals.totalGlobalJour]);
+
+  const prixDeRevientMensuel = useMemo(() => {
+    const coutMatierePremiere = supplierTotals.totalHt - supplierTotals.totalAvoir;
+    if (grandTotalGlobalJourValue === 0) return 0;
+    return coutMatierePremiere / grandTotalGlobalJourValue;
+  }, [supplierTotals, grandTotalGlobalJourValue]);
+  
+  // Save data to Firestore (debounced)
   useEffect(() => {
-    if (!isLoading && dailyCoeffData.length > 0) {
-      localStorage.setItem(getLocalStorageKeyDailyCoeffs(), JSON.stringify(dailyCoeffData));
-    }
-  }, [dailyCoeffData, getLocalStorageKeyDailyCoeffs, isLoading]);
+    if (isInitialLoad || isSaving) return;
+
+    const saveData = async () => {
+        setIsSaving(true);
+        const docId = getFirestoreDocId();
+        if (!docId) { setIsSaving(false); return; }
+
+        const docRef = doc(firestore, "costAnalysisMonthlyEntries", docId);
+        
+        const dataToSave = {
+            suppliers: costData,
+            dailyCoefficients: dailyCoeffData,
+            totalHtSum: supplierTotals.totalHt,
+            totalTvaSum: supplierTotals.totalTva,
+            totalAvoirSum: supplierTotals.totalAvoir,
+            totalEffectifSumForMonth: totalEffectifSumForMonth,
+        };
+
+        try {
+            await setDoc(docRef, dataToSave, { merge: true });
+        } catch (error) {
+            console.error("Error saving data to Firestore:", error);
+            toast({ title: "Erreur de sauvegarde", description: "Les modifications n'ont pas pu être enregistrées.", variant: "destructive" });
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const debounceTimeout = setTimeout(saveData, 2000);
+    return () => clearTimeout(debounceTimeout);
+
+  }, [costData, dailyCoeffData, supplierTotals, totalEffectifSumForMonth, isInitialLoad, isSaving, getFirestoreDocId, toast]);
+
 
   const handleSupplierInputChange = (rowIndex: number, fieldName: keyof Omit<CostEntry, 'id'>, value: string | number) => {
     setCostData(prevData =>
@@ -130,55 +214,6 @@ export default function CostAnalysisTable() {
     toast({ title: "Ligne Fournisseur Supprimée" });
   };
 
-  const supplierTotals = useMemo(() => {
-    let totalHt = 0, totalTva = 0, totalAvoir = 0;
-    costData.forEach(row => {
-      totalHt += Number(row.ht) || 0;
-      totalTva += Number(row.tva) || 0;
-      totalAvoir += Number(row.avoir) || 0;
-    });
-    return { totalHt, totalTva, totalAvoir };
-  }, [costData]);
-
-  const dailyCoeffTotals = useMemo(() => {
-    const totals: { [K in keyof Omit<DailyCoefficientEntry, 'day'>]: number } & { totalCoeffJour: number[], totalPnJour: number[], totalGlobalJour: number[] } = {
-      imp: 0, saj: 0, ime: 0, esat: 0, repasPlus: 0, nous: 0, pn: 0, pnEsat: 0,
-      totalCoeffJour: Array(dailyCoeffData.length).fill(0),
-      totalPnJour: Array(dailyCoeffData.length).fill(0),
-      totalGlobalJour: Array(dailyCoeffData.length).fill(0),
-    };
-
-    dailyCoeffData.forEach((dayEntry, dayIndex) => {
-      let currentDayTotalCoeff = 0;
-      let currentDayTotalPn = 0;
-      (Object.keys(dayEntry) as Array<keyof DailyCoefficientEntry>).forEach(key => {
-        if (key !== 'day') {
-          const val = Number(dayEntry[key]) || 0;
-          (totals[key] as number) += val;
-          if (['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'].includes(key)) {
-            currentDayTotalCoeff += val;
-          }
-          if (['pn', 'pnEsat'].includes(key)) {
-            currentDayTotalPn += val;
-          }
-        }
-      });
-      totals.totalCoeffJour[dayIndex] = currentDayTotalCoeff;
-      totals.totalPnJour[dayIndex] = currentDayTotalPn;
-      totals.totalGlobalJour[dayIndex] = currentDayTotalCoeff + currentDayTotalPn;
-    });
-    return totals;
-  }, [dailyCoeffData]);
-  
-  const grandTotalGlobalJourValue = useMemo(() => {
-    return dailyCoeffTotals.totalGlobalJour.reduce((sum, val) => sum + val, 0);
-  }, [dailyCoeffTotals.totalGlobalJour]);
-
-  const prixDeRevientMensuel = useMemo(() => {
-    const coutMatierePremiere = supplierTotals.totalHt - supplierTotals.totalAvoir;
-    if (grandTotalGlobalJourValue === 0) return 0;
-    return coutMatierePremiere / grandTotalGlobalJourValue;
-  }, [supplierTotals, grandTotalGlobalJourValue]);
 
   const generatePdf = () => {
     setIsLoading(true);
@@ -394,25 +429,27 @@ export default function CostAnalysisTable() {
     return getMonthDays(year, monthIndex);
   }, [selectedYear, selectedMonth]);
 
+  const uiIsDisabled = isLoading || isSaving;
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-end">
         <div>
           <Label htmlFor="month-select-cost">Mois</Label>
-          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+          <Select value={selectedMonth} onValueChange={setSelectedMonth} disabled={uiIsDisabled}>
             <SelectTrigger id="month-select-cost"><SelectValue /></SelectTrigger>
             <SelectContent>{months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
           </Select>
         </div>
         <div>
           <Label htmlFor="year-select-cost">Année</Label>
-          <Select value={selectedYear} onValueChange={setSelectedYear}>
+          <Select value={selectedYear} onValueChange={setSelectedYear} disabled={uiIsDisabled}>
             <SelectTrigger id="year-select-cost"><SelectValue /></SelectTrigger>
             <SelectContent>{years.map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}</SelectContent>
           </Select>
         </div>
-         <Button onClick={generatePdf} disabled={isLoading} className="sm:col-start-3 justify-self-end">
-            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+         <Button onClick={generatePdf} disabled={uiIsDisabled} className="sm:col-start-3 justify-self-end">
+            {uiIsDisabled ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
             PDF du Mois
         </Button>
       </div>
@@ -427,7 +464,7 @@ export default function CostAnalysisTable() {
           <Card>
             <CardHeader>
               <CardTitle>Données Fournisseurs</CardTitle>
-              <CardDescription>Entrez les informations financières pour chaque fournisseur.</CardDescription>
+              <CardDescription>Entrez les informations financières pour chaque fournisseur. Les données sont sauvegardées automatiquement.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto border rounded-md">
@@ -442,12 +479,12 @@ export default function CostAnalysisTable() {
                   <TableBody>
                     {costData.map((row, rowIndex) => (
                       <TableRow key={row.id || `supplier_new_${rowIndex}`}>
-                        <TableCell className="p-1"><Input type="text" value={row.fournisseur} onChange={e => handleSupplierInputChange(rowIndex, 'fournisseur', e.target.value)} className="text-xs p-1 h-8" /></TableCell>
-                        <TableCell className="p-1"><Input type="number" value={row.ht} onChange={e => handleSupplierInputChange(rowIndex, 'ht', e.target.value)} className="text-xs p-1 h-8 text-right" /></TableCell>
-                        <TableCell className="p-1"><Input type="number" value={row.tva} onChange={e => handleSupplierInputChange(rowIndex, 'tva', e.target.value)} className="text-xs p-1 h-8 text-right" /></TableCell>
-                        <TableCell className="p-1"><Input type="number" value={row.avoir} onChange={e => handleSupplierInputChange(rowIndex, 'avoir', e.target.value)} className="text-xs p-1 h-8 text-right" /></TableCell>
+                        <TableCell className="p-1"><Input type="text" value={row.fournisseur} onChange={e => handleSupplierInputChange(rowIndex, 'fournisseur', e.target.value)} className="text-xs p-1 h-8" disabled={isSaving} /></TableCell>
+                        <TableCell className="p-1"><Input type="number" value={row.ht} onChange={e => handleSupplierInputChange(rowIndex, 'ht', e.target.value)} className="text-xs p-1 h-8 text-right" disabled={isSaving} /></TableCell>
+                        <TableCell className="p-1"><Input type="number" value={row.tva} onChange={e => handleSupplierInputChange(rowIndex, 'tva', e.target.value)} className="text-xs p-1 h-8 text-right" disabled={isSaving} /></TableCell>
+                        <TableCell className="p-1"><Input type="number" value={row.avoir} onChange={e => handleSupplierInputChange(rowIndex, 'avoir', e.target.value)} className="text-xs p-1 h-8 text-right" disabled={isSaving} /></TableCell>
                         <TableCell className="text-center p-1">
-                          <Button variant="destructive" size="icon" onClick={() => handleDeleteSupplierRow(row.id!)} className="h-8 w-8" disabled={costData.length <= 1}><Trash2 className="h-4 w-4" /></Button>
+                          <Button variant="destructive" size="icon" onClick={() => handleDeleteSupplierRow(row.id!)} className="h-8 w-8" disabled={costData.length <= 1 || isSaving}><Trash2 className="h-4 w-4" /></Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -461,7 +498,7 @@ export default function CostAnalysisTable() {
                   </TableRow></TableFooter>
                 </Table>
               </div>
-              <Button onClick={handleAddSupplierRow} className="mt-4"><PlusCircle className="mr-2 h-4 w-4" /> Ajouter Ligne Fournisseur</Button>
+              <Button onClick={handleAddSupplierRow} className="mt-4" disabled={isSaving}><PlusCircle className="mr-2 h-4 w-4" /> Ajouter Ligne Fournisseur</Button>
             </CardContent>
           </Card>
 
@@ -493,13 +530,13 @@ export default function CostAnalysisTable() {
                         <TableCell className="font-medium text-center">{daysInMonthArray[dayIndex]?.dayOfMonth} - {daysInMonthArray[dayIndex]?.dayName.substring(0,3)}</TableCell>
                         {(['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'] as const).map(field => (
                           <TableCell key={field} className="p-1">
-                            <Input type="number" value={entry[field]} onChange={e => handleDailyCoeffInputChange(dayIndex, field, e.target.value)} className="text-xs p-1 h-8 text-center" placeholder="0" />
+                            <Input type="number" value={entry[field]} onChange={e => handleDailyCoeffInputChange(dayIndex, field, e.target.value)} className="text-xs p-1 h-8 text-center" placeholder="0" disabled={isSaving} />
                           </TableCell>
                         ))}
                         <TableCell className="text-center font-semibold bg-blue-100 dark:bg-blue-800/30">{dailyCoeffTotals.totalCoeffJour[dayIndex].toFixed(2)}</TableCell>
                          {(['pn', 'pnEsat'] as const).map(field => (
                             <TableCell key={field} className="p-1">
-                                <Input type="number" value={entry[field]} onChange={e => handleDailyCoeffInputChange(dayIndex, field, e.target.value)} className="text-xs p-1 h-8 text-center" placeholder="0" />
+                                <Input type="number" value={entry[field]} onChange={e => handleDailyCoeffInputChange(dayIndex, field, e.target.value)} className="text-xs p-1 h-8 text-center" placeholder="0" disabled={isSaving} />
                             </TableCell>
                         ))}
                         <TableCell className="text-center font-semibold bg-green-100 dark:bg-green-800/30">{dailyCoeffTotals.totalPnJour[dayIndex].toFixed(0)}</TableCell>
