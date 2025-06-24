@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Trash2, FileText, Loader2, CalendarDays } from 'lucide-react';
+import { PlusCircle, Trash2, FileText, Loader2, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format, getDaysInMonth as dfnsGetDaysInMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -43,8 +43,8 @@ export default function CostAnalysisTable() {
   const [dailyCoeffData, setDailyCoeffData] = useState<DailyCoefficientEntry[]>([]); 
   
   const [isLoading, setIsLoading] = useState(true);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false); // To track changes
   const { toast } = useToast();
 
   const getFirestoreDocId = useCallback(() => `entry_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
@@ -55,7 +55,7 @@ export default function CostAnalysisTable() {
 
     const loadData = async () => {
         setIsLoading(true);
-        setIsInitialLoad(true); // Prevents saving right after loading new month's data
+        setIsDirty(false); // Reset dirty state on new data load
         const docRef = doc(firestore, "costAnalysisMonthlyEntries", docId);
         try {
             const docSnap = await getDoc(docRef);
@@ -77,7 +77,6 @@ export default function CostAnalysisTable() {
             toast({ title: "Erreur de chargement", description: "Données mensuelles corrompues.", variant: "destructive" });
         } finally {
             setIsLoading(false);
-            setIsInitialLoad(false);
         }
     };
     loadData();
@@ -137,43 +136,41 @@ export default function CostAnalysisTable() {
     return coutMatierePremiere / grandTotalGlobalJourValue;
   }, [supplierTotals, grandTotalGlobalJourValue]);
   
-  // Save data to Firestore (debounced)
-  useEffect(() => {
-    if (isInitialLoad || isSaving) return;
+  const handleSaveData = async () => {
+    setIsSaving(true);
+    const docId = getFirestoreDocId();
+    if (!docId) {
+      toast({ title: "Erreur", description: "Impossible de déterminer l'identifiant du document.", variant: "destructive" });
+      setIsSaving(false);
+      return;
+    }
 
-    const saveData = async () => {
-        setIsSaving(true);
-        const docId = getFirestoreDocId();
-        if (!docId) { setIsSaving(false); return; }
-
-        const docRef = doc(firestore, "costAnalysisMonthlyEntries", docId);
-        
-        const dataToSave = {
-            suppliers: costData,
-            dailyCoefficients: dailyCoeffData,
-            totalHtSum: supplierTotals.totalHt,
-            totalTvaSum: supplierTotals.totalTva,
-            totalAvoirSum: supplierTotals.totalAvoir,
-            totalEffectifSumForMonth: totalEffectifSumForMonth,
-        };
-
-        try {
-            await setDoc(docRef, dataToSave, { merge: true });
-        } catch (error) {
-            console.error("Error saving data to Firestore:", error);
-            toast({ title: "Erreur de sauvegarde", description: "Les modifications n'ont pas pu être enregistrées.", variant: "destructive" });
-        } finally {
-            setIsSaving(false);
-        }
+    const docRef = doc(firestore, "costAnalysisMonthlyEntries", docId);
+    
+    const dataToSave = {
+        suppliers: costData.filter(s => s.fournisseur.trim() !== ''), // Only save rows with a supplier name
+        dailyCoefficients: dailyCoeffData,
+        totalHtSum: supplierTotals.totalHt,
+        totalTvaSum: supplierTotals.totalTva,
+        totalAvoirSum: supplierTotals.totalAvoir,
+        totalEffectifSumForMonth: totalEffectifSumForMonth,
     };
 
-    const debounceTimeout = setTimeout(saveData, 2000);
-    return () => clearTimeout(debounceTimeout);
-
-  }, [costData, dailyCoeffData, supplierTotals, totalEffectifSumForMonth, isInitialLoad, isSaving, getFirestoreDocId, toast]);
+    try {
+        await setDoc(docRef, dataToSave, { merge: true });
+        toast({ title: "Données Sauvegardées", description: "Vos modifications ont été enregistrées avec succès." });
+        setIsDirty(false); // Reset dirty flag after successful save
+    } catch (error) {
+        console.error("Error saving data to Firestore:", error);
+        toast({ title: "Erreur de sauvegarde", description: "Les modifications n'ont pas pu être enregistrées.", variant: "destructive" });
+    } finally {
+        setIsSaving(false);
+    }
+  };
 
 
   const handleSupplierInputChange = (rowIndex: number, fieldName: keyof Omit<CostEntry, 'id'>, value: string | number) => {
+    setIsDirty(true);
     setCostData(prevData =>
       prevData.map((row, index) => {
         if (index === rowIndex) {
@@ -188,6 +185,7 @@ export default function CostAnalysisTable() {
   };
   
   const handleDailyCoeffInputChange = (dayIndex: number, fieldName: keyof Omit<DailyCoefficientEntry, 'day'>, value: string) => {
+    setIsDirty(true);
     const numericValue = value === "" ? "" : parseFloat(value); 
     if (value === "" || (!isNaN(numericValue as number) && (numericValue as number) >= 0)) {
         setDailyCoeffData(prevData =>
@@ -202,6 +200,7 @@ export default function CostAnalysisTable() {
   };
 
   const handleAddSupplierRow = () => {
+    setIsDirty(true);
     setCostData(prevData => [...prevData, { ...initialSupplierRow(), id: `supplier_${Date.now()}` }]);
   };
 
@@ -210,6 +209,7 @@ export default function CostAnalysisTable() {
         toast({ title: "Action impossible", description: "Au moins une ligne fournisseur doit être conservée.", variant: "default" });
         return;
     }
+    setIsDirty(true);
     setCostData(prevData => prevData.filter(row => row.id !== rowId));
     toast({ title: "Ligne Fournisseur Supprimée" });
   };
@@ -433,7 +433,7 @@ export default function CostAnalysisTable() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-end">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
         <div>
           <Label htmlFor="month-select-cost">Mois</Label>
           <Select value={selectedMonth} onValueChange={setSelectedMonth} disabled={uiIsDisabled}>
@@ -448,10 +448,16 @@ export default function CostAnalysisTable() {
             <SelectContent>{years.map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}</SelectContent>
           </Select>
         </div>
-         <Button onClick={generatePdf} disabled={uiIsDisabled} className="sm:col-start-3 justify-self-end">
-            {uiIsDisabled ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-            PDF du Mois
-        </Button>
+        <div className="sm:col-start-3 justify-self-end flex flex-col sm:flex-row gap-2">
+            <Button onClick={handleSaveData} disabled={!isDirty || isSaving} className="w-full sm:w-auto">
+                {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Enregistrer
+            </Button>
+            <Button onClick={generatePdf} disabled={uiIsDisabled} className="w-full sm:w-auto">
+                {isLoading && !isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+                PDF du Mois
+            </Button>
+        </div>
       </div>
 
       {isLoading && costData.length === 0 && dailyCoeffData.length === 0 ? (
@@ -464,7 +470,7 @@ export default function CostAnalysisTable() {
           <Card>
             <CardHeader>
               <CardTitle>Données Fournisseurs</CardTitle>
-              <CardDescription>Entrez les informations financières pour chaque fournisseur. Les données sont sauvegardées automatiquement.</CardDescription>
+              <CardDescription>Entrez les informations financières pour chaque fournisseur. Cliquez sur "Enregistrer" pour sauvegarder.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto border rounded-md">
@@ -592,5 +598,3 @@ export default function CostAnalysisTable() {
     </div>
   );
 }
-    
-    
