@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFoo
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { PlusCircle, Edit2, Trash2, FileText, Loader2, Apple, Salad } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, FileText, Loader2, Apple, Salad, Save } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -20,6 +20,8 @@ import 'jspdf-autotable';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+import { firestore } from '@/lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -40,6 +42,8 @@ const initialIngredientData = (): IngredientFormData => ({
   quantityPerMeal: 0.1,
 });
 
+const FIRESTORE_DOC_ID = "picnicCostData";
+
 export default function PicnicCostAnalysis() {
   const [selectedMealType, setSelectedMealType] = useState<MealTypePN>('picnic');
   const [picnicIngredients, setPicnicIngredients] = useState<IngredientPN[]>([]);
@@ -47,55 +51,71 @@ export default function PicnicCostAnalysis() {
   
   const [isIngredientDialogOpen, setIsIngredientDialogOpen] = useState(false);
   const [editingIngredient, setEditingIngredient] = useState<IngredientPN | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-
+  
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  
   const { toast } = useToast();
 
   const ingredientForm = useForm<IngredientFormData>({
     resolver: zodResolver(ingredientSchema),
     defaultValues: initialIngredientData(),
   });
-
-  const getLocalStorageKey = useCallback((mealType: MealTypePN) => `cost_pn_${mealType}_ingredients`, []);
-
-  useEffect(() => {
-    setIsLoading(true);
-    try {
-      const storedPicnic = localStorage.getItem(getLocalStorageKey('picnic'));
-      if (storedPicnic) setPicnicIngredients(JSON.parse(storedPicnic));
-
-      const storedSalad = localStorage.getItem(getLocalStorageKey('salad'));
-      if (storedSalad) setSaladIngredients(JSON.parse(storedSalad));
-    } catch (error) {
-      console.error("Error loading PN ingredients from localStorage:", error);
-      toast({ title: "Erreur de chargement", description: "Données d'ingrédients corrompues.", variant: "destructive" });
-    }
-    setIsLoading(false);
-  }, [getLocalStorageKey, toast]);
+  
+  const docRef = useMemo(() => doc(firestore, "costAnalysisCalculators", FIRESTORE_DOC_ID), []);
 
   useEffect(() => {
-    if (!isLoading) {
-      localStorage.setItem(getLocalStorageKey('picnic'), JSON.stringify(picnicIngredients));
-    }
-  }, [picnicIngredients, getLocalStorageKey, isLoading]);
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setPicnicIngredients(data.picnicIngredients || []);
+          setSaladIngredients(data.saladIngredients || []);
+        } else {
+          setPicnicIngredients([]);
+          setSaladIngredients([]);
+        }
+      } catch (error) {
+        console.error("Error loading PN ingredients from Firestore:", error);
+        toast({ title: "Erreur de chargement", description: "Données d'ingrédients corrompues.", variant: "destructive" });
+      }
+      setIsLoading(false);
+      setIsDirty(false);
+    };
+    loadData();
+  }, [docRef, toast]);
 
-  useEffect(() => {
-    if (!isLoading) {
-      localStorage.setItem(getLocalStorageKey('salad'), JSON.stringify(saladIngredients));
-    }
-  }, [saladIngredients, getLocalStorageKey, isLoading]);
 
   const currentIngredients = useMemo(() => {
     return selectedMealType === 'picnic' ? picnicIngredients : saladIngredients;
   }, [selectedMealType, picnicIngredients, saladIngredients]);
 
   const setCurrentIngredients = useCallback((newIngredients: IngredientPN[]) => {
+    setIsDirty(true);
     if (selectedMealType === 'picnic') {
       setPicnicIngredients(newIngredients);
     } else {
       setSaladIngredients(newIngredients);
     }
   }, [selectedMealType]);
+  
+  const handleSaveData = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      await setDoc(docRef, { picnicIngredients, saladIngredients });
+      toast({ title: "Données Enregistrées", description: "Les ingrédients ont été sauvegardés avec succès." });
+      setIsDirty(false);
+    } catch (error) {
+      console.error("Error saving data to Firestore:", error);
+      toast({ title: "Erreur de sauvegarde", variant: "destructive" });
+    }
+    setIsSaving(false);
+  };
+
 
   const totalMealCost = useMemo(() => {
     return currentIngredients.reduce((total, ingredient) => {
@@ -252,7 +272,7 @@ export default function PicnicCostAnalysis() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <div>
           <Label htmlFor="meal-type-select">Type de Repas</Label>
           <Select value={selectedMealType} onValueChange={(value) => setSelectedMealType(value as MealTypePN)}>
@@ -265,38 +285,44 @@ export default function PicnicCostAnalysis() {
             </SelectContent>
           </Select>
         </div>
-         <Dialog open={isIngredientDialogOpen} onOpenChange={setIsIngredientDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={() => handleOpenIngredientDialog()} className="w-full sm:w-auto sm:justify-self-end mt-4 sm:mt-0">
-                <PlusCircle className="mr-2 h-4 w-4" /> Ajouter Ingrédient
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>{editingIngredient ? "Modifier l'Ingrédient" : "Nouvel Ingrédient"} pour {mealTypeLabel}</DialogTitle>
-              </DialogHeader>
-              <Form {...ingredientForm}>
-                <form onSubmit={ingredientForm.handleSubmit(handleIngredientFormSubmit)} className="space-y-4 py-4">
-                  <FormField control={ingredientForm.control} name="name" render={({ field }) => (
-                    <FormItem><FormLabel>Nom</FormLabel><FormControl><Input placeholder="Ex: Pain de mie" {...field} /></FormControl><FormMessage /></FormItem>
-                  )} />
-                  <FormField control={ingredientForm.control} name="unit" render={({ field }) => (
-                    <FormItem><FormLabel>Unité</FormLabel><FormControl><Input placeholder="Ex: tranche, kg, L, pièce" {...field} /></FormControl><FormMessage /></FormItem>
-                  )} />
-                  <FormField control={ingredientForm.control} name="unitPrice" render={({ field }) => (
-                    <FormItem><FormLabel>Prix Unitaire (€)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="Ex: 2.50" {...field} /></FormControl><FormMessage /></FormItem>
-                  )} />
-                  <FormField control={ingredientForm.control} name="quantityPerMeal" render={({ field }) => (
-                    <FormItem><FormLabel>Quantité par Repas</FormLabel><FormControl><Input type="number" step="0.001" placeholder="Ex: 0.1" {...field} /></FormControl><FormMessage /></FormItem>
-                  )} />
-                  <DialogFooter>
-                    <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                    <Button type="submit">{editingIngredient ? "Enregistrer" : "Ajouter"}</Button>
-                  </DialogFooter>
-                </form>
-              </Form>
-            </DialogContent>
-          </Dialog>
+        <div className="flex gap-2 self-end">
+            <Button onClick={handleSaveData} disabled={!isDirty || isSaving}>
+              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Sauvegarder
+            </Button>
+            <Dialog open={isIngredientDialogOpen} onOpenChange={setIsIngredientDialogOpen}>
+              <DialogTrigger asChild>
+                <Button onClick={() => handleOpenIngredientDialog()} className="w-full sm:w-auto">
+                  <PlusCircle className="mr-2 h-4 w-4" /> Ajouter Ingrédient
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>{editingIngredient ? "Modifier l'Ingrédient" : "Nouvel Ingrédient"} pour {mealTypeLabel}</DialogTitle>
+                </DialogHeader>
+                <Form {...ingredientForm}>
+                  <form onSubmit={ingredientForm.handleSubmit(handleIngredientFormSubmit)} className="space-y-4 py-4">
+                    <FormField control={ingredientForm.control} name="name" render={({ field }) => (
+                      <FormItem><FormLabel>Nom</FormLabel><FormControl><Input placeholder="Ex: Pain de mie" {...field} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <FormField control={ingredientForm.control} name="unit" render={({ field }) => (
+                      <FormItem><FormLabel>Unité</FormLabel><FormControl><Input placeholder="Ex: tranche, kg, L, pièce" {...field} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <FormField control={ingredientForm.control} name="unitPrice" render={({ field }) => (
+                      <FormItem><FormLabel>Prix Unitaire (€)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="Ex: 2.50" {...field} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <FormField control={ingredientForm.control} name="quantityPerMeal" render={({ field }) => (
+                      <FormItem><FormLabel>Quantité par Repas</FormLabel><FormControl><Input type="number" step="0.001" placeholder="Ex: 0.1" {...field} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <DialogFooter>
+                      <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
+                      <Button type="submit">{editingIngredient ? "Enregistrer" : "Ajouter"}</Button>
+                    </DialogFooter>
+                  </form>
+                </Form>
+              </DialogContent>
+            </Dialog>
+        </div>
       </div>
 
       {isLoading ? (
@@ -351,15 +377,10 @@ export default function PicnicCostAnalysis() {
         </p>
       )}
 
-      <Button onClick={generatePdf} disabled={isLoading || currentIngredients.length === 0} className="w-full sm:w-auto mt-4">
-        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+      <Button onClick={generatePdf} disabled={isLoading || isSaving || currentIngredients.length === 0} className="w-full sm:w-auto mt-4">
+        {isLoading || isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
         Générer PDF pour {mealTypeLabel}
       </Button>
     </div>
   );
 }
-
-
-    
-
-    

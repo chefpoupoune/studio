@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFoo
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { PlusCircle, Edit2, Trash2, FileText, Loader2, Utensils, Users, Info } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, FileText, Loader2, Utensils, Users, Info, Save } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -20,6 +20,8 @@ import 'jspdf-autotable';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+import { firestore } from '@/lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -43,6 +45,8 @@ const mealPartLabels: Record<OccasionalMealPartType, string> = {
   dessert: 'Dessert',
 };
 
+const FIRESTORE_DOC_ID = "occasionalMealCostData";
+
 export default function OccasionalMealCostAnalysis() {
   const [numberOfPeople, setNumberOfPeople] = useState<number>(1);
   const [starterIngredients, setStarterIngredients] = useState<IngredientOccasional[]>([]);
@@ -52,7 +56,10 @@ export default function OccasionalMealCostAnalysis() {
   const [isIngredientDialogOpen, setIsIngredientDialogOpen] = useState(false);
   const [editingIngredient, setEditingIngredient] = useState<IngredientOccasional | null>(null);
   const [currentEditingMealPart, setCurrentEditingMealPart] = useState<OccasionalMealPartType | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
 
   const { toast } = useToast();
 
@@ -60,34 +67,59 @@ export default function OccasionalMealCostAnalysis() {
     resolver: zodResolver(ingredientSchema),
     defaultValues: initialIngredientData(),
   });
-
-  const getLocalStorageKey = useCallback((mealPart: OccasionalMealPartType | 'num_people') => {
-    if (mealPart === 'num_people') return 'occasional_meal_num_people';
-    return `occasional_meal_${mealPart}_ingredients`;
-  }, []);
+  
+  const docRef = useMemo(() => doc(firestore, "costAnalysisCalculators", FIRESTORE_DOC_ID), []);
 
   useEffect(() => {
-    setIsLoading(true);
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setNumberOfPeople(data.numberOfPeople || 1);
+          setStarterIngredients(data.starterIngredients || []);
+          setMainIngredients(data.mainIngredients || []);
+          setDessertIngredients(data.dessertIngredients || []);
+        } else {
+          // Defaults if doc doesn't exist
+          setNumberOfPeople(1);
+          setStarterIngredients([]);
+          setMainIngredients([]);
+          setDessertIngredients([]);
+        }
+      } catch (error) {
+        console.error("Error loading occasional meal data from Firestore:", error);
+        toast({ title: "Erreur de chargement", description: "Données de repas occasionnel corrompues.", variant: "destructive" });
+      }
+      setIsLoading(false);
+      setIsDirty(false);
+    };
+    loadData();
+  }, [docRef, toast]);
+  
+  const handleSetIsDirty = () => setIsDirty(true);
+  
+  const handleSaveData = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
     try {
-      const storedStarter = localStorage.getItem(getLocalStorageKey('starter'));
-      if (storedStarter) setStarterIngredients(JSON.parse(storedStarter));
-      const storedMain = localStorage.getItem(getLocalStorageKey('main'));
-      if (storedMain) setMainIngredients(JSON.parse(storedMain));
-      const storedDessert = localStorage.getItem(getLocalStorageKey('dessert'));
-      if (storedDessert) setDessertIngredients(JSON.parse(storedDessert));
-      const storedNumPeople = localStorage.getItem(getLocalStorageKey('num_people'));
-      if (storedNumPeople) setNumberOfPeople(parseInt(storedNumPeople, 10) || 1);
+      const dataToSave = {
+        numberOfPeople,
+        starterIngredients,
+        mainIngredients,
+        dessertIngredients,
+      };
+      await setDoc(docRef, dataToSave);
+      toast({ title: "Données Enregistrées", description: "Les données du repas occasionnel ont été sauvegardées." });
+      setIsDirty(false);
     } catch (error) {
-      console.error("Error loading occasional meal data:", error);
-      toast({ title: "Erreur de chargement", description: "Données de repas occasionnel corrompues.", variant: "destructive" });
+      console.error("Error saving occasional meal data to Firestore:", error);
+      toast({ title: "Erreur de sauvegarde", variant: "destructive" });
     }
-    setIsLoading(false);
-  }, [getLocalStorageKey, toast]);
+    setIsSaving(false);
+  };
 
-  useEffect(() => { if (!isLoading) localStorage.setItem(getLocalStorageKey('starter'), JSON.stringify(starterIngredients)); }, [starterIngredients, getLocalStorageKey, isLoading]);
-  useEffect(() => { if (!isLoading) localStorage.setItem(getLocalStorageKey('main'), JSON.stringify(mainIngredients)); }, [mainIngredients, getLocalStorageKey, isLoading]);
-  useEffect(() => { if (!isLoading) localStorage.setItem(getLocalStorageKey('dessert'), JSON.stringify(dessertIngredients)); }, [dessertIngredients, getLocalStorageKey, isLoading]);
-  useEffect(() => { if (!isLoading) localStorage.setItem(getLocalStorageKey('num_people'), numberOfPeople.toString()); }, [numberOfPeople, getLocalStorageKey, isLoading]);
 
   const getIngredientsList = (mealPart: OccasionalMealPartType): IngredientOccasional[] => {
     if (mealPart === 'starter') return starterIngredients;
@@ -96,6 +128,7 @@ export default function OccasionalMealCostAnalysis() {
   };
 
   const setIngredientsList = (mealPart: OccasionalMealPartType, ingredients: IngredientOccasional[]) => {
+    handleSetIsDirty();
     if (mealPart === 'starter') setStarterIngredients(ingredients);
     else if (mealPart === 'main') setMainIngredients(ingredients);
     else setDessertIngredients(ingredients);
@@ -308,12 +341,22 @@ export default function OccasionalMealCostAnalysis() {
           <Input 
             type="number" 
             value={numberOfPeople} 
-            onChange={(e) => setNumberOfPeople(Math.max(1, parseInt(e.target.value,10) || 1))} 
+            onChange={(e) => {
+              setNumberOfPeople(Math.max(1, parseInt(e.target.value,10) || 1));
+              handleSetIsDirty();
+            }} 
             min="1"
             className="w-full sm:w-40"
           />
         </CardContent>
       </Card>
+      
+      <div className="flex justify-end">
+        <Button onClick={handleSaveData} disabled={!isDirty || isSaving}>
+          {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+          Sauvegarder les Données
+        </Button>
+      </div>
 
       {/* Ingredient Dialog */}
       <Dialog open={isIngredientDialogOpen} onOpenChange={setIsIngredientDialogOpen}>
@@ -357,8 +400,8 @@ export default function OccasionalMealCostAnalysis() {
           </div>
         </CardContent>
          <CardFooter>
-            <Button onClick={generatePdf} disabled={isLoading || (starterIngredients.length === 0 && mainIngredients.length === 0 && dessertIngredients.length === 0)} className="w-full sm:w-auto mt-4">
-                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+            <Button onClick={generatePdf} disabled={isLoading || isSaving || (starterIngredients.length === 0 && mainIngredients.length === 0 && dessertIngredients.length === 0)} className="w-full sm:w-auto mt-4">
+                {(isLoading || isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
                 Générer PDF Récapitulatif
             </Button>
          </CardFooter>
