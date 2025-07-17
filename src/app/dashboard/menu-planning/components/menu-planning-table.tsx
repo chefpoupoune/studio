@@ -3,19 +3,23 @@
 
 import type { DailyMenu, MenuField, StoredMenuThemeValue, MenuThemeIdentifier } from '../types';
 import { MENU_THEME_OPTIONS_FOR_SELECT, NO_THEME_SELECT_VALUE, menuThemeStyles } from '../types';
+import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
+import { Save } from 'lucide-react';
 interface MenuPlanningTableProps {
   year: number;
   month: number;
   menuData: DailyMenu[];
   onUpdateMenuEntry: (date: string, field: MenuField, value: StoredMenuThemeValue) => void;
+  disabled?: boolean;
+  onSave?: () => void;
 }
 
-export default function MenuPlanningTable({ menuData, onUpdateMenuEntry }: MenuPlanningTableProps) {
+export default function MenuPlanningTable({ menuData, onUpdateMenuEntry, disabled = false, onSave }: MenuPlanningTableProps) {
   if (!menuData || menuData.length === 0) {
     return <p className="text-muted-foreground text-center py-8">Aucun menu à afficher pour ce mois.</p>;
   }
@@ -45,6 +49,11 @@ export default function MenuPlanningTable({ menuData, onUpdateMenuEntry }: MenuP
 
   return (
     <div className="overflow-x-auto border rounded-md shadow-sm">
+      <div className="p-4 flex justify-end">
+        <Button onClick={onSave} disabled={disabled || !onSave} size="sm">
+          <Save className="mr-2 h-4 w-4" /> Sauvegarder
+        </Button>
+      </div>
       <Table className="min-w-full">
         <TableHeader className="bg-card sticky top-0 z-30">
           <TableRow>

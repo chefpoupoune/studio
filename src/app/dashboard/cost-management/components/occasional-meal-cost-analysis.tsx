@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { PlusCircle, Edit2, Trash2, FileText, Loader2, Utensils, Users, Info, Save } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -42,7 +43,7 @@ const initialIngredientData = (): IngredientFormData => ({
 const mealPartLabels: Record<OccasionalMealPartType, string> = {
   starter: 'Entrée',
   main: 'Plat Principal',
-  dessert: 'Dessert',
+ dessert: 'Dessert',
 };
 
 const FIRESTORE_DOC_ID = "occasionalMealCostData";
@@ -56,6 +57,22 @@ export default function OccasionalMealCostAnalysis() {
   const [isIngredientDialogOpen, setIsIngredientDialogOpen] = useState(false);
   const [editingIngredient, setEditingIngredient] = useState<IngredientOccasional | null>(null);
   const [currentEditingMealPart, setCurrentEditingMealPart] = useState<OccasionalMealPartType | null>(null);
+
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [ingredientToDelete, setIngredientToDelete] = useState<{ mealPart: OccasionalMealPartType; ingredientId: string } | null>(null);
+    // Helper function to get the correct ingredient list based on meal part - Defined inside component
+  const getIngredientsList = useCallback((mealPart: OccasionalMealPartType): IngredientOccasional[] => {
+    if (mealPart === 'starter') return starterIngredients;
+    if (mealPart === 'main') return mainIngredients;
+    return dessertIngredients;
+  }, [starterIngredients, mainIngredients, dessertIngredients]); // Add state dependencies
+  
+  const ingredientToDeleteName = useMemo(() => {
+    // Ensure ingredientToDelete and mealPart are valid before accessing properties
+    if (!ingredientToDelete || !ingredientToDelete.mealPart) return "L'ingrédient";
+    const currentList = getIngredientsList(ingredientToDelete.mealPart);
+    return currentList.find(ing => ing.id === ingredientToDelete.ingredientId)?.name || "L'ingrédient";
+  }, [ingredientToDelete, getIngredientsList]); // Depend on ingredientToDelete and the memoized getIngredientsList
   
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -67,7 +84,7 @@ export default function OccasionalMealCostAnalysis() {
     resolver: zodResolver(ingredientSchema),
     defaultValues: initialIngredientData(),
   });
-  
+
   const docRef = useMemo(() => doc(firestore, "costAnalysisCalculators", FIRESTORE_DOC_ID), []);
 
   useEffect(() => {
@@ -121,12 +138,6 @@ export default function OccasionalMealCostAnalysis() {
   };
 
 
-  const getIngredientsList = (mealPart: OccasionalMealPartType): IngredientOccasional[] => {
-    if (mealPart === 'starter') return starterIngredients;
-    if (mealPart === 'main') return mainIngredients;
-    return dessertIngredients;
-  };
-
   const setIngredientsList = (mealPart: OccasionalMealPartType, ingredients: IngredientOccasional[]) => {
     handleSetIsDirty();
     if (mealPart === 'starter') setStarterIngredients(ingredients);
@@ -166,13 +177,16 @@ export default function OccasionalMealCostAnalysis() {
   };
 
   const handleDeleteIngredient = (mealPart: OccasionalMealPartType, ingredientId: string) => {
-    const currentList = getIngredientsList(mealPart);
-    const ingredientName = currentList.find(ing => ing.id === ingredientId)?.name || "L'ingrédient";
-    if (confirm(`Êtes-vous sûr de vouloir supprimer "${ingredientName}" de ${mealPartLabels[mealPart]} ?`)) {
-      setIngredientsList(currentEditingMealPart, currentList.filter(ing => ing.id !== ingredientId));
-      toast({ title: "Ingrédient Supprimé", description: `"${ingredientName}" a été supprimé de ${mealPartLabels[mealPart]}.`, variant: "destructive" });
-    }
+    setIngredientToDelete({ mealPart, ingredientId });
+    setIsDeleteDialogOpen(true);
   };
+
+  const handleConfirmDelete = () => {
+    if (!ingredientToDelete) return;
+    const currentList = getIngredientsList(ingredientToDelete.mealPart);
+    setIngredientsList(ingredientToDelete.mealPart, currentList.filter(ing => ing.id !== ingredientToDelete.ingredientId));
+    toast({ title: "Ingrédient Supprimé", description: `"${ingredientToDeleteName}" a été supprimé de ${mealPartLabels[ingredientToDelete.mealPart]}.`, variant: "destructive" });
+  }
 
   const generatePdf = () => {
     if (starterIngredients.length === 0 && mainIngredients.length === 0 && dessertIngredients.length === 0) {
@@ -359,6 +373,20 @@ export default function OccasionalMealCostAnalysis() {
       </div>
 
       {/* Ingredient Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer "{ingredientToDeleteName}" de {ingredientToDelete ? mealPartLabels[ingredientToDelete.mealPart] : 'ce repas'} ? Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setIsDeleteDialogOpen(false)}>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete}>Supprimer</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <Dialog open={isIngredientDialogOpen} onOpenChange={setIsIngredientDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>

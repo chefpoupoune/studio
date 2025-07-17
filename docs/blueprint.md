@@ -1,15 +1,17 @@
-# **App Name**: Excellence Dashboard
+# **App Name**: Cost Control
 
 ## Core Features:
 
-- Date Display: Display the current date prominently on the homepage.
-- Homepage Image: Showcase an image related to restaurant management or excellence in service.
-- Dashboard Access: Provide a clear button to access the main dashboard.
+- Expense Tracking: Manage and track expenses.
+- Intuitive UI: User-friendly interface for cost management.
+- Menu PDF Generation: Generate monthly menu PDFs. Will use an AI tool to identify and fix errors.
+- Password Management: Allow service chiefs to manage passwords.
+- Repair Order Sheet Code: AI-powered code repair for the order sheet page.
+- Dynamic Supplier Selection: Replace the text input for supplier selection with a dropdown list populated from the delivery tracking data, allowing the user to select a supplier from the available options.
 
 ## Style Guidelines:
 
-- Use a distressed Bordeaux color scheme for the background.
-- Apply a highlight effect to the title, with a subtle fade effect.
-- Accent color: Gold (#FFD700) for interactive elements and key information.
-- Elegant and readable typography that fits the restaurant business, e.g., sans-serif fonts for body text and a serif font for headings
-- Clean and intuitive dashboard layout with easy navigation.
+- Primary color: Deep indigo (#3F51B5) to convey professionalism and trust.
+- Background color: Dark grey (#263238) to reduce eye strain during long coding sessions.
+- Accent color: Teal (#009688) for interactive elements and call-to-action buttons.
+- Body and headline font: 'Inter', a grotesque-style sans-serif for its modern and neutral look.

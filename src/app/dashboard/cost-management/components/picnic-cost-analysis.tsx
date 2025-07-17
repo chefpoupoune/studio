@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -9,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { PlusCircle, Edit2, Trash2, FileText, Loader2, Apple, Salad, Save } from 'lucide-react';
 import { useForm } from 'react-hook-form';
@@ -48,21 +48,24 @@ export default function PicnicCostAnalysis() {
   const [selectedMealType, setSelectedMealType] = useState<MealTypePN>('picnic');
   const [picnicIngredients, setPicnicIngredients] = useState<IngredientPN[]>([]);
   const [saladIngredients, setSaladIngredients] = useState<IngredientPN[]>([]);
-  
+
   const [isIngredientDialogOpen, setIsIngredientDialogOpen] = useState(false);
   const [editingIngredient, setEditingIngredient] = useState<IngredientPN | null>(null);
-  
+
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [ingredientToDelete, setIngredientToDelete] = useState<{ id: string; name: string } | null>(null);
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
-  
+
   const { toast } = useToast();
 
   const ingredientForm = useForm<IngredientFormData>({
     resolver: zodResolver(ingredientSchema),
     defaultValues: initialIngredientData(),
   });
-  
+
   const docRef = useMemo(() => doc(firestore, "costAnalysisCalculators", FIRESTORE_DOC_ID), []);
 
   useEffect(() => {
@@ -101,7 +104,7 @@ export default function PicnicCostAnalysis() {
       setSaladIngredients(newIngredients);
     }
   }, [selectedMealType]);
-  
+
   const handleSaveData = async () => {
     if (isSaving) return;
     setIsSaving(true);
@@ -146,14 +149,21 @@ export default function PicnicCostAnalysis() {
     setEditingIngredient(null);
   };
 
-  const handleDeleteIngredient = (ingredientId: string) => {
-    const ingredientName = currentIngredients.find(ing => ing.id === ingredientId)?.name || "L'ingrédient";
-    if (confirm(`Êtes-vous sûr de vouloir supprimer "${ingredientName}" ?`)) {
-      setCurrentIngredients(currentIngredients.filter(ing => ing.id !== ingredientId));
-      toast({ title: "Ingrédient Supprimé", description: `"${ingredientName}" a été supprimé.`, variant: "destructive" });
+  const handleDeleteClick = (ingredient: IngredientPN) => {
+    setIngredientToDelete({ id: ingredient.id, name: ingredient.name });
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (ingredientToDelete) {
+      setCurrentIngredients(currentIngredients.filter(ing => ing.id !== ingredientToDelete.id));
+      toast({ title: "Ingrédient Supprimé", description: `"${ingredientToDelete.name}" a été supprimé.`, variant: "destructive" });
+      setIngredientToDelete(null);
+      setIsDeleteDialogOpen(false);
     }
   };
-  
+
+
   const mealTypeLabel = selectedMealType === 'picnic' ? 'Pique-Nique' : 'Salade';
 
   const generatePdf = () => {
@@ -171,7 +181,7 @@ export default function PicnicCostAnalysis() {
       }) as jsPDFWithAutoTable;
       doc.setFont(pdfSettings.fontFamily);
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
-      
+
       let currentY = pdfSettings.marginTop;
       if (pdfSettings.headerText) {
         doc.setFontSize(pdfSettings.headerFontSize);
@@ -180,9 +190,9 @@ export default function PicnicCostAnalysis() {
       }
 
       if (pdfSettings.logoUrl) {
-        doc.setFontSize(pdfSettings.defaultFontSize -2); 
+        doc.setFontSize(pdfSettings.defaultFontSize - 2);
         doc.text(`Logo: ${pdfSettings.logoUrl}`, pdfSettings.marginLeft, currentY);
-        currentY += (pdfSettings.defaultFontSize -2) + 5; 
+        currentY += (pdfSettings.defaultFontSize - 2) + 5;
       }
 
       const moduleDefaultTitle = `Coût de Revient - Repas ${mealTypeLabel}`;
@@ -203,14 +213,14 @@ export default function PicnicCostAnalysis() {
         doc.text(finalTitle, pdfSettings.marginLeft, currentY);
         currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
       }
-      
+
       const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontSize?: number } = { fontSize: pdfSettings.tableHeaderFontSize };
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
         if (primaryColorRgb) {
           headStyles.fillColor = primaryColorRgb;
-           const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
-          headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
+          const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
+          headStyles.textColor = brightness > 125 ? [0, 0, 0] : [255, 255, 255];
         }
       }
 
@@ -219,10 +229,10 @@ export default function PicnicCostAnalysis() {
         ing.name,
         ing.unit,
         ing.unitPrice.toFixed(2),
-        ing.quantityPerMeal.toFixed(3), 
+        ing.quantityPerMeal.toFixed(3),
         (ing.unitPrice * ing.quantityPerMeal).toFixed(2),
       ]);
-      
+
       const footer = [
         [
           { content: `TOTAL COÛT REPAS ${mealTypeLabel.toUpperCase()}`, colSpan: 4, styles: { fontStyle: 'bold', halign: 'right' } },
@@ -236,19 +246,19 @@ export default function PicnicCostAnalysis() {
         foot: footer,
         startY: currentY,
         theme: 'grid',
-        headStyles: headStyles, 
+        headStyles: headStyles,
         styles: { fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily },
-        footStyles: { fillColor: [220, 220, 220], textColor: [0,0,0], fontSize: pdfSettings.tableBodyFontSize },
+        footStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0], fontSize: pdfSettings.tableBodyFontSize },
         columnStyles: {
-            0: { cellWidth: 'auto' }, 
-            1: { cellWidth: 'auto' },
-            2: { cellWidth: 'auto', halign: 'right' },
-            3: { cellWidth: 'auto', halign: 'right' },
-            4: { cellWidth: 'auto', halign: 'right' },
+          0: { cellWidth: 'auto' },
+          1: { cellWidth: 'auto' },
+          2: { cellWidth: 'auto', halign: 'right' },
+          3: { cellWidth: 'auto', halign: 'right' },
+          4: { cellWidth: 'auto', halign: 'right' },
         },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
-           if (pdfSettings.footerText) {
+          if (pdfSettings.footerText) {
             let footerStr = pdfSettings.footerText
               .replace('{date}', generationDateFormatted)
               .replace('{pageNumber}', data.pageNumber.toString())
@@ -286,42 +296,58 @@ export default function PicnicCostAnalysis() {
           </Select>
         </div>
         <div className="flex gap-2 self-end">
-            <Button onClick={handleSaveData} disabled={!isDirty || isSaving}>
-              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              Sauvegarder
-            </Button>
-            <Dialog open={isIngredientDialogOpen} onOpenChange={setIsIngredientDialogOpen}>
-              <DialogTrigger asChild>
-                <Button onClick={() => handleOpenIngredientDialog()} className="w-full sm:w-auto">
-                  <PlusCircle className="mr-2 h-4 w-4" /> Ajouter Ingrédient
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>{editingIngredient ? "Modifier l'Ingrédient" : "Nouvel Ingrédient"} pour {mealTypeLabel}</DialogTitle>
-                </DialogHeader>
-                <Form {...ingredientForm}>
-                  <form onSubmit={ingredientForm.handleSubmit(handleIngredientFormSubmit)} className="space-y-4 py-4">
-                    <FormField control={ingredientForm.control} name="name" render={({ field }) => (
-                      <FormItem><FormLabel>Nom</FormLabel><FormControl><Input placeholder="Ex: Pain de mie" {...field} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <FormField control={ingredientForm.control} name="unit" render={({ field }) => (
-                      <FormItem><FormLabel>Unité</FormLabel><FormControl><Input placeholder="Ex: tranche, kg, L, pièce" {...field} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <FormField control={ingredientForm.control} name="unitPrice" render={({ field }) => (
-                      <FormItem><FormLabel>Prix Unitaire (€)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="Ex: 2.50" {...field} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <FormField control={ingredientForm.control} name="quantityPerMeal" render={({ field }) => (
-                      <FormItem><FormLabel>Quantité par Repas</FormLabel><FormControl><Input type="number" step="0.001" placeholder="Ex: 0.1" {...field} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <DialogFooter>
-                      <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                      <Button type="submit">{editingIngredient ? "Enregistrer" : "Ajouter"}</Button>
-                    </DialogFooter>
-                  </form>
-                </Form>
-              </DialogContent>
-            </Dialog>
+          <Button onClick={handleSaveData} disabled={!isDirty || isSaving}>
+            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            Sauvegarder
+          </Button>
+          <Dialog open={isIngredientDialogOpen} onOpenChange={setIsIngredientDialogOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={() => handleOpenIngredientDialog()} className="w-full sm:w-auto">
+                <PlusCircle className="mr-2 h-4 w-4" /> Ajouter Ingrédient
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>{editingIngredient ? "Modifier l'Ingrédient" : "Nouvel Ingrédient"} pour {mealTypeLabel}</DialogTitle>
+              </DialogHeader>
+              <Form {...ingredientForm}>
+                <form onSubmit={ingredientForm.handleSubmit(handleIngredientFormSubmit)} className="space-y-4 py-4">
+                  <FormField control={ingredientForm.control} name="name" render={({ field }) => (
+                    <FormItem><FormLabel>Nom</FormLabel><FormControl><Input placeholder="Ex: Pain de mie" {...field} /></FormControl><FormMessage /></FormItem>
+                  )} />
+                  <FormField control={ingredientForm.control} name="unit" render={({ field }) => (
+                    <FormItem><FormLabel>Unité</FormLabel><FormControl><Input placeholder="Ex: tranche, kg, L, pièce" {...field} /></FormControl><FormMessage /></FormItem>
+                  )} />
+                  <FormField control={ingredientForm.control} name="unitPrice" render={({ field }) => (
+                    <FormItem><FormLabel>Prix Unitaire (€)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="Ex: 2.50" {...field} /></FormControl><FormMessage /></FormItem>
+                  )} />
+                  <FormField control={ingredientForm.control} name="quantityPerMeal" render={({ field }) => (
+                    <FormItem><FormLabel>Quantité par Repas</FormLabel><FormControl><Input type="number" step="0.001" placeholder="Ex: 0.1" {...field} /></FormControl><FormMessage /></FormItem>
+                  )} />
+                  <DialogFooter>
+                    <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
+                    <Button type="submit">{editingIngredient ? "Enregistrer" : "Ajouter"}</Button>
+                  </DialogFooter>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+
+          {/* AlertDialog for deletion */}
+          <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Êtes-vous sûr de vouloir supprimer "{ingredientToDelete?.name}" ? Cette action est irréversible.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Annuler</AlertDialogCancel>
+                <AlertDialogAction onClick={handleConfirmDelete}>Supprimer</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 
@@ -355,7 +381,8 @@ export default function PicnicCostAnalysis() {
                     <Button variant="outline" size="icon" onClick={() => handleOpenIngredientDialog(ing)} className="h-8 w-8">
                       <Edit2 className="h-4 w-4" />
                     </Button>
-                    <Button variant="destructive" size="icon" onClick={() => handleDeleteIngredient(ing.id)} className="h-8 w-8">
+                    {/* Modified onClick to open AlertDialog */}
+                    <Button variant="destructive" size="icon" onClick={() => handleDeleteClick(ing)} className="h-8 w-8">
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </TableCell>

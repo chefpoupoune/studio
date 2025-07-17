@@ -90,7 +90,7 @@ const timeTrackingPermissionsSchemaObject = TIME_TRACKING_SUB_RUBRICS.reduce((ac
 }, {} as Record<typeof TIME_TRACKING_SUB_RUBRICS[number]['id'], z.ZodBoolean>);
 
 const userFormSchema = z.object({
-  selectedBrigadeMemberId: z.string().min(1, "Veuillez sélectionner un membre de la brigade.").optional(),
+  selectedBrigadeMemberId: z.string().min(1, "Veuillez sélectionner un membre de la brigade.").nullable().optional(),
   passwordRequired: z.boolean().default(false),
   newPassword: z.string().optional(),
   confirmNewPassword: z.string().optional(),
@@ -290,7 +290,7 @@ export default function UserManagement() {
     }
 
     form.reset({
-      selectedBrigadeMemberId: user?.brigadeMemberId,
+ selectedBrigadeMemberId: user?.brigadeMemberId ?? null, // Use nullish coalescing to handle undefined and set to null
       passwordRequired: (isCurrentUserChef || isCurrentUserCds) ? true : (user?.passwordRequired || false),
       newPassword: '',
       confirmNewPassword: '',
@@ -302,6 +302,7 @@ export default function UserManagement() {
   };
 
   const handleUserFormSubmit = async (data: UserFormData) => {
+    console.log("handleUserFormSubmit started");
     let passwordToStore: string | null = null;
     if (data.passwordRequired && data.newPassword) {
         passwordToStore = simulatedHash(data.newPassword);
@@ -365,7 +366,7 @@ export default function UserManagement() {
       }
     } else { 
       if (!data.selectedBrigadeMemberId) {
-        form.setError("selectedBrigadeMemberId", {message: "Sélection requise."});
+        form.setError("selectedBrigadeMemberId", { message: "Sélection requise." });
         return;
       }
       const selectedMember = brigadeMembers.find(bm => bm.id === data.selectedBrigadeMemberId);
@@ -480,7 +481,13 @@ export default function UserManagement() {
               <DialogTitle>{editingUser ? `Modifier l'Utilisateur : ${editingUser.username}` : "Créer un Nouvel Utilisateur"}</DialogTitle>
             </DialogHeader>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(handleUserFormSubmit)} className="space-y-4 py-4">
+              <form 
+                onSubmit={(e) => { 
+                  console.log("Form onSubmit triggered"); 
+                  form.handleSubmit(handleUserFormSubmit, (errors) => { console.error("Form validation errors:", errors); })(e); 
+                }} 
+                className="space-y-4 py-4"
+              >
                 <ScrollArea className="h-[70vh] pr-4">
                   <div className="space-y-4">
                     {editingUser ? (

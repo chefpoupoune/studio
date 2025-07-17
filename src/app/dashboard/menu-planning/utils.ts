@@ -27,6 +27,9 @@ export function groupMenusByWeek(year: number, month: number, allMenusForMonth: 
     let weekEndDate = endOfWeek(currentIterationDate, { locale: fr, weekStartsOn: 1 });
     weekEndDate = weekEndDate > lastDayOfMonth ? lastDayOfMonth : weekEndDate;
 
+    console.log(`Calculating week ${weekCounter}: ${format(weekStartDate, 'yyyy-MM-dd')} to ${format(weekEndDate, 'yyyy-MM-dd')}`);
+
+
     const weekMenus = allMenusForMonth.filter(menu => {
       const menuDate = parseISO(menu.date); // Dates from menuData are strings
       return menuDate >= weekStartDate && menuDate <= weekEndDate && isSameMonth(menuDate, firstDayOfMonth);
@@ -39,6 +42,7 @@ export function groupMenusByWeek(year: number, month: number, allMenusForMonth: 
             endDate: weekEndDate,
             menus: weekMenus,
         });
+        console.log(`Week ${weekCounter} has ${weekMenus.length} menus.`, weekMenus.map(m => m.date));
         weekCounter++;
     }
     currentIterationDate = addWeeks(currentIterationDate, 1);

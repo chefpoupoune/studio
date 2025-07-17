@@ -22,6 +22,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+import {
+  MENU_THEME_FROID_HEX,
+  MENU_THEME_VEGE_HEX,
+  MENU_THEME_SAM_HEX,
+  MENU_THEME_POISSON_HEX,
+  MENU_THEME_FETE_HEX,
+  MENU_WEEKEND_HEX,
+  MENU_HOLIDAY_WEEKDAY_HEX, MENU_HOLIDAY_WEEKEND_HEX, } from '@/config/colors';
 import { useIsMobile } from '@/hooks/use-mobile'; 
 import { firestore } from '@/lib/firebase';
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
@@ -178,52 +186,46 @@ export default function MenuPlanningPage() {
     loadMenuData();
   }, [selectedYear, selectedMonth, generateMonthData, getFirestoreDocId, toast]);
 
-  useEffect(() => {
-    if (!dataLoaded || isSaving || isResettingMonthData || menuData.length === 0) { // Added isResettingMonthData
+  const handleSaveMenu = useCallback(async () => {
+    if (!dataLoaded || isSaving || isResettingMonthData || menuData.length === 0) {
+      console.log("Save conditions not met. Skipping save.");
       return;
     }
-    
-    const saveToFirestore = async () => {
-      setIsSaving(true);
-      const docId = getFirestoreDocId();
-      const docRef = doc(firestore, "menuPlanning", docId);
-      try {
-        const sanitizedMenuData = menuData.map(dayMenu => {
-          const sanitizedDayMenu: Record<string, any> = {};
-          for (const key in dayMenu) {
-            if (Object.prototype.hasOwnProperty.call(dayMenu, key)) {
-              const value = (dayMenu as any)[key];
-              if (key === 'holidayName') {
-                sanitizedDayMenu[key] = value === undefined ? null : value;
-              } else if (typeof value === 'string' && value === undefined) { 
-                sanitizedDayMenu[key] = '';
-              } else if (value === undefined) {
-                 sanitizedDayMenu[key] = initialMenuItem[key as keyof MenuItem] === undefined ? null : (initialMenuItem[key as keyof MenuItem] || '');
-              }
-               else {
-                sanitizedDayMenu[key] = value;
-              }
-            }
+
+    setIsSaving(true);
+    const docId = getFirestoreDocId();
+    const docRef = doc(firestore, "menuPlanning", docId);
+
+    try {
+      const sanitizedMenuData = menuData.map(dayMenu => {
+        const sanitizedDayMenu: Record<string, any> = {};
+        for (const key in dayMenu) {
+          if (Object.prototype.hasOwnProperty.call(dayMenu, key)) {
+            const value = (dayMenu as any)[key];
+            sanitizedDayMenu[key] = value === undefined ? null : (value === '' ? '' : value);
           }
-          (Object.keys(initialMenuItem) as Array<keyof MenuItem>).forEach(field => {
+        }
+        (Object.keys(initialMenuItem) as Array<keyof MenuItem>).forEach(field => {
             if (sanitizedDayMenu[field] === undefined) {
-                sanitizedDayMenu[field] = initialMenuItem[field] || '';
+                sanitizedDayMenu[field] = initialMenuItem[field] === undefined ? null : (initialMenuItem[field] || '');
             }
           });
-          return sanitizedDayMenu as DailyMenu;
-        });
-        await setDoc(docRef, { menus: sanitizedMenuData });
-        window.dispatchEvent(new CustomEvent('menuDataUpdatedInFirestore'));
-        console.log("Dispatched menuDataUpdatedInFirestore event after saving to Firestore.");
-      } catch (error) {
-        console.error("Error saving menu data to Firestore:", error);
-        toast({ title: "Erreur de Sauvegarde", description: "Les modifications n'ont pas pu être enregistrées dans Firestore.", variant: "destructive" });
-      }
-      setIsSaving(false);
-    };
+        return sanitizedDayMenu;
+      });
 
-    const timeoutId = setTimeout(saveToFirestore, 1500);
-    return () => clearTimeout(timeoutId);
+      await setDoc(docRef, { menus: sanitizedMenuData });
+      window.dispatchEvent(new CustomEvent('menuDataUpdatedInFirestore'));
+      toast({ title: "Menus sauvegardés", description: "Les modifications ont été enregistrées." });
+    } catch (error) {
+      console.error("Error saving menu data to Firestore:", error);
+      toast({ title: "Erreur de Sauvegarde", description: "Les modifications n'ont pas pu être enregistrées.", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  }, [menuData, dataLoaded, isSaving, isResettingMonthData, getFirestoreDocId, toast]);
+
+  useEffect(() => {
+    // This useEffect is now only for cleanup or side effects that don't involve automatic saving.
 
   }, [menuData, dataLoaded, isSaving, isResettingMonthData, getFirestoreDocId, toast]);
 
@@ -278,6 +280,12 @@ export default function MenuPlanningPage() {
       });
       return;
     }
+
+    console.log("Color constants:", {
+      MENU_THEME_FROID_HEX, MENU_THEME_VEGE_HEX, MENU_THEME_SAM_HEX,
+      MENU_HOLIDAY_WEEKEND_HEX, MENU_WEEKEND_HEX
+    });
+
     setIsGeneratingMonthlyPdf(true);
 
     try {
@@ -388,8 +396,11 @@ export default function MenuPlanningPage() {
       }
 
       const head = [['Date', 'Jour', 'Thème', 'Entrée', 'Plat', 'Féculent', 'Légume', 'Sauce', 'Dessert']];
-      
+
+ console.log("PDF Table Head:", head);
+
       const body = menuData.map(dayMenu => {
+ console.log("PDF Table Body:", body);
         const currentThemeValueForSelect = dayMenu.theme === '' ? NO_THEME_SELECT_VALUE : dayMenu.theme;
         const themeLabel = MENU_THEME_OPTIONS_FOR_SELECT.find(t => t.value === currentThemeValueForSelect)?.label || '-';
         return [
@@ -405,34 +416,38 @@ export default function MenuPlanningPage() {
         ];
       });
 
-      const themeRgbColors: Record<MenuThemeIdentifier, [number, number, number]> = {
-        froid: [139, 195, 255],
-        vege: [110, 231, 183],
-        sam: [253, 224, 71],
-        poisson: [249, 168, 212],
-        fete: [252, 165, 165],
-      };
-      const holidayWeekendColor: [number, number, number] = [250, 202, 21]; 
-      const holidayWeekdayColor: [number, number, number] = [253, 230, 138];
-      const weekendColor: [number, number, number] = [229, 231, 235];
-
-      doc.autoTable({
-        head: head,
-        body: body,
-        startY: currentY,
+      const themeRgbColors: Record<MenuThemeIdentifier, [number, number, number] | null> = Object.keys(MENU_THEME_OPTIONS_FOR_SELECT).reduce((acc, key) => {
+          const themeIdentifier = key as MenuThemeIdentifier;
+          acc[themeIdentifier] = hexToRgb((({
+              froid: MENU_THEME_FROID_HEX, vege: MENU_THEME_VEGE_HEX, sam: MENU_THEME_SAM_HEX, poisson: MENU_THEME_POISSON_HEX, fete: MENU_THEME_FETE_HEX
+          })[themeIdentifier]) || ''); // Added fallback empty string for hexToRgb
+          return acc;
+      }, {} as Record<MenuThemeIdentifier, [number, number, number] | null>);
+      const holidayWeekendColor = hexToRgb(MENU_HOLIDAY_WEEKEND_HEX);
+      const holidayWeekdayColor = hexToRgb(MENU_HOLIDAY_WEEKDAY_HEX);
+ const weekendColor = hexToRgb(MENU_WEEKEND_HEX);
+ doc.autoTable({
         theme: 'grid',
         headStyles: headStyles,
         styles: { fontSize: pdfSettings.tableBodyFontSize, cellPadding: 1.5, valign: 'middle', font: pdfSettings.fontFamily }, 
         columnStyles: {
-          0: { cellWidth: 20 }, 
-          1: { cellWidth: 30 }, 
-          2: { cellWidth: 25 }, 
+ 0: { cellWidth: 30 }, // Date
+ 1: { cellWidth: 40 }, // Jour
+ 2: { cellWidth: 40 }, // Thème
+ 3: { cellWidth: 60 }, // Entrée
+ 4: { cellWidth: 55 }, // Plat
+ 5: { cellWidth: 55 }, // Féculent
+ 6: { cellWidth: 55 }, // Légume
+ 7: { cellWidth: 55 }, // Sauce
+ 8: { cellWidth: 55 }, // Dessert
         },
-        willDrawCell: (data) => {
+       willDrawCell: (data) => {
           if (data.section === 'body' && data.row && typeof data.row.index === 'number' && data.row.index < menuData.length) {
+            console.log("Drawing cell for", data.row.cells[0].text, "Row Index:", data.row.index); // Log date/day and index
             const dayMenu = menuData[data.row.index];
             if (dayMenu) {
               let fillColorToApply: [number, number, number] | undefined = undefined;
+              console.log("  Day Menu Theme:", dayMenu.theme, "isHoliday:", dayMenu.isHoliday, "isWeekend:", dayMenu.isWeekend); // Log theme/holiday/weekend status
 
               if (dayMenu.theme && dayMenu.theme !== '' && themeRgbColors[dayMenu.theme as MenuThemeIdentifier]) {
                 fillColorToApply = themeRgbColors[dayMenu.theme as MenuThemeIdentifier];
@@ -442,7 +457,9 @@ export default function MenuPlanningPage() {
                 fillColorToApply = weekendColor;
               }
 
+              console.log("  fillColorToApply:", fillColorToApply); // Log the color value
               if (fillColorToApply) {
+                console.log("  Applying color to row."); // Indicate if color is being applied
                 for (let i = 0; i < data.row.cells.length; i++) {
                     data.row.cells[i].styles.fillColor = fillColorToApply;
                 }
@@ -565,14 +582,15 @@ export default function MenuPlanningPage() {
             month={parseInt(selectedMonth)}
             menuData={menuData}
             onUpdateMenuEntry={handleUpdateMenuEntry}
+ onSave={handleSaveMenu}
           />
-        )}
+        )}\n\n
       </CardContent>
     </Card>
   );
 
   const orderSheetsContent = (
-     <Card className="shadow-lg">
+ <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <ClipboardCheck className="w-6 h-6 text-primary"/>
@@ -591,8 +609,8 @@ export default function MenuPlanningPage() {
           />
         </CardContent>
       </Card>
-  );
 
+ );
   const temperatureSheetsContent = (
      <Card className="shadow-lg">
         <CardHeader>
@@ -673,5 +691,5 @@ export default function MenuPlanningPage() {
         ))}
       </Tabs>
     </div>
-  );
+);
 }

@@ -239,6 +239,7 @@ export default function AnnualCostAnalysisTable() {
 
     setIsLoading(true); // Re-use isLoading for PDF generation to disable buttons
     try {
+      console.log("Start annual PDF generation for year:", selectedYear);
       const pdfSettings = getPdfLayoutSettings('annual_cost');
       const doc = new jsPDF({
         orientation: pdfSettings.orientation,
@@ -246,6 +247,8 @@ export default function AnnualCostAnalysisTable() {
         format: pdfSettings.pageSize,
       }) as jsPDFWithAutoTable;
       doc.setFont(pdfSettings.fontFamily);
+      console.log("pdfSettings:", pdfSettings);
+      console.log("doc created");
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
       
       let currentY = pdfSettings.marginTop;
@@ -303,7 +306,20 @@ export default function AnnualCostAnalysisTable() {
         [ { content: 'Prix de Revient Annuel Moyen (basé sur PR mensuels avec effectif > 0)', colSpan: 9, styles: { fontStyle: 'bold', halign: 'right' } }, { content: annualTotals.averagePrixDeRevient.toFixed(2), styles: { fontStyle: 'bold', halign: 'right' } } ]
       ];
       doc.autoTable({ head, body, foot: footer, startY: currentY, theme: 'grid', headStyles, styles: { fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily }, footStyles: { fillColor: [220, 220, 220], textColor: [0,0,0], fontStyle: 'bold' },
-        columnStyles: { 0: { cellWidth: 'auto' }, 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' }, 9: { halign: 'right' } },
+        // Allow wrapping for columns with potentially long text, keep numeric columns right-aligned
+        columnStyles: {
+          0: { cellWidth: 'wrap' }, // Mois - allow wrap
+          1: { halign: 'right' }, // Total HT
+          2: { halign: 'right' }, // Total TVA
+          3: { halign: 'right' }, // Total Avoir
+          4: { halign: 'right' }, // Total Effectif
+          5: { halign: 'right', cellWidth: 'wrap' }, // Prix de Revient Mensuel - allow wrap
+          6: { halign: 'right' }, // Emarket
+          7: { halign: 'right', cellWidth: 'wrap' }, // Frais Fonct. - allow wrap
+          8: { halign: 'right', cellWidth: 'wrap' }, // Frais Gestion - allow wrap
+          9: { halign: 'right', cellWidth: 'wrap' }, // Dépenses Mensuelles Totales - allow wrap
+        },
+        tableWidth: 'wrap', // Allow table to adjust width
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
           if (pdfSettings.footerText) { let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', data.pageNumber.toString()).replace('{totalPages}', pageCount.toString()); doc.setFontSize(pdfSettings.footerFontSize); doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2)); }
