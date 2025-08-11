@@ -6,8 +6,10 @@
 - Intuitive UI: User-friendly interface for cost management.
 - Menu PDF Generation: Generate monthly menu PDFs. Will use an AI tool to identify and fix errors.
 - Password Management: Allow service chiefs to manage passwords.
-- Repair Order Sheet Code: AI-powered code repair for the order sheet page.
+- Repair Order Sheet Code: AI-powered code repair tool for the order sheet page.
 - Dynamic Supplier Selection: Replace the text input for supplier selection with a dropdown list populated from the delivery tracking data, allowing the user to select a supplier from the available options.
+- Ordering: Menu planning and ordering
+- PDF Creation Button: Creates a PDF for the future order sheets
 
 ## Style Guidelines:
 

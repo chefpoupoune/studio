@@ -47,6 +47,8 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
         unit: 'pt',
         format: pdfSettings.pageSize
       }) as jsPDFWithAutoTable;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
       let currentY = pdfSettings.marginTop; // <-- Cette ligne doit être ici
       doc.setFont(pdfSettings.fontFamily);
 
@@ -146,16 +148,16 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
         head: categoriesHeader,
         body: categoriesBody,
         theme: 'grid',
-        headStyles: tableHeadStyles, 
+        // headStyles: tableHeadStyles, // Commented out: tableHeadStyles is not defined
         columnStyles: {
-          0: { fillColor: [200, 230, 201], cellWidth: categoryCellWidth }, 
-          1: { fillColor: [173, 216, 230], cellWidth: categoryCellWidth }, 
-          2: { fillColor: [173, 216, 230], cellWidth: categoryCellWidth }, 
-          3: { fillColor: [255, 192, 203], cellWidth: categoryCellWidth }, 
-          4: { fillColor: [220, 220, 220], cellWidth: categoryCellWidth }, 
-          5: { fillColor: [220, 220, 220], cellWidth: categoryCellWidth }, 
+          0: { fillColor: [200, 230, 201] /*, cellWidth: categoryCellWidth */ }, // Commented out: categoryCellWidth is not defined
+ 1: { fillColor: [173, 216, 230] /*, cellWidth: categoryCellWidth */ }, // Commented out: categoryCellWidth is not defined
+ 2: { fillColor: [173, 216, 230] /*, cellWidth: categoryCellWidth */ }, // Commented out: categoryCellWidth is not defined
+ 3: { fillColor: [255, 192, 203] /*, cellWidth: categoryCellWidth */ }, // Commented out: categoryCellWidth is not defined
+ 4: { fillColor: [220, 220, 220] /*, cellWidth: categoryCellWidth */ }, // Commented out: categoryCellWidth is not defined
+ 5: { fillColor: [220, 220, 220] /*, cellWidth: categoryCellWidth */ }, // Commented out: categoryCellWidth is not defined
         },
-        styles: { cellPadding: 2, minCellHeight: 8, fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily },
+        styles: { cellPadding: 2, minCellHeight: 8, fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily }, // Removed cellWidth as categoryCellWidth was used for specific columns
         tableWidth: 'auto',
         margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
         didDrawPage: (data) => {
@@ -205,7 +207,8 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
   return (
     <div className="space-y-6">
 
-      {weeklyGroupedMenus.map((week, index) => (
+      {console.log('Mapping weeklyGroupedMenus with Array.from', weeklyGroupedMenus)}
+      {Array.from(weeklyGroupedMenus).map((week, index) => (
         <Card key={index} className="shadow-md">
           <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
               <CardTitle>
@@ -224,39 +227,44 @@ export default function WeeklyOrderSheets({ year, month, menuData, isLoading }: 
             </Button>
           </CardHeader>
           <CardContent>
-                <Table>
-                  <TableHeader className="sticky top-0 bg-muted/20">
-                    <TableRow>
-                      <TableHead className="w-[80px]">Date</TableHead>
-                      <TableHead className="w-[100px]">Jour</TableHead>
-                      <TableHead>Entrée</TableHead>
-                      <TableHead>Plat</TableHead>
-                      <TableHead>Féculent</TableHead>
-                      <TableHead>Légume</TableHead>
-                      <TableHead>Sauce</TableHead>
-                      <TableHead>Dessert</TableHead>
+            {/* Commented out original CardContent */}
+            {/* {week.menus && week.menus.length > 0 ? (
+
+
+              <Table>
+                <TableHeader className="sticky top-0 bg-muted/20">
+                  <TableRow>
+                    <TableHead className="w-[80px]">Date</TableHead>
+                    <TableHead className="w-[100px]">Jour</TableHead>
+                    <TableHead>Entrée</TableHead>
+                    <TableHead>Plat</TableHead>
+                    <TableHead>Féculent</TableHead>
+                    <TableHead>Légume</TableHead>
+                    <TableHead>Sauce</TableHead>
+                    <TableHead>Dessert</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {week.menus.map(menu => (
+                    <TableRow key={menu.date}>
+                      <TableCell>{format(parseISO(menu.date), "dd/MM", { locale: fr })}</TableCell>
+                      <TableCell>{menu.dayName}</TableCell>
+                      <TableCell className="truncate max-w-[150px] text-xs" title={menu.entree}>{menu.entree || "-"}</TableCell>
+                      <TableCell className="truncate max-w-[150px] text-xs" title={menu.plat}>{menu.plat || "-"}</TableCell>
+                      <TableCell className="truncate max-w-[150px] text-xs" title={menu.feculent}>{menu.feculent || "-"}</TableCell>
+                      <TableCell className="truncate max-w-[150px] text-xs" title={menu.legume}>{menu.legume || "-"}</TableCell>
+                      <TableCell className="truncate max-w-[150px] text-xs" title={menu.sauce}>{menu.sauce || "-"}</TableCell>
+                      <TableCell className="truncate max-w-[150px] text-xs" title={menu.dessert}>{menu.dessert || "-"}</TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {week.menus.map(menu => (
-                      <TableRow key={menu.date}>
-                        <TableCell>{format(parseISO(menu.date), "dd/MM", { locale: fr })}</TableCell>
-                        <TableCell>{menu.dayName}</TableCell>
-                        <TableCell className="truncate max-w-[150px] text-xs" title={menu.entree}>{menu.entree || "-"}</TableCell>
-                        <TableCell className="truncate max-w-[150px] text-xs" title={menu.plat}>{menu.plat || "-"}</TableCell>
-                        <TableCell className="truncate max-w-[150px] text-xs" title={menu.feculent}>{menu.feculent || "-"}</TableCell>
-                        <TableCell className="truncate max-w-[150px] text-xs" title={menu.legume}>{menu.legume || "-"}</TableCell>
-                        <TableCell className="truncate max-w-[150px] text-xs" title={menu.sauce}>{menu.sauce || "-"}</TableCell>
-                        <TableCell className="truncate max-w-[150px] text-xs" title={menu.dessert}>{menu.dessert || "-"}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-            ) : (
-              <div className="text-center py-6 text-muted-foreground flex items-center justify-center gap-2">
+                  ))}
+                </TableBody>
+              </Table>
+            ) : ( // This part is displayed if the condition is false
+ <div className="text-center py-6 text-muted-foreground flex items-center justify-center gap-2">
                 <AlertCircle className="w-5 h-5" /> Aucun menu planifié pour cette semaine. La fiche de commande sera vierge.
               </div>
-            )}
+            )} */}
+            <p>Semaine {week.weekNumberInMonth}</p>
           </CardContent>
         </Card>
       ))}

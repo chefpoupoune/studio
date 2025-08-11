@@ -9,7 +9,7 @@ import { CurrentDate } from '@/components/current-date';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { getDaysInMonth, format, startOfDay, setDate, parseISO } from 'date-fns';
+import { getDaysInMonth, format, startOfDay, setDate, parseISO, endOfMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { getFrenchPublicHolidays, type PublicHoliday } from '@/lib/holiday-utils';
 import type { DailyMenu, MenuItem, MenuField, StoredMenuThemeValue, MenuThemeIdentifier } from './types';
