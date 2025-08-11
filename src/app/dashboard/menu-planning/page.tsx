@@ -442,7 +442,9 @@ export default function MenuPlanningPage() {
             const dayMenu = menuData[data.row.index];
             console.log("  Day Menu Data:", { date: dayMenu.date, theme: dayMenu.theme, isHoliday: dayMenu.isHoliday, isWeekend: dayMenu.isWeekend }); // Ajout de la date et du thème pour identification
             let fillColorToApply: [number, number, number] | undefined = undefined;
-            if (dayMenu.theme && dayMenu.theme !== \'\' && themeRgbColors[dayMenu.theme as MenuThemeIdentifier]) {
+            if (dayMenu.theme && dayMenu.theme !== '' && themeRgbColors[dayMenu.theme as MenuThemeIdentifier]) {
+ console.log("    Theme condition met. Theme:", dayMenu.theme); // Log le thème quand la condition est remplie
+ console.log("    Corresponding color in themeRgbColors:", themeRgbColors[dayMenu.theme as MenuThemeIdentifier]); // Log la couleur trouvée
                 fillColorToApply = themeRgbColors[dayMenu.theme as MenuThemeIdentifier];
               } else if (dayMenu.isHoliday) {
                 fillColorToApply = dayMenu.isWeekend ? holidayWeekendColor : holidayWeekdayColor;
