@@ -408,21 +408,30 @@ export default function MenuPlanningPage() {
         ];
       });
 
-      const themeRgbColors: Record<MenuThemeIdentifier, [number, number, number] | null> = Object.keys(MENU_THEME_OPTIONS_FOR_SELECT).reduce((acc, key) => {
-          const themeIdentifier = key as MenuThemeIdentifier;
-          acc[themeIdentifier] = hexToRgb((({
-              froid: MENU_THEME_FROID_HEX, vege: MENU_THEME_VEGE_HEX, sam: MENU_THEME_SAM_HEX, poisson: MENU_THEME_POISSON_HEX, fete: MENU_THEME_FETE_HEX
-          })[themeIdentifier]) || ''); // Added fallback empty string for hexToRgb
-          return acc;
-      }, {} as Record<MenuThemeIdentifier, [number, number, number] | null>);
+      const themeRgbColors: Record<MenuThemeIdentifier, [number, number, number] | null> = MENU_THEME_OPTIONS_FOR_SELECT.reduce((acc, themeOption) => {
+        if (themeOption.value !== NO_THEME_SELECT_VALUE) { // Exclure l'option "Pas de thème"
+           acc[themeOption.value as MenuThemeIdentifier] = hexToRgb(
+                (({
+                    froid: MENU_THEME_FROID_HEX, vege: MENU_THEME_VEGE_HEX, sam: MENU_THEME_SAM_HEX, poisson: MENU_THEME_POISSON_HEX, fete: MENU_THEME_FETE_HEX
+                })[themeOption.value as MenuThemeIdentifier]) || ''
+           );
+        }
+        return acc;
+    }, {} as Record<MenuThemeIdentifier, [number, number, number] | null>);
+    console.log("themeRgbColors:", themeRgbColors); // Conservez cette ligne de log que vous avez ajoutée
+    
       const holidayWeekendColor = hexToRgb(MENU_HOLIDAY_WEEKEND_HEX);
       const holidayWeekdayColor = hexToRgb(MENU_HOLIDAY_WEEKDAY_HEX);
       const weekendColor = hexToRgb(MENU_WEEKEND_HEX);
 
  doc.autoTable({
-        theme: 'grid',
         headStyles: headStyles,
-        styles: { fontSize: pdfSettings.tableBodyFontSize, cellPadding: 1.5, valign: 'middle', font: pdfSettings.fontFamily }, 
+        styles: { 
+          fontSize: pdfSettings.tableBodyFontSize, 
+          cellPadding: 1.5, 
+          valign: 'middle', 
+          font: pdfSettings.fontFamily,
+      },        
         columnStyles: {
  0: { cellWidth: 30 }, // Date
  1: { cellWidth: 40 }, // Jour
@@ -436,34 +445,42 @@ export default function MenuPlanningPage() {
         },
         head: head,
  body: body,
-       willDrawCell: (data) => {
- if (data.section === 'body' && data.row && typeof data.row.index === 'number' && data.row.index < menuData.length) { // Check if it's a body row and within menuData bounds
-            console.log("willDrawCell: Processing row", data.row.index); // Nouveau log
-            const dayMenu = menuData[data.row.index];
-            console.log("  Day Menu Data:", { date: dayMenu.date, theme: dayMenu.theme, isHoliday: dayMenu.isHoliday, isWeekend: dayMenu.isWeekend }); // Ajout de la date et du thème pour identification
-            let fillColorToApply: [number, number, number] | undefined = undefined;
-            if (dayMenu.theme && dayMenu.theme !== '' && themeRgbColors[dayMenu.theme as MenuThemeIdentifier]) {
- console.log("    Theme condition met. Theme:", dayMenu.theme); // Log le thème quand la condition est remplie
- console.log("    Corresponding color in themeRgbColors:", themeRgbColors[dayMenu.theme as MenuThemeIdentifier]); // Log la couleur trouvée
-                fillColorToApply = themeRgbColors[dayMenu.theme as MenuThemeIdentifier];
-              } else if (dayMenu.isHoliday) {
-                fillColorToApply = dayMenu.isWeekend ? holidayWeekendColor : holidayWeekdayColor;
-              } else if (dayMenu.isWeekend) {
-                fillColorToApply = weekendColor;
-              }
+ didParseCell: (data) => {
+  if (data.section === 'body' && data.row && typeof data.row.index ==='number' && data.row.index < menuData.length) {
+     // Récupérer les données du jour correspondant
+     const dayMenu = menuData[data.row.index];
 
-              console.log("  Calculated fillColorToApply:", fillColorToApply); // Log de la couleur calculée
-              if (fillColorToApply) {
- console.log("  Applying color to cells in row", data.row.index); // Indique l'application de la couleur
-                for (let i = 0; i < data.row.cells.length; i++) { // Apply color to all cells in the row
-                    data.row.cells[i].styles.fillColor = fillColorToApply;
-                }
-                 console.log("  Color applied to row", data.row.index); // Confirmation de l'application
-              } else {
-                  console.log("  No color to apply for row", data.row.index); // Indique qu'aucune couleur n'est appliquée
-              }
-            }
-          },
+     let fillColorToApply: [number, number, number] | undefined = undefined;
+     const defaultRowColor: [number, number, number] = [255, 255, 255]; // Couleur par défaut au blanc
+
+     // Appliquer la logique de couleur (thème, jour férié, week-end)
+     if (dayMenu.theme && dayMenu.theme !== '' && themeRgbColors[dayMenu.theme as MenuThemeIdentifier]) {
+          fillColorToApply = themeRgbColors[dayMenu.theme as MenuThemeIdentifier];
+     } else if (dayMenu.isHoliday) {
+         fillColorToApply = dayMenu.isWeekend ? holidayWeekendColor : holidayWeekdayColor;
+     } else if (dayMenu.isWeekend) {
+         fillColorToApply = weekendColor;
+     }
+
+     // Si aucune couleur spécifique n\'est appliquée, utiliser la couleur blanche par défaut
+     if (!fillColorToApply) {
+         fillColorToApply = defaultRowColor;
+     }
+
+     // Appliquer la couleur au style de la cellule pour que jspdf-autotable la dessine
+     // S\'assurer que la propriété styles existe sur la cellule courante
+     if (!data.cell.styles) {
+         data.cell.styles = {};
+     }
+     data.cell.styles.fillColor = fillColorToApply;
+      // Ajouter les styles de bordure par défaut
+      data.cell.styles.lineWidth = 0.1; // Épaisseur de la ligne
+      data.cell.styles.lineColor = [0, 0, 0]; // Couleur de la ligne (noir)
+
+      console.log(`didParseCell: Applied color [${fillColorToApply}] to cell [${data.row.index}, ${data.column.index}]`); // Log
+  }
+},
+
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
           if (pdfSettings.footerText) {
