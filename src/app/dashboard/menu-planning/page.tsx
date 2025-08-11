@@ -280,13 +280,9 @@ export default function MenuPlanningPage() {
       });
       return;
     }
-
-    console.log("Color constants:", {
-      MENU_THEME_FROID_HEX, MENU_THEME_VEGE_HEX, MENU_THEME_SAM_HEX,
-      MENU_HOLIDAY_WEEKEND_HEX, MENU_WEEKEND_HEX
-    });
-
+    
     setIsGeneratingMonthlyPdf(true);
+    
 
     try {
       const pdfSettings = getPdfLayoutSettings('menu_planning_monthly');
@@ -396,11 +392,7 @@ export default function MenuPlanningPage() {
       }
 
       const head = [['Date', 'Jour', 'Thème', 'Entrée', 'Plat', 'Féculent', 'Légume', 'Sauce', 'Dessert']];
-
- console.log("PDF Table Head:", head);
-
       const body = menuData.map(dayMenu => {
- console.log("PDF Table Body:", body);
         const currentThemeValueForSelect = dayMenu.theme === '' ? NO_THEME_SELECT_VALUE : dayMenu.theme;
         const themeLabel = MENU_THEME_OPTIONS_FOR_SELECT.find(t => t.value === currentThemeValueForSelect)?.label || '-';
         return [
@@ -425,7 +417,8 @@ export default function MenuPlanningPage() {
       }, {} as Record<MenuThemeIdentifier, [number, number, number] | null>);
       const holidayWeekendColor = hexToRgb(MENU_HOLIDAY_WEEKEND_HEX);
       const holidayWeekdayColor = hexToRgb(MENU_HOLIDAY_WEEKDAY_HEX);
- const weekendColor = hexToRgb(MENU_WEEKEND_HEX);
+      const weekendColor = hexToRgb(MENU_WEEKEND_HEX);
+
  doc.autoTable({
         theme: 'grid',
         headStyles: headStyles,
@@ -441,15 +434,15 @@ export default function MenuPlanningPage() {
  7: { cellWidth: 55 }, // Sauce
  8: { cellWidth: 55 }, // Dessert
         },
+        head: head,
+ body: body,
        willDrawCell: (data) => {
-          if (data.section === 'body' && data.row && typeof data.row.index === 'number' && data.row.index < menuData.length) {
-            console.log("Drawing cell for", data.row.cells[0].text, "Row Index:", data.row.index); // Log date/day and index
+ if (data.section === 'body' && data.row && typeof data.row.index === 'number' && data.row.index < menuData.length) { // Check if it's a body row and within menuData bounds
+            console.log("willDrawCell: Processing row", data.row.index); // Nouveau log
             const dayMenu = menuData[data.row.index];
-            if (dayMenu) {
-              let fillColorToApply: [number, number, number] | undefined = undefined;
-              console.log("  Day Menu Theme:", dayMenu.theme, "isHoliday:", dayMenu.isHoliday, "isWeekend:", dayMenu.isWeekend); // Log theme/holiday/weekend status
-
-              if (dayMenu.theme && dayMenu.theme !== '' && themeRgbColors[dayMenu.theme as MenuThemeIdentifier]) {
+            console.log("  Day Menu Data:", { date: dayMenu.date, theme: dayMenu.theme, isHoliday: dayMenu.isHoliday, isWeekend: dayMenu.isWeekend }); // Ajout de la date et du thème pour identification
+            let fillColorToApply: [number, number, number] | undefined = undefined;
+            if (dayMenu.theme && dayMenu.theme !== \'\' && themeRgbColors[dayMenu.theme as MenuThemeIdentifier]) {
                 fillColorToApply = themeRgbColors[dayMenu.theme as MenuThemeIdentifier];
               } else if (dayMenu.isHoliday) {
                 fillColorToApply = dayMenu.isWeekend ? holidayWeekendColor : holidayWeekdayColor;
@@ -457,16 +450,18 @@ export default function MenuPlanningPage() {
                 fillColorToApply = weekendColor;
               }
 
-              console.log("  fillColorToApply:", fillColorToApply); // Log the color value
+              console.log("  Calculated fillColorToApply:", fillColorToApply); // Log de la couleur calculée
               if (fillColorToApply) {
-                console.log("  Applying color to row."); // Indicate if color is being applied
-                for (let i = 0; i < data.row.cells.length; i++) {
+ console.log("  Applying color to cells in row", data.row.index); // Indique l'application de la couleur
+                for (let i = 0; i < data.row.cells.length; i++) { // Apply color to all cells in the row
                     data.row.cells[i].styles.fillColor = fillColorToApply;
                 }
+                 console.log("  Color applied to row", data.row.index); // Confirmation de l'application
+              } else {
+                  console.log("  No color to apply for row", data.row.index); // Indique qu'aucune couleur n'est appliquée
               }
             }
-          }
-        },
+          },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
           if (pdfSettings.footerText) {
@@ -490,6 +485,7 @@ export default function MenuPlanningPage() {
       toast({ title: "PDF Mensuel Généré", description: `La planification des menus pour ${monthLabel} ${yearLabel} a été téléchargée.` });
     } catch (error) {
       console.error("Error generating monthly menu PDF:", error);
+ console.error("Erreur lors de la génération du PDF des menus:", error);
       toast({ title: "Erreur PDF", description: "La génération du PDF des menus a échoué.", variant: "destructive" });
     } finally {
       setIsGeneratingMonthlyPdf(false);
