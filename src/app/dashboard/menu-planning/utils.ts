@@ -13,6 +13,8 @@ export interface WeekData {
 }
 
 export function groupMenusByWeek(year: number, month: number, allMenusForMonth: DailyMenu[]): WeekData[] {
+  console.log('groupMenusByWeek input allMenusForMonth:', allMenusForMonth); // Log input data
+
   const weeks: WeekData[] = [];
   if (!allMenusForMonth || allMenusForMonth.length === 0) return weeks;
 
@@ -27,7 +29,7 @@ export function groupMenusByWeek(year: number, month: number, allMenusForMonth: 
     let weekEndDate = endOfWeek(currentIterationDate, { locale: fr, weekStartsOn: 1 });
     weekEndDate = weekEndDate > lastDayOfMonth ? lastDayOfMonth : weekEndDate;
 
-    console.log(`Calculating week ${weekCounter}: ${format(weekStartDate, 'yyyy-MM-dd')} to ${format(weekEndDate, 'yyyy-MM-dd')}`);
+    console.log(`Week ${weekCounter} period: ${format(weekStartDate, 'yyyy-MM-dd')} to ${format(weekEndDate, 'yyyy-MM-dd')}`); // Log week period
 
 
     const weekMenus = allMenusForMonth.filter(menu => {
@@ -42,7 +44,7 @@ export function groupMenusByWeek(year: number, month: number, allMenusForMonth: 
             endDate: weekEndDate,
             menus: weekMenus,
         });
-        console.log(`Week ${weekCounter} has ${weekMenus.length} menus.`, weekMenus.map(m => m.date));
+        console.log(`Week ${weekCounter} included menus (dates):`, weekMenus.map(m => m.date)); // Log included menu dates
         weekCounter++;
     }
     currentIterationDate = addWeeks(currentIterationDate, 1);

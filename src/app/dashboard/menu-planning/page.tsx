@@ -63,22 +63,32 @@ const menuPlanningTabsConfig = [
   { value: "temperature-sheets", label: "Fiches de Température", Icon: Thermometer },
 ];
 
-export default function MenuPlanningPage() {
+{
+  const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().getMonth().toString());
   const [menuData, setMenuData] = useState<DailyMenu[]>([]);
-  const [dataLoaded, setDataLoaded] = useState(false); 
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isResettingMonthData, setIsResettingMonthData] = useState(false); // New state for reset
+  const [isResettingMonthData, setIsResettingMonthData] = useState(false);
   const [isGeneratingMonthlyPdf, setIsGeneratingMonthlyPdf] = useState(false);
+  const [isGeneratingAllWeeklyPdfs, setIsGeneratingAllWeeklyPdfs] = useState(false); // New state for generating all weekly PDFs
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState(menuPlanningTabsConfig[0].value);
+  // Ref pour accéder aux méthodes du composant WeeklyOrderSheets (sera utilisé plus tard)
+  const weeklyOrderSheetsRef = useRef<{ generatePdfForWeek: (week: WeekData, weekIndex: number) => void }[] | null>(null);
+
+
+  // Add a console.log to track activeTab changes
+  useEffect(() => {
+    console.log("Active tab changed to:", activeTab);
+  }, [activeTab]);
 
   const generateMonthData = useCallback((year: number, month: number): DailyMenu[] => {
     const daysInSelectedMonth = getDaysInMonth(new Date(year, month));
     const publicHolidaysForYear = getFrenchPublicHolidays(year);
-    
+
     const holidayMap = new Map<string, string>();
     publicHolidaysForYear.forEach(h => {
       holidayMap.set(format(h.date, 'yyyy-MM-dd'), h.name);
@@ -89,14 +99,14 @@ export default function MenuPlanningPage() {
       const currentDate = startOfDay(new Date(year, month, day));
       const dateStr = format(currentDate, 'yyyy-MM-dd');
       const dayOfWeek = currentDate.getDay();
-      
+
       data.push({
         date: dateStr,
         dayName: frenchDays[dayOfWeek],
         isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
         isHoliday: holidayMap.has(dateStr),
-        holidayName: holidayMap.get(dateStr) || undefined, 
-        ...initialMenuItem, 
+        holidayName: holidayMap.get(dateStr) || undefined,
+        ...initialMenuItem,
       });
     }
     return data;
@@ -117,10 +127,10 @@ export default function MenuPlanningPage() {
         if (docSnap.exists()) {
           const firestoreData = docSnap.data();
           const loadedMenuData = (firestoreData.menus as any[] || []).map((d: any) => ({
-             ...initialMenuItem, 
+             ...initialMenuItem,
              ...d,
-             date: d.date, 
-             theme: d.theme || '', 
+             date: d.date,
+             theme: d.theme || '',
              entree: d.entree || '',
              plat: d.plat || '',
              feculent: d.feculent || '',
@@ -129,7 +139,7 @@ export default function MenuPlanningPage() {
              dessert: d.dessert || '',
              holidayName: d.holidayName || undefined,
           }));
-          
+
           const expectedDays = getDaysInMonth(new Date(yearNum, monthNum));
           const firstDayLoadedDate = loadedMenuData.length > 0 ? loadedMenuData[0].date : null;
           const expectedFirstDayPrefix = `${yearNum}-${(monthNum + 1).toString().padStart(2, '0')}`;
@@ -140,7 +150,7 @@ export default function MenuPlanningPage() {
                 console.warn(`Data mismatch for ${docId}. Expected ${expectedDays} days starting with ${expectedFirstDayPrefix}, got ${loadedMenuData.length} days starting with ${firstDayLoadedDate}. Regenerating.`);
                 const freshData = generateMonthData(yearNum, monthNum);
                 setMenuData(freshData);
-                
+
                 const sanitizedFreshData = freshData.map(dayMenu => ({
                   ...dayMenu,
                   entree: dayMenu.entree || '',
@@ -150,7 +160,7 @@ export default function MenuPlanningPage() {
                   sauce: dayMenu.sauce || '',
                   dessert: dayMenu.dessert || '',
                   theme: dayMenu.theme || '',
-                  holidayName: dayMenu.holidayName || null, 
+                  holidayName: dayMenu.holidayName || null,
                 }));
                 await setDoc(docRef, { menus: sanitizedFreshData });
                  window.dispatchEvent(new CustomEvent('menuDataUpdatedInFirestore'));
@@ -168,7 +178,7 @@ export default function MenuPlanningPage() {
             sauce: dayMenu.sauce || '',
             dessert: dayMenu.dessert || '',
             theme: dayMenu.theme || '',
-            holidayName: dayMenu.holidayName || null, 
+            holidayName: dayMenu.holidayName || null,
           }));
           await setDoc(docRef, { menus: sanitizedFreshData });
           window.dispatchEvent(new CustomEvent('menuDataUpdatedInFirestore'));
@@ -191,6 +201,7 @@ export default function MenuPlanningPage() {
       console.log("Save conditions not met. Skipping save.");
       return;
     }
+
 
     setIsSaving(true);
     const docId = getFirestoreDocId();
@@ -233,7 +244,7 @@ export default function MenuPlanningPage() {
   const handleUpdateMenuEntry = useCallback((date: string, field: MenuField, value: StoredMenuThemeValue) => {
     setMenuData(prevData =>
       prevData.map(dayMenu =>
-        dayMenu.date === date ? { ...dayMenu, [field]: value === undefined ? '' : value } : dayMenu 
+        dayMenu.date === date ? { ...dayMenu, [field]: value === undefined ? '' : value } : dayMenu
       )
     );
   }, []);
@@ -254,7 +265,7 @@ export default function MenuPlanningPage() {
         theme: dayMenu.theme || '',
         holidayName: dayMenu.holidayName || null,
     }));
-    
+
     const docId = getFirestoreDocId();
     const docRef = doc(firestore, "menuPlanning", docId);
 
@@ -280,9 +291,9 @@ export default function MenuPlanningPage() {
       });
       return;
     }
-    
+
     setIsGeneratingMonthlyPdf(true);
-    
+
 
     try {
       const pdfSettings = getPdfLayoutSettings('menu_planning_monthly');
@@ -300,7 +311,7 @@ export default function MenuPlanningPage() {
       let currentY = pdfSettings.marginTop;
 
       if (pdfSettings.headerText) {
-        const headerRows = pdfSettings.headerText.split('\n').map(rowText => 
+        const headerRows = pdfSettings.headerText.split('\n').map(rowText =>
           rowText.split('|').map(cellText => cellText.trim())
         );
         const headerTableBody = headerRows.map(row => row.map(cell => cell === '{logo}' ? '' : cell));
@@ -317,37 +328,37 @@ export default function MenuPlanningPage() {
               try {
                 const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
                 const formatType = imgProps.fileType.toUpperCase();
-                const cellPadding = 2; 
+                const cellPadding = 2;
                 let imgWidth = data.cell.width - 2 * cellPadding;
                 let imgHeight = data.cell.height - 2 * cellPadding;
                 const cellAspectRatio = data.cell.width / data.cell.height;
                 const imgAspectRatio = imgProps.width / imgProps.height;
 
-                if (imgAspectRatio > cellAspectRatio) { 
+                if (imgAspectRatio > cellAspectRatio) {
                     imgHeight = imgWidth / imgAspectRatio;
-                } else { 
+                } else {
                     imgWidth = imgHeight * imgAspectRatio;
                 }
                 const imgX = data.cell.x + (data.cell.width - imgWidth) / 2;
                 const imgY = data.cell.y + (data.cell.height - imgHeight) / 2;
                 doc.addImage(pdfSettings.logoUrl, formatType, imgX, imgY, imgWidth, imgHeight);
-              } catch (e: any) { 
+              } catch (e: any) {
                 console.error(`Error drawing logo in PDF header table: ${e.message || e}. Cell:`, data.cell, {logoUrl: pdfSettings.logoUrl ? pdfSettings.logoUrl.substring(0, 50) + "..." : "N/A"});
                 doc.setFillColor(230, 230, 230); doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
                 doc.setFontSize(8); doc.setTextColor(100); doc.text("LOGO_ERR", data.cell.x + data.cell.width/2, data.cell.y + data.cell.height/2, {align: 'center', baseline: 'middle'});
               }
-            } else if (pdfSettings.logoUrl && headerRows[data.row.index][data.column.index] === '{logo}') { 
+            } else if (pdfSettings.logoUrl && headerRows[data.row.index][data.column.index] === '{logo}') {
                 doc.setFillColor(230, 230, 230); doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
                 doc.setFontSize(8); doc.setTextColor(100); doc.text("LOGO", data.cell.x + data.cell.width/2, data.cell.y + data.cell.height/2, {align: 'center', baseline: 'middle'});
             }
           },
         });
         currentY = (doc as any).lastAutoTable.finalY + 5;
-      } else if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { 
+      } else if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
         try {
             const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
             const formatType = imgProps.fileType.toUpperCase();
-            const desiredHeight = 30; 
+            const desiredHeight = 30;
             const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
             doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
             currentY += desiredHeight + 5;
@@ -358,7 +369,7 @@ export default function MenuPlanningPage() {
       } else if (pdfSettings.logoUrl) {
          doc.setFontSize(pdfSettings.headerFontSize); doc.text(`[Logo URL: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize + 5;
       }
-      
+
       const moduleDefaultTitle = `Planification des Menus - ${monthLabel} ${yearLabel}`;
       let finalTitle = "";
       if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
@@ -371,14 +382,14 @@ export default function MenuPlanningPage() {
           finalTitle = moduleDefaultTitle;
         }
       }
-      
+
       if (finalTitle) {
         doc.setFontSize(pdfSettings.documentTitleFontSize);
         doc.text(finalTitle, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
-        currentY += pdfSettings.documentTitleFontSize * 0.7 + 5; 
+        currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
       }
 
-      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, fontSize?: number } = { 
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, fontSize?: number } = {
         fontStyle: 'bold',
         fontSize: pdfSettings.tableHeaderFontSize,
       };
@@ -397,7 +408,7 @@ export default function MenuPlanningPage() {
         const themeLabel = MENU_THEME_OPTIONS_FOR_SELECT.find(t => t.value === currentThemeValueForSelect)?.label || '-';
         return [
           format(parseISO(dayMenu.date), 'dd/MM', { locale: fr }),
-          dayMenu.dayName + (dayMenu.holidayName ? `\n(${dayMenu.holidayName})` : ''), 
+          dayMenu.dayName + (dayMenu.holidayName ? `\n(${dayMenu.holidayName})` : ''),
           themeLabel,
           dayMenu.entree || '-',
           dayMenu.plat || '-',
@@ -419,292 +430,229 @@ export default function MenuPlanningPage() {
         return acc;
     }, {} as Record<MenuThemeIdentifier, [number, number, number] | null>);
     console.log("themeRgbColors:", themeRgbColors); // Conservez cette ligne de log que vous avez ajoutée
-    
+
       const holidayWeekendColor = hexToRgb(MENU_HOLIDAY_WEEKEND_HEX);
       const holidayWeekdayColor = hexToRgb(MENU_HOLIDAY_WEEKDAY_HEX);
       const weekendColor = hexToRgb(MENU_WEEKEND_HEX);
 
- doc.autoTable({
-        headStyles: headStyles,
-        styles: { 
-          fontSize: pdfSettings.tableBodyFontSize, 
-          cellPadding: 1.5, 
-          valign: 'middle', 
-          font: pdfSettings.fontFamily,
-      },        
-        columnStyles: {
- 0: { cellWidth: 30 }, // Date
- 1: { cellWidth: 40 }, // Jour
- 2: { cellWidth: 40 }, // Thème
- 3: { cellWidth: 60 }, // Entrée
- 4: { cellWidth: 55 }, // Plat
- 5: { cellWidth: 55 }, // Féculent
- 6: { cellWidth: 55 }, // Légume
- 7: { cellWidth: 55 }, // Sauce
- 8: { cellWidth: 55 }, // Dessert
+   doc.autoTable({
+          headStyles: headStyles,
+          styles: {
+            fontSize: pdfSettings.tableBodyFontSize,
+            cellPadding: 1.5,
+            valign: 'middle',
+            font: pdfSettings.fontFamily,
         },
-        head: head,
- body: body,
- didParseCell: (data) => {
-  if (data.section === 'body' && data.row && typeof data.row.index ==='number' && data.row.index < menuData.length) {
-     // Récupérer les données du jour correspondant
-     const dayMenu = menuData[data.row.index];
+          columnStyles: {
+   0: { cellWidth: 30 }, // Date
+   1: { cellWidth: 40 }, // Jour
+   2: { cellWidth: 40 }, // Thème
+   3: { cellWidth: 60 }, // Entrée
+   4: { cellWidth: 55 }, // Plat
+   5: { cellWidth: 55 }, // Féculent
+   6: { cellWidth: 55 }, // Légume
+   7: { cellWidth: 55 }, // Sauce
+   8: { cellWidth: 55 }, // Dessert
+          },
+          head: head,
+   body: body,
+   didParseCell: (data) => {
+    if (data.section === 'body' && data.row && typeof data.row.index ==='number' && data.row.index < menuData.length) {
+       // Récupérer les données du jour correspondant
+       const dayMenu = menuData[data.row.index];
 
-     let fillColorToApply: [number, number, number] | undefined = undefined;
-     const defaultRowColor: [number, number, number] = [255, 255, 255]; // Couleur par défaut au blanc
+       let fillColorToApply: [number, number, number] | undefined = undefined;
+       const defaultRowColor: [number, number, number] = [255, 255, 255]; // Couleur par défaut au blanc
 
-     // Appliquer la logique de couleur (thème, jour férié, week-end)
-     if (dayMenu.theme && dayMenu.theme !== '' && themeRgbColors[dayMenu.theme as MenuThemeIdentifier]) {
-          fillColorToApply = themeRgbColors[dayMenu.theme as MenuThemeIdentifier];
-     } else if (dayMenu.isHoliday) {
-         fillColorToApply = dayMenu.isWeekend ? holidayWeekendColor : holidayWeekdayColor;
-     } else if (dayMenu.isWeekend) {
-         fillColorToApply = weekendColor;
-     }
+       // Appliquer la logique de couleur (thème, jour férié, week-end)
+       if (dayMenu.theme && dayMenu.theme !== '' && themeRgbColors[dayMenu.theme as MenuThemeIdentifier]) {
+            fillColorToApply = themeRgbColors[dayMenu.theme as MenuThemeIdentifier];
+       } else if (dayMenu.isHoliday) {
+           fillColorToApply = dayMenu.isWeekend ? holidayWeekendColor : holidayWeekdayColor;
+       } else if (dayMenu.isWeekend) {
+           fillColorToApply = weekendColor;
+       }
 
-     // Si aucune couleur spécifique n\'est appliquée, utiliser la couleur blanche par défaut
-     if (!fillColorToApply) {
-         fillColorToApply = defaultRowColor;
-     }
+       // Si aucune couleur spécifique n'est appliquée, utiliser la couleur blanche par défaut
+       if (!fillColorToApply) {
+           fillColorToApply = defaultRowColor;
+       }
 
-     // Appliquer la couleur au style de la cellule pour que jspdf-autotable la dessine
-     // S\'assurer que la propriété styles existe sur la cellule courante
-     if (!data.cell.styles) {
-         data.cell.styles = {};
-     }
-     data.cell.styles.fillColor = fillColorToApply;
-      // Ajouter les styles de bordure par défaut
-      data.cell.styles.lineWidth = 0.1; // Épaisseur de la ligne
-      data.cell.styles.lineColor = [0, 0, 0]; // Couleur de la ligne (noir)
+       // Appliquer la couleur au style de la cellule pour que jspdf-autotable la dessine
+       // S'assurer que la propriété styles existe sur la cellule courante
+       if (!data.cell.styles) {
+           data.cell.styles = {};
+       }
+       data.cell.styles.fillColor = fillColorToApply;
+        // Ajouter les styles de bordure par défaut
+        data.cell.styles.lineWidth = data.row.index === menuData.length - 1 ? 0.1 : 0.05; // Ligne plus épaisse en bas de la dernière ligne
+        data.cell.styles.lineColor = [0, 0, 0]; // Bordures noires
 
-      console.log(`didParseCell: Applied color [${fillColorToApply}] to cell [${data.row.index}, ${data.column.index}]`); // Log
-  }
-},
-
-        didDrawPage: (data) => {
-          const pageCount = doc.internal.getNumberOfPages();
-          if (pdfSettings.footerText) {
-            let footerStr = pdfSettings.footerText
-              .replace('{date}', generationDateFormatted)
-              .replace('{pageNumber}', data.pageNumber.toString())
-              .replace('{totalPages}', pageCount.toString());
-            doc.setFontSize(pdfSettings.footerFontSize);
-            doc.text(footerStr, pdfSettings.marginLeft, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
-          }
-        },
-        margin: { 
-            top: pdfSettings.marginTop, 
-            right: pdfSettings.marginRight, 
-            bottom: pdfSettings.marginBottom, 
-            left: pdfSettings.marginLeft 
-        },
-      });
-
-      doc.save(`Planification_Menus_${monthLabel}_${yearLabel}.pdf`);
-      toast({ title: "PDF Mensuel Généré", description: `La planification des menus pour ${monthLabel} ${yearLabel} a été téléchargée.` });
-    } catch (error) {
-      console.error("Error generating monthly menu PDF:", error);
- console.error("Erreur lors de la génération du PDF des menus:", error);
-      toast({ title: "Erreur PDF", description: "La génération du PDF des menus a échoué.", variant: "destructive" });
-    } finally {
-      setIsGeneratingMonthlyPdf(false);
     }
-  };
-  
-  const planningContent = (
-    <Card className="shadow-lg">
-      <CardHeader>
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <CalendarDays className="w-6 h-6 text-primary"/>
-              Sélection et Création des Menus
-            </CardTitle>
-            <CardDescription>
-              Choisissez une année et un mois pour afficher et modifier les menus. Les samedis et dimanches sont en gris, les jours fériés en jaune.
-              Les thèmes colorient la ligne : Bleu (Froid), Vert (Végé), Jaune (SAM), Rose (Poisson), Orange (Fête).
-              Les données sont sauvegardées automatiquement dans Firestore.
-            </CardDescription>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto self-start sm:self-center">
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" disabled={!dataLoaded || isSaving || isResettingMonthData} className="w-full sm:w-auto">
-                  {(isResettingMonthData) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-                  Réinitialiser Mois
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Confirmer la réinitialisation</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Êtes-vous sûr de vouloir réinitialiser tous les menus pour ${months.find(m => m.value === selectedMonth)?.label} ${selectedYear} ? Cette action est irréversible.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Annuler</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleResetCurrentMonthData}>
-                    Réinitialiser
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-            <Button onClick={generateMonthlyMenuPdf} disabled={!dataLoaded || isGeneratingMonthlyPdf || isSaving || isResettingMonthData} className="w-full sm:w-auto">
-              {(isGeneratingMonthlyPdf || isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileTextIcon className="mr-2 h-4 w-4" />}
-              Générer PDF Mensuel
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
-          <div>
-            <Label htmlFor="year-select-planning">Année</Label>
-            <Select value={selectedYear} onValueChange={setSelectedYear}>
-              <SelectTrigger id="year-select-planning">
-                <SelectValue placeholder="Sélectionner une année" />
-              </SelectTrigger>
-              <SelectContent>
-                {years.map(year => (
-                  <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label htmlFor="month-select-planning">Mois</Label>
-            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger id="month-select-planning">
-                <SelectValue placeholder="Sélectionner un mois" />
-              </SelectTrigger>
-              <SelectContent>
-                {months.map(month => (
-                  <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+  },
+          margin: { top: currentY + 10, left: pdfSettings.marginLeft, right: pdfSettings.marginRight }, // Positionner le tableau après le titre
+          startY: currentY + 10, // Définir startY explicitement
+          didDrawPage: (data) => {
+            const pageCount = doc.internal.getNumberOfPages();
+            const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
+            if (pdfSettings.footerText) {
+                let footerStr = pdfSettings.footerText
+                  .replace('{date}', generationDateFormatted)
+                  .replace('{pageNumber}', data.pageNumber.toString())
+                  .replace('{totalPages}', pageCount.toString());
+                doc.setFontSize(pdfSettings.footerFontSize);
+                doc.text(footerStr, pdfSettings.marginLeft, pageHeight - (pdfSettings.marginBottom / 2), { align: 'left' });
+            }
+          }
+        });
 
-        {!dataLoaded ? (
-          <div className="flex justify-center items-center py-10">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <span className="ml-2 text-muted-foreground">Chargement des menus...</span>
-          </div>
-        ) : (
-          <MenuPlanningTable
-            year={parseInt(selectedYear)}
-            month={parseInt(selectedMonth)}
-            menuData={menuData}
-            onUpdateMenuEntry={handleUpdateMenuEntry}
- onSave={handleSaveMenu}
-          />
-        )}\n\n
-      </CardContent>
-    </Card>
-  );
 
-  const orderSheetsContent = (
- <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ClipboardCheck className="w-6 h-6 text-primary"/>
-            Fiches de Commande Hebdomadaires
-          </CardTitle>
-          <CardDescription>
-            Générez les fiches de commande pour chaque semaine du mois sélectionné. Les données des menus sont issues de Firestore.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <WeeklyOrderSheets
-            year={parseInt(selectedYear)}
-            month={parseInt(selectedMonth)}
-            menuData={menuData}
-            isLoading={!dataLoaded}
-          />
-        </CardContent>
-      </Card>
+    // Function to generate a single weekly PDF - Moved inside page.tsx
+    const generateWeeklyPdf = (week: WeekData, weekIndex: number, toastMessage: boolean = true) => {
+        console.log('generateWeeklyPdf called for week', week.weekNumberInMonth);
+        // setIsGeneratingPdf(weekIndex); // This state is now in WeeklyOrderSheets component
 
- );
-  const temperatureSheetsContent = (
-     <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Thermometer className="w-6 h-6 text-primary"/>
-            Fiches de Température Hebdomadaires
-          </CardTitle>
-          <CardDescription>
-            Consultez et remplissez les fiches de température pour chaque semaine du mois sélectionné, basées sur les plats planifiés (issus de Firestore).
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <TemperatureSheet
-            year={parseInt(selectedYear)}
-            month={parseInt(selectedMonth)}
-            menuData={menuData}
-            isLoading={!dataLoaded}
-          />
-        </CardContent>
-      </Card>
-  );
+        try {
+            const pdfSettings = getPdfLayoutSettings('weekly_order_sheet');
+            const doc = new jsPDF({
+                orientation: pdfSettings.orientation,
+                unit: 'pt',
+                format: pdfSettings.pageSize
+            }) as jsPDFWithAutoTable;
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.getHeight();
+            let currentY = pdfSettings.marginTop;
+            doc.setFont(pdfSettings.fontFamily);
 
-  const tabsContentMap: Record<string, React.ReactNode> = {
-    "planning": planningContent,
-    "order-sheets": orderSheetsContent,
-    "temperature-sheets": temperatureSheetsContent,
-  };
+            // Section En-tête et Titre du Document (similar to monthly)
+            if (pdfSettings.headerText) {
+                const headerRows = pdfSettings.headerText.split('\n').map(rowText =>
+                  rowText.split('|').map(cellText => cellText.trim())
+                );
+                const headerTableBody = headerRows.map(row => row.map(cell => cell === '{logo}' ? '' : cell));
 
-  return (
-    <div className="container mx-auto p-4 md:p-6 lg:p-8 min-h-screen">
-      <div className="flex flex-col sm:flex-row items-center justify-between mb-6 gap-4">
-        <div className="flex items-center space-x-3">
-          <BookOpenText className="w-10 h-10 text-accent" />
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-serif font-bold text-foreground title-glow text-center sm:text-left">
-            Planification des Menus
-          </h1>
-        </div>
-        
-      </div>
-      <div className="mb-6 text-center sm:text-left">
-        <CurrentDate />
-      </div>
-      
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        {isMobile ? (
-          <div className="mb-4">
-            <Label htmlFor="mobile-menuplanning-nav-select" className="text-sm font-medium">Naviguer vers :</Label>
-            <Select value={activeTab} onValueChange={setActiveTab}>
-              <SelectTrigger id="mobile-menuplanning-nav-select" className="w-full mt-1">
-                <SelectValue placeholder="Choisir une section..." />
-              </SelectTrigger>
-              <SelectContent>
-                {menuPlanningTabsConfig.map(tab => (
-                  <SelectItem key={tab.value} value={tab.value} className="text-sm">
-                    <span className="flex items-center">
-                      <tab.Icon className="mr-2 h-4 w-4" />
-                      {tab.label}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        ) : (
-          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-1 mb-6 bg-card p-1 rounded-lg">
-            {menuPlanningTabsConfig.map(tab => (
-              <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-                <tab.Icon className="mr-1 sm:mr-2 h-4 w-4" /> {tab.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        )}
-        
-        {menuPlanningTabsConfig.map(tab => (
-          <TabsContent key={tab.value} value={tab.value}>
-            {tabsContentMap[tab.value]}
-          </TabsContent>
-        ))}
-      </Tabs>
-    </div>
-);
-}
+                doc.autoTable({
+                  body: headerTableBody,
+                  startY: currentY,
+                  theme: 'plain',
+                  styles: { fontSize: pdfSettings.headerFontSize, cellPadding: 1, font: pdfSettings.fontFamily },
+                  columnStyles: { 0: { cellWidth: 'auto'} },
+                  margin: { top: pdfSettings.marginTop, left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
+                  didDrawCell: (data) => {
+                    if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image') && headerRows[data.row.index][data.column.index] === '{logo}') {
+                        try {
+                            const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+                            const formatType = imgProps.fileType.toUpperCase();
+                            const cellPadding = 2;
+                            let imgWidth = data.cell.width - 2 * cellPadding;
+                            let imgHeight = data.cell.height - 2 * cellPadding;
+                            const cellAspectRatio = data.cell.width / data.cell.height;
+                            const imgAspectRatio = imgProps.width / imgProps.height;
+
+                            if (imgAspectRatio > cellAspectRatio) {
+                                imgHeight = imgWidth / imgAspectRatio;
+                            } else {
+                                imgWidth = imgHeight * imgAspectRatio;
+                            }
+                            const imgX = data.cell.x + (data.cell.width - imgWidth) / 2;
+                            const imgY = data.cell.y + (data.cell.height - imgHeight) / 2;
+                            doc.addImage(pdfSettings.logoUrl, formatType, imgX, imgY, imgWidth, imgHeight);
+                        } catch (e: any) {
+                            console.error(`Error drawing logo in PDF header table: ${e.message || e}. Cell:`, data.cell, {logoUrl: pdfSettings.logoUrl ? pdfSettings.logoUrl.substring(0, 50) + "..." : "N/A"});
+                            doc.setFillColor(230, 230, 230); doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
+                            doc.setFontSize(8); doc.setTextColor(100); doc.text("LOGO_ERR", data.cell.x + data.cell.width/2, data.cell.y + data.cell.height/2, {align: 'center', baseline: 'middle'});
+                        }
+                    } else if (pdfSettings.logoUrl && headerRows[data.row.index][data.column.index] === '{logo}') {
+                        doc.setFillColor(230, 230, 230); doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
+                        doc.setFontSize(8); doc.setTextColor(100); doc.text("LOGO", data.cell.x + data.cell.width/2, data.cell.y + data.cell.height/2, {align: 'center', baseline: 'middle'});
+                    }
+                  },
+                });
+                currentY = (doc as any).lastAutoTable.finalY + 5;
+              } else if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
+                try {
+                    const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+                    const formatType = imgProps.fileType.toUpperCase();
+                    const desiredHeight = 30;
+                    const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
+                    doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
+                    currentY += desiredHeight + 5;
+                } catch(e: any) {
+                    console.error(`Error drawing standalone logo in PDF: ${e.message || e}.`, {logoUrl: pdfSettings.logoUrl ? pdfSettings.logoUrl.substring(0, 50) + "..." : "N/A"});
+                    doc.setFontSize(pdfSettings.headerFontSize); doc.text(`[Logo Error]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize + 5;
+                }
+              } else if (pdfSettings.logoUrl) {
+                 doc.setFontSize(pdfSettings.headerFontSize); doc.text(`[Logo URL: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize + 5;
+              }
+
+            const moduleDefaultTitle = "Fiche de Commande Cuisine";
+            let finalTitle = "";
+            if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
+              finalTitle = pdfSettings.documentBaseTitle.trim();
+            }
+            if (pdfSettings.showModuleTitle) {
+              if (finalTitle) {
+                finalTitle += ` - ${moduleDefaultTitle}`;
+              } else {
+                finalTitle = moduleDefaultTitle;
+              }
+            }
+
+            if (finalTitle) {
+              doc.setFontSize(pdfSettings.documentTitleFontSize);
+              doc.text(finalTitle, pageWidth / 2, currentY + 5, { align: 'center' });
+              currentY += (pdfSettings.documentTitleFontSize || 14) + 5;
+            }
+
+            doc.setFontSize(pdfSettings.defaultFontSize);
+            const semaineText = `Semaine du: ${format(week.startDate, "dd/MM/yyyy", { locale: fr })}  Au: ${format(week.endDate, "dd/MM/yyyy", { locale: fr })}`;
+            doc.text(semaineText, pdfSettings.marginLeft, currentY + 10);
+            currentY += (pdfSettings.defaultFontSize * 1.2) + 10;
+
+
+            // Section Tableaux des Menus et Catégories
+
+            // Prepare data for the weekly menu table
+            const weeklyMenuHeader = [['Date', 'Jour', 'Entrée', 'Plat', 'Féculent', 'Légume', 'Sauce', 'Dessert']];
+            const weeklyMenuBody = week.menus.map(menu => [
+              format(parseISO(menu.date), 'dd/MM', { locale: fr }),
+              menu.dayName,
+              menu.entree || '-',
+              menu.plat || '-',
+              menu.feculent || '-',
+              menu.legume || '-',
+              menu.sauce || '-',
+              menu.dessert || '-',
+            ]);
+
+            // Add the weekly menu table to the PDF (maintenant le premier autoTable)
+            doc.autoTable({
+              startY: currentY, // Commencez après le titre et la date de la semaine
+              head: weeklyMenuHeader,
+              body: weeklyMenuBody,
+              theme: 'grid',
+              headStyles: { fontStyle: 'bold', fontSize: pdfSettings.tableHeaderFontSize, halign: 'center', fillColor: pdfSettings.primaryColor ? hexToRgb(pdfSettings.primaryColor) : [200, 200, 200] }, // Styles en-tête menus
+              styles: { fontSize: pdfSettings.tableBodyFontSize, cellPadding: 2, valign: 'middle', font: pdfSettings.fontFamily, lineWidth: 0.1, lineColor: [0, 0, 0], halign: 'center', minCellHeight: 15 }, // Styles corps menus
+              columnStyles: {
+                0: { cellWidth: 40 }, // Date
+                1: { cellWidth: 40 }, // Jour
+                2: { cellWidth: 'auto' }, // Entrée
+                3: { cellWidth: 'auto' }, // Plat
+                4: { cellWidth: 'auto' }, // Féculent
+                5: { cellWidth: 'auto' }, // Légume
+                6: { cellWidth: 'auto' }, // Sauce
+                7: { cellWidth: 'auto' }, // Dessert
+              },
+              margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
+              didDrawPage: (data) => {
+                  const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
+                  const pageCount = doc.internal.getNumberOfPages();
+                  if (pdfSettings.footerText) {
+                    let footerStr = pdfSettings.footerText
+                      .replace('{date}', generationDateFormatted)
+                      .replace('{pageNumber}', data.pageNumber.toString())
+                      .replace('{totalPages}', pageCount.toString());
+                    doc.setFontSize(pdfSettings.footerFontSize);
+                    doc.text(footerStr, pdfSettings.marginLeft, pageHeight - (pdfSettings.marginBottom / 2));
+                  }
+                });
