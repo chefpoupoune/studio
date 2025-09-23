@@ -1,5 +1,7 @@
 
 export type OvertimeRequestStatus = 'en_attente' | 'approuvee' | 'refusee'; // For initial simple display
+export type ScheduleChangeRequestStatus = 'en_attente' | 'approuvee' | 'refusee';
+export type AbsenceRequestStatus = 'en_attente' | 'approuvee' | 'refusee'; // Added for consistency
 
 export type PrestationType = 'hebergement' | 'educatif' | 'administratif' | 'logistique' | 'medico_psycho_sociale' | 'autres';
 
@@ -41,8 +43,45 @@ export interface OvertimeRequest {
   directorSignatureDate?: string | null; 
 
   approvalStatus?: 'pending' | 'accepted' | 'rejected'; 
+  // For simpler display, map to OvertimeRequestStatus when needed
+  // approvalStatus: 'pending' -> 'en_attente'
   rejectionReason?: string;
   // compensationType?: 'recovery' | 'payment'; // Removed as per user request
+  decisionDate?: string | null; 
+}
+
+export interface ScheduleChangeDayDetail {
+  id: string;
+  date: string; // ISO string yyyy-MM-dd for storage
+  startTime?: string; // HH:mm
+  endTime?: string; // HH:mm
+}
+
+export interface ScheduleChangeRequest {
+  id: string;
+  employeeName: string;
+  brigadeMemberId: string;
+  requestDate: string; // ISO string for creation date
+  updatedAt?: string; // ISO string for last update
+  
+  position?: string; 
+  
+  prestationTypes?: PrestationType[]; 
+  prestationTypeAutresDetail?: string;
+
+  reasonStub: string; 
+
+  scheduleChangeDetails?: ScheduleChangeDayDetail[];
+  // No total hours needed for schedule change? Or perhaps total diff? Let's keep it simple for now.
+
+  employeeSignatureDate?: string | null; 
+  directManagerSignatureDate?: string | null; 
+  directorSignatureDate?: string | null; 
+
+  approvalStatus?: 'pending' | 'accepted' | 'rejected'; 
+  // For simpler display, map to ScheduleChangeRequestStatus when needed
+  // approvalStatus: 'pending' -> 'en_attente'
+  rejectionReason?: string;
   decisionDate?: string | null; 
 }
 
@@ -73,6 +112,8 @@ export interface AbsenceRequest {
   directorSignatureDate?: string | null; 
 
   approvalStatus?: 'pending' | 'accepted' | 'rejected'; 
+  // For simpler display, map to AbsenceRequestStatus when needed
+  // approvalStatus: 'pending' -> 'en_attente'
   rejectionReason?: string; 
   decisionDate?: string | null; 
 }

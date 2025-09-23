@@ -37,6 +37,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
 }
+const LOGGED_IN_USER_PERMISSIONS_KEY = 'loggedInUserPermissions';
 
 const todayKey = format(new Date(), 'yyyy-MM-dd');
 
@@ -81,6 +82,7 @@ export default function ColdChainMonitoring() {
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
+  const [isSuperviseur, setIsSuperviseur] = useState(false);
   const coolDownForm = useForm<CoolDownFormData>({ resolver: zodResolver(coolDownEntrySchema) });
   const deliveryForm = useForm<DeliveryFormData>({ resolver: zodResolver(deliveryEntrySchema) });
 
@@ -88,6 +90,18 @@ export default function ColdChainMonitoring() {
   const deliveryDocRef = useCallback(() => doc(firestore, 'pmsColdChainDelivery', todayKey), []);
 
   useEffect(() => {
+    // Check user role on mount
+    if (typeof window !== 'undefined') {
+      const storedPermissions = localStorage.getItem(LOGGED_IN_USER_PERMISSIONS_KEY);
+      if (storedPermissions) {
+        try {
+          const user = JSON.parse(storedPermissions);
+          setIsSuperviseur(user.role === 'superviseur');
+        } catch (error) {
+          console.error('Failed to parse user permissions from localStorage', error);
+        }
+      }
+    }
     const loadData = async () => {
       setIsLoading(true);
       try {
@@ -400,7 +414,7 @@ export default function ColdChainMonitoring() {
           <CardTitle className="flex items-center justify-between">
             <div className="flex items-center gap-2"><ArrowDownCircle className="w-6 h-6 text-primary"/>Baisse en Température du Jour</div>
             <Dialog open={isCoolDownDialogOpen} onOpenChange={setIsCoolDownDialogOpen}>
-              <DialogTrigger asChild><Button onClick={() => handleOpenCoolDownDialog()}><PlusCircle className="mr-2 h-4 w-4"/>Ajouter Produit</Button></DialogTrigger>
+              <DialogTrigger asChild><Button onClick={() => handleOpenCoolDownDialog()} disabled={isSuperviseur}><PlusCircle className="mr-2 h-4 w-4"/>Ajouter Produit</Button></DialogTrigger>
               <DialogContent className="sm:max-w-lg">
                 <DialogHeader><DialogTitle>{editingCoolDownEntry ? "Modifier" : "Nouveau"} Produit en Refroidissement</DialogTitle></DialogHeader>
                 <Form {...coolDownForm}>
@@ -422,7 +436,7 @@ export default function ColdChainMonitoring() {
                     </div>
                     <h4 className="text-sm font-medium pt-1 text-center">VISA</h4>
                     <FormField control={coolDownForm.control} name="visa" render={({ field }) => (<FormItem><FormLabel>Signature</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
-                    <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isLoading || isSaving}>{ (isLoading || isSaving) && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingCoolDownEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
+                    <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isSuperviseur || isLoading || isSaving}>{ (isLoading || isSaving) && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingCoolDownEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
                   </form>
                 </Form>
               </DialogContent>
@@ -465,9 +479,9 @@ export default function ColdChainMonitoring() {
                       <TableCell className={cn("text-center", cellBgClasses.visa)}>{e.visa || '-'}</TableCell>
                       <TableCell className="text-center space-x-1">
                         <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5"/></Button></AlertDialogTrigger>
-                          <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Supprimer "{e.productName}"?</AlertDialogTitle><AlertDialogDescription>Action irréversible.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annuler</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteCoolDownEntry(e.id)}>Supprimer</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+                          <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Supprimer "{e.productName}"?</AlertDialogTitle><AlertDialogDescription>Action irréversible.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annuler</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteCoolDownEntry(e.id)} disabled={isSuperviseur}>Supprimer</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
                         </AlertDialog>
-                        <Button variant="outline" size="icon" onClick={() => handleOpenCoolDownDialog(e)} className="h-7 w-7"><Edit2 className="h-3.5 w-3.5"/></Button>
+                        <Button variant="outline" size="icon" onClick={() => handleOpenCoolDownDialog(e)} className="h-7 w-7" disabled={isSuperviseur}><Edit2 className="h-3.5 w-3.5"/></Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -484,8 +498,8 @@ export default function ColdChainMonitoring() {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <div className="flex items-center gap-2"><Truck className="w-6 h-6 text-primary"/>Livraison du Jour</div>
-            <Dialog open={isDeliveryDialogOpen} onOpenChange={setIsDeliveryDialogOpen}>
-              <DialogTrigger asChild><Button onClick={() => handleOpenDeliveryDialog()}><PlusCircle className="mr-2 h-4 w-4"/>Ajouter Livraison</Button></DialogTrigger>
+            <Dialog open={isDeliveryDialogOpen} onOpenChange={setIsDeliveryDialogOpen}><DialogTrigger asChild><Button onClick={() => handleOpenDeliveryDialog()} disabled={isSuperviseur}><PlusCircle className="mr-2 h-4 w-4"/>Ajouter Livraison Soir </Button></DialogTrigger>
+              <DialogTrigger asChild><Button onClick={() => handleOpenDeliveryDialog()}><PlusCircle className="mr-2 h-4 w-4"/>Ajouter Livraison Midi</Button></DialogTrigger>
               <DialogContent className="sm:max-w-xl md:max-w-2xl">
                 <DialogHeader><DialogTitle>{editingDeliveryEntry ? "Modifier" : "Nouvelle"} Livraison</DialogTitle></DialogHeader>
                 <Form {...deliveryForm}>
@@ -510,7 +524,7 @@ export default function ColdChainMonitoring() {
                         <FormField control={deliveryForm.control} name="visaLivreur" render={({ field }) => (<FormItem><FormLabel>Visa Livreur</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                         <FormField control={deliveryForm.control} name="visaClient" render={({ field }) => (<FormItem><FormLabel>Visa Client</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                     </div>
-                    <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isLoading || isSaving}>{(isLoading || isSaving) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingDeliveryEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
+                    <DialogFooter className="pt-3"><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isSuperviseur || isLoading || isSaving}>{(isLoading || isSaving) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingDeliveryEntry ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
                   </form>
                 </Form>
               </DialogContent>
@@ -555,9 +569,9 @@ export default function ColdChainMonitoring() {
                       <TableCell className={cn("text-center", cellBgClasses.visa)}>{e.visaClient || '-'}</TableCell>
                       <TableCell className="text-center space-x-1">
                         <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5"/></Button></AlertDialogTrigger>
-                          <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Supprimer livraison de "{e.productName}"?</AlertDialogTitle><AlertDialogDescription>Action irréversible.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annuler</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteDeliveryEntry(e.id)}>Supprimer</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+                          <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Supprimer livraison de "{e.productName}"?</AlertDialogTitle><AlertDialogDescription>Action irréversible.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annuler</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteDeliveryEntry(e.id)} disabled={isSuperviseur}>Supprimer</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
                         </AlertDialog>
-                        <Button variant="outline" size="icon" onClick={() => handleOpenDeliveryDialog(e)} className="h-7 w-7"><Edit2 className="h-3.5 w-3.5"/></Button>
+                        <Button variant="outline" size="icon" onClick={() => handleOpenDeliveryDialog(e)} className="h-7 w-7" disabled={isSuperviseur}><Edit2 className="h-3.5 w-3.5"/></Button>
                       </TableCell>
                     </TableRow>
                   ))}

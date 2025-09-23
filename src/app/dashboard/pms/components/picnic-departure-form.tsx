@@ -15,13 +15,13 @@ import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { format, parseISO, isValid } from 'date-fns';
+import { format, parseISO, isValid, startOfMonth, endOfMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+import { getPdfLayoutSettings } from '@/lib/pdf-settings';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { firestore } from '@/lib/firebase';
 import { collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy, Timestamp } from 'firebase/firestore';
+import useMobile from '@/hooks/use-mobile';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -52,12 +53,170 @@ const picnicDepartureSchema = z.object({
 
 type PicnicDepartureFormData = z.infer<typeof picnicDepartureSchema>;
 
+// Helper function to draw a single form page
+const drawSingleFormPage = (doc: jsPDFWithAutoTable, entry: PicnicDepartureEntry, pageNumber: number, totalPages: number) => {
+    const pdfSettings = getPdfLayoutSettings('pms_picnic_departure_form');
+    doc.setFont(pdfSettings.fontFamily || 'helvetica');
+    const defaultFontSize = pdfSettings.defaultFontSize || 10;
+    const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
+    
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const marginLeft = pdfSettings.marginLeft || 40;
+    const marginRight = pdfSettings.marginRight || 40;
+    const marginTop = pdfSettings.marginTop || 40;
+    const marginBottom = pdfSettings.marginBottom || 40;
+    const contentWidth = pageWidth - marginLeft - marginRight;
+    
+    let currentY = marginTop;
+
+    if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
+      try {
+        const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+        const formatType = imgProps.fileType.toUpperCase();
+        const desiredHeight = 30;
+        const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
+        doc.addImage(pdfSettings.logoUrl, formatType, marginLeft, currentY, imgWidth, desiredHeight);
+        currentY += desiredHeight + 10;
+      } catch (e) {
+        console.error("Error drawing logo in PDF:", e);
+        doc.setFontSize(pdfSettings.headerFontSize || 8); doc.text("[Erreur Logo]", marginLeft, currentY); currentY += 15;
+      }
+    } else if (pdfSettings.headerText) {
+      doc.setFontSize(pdfSettings.headerFontSize || 10);
+      const headerLines = pdfSettings.headerText.split('\n');
+      headerLines.forEach(line => {
+          doc.text(line, marginLeft, currentY, {maxWidth: contentWidth});
+          currentY += (pdfSettings.headerFontSize || 10) * 0.7 + 2;
+      });
+      currentY += 5;
+    } else {
+      doc.setFontSize(10); doc.setTextColor(150, 150, 150);
+      doc.text("LA VIE ACTIVE - I.M.E BREBIERES", marginLeft, currentY); 
+      doc.setTextColor(0,0,0);
+      currentY += 20;
+    }
+    
+    const topRightBoxWidth = 120;
+    const topRightBoxHeight = 30;
+    const topRightBoxX = pageWidth - marginRight - topRightBoxWidth;
+    const topRightBoxY = marginTop - 10 > 0 ? marginTop -10 : marginTop;
+
+    doc.rect(topRightBoxX, topRightBoxY, topRightBoxWidth, topRightBoxHeight);
+    doc.setFontSize(8); doc.setTextColor(0,0,0);
+    doc.text("09-GFL-F-17", topRightBoxX + 5, topRightBoxY + 12);
+    doc.text("Version : 2.0", topRightBoxX + 5, topRightBoxY + 22);
+    
+    currentY = Math.max(currentY, topRightBoxY + topRightBoxHeight + 15);
+
+    doc.setFontSize((pdfSettings.documentTitleFontSize || 14)); doc.setFont(undefined, 'bold');
+    doc.text("ENLEVEMENT DE PREPARATION CULINAIRE", pageWidth / 2, currentY, { align: 'center' });
+    currentY += (pdfSettings.documentTitleFontSize || 14) + 15;
+
+    doc.setFontSize(defaultFontSize - 1); doc.setFont(undefined, 'normal');
+    const addressLines = [
+      "I.M.E Jean de Saint Aubert",
+      "46, chemin du bois des Caures",
+      "62117 BREBIERES",
+      "Tel: 03.21.50.00.36"
+    ];
+    addressLines.forEach(line => {
+      doc.text(line, pageWidth / 2, currentY, { align: 'center' });
+      currentY += (defaultFontSize -1) * 1.2;
+    });
+    currentY += 15;
+
+    const paragraph1 = "Ce Repas a été préparé en respectant scrupuleusement les règles d'hygiène en vigueur. Les repas sont stockés en réfrigération positive à 3° en attente d'enlèvement.";
+    const paragraph2 = "Afin de conserver cette commande, il est impératif de le garder stocké en glacière, avec pains de glace ou plaques eutectiques.";
+    const paragraph3 = "L'I.M.E Jean de Saint Aubert décline toute responsabilité après enlèvement de ce repas.";
+
+    doc.text(doc.splitTextToSize(paragraph1, contentWidth), marginLeft, currentY);
+    currentY += doc.getTextDimensions(doc.splitTextToSize(paragraph1, contentWidth)).h + 10;
+    doc.text(doc.splitTextToSize(paragraph2, contentWidth), marginLeft, currentY);
+    currentY += doc.getTextDimensions(doc.splitTextToSize(paragraph2, contentWidth)).h + 10;
+    doc.text(doc.splitTextToSize(paragraph3, contentWidth), marginLeft, currentY);
+    currentY += doc.getTextDimensions(doc.splitTextToSize(paragraph3, contentWidth)).h + 25;
+
+    const orderDateStr = isValid(parseISO(entry.orderReceivedDate)) ? format(parseISO(entry.orderReceivedDate), "dd/MM/yyyy", { locale: fr }) : "Date Invalide";
+    
+    let detailsY = currentY;
+    doc.setFontSize(defaultFontSize);
+    doc.setFont(undefined, 'bold');
+    doc.text("Commande reçue le:", marginLeft, detailsY);
+    doc.setFont(undefined, 'normal');
+    doc.text(orderDateStr, marginLeft + 140, detailsY);
+    detailsY += 15;
+
+    doc.setFont(undefined, 'bold');
+    doc.text("À:", marginLeft, detailsY);
+    doc.setFont(undefined, 'normal');
+    doc.text(`${(entry.orderReceivedTime || 'N/A').replace(':', 'H')}`, marginLeft + 140, detailsY);
+    detailsY += 15;
+
+    doc.setFont(undefined, 'bold');
+    doc.text("Lieu:", marginLeft, detailsY);
+    doc.setFont(undefined, 'normal');
+    doc.text("Brebières", marginLeft + 140, detailsY);
+    
+    currentY = detailsY + 25;
+
+    const signatureTableBody = [
+      [
+        { content: 'Le cuisinier\nMr Dernoncourt Julien', styles: { halign: 'center', valign: 'top', minCellHeight: 80 } },
+        { content: `Le client\n${entry.clientName}`, styles: { halign: 'center', valign: 'top', minCellHeight: 80 } }
+      ]
+    ];
+    const sigTableColWidth = (contentWidth - (doc.getLineWidth() * 3)) / 2;
+
+    doc.autoTable({
+      startY: currentY,
+      body: signatureTableBody,
+      theme: 'grid',
+      styles: { fontSize: defaultFontSize, cellPadding: 5, font: pdfSettings.fontFamily || 'helvetica' },
+      columnStyles: { 0: { cellWidth: sigTableColWidth }, 1: { cellWidth: sigTableColWidth } },
+      margin: { left: marginLeft, right: marginRight },
+      tableWidth: 'auto'
+    });
+    currentY = (doc as any).lastAutoTable.finalY + 20;
+
+    let finalDetailsY = currentY;
+    doc.setFont(undefined, 'bold');
+    doc.text("Nombre de Pique-Niques:", marginLeft, finalDetailsY);
+    doc.setFont(undefined, 'normal');
+    doc.text(`${entry.numberOfPicnics} PN`, marginLeft + 150, finalDetailsY);
+    finalDetailsY += 20;
+    
+    doc.setFont(undefined, 'bold');
+    doc.text("T° de Départ:", marginLeft, finalDetailsY);
+    doc.setFont(undefined, 'normal');
+    doc.text(`${entry.departureTemperature}°C`, marginLeft + 150, finalDetailsY);
+    
+    currentY = finalDetailsY + 15;
+    
+    if (currentY > pageHeight - marginBottom - (pdfSettings.footerFontSize || 8) - 10) { 
+       currentY = pageHeight - marginBottom - (pdfSettings.footerFontSize || 8) - 5;
+    }
+
+    if (pdfSettings.footerText) {
+      let footerStr = pdfSettings.footerText
+          .replace('{date}', generationDateFormatted)
+          .replace('{pageNumber}', String(pageNumber))
+          .replace('{totalPages}', String(totalPages));
+      doc.setFontSize(pdfSettings.footerFontSize || 8);
+      doc.text(footerStr, marginLeft, pageHeight - (marginBottom / 2));
+    }
+};
+
+
 export default function PicnicDepartureForm() {
   const [forms, setForms] = useState<PicnicDepartureEntry[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingForm, setEditingForm] = useState<PicnicDepartureEntry | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
+  const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
+  const isMobile = useMobile();
+  const [showForm, setShowForm] = useState(false);
 
   const form = useForm<PicnicDepartureFormData>({
     resolver: zodResolver(picnicDepartureSchema),
@@ -74,7 +233,7 @@ export default function PicnicDepartureForm() {
     setIsLoading(true);
     try {
       const formsCollectionRef = collection(firestore, FIRESTORE_COLLECTION);
-      const q = query(formsCollectionRef, orderBy("entryCreationDate", "desc"));
+      const q = query(formsCollectionRef, orderBy("orderReceivedDate", "desc"));
       const querySnapshot = await getDocs(q);
       const loadedForms = querySnapshot.docs.map(docSnap => {
         const data = docSnap.data();
@@ -98,7 +257,6 @@ export default function PicnicDepartureForm() {
     fetchForms();
   }, [fetchForms]);
 
-
   const handleOpenDialog = (entry?: PicnicDepartureEntry) => {
     setEditingForm(entry || null);
     if (entry) {
@@ -116,7 +274,11 @@ export default function PicnicDepartureForm() {
         clientName: '', numberOfPicnics: 1, departureTemperature: '',
       });
     }
-    setIsDialogOpen(true);
+    if (isMobile) {
+      setShowForm(true);
+    } else {
+      setIsDialogOpen(true);
+    }
   };
 
   const handleFormSubmit = async (data: PicnicDepartureFormData) => {
@@ -127,7 +289,6 @@ export default function PicnicDepartureForm() {
       clientName: data.clientName,
       numberOfPicnics: data.numberOfPicnics,
       departureTemperature: data.departureTemperature,
-      entryCreationDate: editingForm ? Timestamp.fromDate(new Date(editingForm.entryCreationDate)) : Timestamp.fromDate(new Date()), // Keep original creation date on edit
     };
 
     try {
@@ -135,13 +296,13 @@ export default function PicnicDepartureForm() {
         const formDocRef = doc(firestore, FIRESTORE_COLLECTION, editingForm.id);
         await setDoc(formDocRef, {
             ...entryDataForFirestore,
-             entryCreationDate: Timestamp.fromDate(new Date(editingForm.entryCreationDate)), // Keep original on edit
+             entryCreationDate: Timestamp.fromDate(new Date(editingForm.entryCreationDate)),
           });
         toast({ title: "Fiche Modifiée" });
       } else {
         await addDoc(collection(firestore, FIRESTORE_COLLECTION), {
             ...entryDataForFirestore,
-            entryCreationDate: Timestamp.fromDate(new Date()), // New creation date
+            entryCreationDate: Timestamp.fromDate(new Date()),
         });
         toast({ title: "Fiche Ajoutée" });
       }
@@ -152,6 +313,7 @@ export default function PicnicDepartureForm() {
     } finally {
       setIsLoading(false);
       setIsDialogOpen(false);
+      setShowForm(false);
     }
   };
 
@@ -168,7 +330,7 @@ export default function PicnicDepartureForm() {
       setIsLoading(false);
     }
   };
-
+  
   const generatePdfForEntry = (entry: PicnicDepartureEntry) => {
     setIsLoading(true);
     try {
@@ -177,132 +339,13 @@ export default function PicnicDepartureForm() {
         unit: 'pt', 
         format: pdfSettings.pageSize || 'a4',
         orientation: pdfSettings.orientation || 'portrait',
-      }) as jsPDFWithAutoTable; 
-      doc.setFont(pdfSettings.fontFamily || 'helvetica');
-      const defaultFontSize = pdfSettings.defaultFontSize || 10;
-      const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
+      }) as jsPDFWithAutoTable;
       
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const marginLeft = pdfSettings.marginLeft || 40;
-      const marginRight = pdfSettings.marginRight || 40;
-      const marginTop = pdfSettings.marginTop || 40;
-      const marginBottom = pdfSettings.marginBottom || 40;
-      const contentWidth = pageWidth - marginLeft - marginRight;
+      drawSingleFormPage(doc, entry, 1, 1);
       
-      let currentY = marginTop;
-
-      if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
-        try {
-          const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
-          const formatType = imgProps.fileType.toUpperCase();
-          const desiredHeight = 30; 
-          const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
-          doc.addImage(pdfSettings.logoUrl, formatType, marginLeft, currentY, imgWidth, desiredHeight);
-          currentY += desiredHeight + 10;
-        } catch (e) {
-          console.error("Error drawing logo in PDF:", e);
-          doc.setFontSize(pdfSettings.headerFontSize || 8); doc.text("[Erreur Logo]", marginLeft, currentY); currentY += 15;
-        }
-      } else if (pdfSettings.headerText) {
-        doc.setFontSize(pdfSettings.headerFontSize || 10);
-        const headerLines = pdfSettings.headerText.split('\n');
-        headerLines.forEach(line => {
-            doc.text(line, marginLeft, currentY, {maxWidth: contentWidth});
-            currentY += (pdfSettings.headerFontSize || 10) * 0.7 + 2;
-        });
-        currentY += 5;
-      } else {
-        doc.setFontSize(10); doc.setTextColor(150, 150, 150);
-        doc.text("LA VIE ACTIVE - I.M.E BREBIERES", marginLeft, currentY); 
-        doc.setTextColor(0,0,0);
-        currentY += 20;
-      }
-      
-      const topRightBoxWidth = 120; 
-      const topRightBoxHeight = 30;
-      const topRightBoxX = pageWidth - marginRight - topRightBoxWidth;
-      const topRightBoxY = marginTop - 10 > 0 ? marginTop -10 : marginTop; 
-
-      doc.rect(topRightBoxX, topRightBoxY, topRightBoxWidth, topRightBoxHeight);
-      doc.setFontSize(8); doc.setTextColor(0,0,0);
-      doc.text("09-GFL-F-17", topRightBoxX + 5, topRightBoxY + 12);
-      doc.text("Version : 2.0", topRightBoxX + 5, topRightBoxY + 22);
-      
-      currentY = Math.max(currentY, topRightBoxY + topRightBoxHeight + 15);
-
-      doc.setFontSize((pdfSettings.documentTitleFontSize || 14)); doc.setFont(undefined, 'bold');
-      doc.text("ENLEVEMENT DE PREPARATION CULINAIRE", pageWidth / 2, currentY, { align: 'center' });
-      currentY += (pdfSettings.documentTitleFontSize || 14) + 15;
-
-      doc.setFontSize(defaultFontSize - 1); doc.setFont(undefined, 'normal');
-      const addressLines = [
-        "I.M.E Jean de Saint Aubert",
-        "46, chemin du bois des Caures",
-        "62117 BREBIERES",
-        "Tel: 03.21.50.00.36"
-      ];
-      addressLines.forEach(line => {
-        doc.text(line, pageWidth / 2, currentY, { align: 'center' });
-        currentY += (defaultFontSize -1) * 1.2;
-      });
-      currentY += 15;
-
-      const paragraph1 = "Ce Repas a été préparé en respectant scrupuleusement les règles d'hygiène en vigueur. Les repas sont stockés en réfrigération positive à 3° en attente d'enlèvement.";
-      const paragraph2 = "Afin de conserver cette commande, il est impératif de le garder stocké en glacière, avec pains de glace ou plaques eutectiques.";
-      const paragraph3 = "L'I.M.E Jean de Saint Aubert décline toute responsabilité après enlèvement de ce repas.";
-
-      doc.text(doc.splitTextToSize(paragraph1, contentWidth), marginLeft, currentY);
-      currentY += doc.getTextDimensions(doc.splitTextToSize(paragraph1, contentWidth)).h + 10;
-      doc.text(doc.splitTextToSize(paragraph2, contentWidth), marginLeft, currentY);
-      currentY += doc.getTextDimensions(doc.splitTextToSize(paragraph2, contentWidth)).h + 10;
-      doc.text(doc.splitTextToSize(paragraph3, contentWidth), marginLeft, currentY);
-      currentY += doc.getTextDimensions(doc.splitTextToSize(paragraph3, contentWidth)).h + 25;
-
-      const orderDateStr = isValid(parseISO(entry.orderReceivedDate)) ? format(parseISO(entry.orderReceivedDate), "dd/MM/yyyy", { locale: fr }) : "Date Invalide";
-      doc.text(`Commande reçue le ........ ${orderDateStr} ........`, marginLeft, currentY);
-      currentY += defaultFontSize * 1.2 + 5;
-      doc.text(`à ........ ${entry.orderReceivedTime || 'Heure N/A'} H ........`, marginLeft + 20, currentY);
-      currentY += defaultFontSize * 1.2 + 5;
-      doc.text("à Brebières", marginLeft + 20, currentY);
-      currentY += 25;
-
-      const signatureTableBody = [
-        [
-          { content: 'Le cuisinier\nMr Dernoncourt Julien', styles: { halign: 'center', valign: 'top', minCellHeight: 80 } },
-          { content: `Le client\n${entry.clientName}`, styles: { halign: 'center', valign: 'top', minCellHeight: 80 } }
-        ]
-      ];
-      const sigTableColWidth = (contentWidth - (doc.getLineWidth() * 3)) / 2; 
-
-      doc.autoTable({
-        startY: currentY,
-        body: signatureTableBody,
-        theme: 'grid',
-        styles: { fontSize: defaultFontSize, cellPadding: 5, font: pdfSettings.fontFamily || 'helvetica' },
-        columnStyles: { 0: { cellWidth: sigTableColWidth }, 1: { cellWidth: sigTableColWidth } },
-        margin: { left: marginLeft, right: marginRight },
-        tableWidth: 'auto'
-      });
-      currentY = (doc as any).lastAutoTable.finalY + 20;
-
-      doc.text(`Nombre de Pique-Niques : ........ ${entry.numberOfPicnics} ........`, marginLeft, currentY);
-      currentY += defaultFontSize * 1.2 + 10;
-      doc.text(`T° de Départ : ........ ${entry.departureTemperature} ........`, marginLeft, currentY);
-      currentY += defaultFontSize * 1.2 + 5;
-      
-      if (currentY > pageHeight - marginBottom - (pdfSettings.footerFontSize || 8) - 10) { 
-         currentY = pageHeight - marginBottom - (pdfSettings.footerFontSize || 8) - 5;
-      }
-
-      if (pdfSettings.footerText) {
-        let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', '1').replace('{totalPages}', '1');
-        doc.setFontSize(pdfSettings.footerFontSize || 8);
-        doc.text(footerStr, marginLeft, pageHeight - (marginBottom / 2));
-      }
-
       doc.save(`Fiche_Depart_PN_${entry.clientName.replace(/\s+/g, '_')}_${format(parseISO(entry.orderReceivedDate), "yyyyMMdd")}.pdf`);
       toast({ title: "PDF Fiche Départ Généré" });
+
     } catch (error: any) {
       console.error("Error generating PDF:", error);
       toast({ title: "Erreur PDF", description: `La génération du PDF a échoué: ${error.message || String(error)}`, variant: "destructive" });
@@ -310,6 +353,151 @@ export default function PicnicDepartureForm() {
       setIsLoading(false);
     }
   };
+
+  const generateMonthlyPdfsByClient = async () => {
+    setIsLoading(true);
+    try {
+      const monthStart = startOfMonth(selectedMonth);
+      const monthEnd = endOfMonth(selectedMonth);
+      const monthlyForms = forms.filter(f => {
+        const orderDate = parseISO(f.orderReceivedDate);
+        return orderDate >= monthStart && orderDate <= monthEnd;
+      });
+
+      if (monthlyForms.length === 0) {
+        toast({ title: "Aucune Donnée", description: "Aucune fiche de départ pour le mois sélectionné.", variant: "default" });
+        setIsLoading(false);
+        return;
+      }
+
+      // Group forms by client name
+      const formsByClient = monthlyForms.reduce((acc, form) => {
+        const clientName = form.clientName || 'Client Inconnu';
+        if (!acc[clientName]) {
+          acc[clientName] = [];
+        }
+        acc[clientName].push(form);
+        return acc;
+      }, {} as Record<string, PicnicDepartureEntry[]>);
+
+      const clientCount = Object.keys(formsByClient).length;
+
+      for (const clientName in formsByClient) {
+        const clientForms = formsByClient[clientName];
+        // Sort this client's forms by date
+        clientForms.sort((a, b) => new Date(a.orderReceivedDate).getTime() - new Date(b.orderReceivedDate).getTime());
+
+        const pdfSettings = getPdfLayoutSettings('pms_picnic_departure_form');
+        const doc = new jsPDF({ 
+          unit: 'pt', 
+          format: pdfSettings.pageSize || 'a4',
+          orientation: pdfSettings.orientation || 'portrait',
+        }) as jsPDFWithAutoTable;
+        
+        clientForms.forEach((entry, index) => {
+          if (index > 0) {
+            doc.addPage();
+          }
+          drawSingleFormPage(doc, entry, index + 1, clientForms.length);
+        });
+
+        doc.save(`Fiches_${clientName.replace(/\s+/g, '_')}_${format(selectedMonth, "yyyy_MM")}.pdf`);
+      }
+      
+      toast({ title: "PDFs par client générés", description: `${clientCount} fichier(s) PDF ont été créés.` });
+
+    } catch (error: any) {
+      console.error("Error generating monthly PDFs by client:", error);
+      toast({ title: "Erreur PDF Mensuel", description: `La génération a échoué: ${error.message || String(error)}`, variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const filteredForms = forms.filter(f => {
+      const orderDate = parseISO(f.orderReceivedDate);
+      return orderDate >= startOfMonth(selectedMonth) && orderDate <= endOfMonth(selectedMonth);
+  });
+
+  const renderForm = () => (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-3 py-2 max-h-[70vh] overflow-y-auto pr-2">
+        <FormField control={form.control} name="orderReceivedDate" render={({ field }) => (
+          <FormItem className="flex flex-col"><FormLabel>Commande reçue le</FormLabel>
+          <Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+              {field.value ? format(field.value, "dd/MM/yyyy", { locale: fr }) : <span>Choisir date</span>}
+              <LucideCalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+          </Button></FormControl></PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr} /></PopoverContent></Popover><FormMessage />
+          </FormItem>
+        )} />
+        <FormField control={form.control} name="orderReceivedTime" render={({ field }) => (<FormItem><FormLabel>À ... H ... (Heure de réception)</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
+        <FormField control={form.control} name="clientName" render={({ field }) => (<FormItem><FormLabel>Le Client</FormLabel><FormControl><Input placeholder="Nom du client" {...field} /></FormControl><FormMessage /></FormItem>)} />
+        <FormField control={form.control} name="numberOfPicnics" render={({ field }) => (<FormItem><FormLabel>Nombre de Pique-Niques</FormLabel><FormControl><Input type="number" placeholder="0" min="1" {...field} /></FormControl><FormMessage /></FormItem>)} />
+        <FormField control={form.control} name="departureTemperature" render={({ field }) => (<FormItem><FormLabel>T° de Départ</FormLabel><FormControl><Input placeholder="Ex: 3" {...field} /></FormControl><FormMessage /></FormItem>)} />
+        <DialogFooter className="pt-4">
+          <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Annuler</Button>
+          <Button type="submit" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingForm ? "Enregistrer" : "Ajouter Fiche"}</Button>
+        </DialogFooter>
+      </form>
+    </Form>
+  );
+
+  if (isMobile) {
+    return (
+      <Card className="shadow-lg">
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShoppingBasket className="w-6 h-6 text-primary"/>
+              {showForm ? (editingForm ? "Modifier" : "Nouvelle") + " Fiche" : "Départ Pique-Nique"}
+            </div>
+            {!showForm && (
+              <Button onClick={() => handleOpenDialog()}><PlusCircle className="mr-2 h-4 w-4"/> Ajouter</Button>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {showForm ? renderForm() : (
+            <>
+              {isLoading && filteredForms.length === 0 ? ( 
+                <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin"/></div>
+              ) : !isLoading && filteredForms.length === 0 ? ( 
+                <p className="text-muted-foreground text-center py-8">Aucune fiche de départ.</p>
+              ) : (
+                <div className="overflow-x-auto border rounded-md max-h-[60vh]">
+                  <Table>
+                    <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Client</TableHead><TableHead className="text-center">Actions</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                      {filteredForms.map(entry => (
+                        <TableRow key={entry.id}>
+                          <TableCell>{format(parseISO(entry.orderReceivedDate), "dd/MM/yy")}</TableCell>
+                          <TableCell>{entry.clientName}</TableCell>
+                          <TableCell className="text-center space-x-1">
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5"/></Button></AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader><AlertDialogTitle>Supprimer ?</AlertDialogTitle></AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Non</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleDeleteForm(entry.id)}>Oui</AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                            <Button variant="outline" size="icon" onClick={() => handleOpenDialog(entry)} className="h-7 w-7"><Edit2 className="h-3.5 w-3.5"/></Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="shadow-lg">
@@ -319,69 +507,74 @@ export default function PicnicDepartureForm() {
             <ShoppingBasket className="w-6 h-6 text-primary"/>
             Fiche d'Enlèvement Pique-Nique
           </div>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={() => handleOpenDialog()}><PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Fiche</Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-lg">
-              <DialogHeader><DialogTitle>{editingForm ? "Modifier" : "Nouvelle"} Fiche de Départ Pique-Nique</DialogTitle></DialogHeader>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-3 py-2 max-h-[70vh] overflow-y-auto pr-2">
-                  <FormField control={form.control} name="orderReceivedDate" render={({ field }) => (
-                    <FormItem className="flex flex-col"><FormLabel>Commande reçue le</FormLabel>
-                    <Popover><PopoverTrigger asChild><FormControl><Button variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
-                        {field.value ? format(field.value, "dd/MM/yyyy", { locale: fr }) : <span>Choisir date</span>}
-                        <LucideCalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                    </Button></FormControl></PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr} /></PopoverContent></Popover><FormMessage />
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name="orderReceivedTime" render={({ field }) => (<FormItem><FormLabel>À ... H ... (Heure de réception)</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                  <FormField control={form.control} name="clientName" render={({ field }) => (<FormItem><FormLabel>Le Client</FormLabel><FormControl><Input placeholder="Nom du client" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                  <FormField control={form.control} name="numberOfPicnics" render={({ field }) => (<FormItem><FormLabel>Nombre de Pique-Niques</FormLabel><FormControl><Input type="number" placeholder="0" min="1" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                  <FormField control={form.control} name="departureTemperature" render={({ field }) => (<FormItem><FormLabel>T° de Départ</FormLabel><FormControl><Input placeholder="Ex: 3°C" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                  <DialogFooter className="pt-4">
-                    <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                    <Button type="submit" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingForm ? "Enregistrer" : "Ajouter Fiche"}</Button>
-                  </DialogFooter>
-                </form>
-              </Form>
-            </DialogContent>
-          </Dialog>
+           <div className="flex items-center gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant={"outline"}>
+                    <LucideCalendarIcon className="mr-2 h-4 w-4" />
+                    {format(selectedMonth, "MMMM yyyy", { locale: fr })}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <Calendar
+                    mode="single"
+                    selected={selectedMonth}
+                    onSelect={(date) => {
+                      if (date) setSelectedMonth(date);
+                    }}
+                    initialFocus
+                    locale={fr}
+                  />
+                </PopoverContent>
+              </Popover>
+              <Button onClick={generateMonthlyPdfsByClient} disabled={isLoading || filteredForms.length === 0}>
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+                Générer PDF du mois
+              </Button>
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button onClick={() => handleOpenDialog()}><PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Fiche</Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-lg">
+                <DialogHeader><DialogTitle>{editingForm ? "Modifier" : "Nouvelle"} Fiche de Départ Pique-Nique</DialogTitle></DialogHeader>
+                {renderForm()}
+              </DialogContent>
+            </Dialog>
+          </div>
         </CardTitle>
         <CardDescription>
-          Créez et gérez les fiches d'enlèvement pour les préparations culinaires (pique-niques).
+          Créez et gérez les fiches d'enlèvement pour les préparations culinaires (pique-niques). Affichez les fiches par mois.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {isLoading && forms.length === 0 ? ( 
-          <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Chargement...</div>
-        ) : !isLoading && forms.length === 0 ? ( 
-          <p className="text-muted-foreground text-center py-8">Aucune fiche de départ enregistrée. Cliquez sur "Nouvelle Fiche" pour commencer.</p>
+        {isLoading && filteredForms.length === 0 ? ( 
+          <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Chargement des données...</div>
+        ) : !isLoading && filteredForms.length === 0 ? ( 
+          <p className="text-muted-foreground text-center py-8">Aucune fiche de départ enregistrée pour {format(selectedMonth, "MMMM yyyy", { locale: fr })}.</p>
         ) : (
           <div className="overflow-x-auto border rounded-md max-h-[60vh]">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Date Cde.</TableHead>
-                  <TableHead>Heure Cde.</TableHead>
                   <TableHead>Client</TableHead>
+                  <TableHead>Heure Cde.</TableHead>
                   <TableHead className="text-right">Nb PN</TableHead>
                   <TableHead>T° Départ</TableHead>
                   <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {forms.map(entry => (
+                {filteredForms.map(entry => (
                   <TableRow key={entry.id}>
                     <TableCell>{format(parseISO(entry.orderReceivedDate), "dd/MM/yy", { locale: fr })}</TableCell>
-                    <TableCell>{entry.orderReceivedTime}</TableCell>
                     <TableCell>{entry.clientName}</TableCell>
+                    <TableCell>{entry.orderReceivedTime}</TableCell>
                     <TableCell className="text-right">{entry.numberOfPicnics}</TableCell>
                     <TableCell>{entry.departureTemperature}</TableCell>
                     <TableCell className="text-center space-x-1">
                       <Button variant="outline" size="icon" onClick={() => generatePdfForEntry(entry)} className="h-7 w-7" disabled={isLoading} title="Générer PDF">
-                        {isLoading && editingForm?.id === entry.id ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <FileText className="h-3.5 w-3.5"/>}
+                        <FileText className="h-3.5 w-3.5"/>
                       </Button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
@@ -414,4 +607,3 @@ export default function PicnicDepartureForm() {
     </Card>
   );
 }
-

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, FormEvent } from 'react';
@@ -14,15 +13,12 @@ import { useToast } from '@/hooks/use-toast';
 import type { AppUser, RubricId, ViewableHourSummaryConfig } from '@/app/dashboard/settings/components/user-management';
 import { ALL_RUBRIC_IDS, LOGGED_IN_USER_PERMISSIONS_KEY, LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY } from '@/app/dashboard/settings/components/user-management';
 import { firestore } from '@/lib/firebase';
-import { collection, getDocs, query, orderBy, doc, setDoc, addDoc, getDoc } from 'firebase/firestore'; 
+import { collection, getDocs, query, where, orderBy, doc, setDoc, addDoc, getDoc } from 'firebase/firestore';
 
-// Firestore constants for app settings
 const APP_SETTINGS_COLLECTION = "appSettings";
 const GLOBAL_APP_SETTINGS_DOC_ID = "globalAppSettings";
 
 const simulatedHash = (password: string): string => `sim_hashed_${password}_!`;
-const DEFAULT_CHEF_ID_FIRESTORE = 'default_chef_user_id';
-const DEFAULT_CDS_ID_FIRESTORE = 'default_cds_user_id'; // Added this
 
 export default function LoginPage() {
   const [definedUsers, setDefinedUsers] = useState<AppUser[]>([]);
@@ -41,135 +37,103 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (isClient) {
-      if (localStorage.getItem('isLoggedIn') === 'true') {
-        router.push('/dashboard');
-        return;
-      }
-
       const loadInitialData = async () => {
         setIsLoading(true);
-        // Load App Logo from Firestore
+        
         const settingsDocRef = doc(firestore, APP_SETTINGS_COLLECTION, GLOBAL_APP_SETTINGS_DOC_ID);
         try {
           const docSnap = await getDoc(settingsDocRef);
-          if (docSnap.exists()) {
-            const settingsData = docSnap.data();
-            if (settingsData && settingsData.appLogoUrl) {
-              setAppLogoUrl(settingsData.appLogoUrl);
-            } else {
-              setAppLogoUrl(null);
-            }
-          } else {
-            setAppLogoUrl(null); // No settings doc, no logo
+          if (docSnap.exists() && docSnap.data().appLogoUrl) {
+            setAppLogoUrl(docSnap.data().appLogoUrl);
           }
         } catch (logoError) {
-          console.error("Error loading app logo from Firestore on login page:", logoError);
-          setAppLogoUrl(null); // Fallback to no logo on error
+          console.error("Error loading app logo:", logoError);
         }
 
-        // Fetch Users
-        let usersFromDb: AppUser[] = [];
         try {
           const usersCollectionRef = collection(firestore, 'appUsers');
-          const q = query(usersCollectionRef, orderBy("username"));
-          const querySnapshot = await getDocs(q);
-          usersFromDb = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as AppUser));
+          const allPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
+          const supervisorPermissions = { ...allPermissions, canAccessSettings: false };
+
+          // --- Chef Logic: Create or Update ---
+          const chefQuery = query(usersCollectionRef, where("username", "==", "Chef"));
+          const chefSnapshot = await getDocs(chefQuery);
+          if (chefSnapshot.empty) {
+            const defaultChef: Omit<AppUser, 'id'> = {
+              username: 'Chef',
+              role: 'admin',
+              passwordRequired: true,
+              simulatedStoredPassword: simulatedHash('000'),
+              permissions: allPermissions,
+              viewableHourSummaryConfig: { type: 'all' },
+            };
+            await addDoc(usersCollectionRef, defaultChef);
+            toast({ title: "Compte 'Chef' Initialisé" });
+          } else {
+            const chefDoc = chefSnapshot.docs[0];
+            if (chefDoc.data().role !== 'admin') {
+              await setDoc(chefDoc.ref, { role: 'admin' }, { merge: true });
+            }
+          }
+
+          // --- Chef de service Logic: Create or Update ---
+          const cdsQuery = query(usersCollectionRef, where("username", "==", "Chef de service"));
+          const cdsSnapshot = await getDocs(cdsQuery);
+          if (cdsSnapshot.empty) {
+            const defaultCds: Omit<AppUser, 'id'> = {
+              username: 'Chef de service',
+              role: 'superviseur',
+              passwordRequired: true,
+              simulatedStoredPassword: simulatedHash('cds000'),
+              permissions: supervisorPermissions,
+              viewableHourSummaryConfig: { type: 'all' },
+            };
+            await addDoc(usersCollectionRef, defaultCds);
+            toast({ title: "Compte 'Chef de service' Initialisé" });
+          } else {
+            const cdsDoc = cdsSnapshot.docs[0];
+            if (cdsDoc.data().role !== 'superviseur') {
+              await setDoc(cdsDoc.ref, { role: 'superviseur' }, { merge: true });
+            }
+          }
+
+          // Refetch all users for the UI
+          const finalSnapshot = await getDocs(query(usersCollectionRef, orderBy("username")));
+          const finalUsers = finalSnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as AppUser));
+          setDefinedUsers(finalUsers);
+
         } catch (e) {
-          console.error("Error loading users from Firestore for login:", e);
-          toast({ title: "Erreur de chargement des utilisateurs", variant: "destructive"});
+          console.error("Fatal error during user setup:", e);
+          toast({ title: "Erreur critique lors du chargement des utilisateurs", variant: "destructive" });
+        } finally {
+          setIsLoading(false);
         }
-
-        const defaultAdminPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
-        const defaultAdminViewConfig = { type: 'all' as const };
-
-        // Ensure Chef user exists and has full permissions
-        let chefUserInDb = usersFromDb.find(u => u.username.toLowerCase() === 'chef');
-        if (!chefUserInDb) {
-          const defaultChefForCreation: Omit<AppUser, 'id'> = {
-            username: 'Chef', passwordRequired: true, simulatedStoredPassword: simulatedHash('000'),
-            permissions: defaultAdminPermissions, viewableHourSummaryConfig: defaultAdminViewConfig,
-          };
-          try {
-            const chefDocRef = await addDoc(collection(firestore, "appUsers"), defaultChefForCreation);
-            chefUserInDb = { ...defaultChefForCreation, id: chefDocRef.id };
-            usersFromDb.push(chefUserInDb); 
-            toast({ title: "Compte Chef Initialisé", description: "Mdp par défaut: 000."});
-          } catch (createError) { /* ... error handling ... */ }
-        } else { // Ensure Chef always has full permissions
-             if (JSON.stringify(chefUserInDb.permissions) !== JSON.stringify(defaultAdminPermissions) || 
-                 JSON.stringify(chefUserInDb.viewableHourSummaryConfig) !== JSON.stringify(defaultAdminViewConfig) ||
-                 !chefUserInDb.passwordRequired || !chefUserInDb.simulatedStoredPassword) {
-                await setDoc(doc(firestore, "appUsers", chefUserInDb.id), { 
-                    permissions: defaultAdminPermissions, 
-                    viewableHourSummaryConfig: defaultAdminViewConfig,
-                    passwordRequired: true,
-                    simulatedStoredPassword: chefUserInDb.simulatedStoredPassword || simulatedHash('000')
-                }, { merge: true });
-            }
-        }
-        
-        // Ensure Chef de service user exists and has full permissions
-        let cdsUserInDb = usersFromDb.find(u => u.username.toLowerCase() === 'chef de service');
-        if (!cdsUserInDb) {
-          const defaultCdsForCreation: Omit<AppUser, 'id'> = {
-            username: 'Chef de service', passwordRequired: true, simulatedStoredPassword: simulatedHash('cds000'),
-            permissions: defaultAdminPermissions, viewableHourSummaryConfig: defaultAdminViewConfig,
-          };
-           try {
-            const cdsDocRef = await addDoc(collection(firestore, "appUsers"), defaultCdsForCreation);
-            cdsUserInDb = { ...defaultCdsForCreation, id: cdsDocRef.id };
-            usersFromDb.push(cdsUserInDb);
-            toast({ title: "Compte Chef de Service Initialisé", description: "Mdp par défaut: cds000."});
-          } catch (createError) { /* ... error handling ... */ }
-        } else { // Ensure CDS always has full permissions
-            if (JSON.stringify(cdsUserInDb.permissions) !== JSON.stringify(defaultAdminPermissions) || 
-                JSON.stringify(cdsUserInDb.viewableHourSummaryConfig) !== JSON.stringify(defaultAdminViewConfig) ||
-                !cdsUserInDb.passwordRequired || !cdsUserInDb.simulatedStoredPassword) {
-                await setDoc(doc(firestore, "appUsers", cdsUserInDb.id), { 
-                    permissions: defaultAdminPermissions, 
-                    viewableHourSummaryConfig: defaultAdminViewConfig,
-                    passwordRequired: true,
-                    simulatedStoredPassword: cdsUserInDb.simulatedStoredPassword || simulatedHash('cds000')
-                }, { merge: true });
-            }
-        }
-
-        // Apply enforced settings to loaded users for display
-        setDefinedUsers(
-          usersFromDb.map(u => {
-            if (u.username.toLowerCase() === 'chef' || u.username.toLowerCase() === 'chef de service') {
-              return {
-                ...u,
-                passwordRequired: true,
-                permissions: defaultAdminPermissions,
-                viewableHourSummaryConfig: defaultAdminViewConfig,
-                simulatedStoredPassword: u.simulatedStoredPassword || (u.username.toLowerCase() === 'chef' ? simulatedHash('000') : simulatedHash('cds000')),
-              };
-            }
-            return u;
-          }).sort((a,b) => a.username.localeCompare(b.username))
-        );
-        setIsLoading(false);
       };
-
       loadInitialData();
     }
-  }, [isClient, router, toast]);
+  }, [isClient, toast]);
 
   const performLogin = (user: AppUser) => {
+    localStorage.clear(); // Clear all old keys to be safe
     localStorage.setItem('isLoggedIn', 'true');
     localStorage.setItem('loggedInUsername', user.username);
-    
-    let permissionsToStore: Partial<Record<RubricId, boolean>> = { ...user.permissions };
-    let hourViewConfigToStore: ViewableHourSummaryConfig = user.viewableHourSummaryConfig || { type: 'none' as const };
 
-    if (user.username.toLowerCase() === 'chef' || user.username.toLowerCase() === 'chef de service') {
-        permissionsToStore = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
-        hourViewConfigToStore = { type: 'all' as const };
-    }
+    let permissionsToStore: Partial<Record<RubricId, boolean>>;
     
+    if (user.role === 'admin') {
+      permissionsToStore = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
+    } else if (user.role === 'superviseur') {
+      permissionsToStore = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
+      permissionsToStore.canAccessSettings = false;
+    } else {
+      permissionsToStore = user.permissions || {};
+    }
+
+    const hourViewConfigToStore = user.viewableHourSummaryConfig || { type: 'none' as const };
+
     localStorage.setItem(LOGGED_IN_USER_PERMISSIONS_KEY, JSON.stringify(permissionsToStore));
     localStorage.setItem(LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY, JSON.stringify(hourViewConfigToStore));
+    
     router.push('/dashboard');
   };
 
@@ -178,12 +142,12 @@ export default function LoginPage() {
     if (!user.passwordRequired) {
       performLogin(user);
     } else {
-      if (!user.simulatedStoredPassword) { 
-          setError(`Aucun mot de passe n'est configuré pour ${user.username}. Veuillez contacter l'administrateur.`);
-          return;
+      if (!user.simulatedStoredPassword) {
+        setError(`Aucun mot de passe n'est configuré pour ${user.username}.`);
+        return;
       }
-      setSelectedUserForPassword(user); 
-      setPasswordInput(''); 
+      setSelectedUserForPassword(user);
+      setPasswordInput('');
     }
   };
 
@@ -204,11 +168,10 @@ export default function LoginPage() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center p-4 md:p-8 bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary mr-2" />
-        <p className="text-muted-foreground">Chargement...</p>
+        <p className="text-muted-foreground">Mise à jour des utilisateurs...</p>
       </main>
     );
   }
-
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4 md:p-8 bg-background">
       {appLogoUrl ? (
@@ -216,15 +179,14 @@ export default function LoginPage() {
           <Image
             src={appLogoUrl}
             alt="Logo de l'application"
-            width={100} 
+            width={100}
             height={100}
             className="rounded-lg object-contain max-h-[100px]"
-            data-ai-hint="application logo" 
-            unoptimized 
+            unoptimized
           />
         </div>
       ) : (
-         <Utensils className="w-16 h-16 text-primary mx-auto mb-4" data-ai-hint="restaurant utensil" />
+         <Utensils className="w-16 h-16 text-primary mx-auto mb-4" />
       )}
       <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="text-center">
@@ -238,36 +200,34 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent className="mt-2">
           {!selectedUserForPassword ? (
-            <>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {definedUsers.length > 0 ? (
-                  definedUsers.map(user => (
-                    <Button
-                      key={user.id}
-                      variant="outline"
-                      className="w-full justify-start text-left py-3 h-auto"
-                      onClick={() => handleUserButtonClick(user)}
-                      disabled={user.passwordRequired && !user.simulatedStoredPassword}
-                    >
-                      <User className="mr-3 h-5 w-5 text-muted-foreground" />
-                      <span className="flex flex-col">
-                        <span className="font-medium">{user.username}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {user.passwordRequired ? "Mot de passe requis" : "Accès direct"}
-                          {user.passwordRequired && !user.simulatedStoredPassword && 
-                           <span className="text-destructive text-xs">(Aucun mdp configuré)</span>
-                          }
-                        </span>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {definedUsers.length > 0 ? (
+                definedUsers.map(user => (
+                  <Button
+                    key={user.id}
+                    variant="outline"
+                    className="w-full justify-start text-left py-3 h-auto"
+                    onClick={() => handleUserButtonClick(user)}
+                    disabled={user.passwordRequired && !user.simulatedStoredPassword}
+                  >
+                    <User className="mr-3 h-5 w-5 text-muted-foreground" />
+                    <span className="flex flex-col">
+                      <span className="font-medium">{user.username}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {user.passwordRequired ? "Mot de passe requis" : "Accès direct"}
+                        {user.passwordRequired && !user.simulatedStoredPassword &&
+                         <span className="text-destructive text-xs">(Aucun mdp configuré)</span>
+                        }
                       </span>
-                    </Button>
-                  ))
-                ) : (
-                  <p className="text-center text-muted-foreground col-span-full">
-                    Aucun utilisateur défini.
-                  </p>
-                )}
-              </div>
-            </>
+                    </span>
+                  </Button>
+                ))
+              ) : (
+                <p className="text-center text-muted-foreground col-span-full">
+                  Aucun utilisateur défini.
+                </p>
+              )}
+            </div>
           ) : (
             <form onSubmit={handlePasswordLogin} className="space-y-6">
               <h2 className="text-lg font-medium text-center text-foreground">
@@ -276,28 +236,28 @@ export default function LoginPage() {
               <div className="space-y-2">
                 <Label htmlFor="password">Mot de passe</Label>
                 <div className="relative">
-                    <LockKeyhole className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        id="password"
-                        type="password"
-                        placeholder="Saisir votre mot de passe"
-                        value={passwordInput}
-                        onChange={(e) => setPasswordInput(e.target.value)}
-                        required
-                        className="pl-10 bg-card-foreground/5 dark:bg-card-foreground/5"
-                    />
+                  <LockKeyhole className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="Saisir votre mot de passe"
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
+                    required
+                    className="pl-10 bg-card-foreground/5 dark:bg-card-foreground/5"
+                  />
                 </div>
               </div>
               {error && <p className="text-sm text-destructive text-center">{error}</p>}
               <div className="flex flex-col sm:flex-row gap-2">
-                <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={() => {
-                        setSelectedUserForPassword(null);
-                        setError('');
-                    }} 
-                    className="w-full sm:w-auto"
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedUserForPassword(null);
+                    setError('');
+                  }}
+                  className="w-full sm:w-auto"
                 >
                   <ArrowLeft className="mr-2 h-4 w-4" /> Retour
                 </Button>
@@ -308,14 +268,12 @@ export default function LoginPage() {
             </form>
           )}
         </CardContent>
-         <CardFooter className="text-center text-xs text-muted-foreground pt-6">
+        <CardFooter className="text-center text-xs text-muted-foreground pt-6">
           <p>
             {selectedUserForPassword && selectedUserForPassword.username.toLowerCase() === 'chef' && selectedUserForPassword.simulatedStoredPassword === simulatedHash('000')
               ? "Mot de passe par défaut pour Chef : 000" 
-              : selectedUserForPassword && selectedUserForPassword.username.toLowerCase() === 'chef de service' && selectedUserForPassword.simulatedStoredPassword === simulatedHash('cds000') // Added for CDS
+              : selectedUserForPassword && selectedUserForPassword.username.toLowerCase() === 'chef de service' && selectedUserForPassword.simulatedStoredPassword === simulatedHash('cds000')
               ? "Mot de passe par défaut pour Chef de service : cds000"
-              : selectedUserForPassword && selectedUserForPassword.passwordRequired && !selectedUserForPassword.simulatedStoredPassword
-              ? "Aucun mot de passe défini pour cet utilisateur. Veuillez configurer dans les paramètres."
               : selectedUserForPassword ? "Entrez le mot de passe configuré." : "Sélectionnez un utilisateur."
             }
           </p>
@@ -324,4 +282,3 @@ export default function LoginPage() {
     </main>
   );
 }
-

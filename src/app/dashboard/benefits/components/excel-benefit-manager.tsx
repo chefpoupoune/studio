@@ -11,14 +11,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import { Button } from '@/components/ui/button';
+import { Label} from "@/components/ui/label";
 import { FileText, Loader2, Trash2, Users } from 'lucide-react';
 import { format, getDaysInMonth, getDate, getDay, startOfMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { useToast } from '@/hooks/use-toast';
+import { Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { BenefitEmployee, BenefitDailyStatusCode, FullMonthlyBenefitData, DailyBenefitEntry } from '../types';
 import { BENEFIT_STATUS_CODES, BENEFIT_STATUS_LEGEND, frenchShortDays } from '../types';
@@ -61,6 +62,7 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [initialDocExists, setInitialDocExists] = useState<boolean | null>(null);
+  const [isSuperviseur, setIsSuperviseur] = useState(false);
   const { toast } = useToast();
 
   const getFirestoreDocId = useCallback(
@@ -81,6 +83,18 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
       };
     });
   }, [selectedYear, selectedMonth]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const userPermissionsString = localStorage.getItem('LOGGED_IN_USER_PERMISSIONS_KEY');
+      if (userPermissionsString) {
+        const userPermissions = JSON.parse(userPermissionsString);
+        setIsSuperviseur(userPermissions.role === 'superviseur');
+        console.log('isSuperviseur:', userPermissions.role === 'superviseur');
+      }
+    }
+  }, []);
+
 
   // Load data from Firestore
   useEffect(() => {
@@ -130,8 +144,29 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
     loadData();
   }, [selectedYear, selectedMonth, getFirestoreDocId, toast, employeesToRender, daysInSelectedMonth]);
 
-  // Save data to Firestore (debounced)
-  useEffect(() => {
+  // Function to save data to Firestore
+  const saveData = useCallback(async () => {
+    if (isLoading || isSaving || initialDocExists === null) return;
+
+    // If doc didn't exist and data is truly empty (e.g., after a clear), don't save empty shell.
+    if (initialDocExists === false && Object.keys(benefitData).length === 0 && employeesToRender.length === 0) {
+      return;
+    }
+
+    setIsSaving(true);
+    const docId = getFirestoreDocId();
+    const docRef = doc(firestore, "monthlyBenefitData", docId);
+    try {
+      await setDoc(docRef, benefitData);
+      toast({ title: "Données enregistrées", description: "Les données d'avantages ont été sauvegardées." });
+    } catch (error) {
+      console.error("Error saving benefit data to Firestore:", error);
+      toast({ title: "Erreur de sauvegarde", description: "Impossible d'enregistrer les données dans Firestore.", variant: "destructive" });
+    }
+    setIsSaving(false);
+  }, [benefitData, isLoading, initialDocExists, getFirestoreDocId, toast, employeesToRender, isSaving]);
+
+  const handleSaveClick = async () => {
     const saveData = async () => {
       if (isLoading || isSaving) return; 
 
@@ -159,16 +194,7 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
       setIsSaving(false);
     };
 
-    const timeoutId = setTimeout(() => {
-      if (initialDocExists !== null) {
-        saveData();
-      }
-    }, 1500); 
-
-    return () => clearTimeout(timeoutId);
-  }, [benefitData, isLoading, isSaving, initialDocExists, getFirestoreDocId, toast, employeesToRender]);
-
-
+  }
   const handleStatusChange = (
     employeeId: string,
     dayNumber: number,
@@ -404,6 +430,7 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
 
   return (
     <div className="space-y-6">
+      {console.log('Rendering with isSuperviseur:', isSuperviseur)}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-end">
         <div>
           <Label htmlFor="year-select-benefits">Année</Label>
@@ -424,11 +451,15 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
                 {(isLoading || isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
                 Générer PDF
             </Button>
+            <Button onClick={saveData} disabled={isSuperviseur || isLoading || isSaving || employeesToRender.length === 0} className="w-full sm:w-auto">
+ {(isLoading || isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Sauvegarder
+ </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive" disabled={isLoading || isSaving || initialDocExists === false && Object.keys(benefitData).length === 0} className="w-full sm:w-auto">
                     <Trash2 className="mr-2 h-4 w-4" />
-                    Effacer Données Mois
+                    Effacer Mois 
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
@@ -514,12 +545,13 @@ export default function BenefitTrackingTable({ employees: employeesToRender }: B
                       const statusConfig = BENEFIT_STATUS_LEGEND.find(s => s.code === cellValue);
                       const cellDisplayClass = statusConfig ? statusConfig.displayClass : "border border-muted-foreground/30";
 
+                      console.log('Select disabled condition:', isSuperviseur || isSaving);
                       return (
                         <TableCell key={`${employee.id}-${day.dayNumber}-${type}`} className={cn("p-0.5 text-center", day.isWeekend && "bg-blue-100 dark:bg-blue-800/20")}>
                           <Select
                             value={cellValue === "" ? SELECT_EMPTY_VALUE_PLACEHOLDER : cellValue}
                             onValueChange={(value) => handleStatusChange(employee.id, day.dayNumber, type, value)}
-                            disabled={isSaving}
+                            disabled={isSuperviseur || isSaving}
                           >
                             <SelectTrigger className={cn(
                               "h-7 text-xs min-w-[45px] p-1 justify-center",

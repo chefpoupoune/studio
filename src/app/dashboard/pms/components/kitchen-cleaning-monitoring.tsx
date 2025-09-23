@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -9,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2, FileText, Trash2, AlertCircle, ListFilter, SprayCan } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { format, getYear, getMonth } from 'date-fns';
+import { format, getYear, getMonth, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns'; // Ajout des fonctions pour la semaine
 import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -18,7 +17,7 @@ import type { SimplifiedTaskRecord, SimplifiedMonthlyKitchenCleaningRecord as Si
 import { PMS_KITCHEN_CLEANING_KEY } from '@/app/dashboard/settings/types';
 import { getMonthDays, type DayData } from '../utils';
 import { cn } from '@/lib/utils';
-import { Checkbox } from '@/components/ui/checkbox'; 
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { firestore } from '@/lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -35,12 +34,16 @@ const monthsArray = Array.from({ length: 12 }, (_, i) => ({
 }));
 
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
+const LOGGED_IN_USER_PERMISSIONS_KEY = 'loggedInUserPermissions';
+
 
 export default function KitchenCleaningMonitoring() {
   const [selectedYear, setSelectedYear] = useState<string>(getYear(new Date()).toString());
   const [selectedMonth, setSelectedMonth] = useState<string>(getMonth(new Date()).toString());
   const [configuredZones, setConfiguredZones] = useState<PmsRestaurantZoneWithTasksDefinition[]>([]);
   const [selectedZoneId, setSelectedZoneId] = useState<string | undefined>(undefined);
+  const [isSuperviseur, setIsSuperviseur] = useState(false);
+
   const [monthData, setMonthData] = useState<DayData[]>([]);
   const [cleaningRecords, setCleaningRecords] = useState<SimplifiedMonthlyRestaurantCleaningRecord>({});
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
@@ -49,17 +52,25 @@ export default function KitchenCleaningMonitoring() {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false); // Correct state for PDF generation
   const { toast } = useToast();
   const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
+  const [loggedInUserRole, setLoggedInUserRole] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       setLoggedInUsername(localStorage.getItem(LOGGED_IN_USERNAME_KEY));
+      const permissionsString = localStorage.getItem(LOGGED_IN_USER_PERMISSIONS_KEY);
+      if (permissionsString) {
+        try {
+          const permissions = JSON.parse(permissionsString);
+          setIsSuperviseur(permissions.role === 'superviseur');
+        } catch (e) { console.error("Failed to parse user permissions from localStorage", e); }
+      }
     }
   }, []);
 
   const getFirestoreRecordsDocId = useCallback(() => `records_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
 
   const loadPmsConfigurations = useCallback(async () => {
-    setIsLoadingConfig(true); 
+    setIsLoadingConfig(true);
     const docRef = doc(firestore, "pmsConfigurations", "mainConfig");
     try {
       const docSnap = await getDoc(docRef);
@@ -83,7 +94,7 @@ export default function KitchenCleaningMonitoring() {
       setSelectedZoneId(undefined);
     }
     setIsLoadingConfig(false);
-  }, [toast, selectedZoneId]); 
+  }, [toast, selectedZoneId]);
 
   useEffect(() => {
     loadPmsConfigurations();
@@ -93,12 +104,12 @@ export default function KitchenCleaningMonitoring() {
   }, [loadPmsConfigurations]);
 
   const loadCleaningRecords = useCallback(async () => {
-    if (!selectedZoneId || isLoadingConfig) { 
+    if (!selectedZoneId || isLoadingConfig) {
       setCleaningRecords({});
-      setIsLoadingRecords(false); 
+      setIsLoadingRecords(false);
       return;
     }
-    setIsLoadingRecords(true); 
+    setIsLoadingRecords(true);
     const docId = getFirestoreRecordsDocId();
     const docRef = doc(firestore, "pmsKitchenCleaningRecords", docId);
     try {
@@ -109,7 +120,7 @@ export default function KitchenCleaningMonitoring() {
       toast({ title: "Erreur Chargement Enregistrements", description: "Impossible de charger les enregistrements de nettoyage.", variant: "destructive" });
       setCleaningRecords({});
     }
-    setIsLoadingRecords(false); 
+    setIsLoadingRecords(false);
   }, [selectedZoneId, getFirestoreRecordsDocId, toast, isLoadingConfig]);
 
   useEffect(() => {
@@ -121,14 +132,14 @@ export default function KitchenCleaningMonitoring() {
 
 
   useEffect(() => {
-    if (isLoadingConfig || isLoadingRecords || isSaving) return; 
+    if (isLoadingConfig || isLoadingRecords || isSaving) return;
 
     const saveRecordsToFirestore = async () => {
       const docId = getFirestoreRecordsDocId();
       if (Object.keys(cleaningRecords).length === 0 && !doc(firestore, "pmsKitchenCleaningRecords", docId )) {
         return;
       }
-      
+
       setIsSaving(true);
       const docRef = doc(firestore, "pmsKitchenCleaningRecords", docId);
       try {
@@ -140,7 +151,7 @@ export default function KitchenCleaningMonitoring() {
       setIsSaving(false);
     };
 
-    const timeoutId = setTimeout(saveRecordsToFirestore, 2000); 
+    const timeoutId = setTimeout(saveRecordsToFirestore, 2000);
     return () => clearTimeout(timeoutId);
   }, [cleaningRecords, isLoadingConfig, isLoadingRecords, isSaving, getFirestoreRecordsDocId, toast]);
 
@@ -155,7 +166,7 @@ export default function KitchenCleaningMonitoring() {
       }
     }));
   };
-  
+
   const getRecord = (date: string, zoneId: string, taskId: string): SimplifiedTaskRecord => {
     const recordKey = `${date}_${zoneId}_${taskId}`;
     return cleaningRecords[recordKey] || { status: '', operator: '' };
@@ -167,8 +178,8 @@ export default function KitchenCleaningMonitoring() {
       const docId = getFirestoreRecordsDocId();
       const docRef = doc(firestore, "pmsKitchenCleaningRecords", docId);
       try {
-        await setDoc(docRef, {}); 
-        setCleaningRecords({}); 
+        await setDoc(docRef, {});
+        setCleaningRecords({});
         toast({ title: "Données Effacées", description: `Les données de nettoyage cuisine pour ${monthsArray[parseInt(selectedMonth)].label} ${selectedYear} ont été effacées de Firestore.` });
       } catch (error) {
         console.error("Error clearing month data in Firestore:", error);
@@ -201,12 +212,12 @@ export default function KitchenCleaningMonitoring() {
       if (pdfSettings.logoUrl) {
         doc.setFontSize(8); doc.text(`Logo: ${pdfSettings.logoUrl}`, 14, currentY); currentY += 5;
       }
-      
+
       const title = `Suivi Nettoyage Cuisine - Zone: ${selectedZoneData.name} - ${monthLabel} ${selectedYear}`;
       doc.setFontSize(18); doc.text(title, 14, currentY); currentY += 8;
-      doc.setFontSize(10); doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY); currentY += 7;
 
-      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number] } = {};
+
+      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number]  } = {};
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
         if (primaryColorRgb) {
@@ -215,38 +226,50 @@ export default function KitchenCleaningMonitoring() {
           headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
         }
       }
-      
-      const headBase = ['Date', 'Jour'];
-      const taskHeaders: string[] = [];
+
+      // Construct the two rows of the header
+      const headRow1: any[] = [{ content: 'Date', rowSpan: 2 }, { content: 'Jour', rowSpan: 2 }];
+      const headRow2: any[] = [];
+
       selectedZoneData.tasks.forEach(task => {
-        taskHeaders.push(`Fait? (${task.name})`);
-        taskHeaders.push(`Opérateur (${task.name})`);
+        headRow1.push({ content: task.name, colSpan: 2 });
+        headRow2.push('Fait');
+        headRow2.push('Par?');
       });
-      const head: any[] = [headBase.concat(taskHeaders)];
-      
+
+      const head: any[] = [headRow1, headRow2];
+
       const body: any[][] = [];
       monthData.forEach(day => {
         const row: any[] = [
-          day.isWeekend ? {content: day.dayOfMonth.toString(), styles: {fillColor: [230,230,230]}} : day.dayOfMonth.toString(),
-          day.isWeekend ? {content: day.dayName, styles: {fillColor: [230,230,230]}} : day.dayName,
+          day.isWeekend ? {content: day.dayOfMonth.toString(), styles: {fillColor: [169,169,169],textColor:[0,0,0]}} : {content: day.dayOfMonth.toString(), styles: {textColor: [0, 0, 0]}},
+          day.isWeekend ? {content: day.dayName, styles: {fillColor: [169,169,169],textColor:[0,0,0]}} : {content: day.dayName, styles: {textColor:[0,0,0]}}
         ];
         selectedZoneData.tasks.forEach(task => {
           const record = getRecord(day.date, selectedZoneData.id, task.id);
-          const statusDisplay = record.status === 'fait' ? 'Oui' : (record.status === 'non_fait' ? 'Non' : (record.status === 'na' ? 'N/A' : '-'));
-          row.push(day.isWeekend ? {content: statusDisplay, styles: {halign: 'center', fillColor: [230,230,230]}} : {content: statusDisplay, styles: {halign: 'center'}});
-          row.push(day.isWeekend ? {content: record.operator || '-', styles: {halign: 'center', fillColor: [230,230,230]}} : {content: record.operator || '-', styles: {halign: 'center'}});
+          const statusDisplay = record.status === 'fait' ? 'X' : (record.status === 'non_fait' ? 'Non' : (record.status === 'na' ? 'N/A' : '-'));
+          row.push(day.isWeekend ? {content: statusDisplay, styles: {halign: 'center', fillColor: [169,169,169]}} : {content: statusDisplay, styles: {halign: 'center'}});
+
+          // Extract initials from operator name
+          const operatorInitials = record.operator
+            ? record.operator.split(' ')
+              .map(namePart => namePart.charAt(0).toUpperCase())
+              .join('')
+            : '-';
+
+          row.push(day.isWeekend ? {content: operatorInitials, styles: {halign: 'center', fillColor: [169,169,169]}} : {content: operatorInitials, styles: {halign: 'center'}});
         });
         body.push(row);
       });
 
       const columnStyles: { [key: number]: { cellWidth: 'auto' | number, halign?: 'left' | 'center' | 'right' } } = {
-        0: { cellWidth: 15, halign: 'center' }, 
-        1: { cellWidth: 25 }, 
+        0: { cellWidth: 10, halign: 'center' },
+        1: { cellWidth: 13 },
       };
       let currentColumnIndex = 2;
       selectedZoneData.tasks.forEach(() => {
-        columnStyles[currentColumnIndex++] = { cellWidth: 30, halign: 'center' }; // Fait?
-        columnStyles[currentColumnIndex++] = { cellWidth: 30, halign: 'center' }; // Opérateur
+        columnStyles[currentColumnIndex++] = { cellWidth: 'auto', halign: 'center',textColor:[0,0,0] }; // Fait?
+        columnStyles[currentColumnIndex++] = { cellWidth:'auto' , halign: 'center',textColor:[0,0,0] }; // Opérateur
       });
 
       doc.autoTable({
@@ -254,9 +277,15 @@ export default function KitchenCleaningMonitoring() {
         head: head,
         body: body,
         theme: 'grid',
-        headStyles: { ...headStyles, halign: 'center', fontSize: 8, cellPadding: 1 },
-        styles: { fontSize: 7, cellPadding: 1 },
+        headStyles: { ...headStyles, halign: 'center', fontSize: 6, cellPadding: 1 },
+        styles: {
+          fontSize: 7,
+          cellPadding: 1,
+          lineWidth: 0.1,
+          lineColor: [0,0,0] },
         columnStyles: columnStyles,
+        tableWidth: 'auto',
+        margin: {left:5 , right:5 , top: currentY + 10, bottom: 10 },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
           if (pdfSettings.footerText) {
@@ -274,8 +303,19 @@ export default function KitchenCleaningMonitoring() {
       setIsGeneratingPdf(false); // Use the correct state setter
     }
   };
-  
+
   const isOverallLoading = isLoadingConfig || isLoadingRecords;
+
+  // --- Calculs pour la vue mobile ---
+  const startOfCurrentWeek = startOfWeek(new Date(), { locale: fr }); // Lundi de la semaine actuelle
+  const endOfCurrentWeek = endOfWeek(new Date(), { locale: fr });   // Dimanche de la semaine actuelle
+
+  // Filtre les jours pour ne garder que ceux de la semaine en cours pour l'affichage mobile
+  const currentWeekData = monthData.filter(day => {
+    const dayDate = new Date(day.date);
+    return isWithinInterval(dayDate, { start: startOfCurrentWeek, end: endOfCurrentWeek });
+  });
+  // --- Fin des calculs pour la vue mobile ---
 
   return (
     <Card className="shadow-lg">
@@ -306,7 +346,7 @@ export default function KitchenCleaningMonitoring() {
           </div>
           <div className="flex flex-col sm:flex-row gap-2 md:col-span-1 md:justify-self-end">
              <Button onClick={generatePdfForZone} disabled={isOverallLoading || isSaving || isGeneratingPdf || !selectedZoneData || monthData.length === 0 || configuredZones.length === 0} className="w-full sm:w-auto">
-                {(isOverallLoading || isSaving || isGeneratingPdf) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+              {(isOverallLoading || isSaving || isGeneratingPdf) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
                 Générer PDF Zone
             </Button>
             <Button variant="destructive" onClick={handleClearMonthData} disabled={isOverallLoading || isSaving || Object.keys(cleaningRecords).length === 0} className="w-full sm:w-auto">
@@ -315,11 +355,11 @@ export default function KitchenCleaningMonitoring() {
             </Button>
           </div>
         </div>
-        
-        {isLoadingConfig ? ( 
+
+        {isLoadingConfig ? (
           <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /> Chargement des configurations...</div>
         ) : configuredZones.length === 0 ? (
-           <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
+            <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
             <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />
             <p className="mt-2 text-sm text-muted-foreground">
                 Aucune zone de nettoyage cuisine n'a été configurée.
@@ -347,100 +387,146 @@ export default function KitchenCleaningMonitoring() {
               </div>
             </div>
 
-            {isLoadingRecords && selectedZoneId ? ( 
-                 <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /> Chargement des enregistrements pour "{selectedZoneData?.name}"...</div>
+            {isLoadingRecords && selectedZoneId ? (
+                <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /> Chargement des enregistrements pour "{selectedZoneData?.name}"...</div>
             ) : !selectedZoneId ? (
-              <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
-                  <ListFilter className="mx-auto h-12 w-12 text-muted-foreground" />
-                  <p className="mt-2 text-sm text-muted-foreground">
-                      Veuillez sélectionner une zone de nettoyage ci-dessus pour afficher le tableau de suivi.
-                  </p>
-              </div>
+                <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
+                    <ListFilter className="mx-auto h-12 w-12 text-muted-foreground" />
+                    <p className="mt-2 text-sm text-muted-foreground">
+                        Veuillez sélectionner une zone de nettoyage ci-dessus pour afficher le tableau de suivi.
+                    </p>
+                </div>
             ) : selectedZoneData && monthData.length > 0 ? (
-              <div className="overflow-x-auto border rounded-md max-h-[70vh]">
-                <Table className="min-w-full table-fixed">
-                  <TableHeader className="sticky top-0 z-10 bg-card shadow-sm">
-                    <TableRow>
-                      <TableHead className="w-[60px] min-w-[60px] text-center px-1">Date</TableHead>
-                      <TableHead className="w-[100px] min-w-[100px] px-1">Jour</TableHead>
-                      {selectedZoneData.tasks.map(task => (
-                        <TableHead key={task.id} className="w-[200px] min-w-[200px] text-center px-1 border-l">
-                          {task.name}
-                          <div className="grid grid-cols-2 gap-px mt-1 text-xs font-normal text-muted-foreground">
-                            <span>Fait?</span>
-                            <span>Opérateur</span>
-                          </div>
-                        </TableHead>
-                      ))}
-                      {selectedZoneData.tasks.length === 0 && (
-                        <TableHead className="w-full text-center px-1 border-l">Aucune tâche définie pour cette zone</TableHead>
+                <div className="overflow-x-auto border rounded-md max-h-[70vh]">
+                    {/* Mobile View: Stacked by Day (shows current week only) */}
+                    <div className="space-y-4 p-2 sm:hidden block">
+                      {currentWeekData.length > 0 ? (
+                        currentWeekData.map(day => (
+                            <Card key={`mobile-day-${day.date}`} className={cn("shadow-sm", day.isWeekend && "bg-muted/30")}>
+                              <CardHeader className="p-3 border-b">
+                                <CardTitle className="text-base font-semibold mb-0">{day.dayOfMonth} {day.dayName}</CardTitle>
+                              </CardHeader>
+                              <CardContent className="p-3 space-y-3">
+                                {selectedZoneData.tasks.length > 0 ? selectedZoneData.tasks.map(task => {
+                                  const record = getRecord(day.date, selectedZoneData.id, task.id);
+                                  return (
+                                    <div key={`mobile-${day.date}-${task.id}`} className="flex items-center justify-between text-sm border-b last:border-b-0 pb-2 last:pb-0">
+                                      <div className="text-sm font-medium flex-grow sm:mr-2">{task.name}</div>
+                                      <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-1">
+                                          <Label htmlFor={`checkbox-${day.date}-${task.id}`} className="text-xs text-muted-foreground">Fait?</Label>
+                                          <Checkbox
+                                            id={`checkbox-${day.date}-${task.id}`}
+                                            checked={record.status === 'fait'}
+                                            onCheckedChange={(checked) => { handleRecordChange(day.date, selectedZoneData.id, task.id, 'status', checked ? 'fait' : ''); if (checked && loggedInUsername) { handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', loggedInUsername); } else if (!checked) { handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', ''); } }}
+                                            disabled={day.isWeekend || isSaving || isOverallLoading || isGeneratingPdf}
+                                            className="h-4 w-4" disabled={isSuperviseur || day.isWeekend || isSaving || isOverallLoading || isGeneratingPdf}
+                                          />
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                          <Label htmlFor={`operator-${day.date}-${task.id}`} className="text-xs text-muted-foreground">Op.</Label>
+                                          <Input type="text" placeholder="Op." value={record.operator} onChange={(e) => handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', e.target.value)} className="h-6 text-xs w-16" disabled={day.isWeekend || isSaving || isOverallLoading || isGeneratingPdf} maxLength={15} />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                }) : <div className="text-center text-sm text-muted-foreground italic">Aucune tâche définie pour cette zone.</div>}
+                              </CardContent>
+                            </Card>
+                          ))
+                      ) : (
+                        <div className="text-center py-4 text-muted-foreground">Aucun jour à afficher pour cette semaine.</div>
                       )}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {monthData.map((day) => (
-                      <TableRow key={day.date} className={cn(day.isWeekend && "bg-muted/30")}>
-                        <TableCell className="text-center font-medium px-1 align-top py-2">{day.dayOfMonth}</TableCell>
-                        <TableCell className="px-1 align-top py-2">{day.dayName}</TableCell>
-                        {selectedZoneData.tasks.length > 0 ? selectedZoneData.tasks.map(task => {
-                          const record = getRecord(day.date, selectedZoneData.id, task.id);
-                          return (
-                            <TableCell key={task.id} className="p-1 align-top border-l">
-                              <div className="grid grid-cols-2 gap-1 items-center">
-                                <div className="flex justify-center">
-                                  <Checkbox
-                                    checked={record.status === 'fait'}
-                                    onCheckedChange={(checked) => {
-                                      const newStatus = checked ? 'fait' : '';
-                                      handleRecordChange(day.date, selectedZoneData.id, task.id, 'status', newStatus);
-                                      if (checked) {
-                                        if (loggedInUsername && loggedInUsername.trim() !== "") {
-                                          handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', loggedInUsername);
-                                        } else {
-                                          handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', ''); 
-                                        }
-                                      } else {
-                                        handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', '');
-                                      }
-                                    }}
-                                    disabled={day.isWeekend || isSaving || isOverallLoading || isGeneratingPdf}
-                                    className="h-5 w-5"
-                                  />
-                                </div>
-                                <Input
-                                  type="text"
-                                  placeholder="Op."
-                                  value={record.operator}
-                                  onChange={(e) => handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', e.target.value)}
-                                  className="h-7 text-xs"
-                                  disabled={day.isWeekend || isSaving || isOverallLoading || isGeneratingPdf}
-                                  maxLength={15}
-                                />
+                    </div>
+
+                    {/* Desktop Table: Hidden on smaller screens */}
+                    <Table className="min-w-full table-fixed hidden sm:table" style={{ borderCollapse: 'collapse' }}>
+                      <TableHeader className="sticky top-0 z-10 bg-card shadow-sm">
+                        <TableRow>
+                          <TableHead className="w-[60px] min-w-[60px] text-center px-1 sticky left-0 z-30 bg-card">Date</TableHead>
+                          <TableHead className="w-[100px] min-w-[100px] px-1 sticky left-[60px] z-30 bg-card">Jour</TableHead>
+                          {selectedZoneData.tasks.map(task => (
+                            <TableHead key={task.id} className="w-[200px] min-w-[200px] text-center px-1 border-l">
+                              {task.name}
+                              <div className="grid grid-cols-2 gap-px mt-1 text-xs font-normal text-muted-foreground">
+                                <span>Fait?</span>
+                                <span>Opérateur</span>
                               </div>
+                            </TableHead>
+                          ))}
+                          {selectedZoneData.tasks.length === 0 && (
+                            <TableHead className="w-full text-center px-1 border-l">Aucune tâche définie pour cette zone</TableHead>
+                          )}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {monthData.map((day) => (
+                          <TableRow key={day.date} className={cn(day.isWeekend && "bg-muted/30")}>
+                            <TableCell className={cn("text-center font-medium px-1 align-top py-2 sticky left-0 z-[1] bg-card", day.isWeekend && "bg-muted/30")}>
+                              {day.dayOfMonth}
                             </TableCell>
-                          );
-                        }) : (
-                           <TableCell className="p-1 align-top border-l text-center text-xs text-muted-foreground italic" colSpan={1}>
-                             Aucune tâche à afficher.
-                           </TableCell>
-                        )}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                            <TableCell className={cn("px-1 align-top py-2 sticky left-[60px] z-[1] bg-card", day.isWeekend && "bg-muted/30")}>
+                              {day.dayName}
+                            </TableCell>
+                            {selectedZoneData.tasks.length > 0 ? selectedZoneData.tasks.map(task => {
+                              const record = getRecord(day.date, selectedZoneData.id, task.id);
+                              const taskIndex = selectedZoneData.tasks.findIndex(t => t.id === task.id);
+                              const isFaitColumn = taskIndex !== -1;
+                              return (
+                                <TableCell key={`${task.id}-${day.date}`} className="p-1 align-top border-l">
+                                  <div className="grid grid-cols-2 gap-1 items-center relative">
+                                    <div className="flex justify-center">
+                                      <Checkbox
+                                        checked={record.status === 'fait'}
+                                        onCheckedChange={(checked) => {
+                                          handleRecordChange(day.date, selectedZoneData.id, task.id, 'status', checked ? 'fait' : '');
+                                          if (checked && loggedInUsername) {
+                                            handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', loggedInUsername);
+                                          } else if (!checked) {
+                                            handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', '');
+                                          }
+                                        }}
+                                        disabled={isSaving || isOverallLoading || isGeneratingPdf}
+                                        className="h-5 w-5"
+                                      />
+                                    </div>
+                                    {isFaitColumn && (
+                                      <span className="absolute bottom-1 left-1 text-[8px] text-muted-foreground/70 pointer-events-none">
+                                        {task.name}
+                                      </span>
+                                    )}
+                                    <Input
+                                      type="text"
+                                      placeholder="Op."
+                                      value={record.operator}
+                                      onChange={(e) => handleRecordChange(day.date, selectedZoneData.id, task.id, 'operator', e.target.value)}
+                                      className="h-7 text-xs text-center"
+                                      disabled={isSuperviseur || day.isWeekend || isSaving || isOverallLoading || isGeneratingPdf}
+                                      maxLength={15}
+                                    />
+                                  </div>
+                                </TableCell>
+                              );
+                            }) : (
+                              <TableCell className="p-1 align-top border-l text-center text-xs text-muted-foreground italic" colSpan={1}>
+                                Aucune tâche à afficher.
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                </div>
             ) : (
-              <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
-                <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {selectedZoneId ? "Aucune donnée à afficher pour la période ou zone sélectionnée." : "Veuillez d'abord sélectionner une zone."}
-                </p>
-                 {selectedZoneData && selectedZoneData.tasks.length === 0 && (
-                   <p className="text-xs text-muted-foreground/70 mt-1">
-                     La zone "{selectedZoneData.name}" n'a pas de tâches définies. Ajoutez-en via les Paramètres PMS.
-                   </p>
-                 )}
-              </div>
+                <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
+                    <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />
+                    <p className="mt-2 text-sm text-muted-foreground">{selectedZoneId ? "Aucune donnée à afficher pour la période ou zone sélectionnée." : "Veuillez d'abord sélectionner une zone."}</p>
+                    {selectedZoneData && selectedZoneData.tasks.length === 0 && (
+                        <p className="text-xs text-muted-foreground/70 mt-1">
+                            La zone "{selectedZoneData.name}" n'a pas de tâches définies. Ajoutez-en via les Paramètres PMS.
+                        </p>
+                    )}
+                </div>
             )}
           </>
         )}
@@ -448,4 +534,3 @@ export default function KitchenCleaningMonitoring() {
     </Card>
   );
 }
-

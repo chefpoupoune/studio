@@ -10,6 +10,8 @@
 - Dynamic Supplier Selection: Replace the text input for supplier selection with a dropdown list populated from the delivery tracking data, allowing the user to select a supplier from the available options.
 - Ordering: Menu planning and ordering
 - PDF Creation Button: Creates a PDF for the future order sheets
+- Fixed Header in PMS Table: Keep the first row of the table (the header) fixed, even when scrolling, in the PMS section, net kitchen tracking area.
+- Pique Nique PDF Generation: Generate PDFs for pique nique departures
 
 ## Style Guidelines:
 

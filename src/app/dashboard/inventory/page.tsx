@@ -16,7 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns'; // Timestamp not needed here, only format
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { useIsMobile } from '@/hooks/use-mobile';
+import useIsMobile from '@/hooks/use-mobile';
 import { firestore } from '@/lib/firebase';
 import { 
   collection, 

@@ -11,7 +11,7 @@ import React, { useState, useEffect } from 'react';
 import { CurrentDate } from '@/components/current-date';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { useIsMobile } from '@/hooks/use-mobile';
+import useIsMobile from '@/hooks/use-mobile';
 
 interface PicnicTab {
   value: string;
@@ -21,9 +21,9 @@ interface PicnicTab {
 }
 
 const picnicTabsConfig: PicnicTab[] = [
+  { value: "recapPn", label: "Recap", Icon: ScrollText, component: <PicnicRecap /> },
   { value: "nbPn", label: "NB PN", Icon: Calculator, component: <NumberOfPicnics /> },
   { value: "menuPn", label: "Menu", Icon: BookOpenText, component: <PicnicMenu /> },
-  { value: "recapPn", label: "Recap", Icon: ScrollText, component: <PicnicRecap /> },
 ];
 
 export default function PicnicPage() {
@@ -96,5 +96,3 @@ export default function PicnicPage() {
     </div>
   );
 }
-
-    

@@ -135,7 +135,7 @@ export default function WeeklyMenuSummary() {
         if (!isValidDate(dateA) || !isValidDate(dateB)) return 0;
         return dateA.getTime() - dateB.getTime();
       })
-      .slice(0, 3); 
+      .slice(0, 5); 
   }, [weeklyMenu]);
 
   if (!isClient || isLoadingSummary) {
@@ -206,7 +206,7 @@ export default function WeeklyMenuSummary() {
                   </ul>
                 </li>
               ))}
-              {weeklyMenu.length > 3 && <li className="text-xs text-muted-foreground text-center pt-2">... et {weeklyMenu.length - 3} autre(s) jour(s) planifié(s).</li>}
+              {weeklyMenu.length > 5 && <li className="text-xs text-muted-foreground text-center pt-2">... et {weeklyMenu.length - 5} autre(s) jour(s) planifié(s).</li>}
             </ul>
           </ScrollArea>
         ) : (
@@ -219,5 +219,3 @@ export default function WeeklyMenuSummary() {
     </Card>
   );
 }
-
-    

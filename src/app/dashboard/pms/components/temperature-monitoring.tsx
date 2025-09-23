@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -8,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loader2, FileText, Trash2, Thermometer as ThermometerIcon, AlertCircle, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { format, getYear, getMonth, parseISO } from 'date-fns';
+import { format, getYear, getMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -58,7 +57,7 @@ export default function TemperatureMonitoring() {
       setLoggedInUsername(localStorage.getItem(LOGGED_IN_USERNAME_KEY));
     }
   }, []);
-  
+
   const getFirestoreDocId = useCallback(() => {
     if (!selectedEquipmentId) return null;
     return `tempGridLog_${selectedEquipmentId}_${selectedYear}_${selectedMonth}`;
@@ -99,7 +98,7 @@ export default function TemperatureMonitoring() {
     const handleConfigUpdate = async () => {
       console.log("[TempMonitoring] PMS Config updated event received. Reloading equipment list.");
       const updatedEquipment = await loadPmsConfigurations();
-       if (updatedEquipment.length > 0 && (!selectedEquipmentId || !updatedEquipment.some(eq => eq.id === selectedEquipmentId))) {
+        if (updatedEquipment.length > 0 && (!selectedEquipmentId || !updatedEquipment.some(eq => eq.id === selectedEquipmentId))) {
         setSelectedEquipmentId(updatedEquipment[0].id);
       } else if (updatedEquipment.length === 0) {
         setSelectedEquipmentId(undefined);
@@ -148,26 +147,27 @@ export default function TemperatureMonitoring() {
     }
   }, [selectedYear, selectedMonth, selectedEquipmentId, loadTemperatureRecords, isLoadingConfig]); 
 
-  useEffect(() => {
+  const handleManualSave = async () => {
     if (isLoadingConfig || isLoadingRecords || isSaving || !selectedEquipmentId) return;
 
-    const saveRecords = async () => {
-      const docId = getFirestoreDocId();
-      if (!docId || (Object.keys(records).length === 0 && !doc(firestore, "pmsTemperatureGridLogs", docId))) return;
-      
-      setIsSaving(true);
-      const recordsDocRef = doc(firestore, "pmsTemperatureGridLogs", docId);
-      try {
-        await setDoc(recordsDocRef, records);
-      } catch (error) {
-        console.error("Error auto-saving temperature grid records:", error);
-        toast({ title: "Erreur Sauvegarde Auto", variant: "destructive" });
-      }
+    const docId = getFirestoreDocId();
+    if (!docId) {
+      toast({ title: "Erreur Sauvegarde", description: "Impossible de déterminer l'identifiant de sauvegarde.", variant: "destructive" });
+      return;
+    }
+
+    setIsSaving(true);
+    const recordsDocRef = doc(firestore, "pmsTemperatureGridLogs", docId);
+    try {
+      await setDoc(recordsDocRef, records);
+      toast({ title: "Sauvegardé", description: "Les relevés ont été sauvegardés avec succès." });
+    } catch (error) {
+      console.error("Error manual saving temperature grid records:", error);
+      toast({ title: "Erreur Sauvegarde", variant: "destructive" });
+    } finally {
       setIsSaving(false);
-    };
-    const timeoutId = setTimeout(saveRecords, 2000);
-    return () => clearTimeout(timeoutId);
-  }, [records, isLoadingConfig, isLoadingRecords, isSaving, selectedEquipmentId, getFirestoreDocId, toast]);
+    }
+  };
 
   const selectedEquipmentConfig = useMemo(() => {
     return equipmentList.find(eq => eq.id === selectedEquipmentId);
@@ -255,16 +255,16 @@ export default function TemperatureMonitoring() {
   };
   
   const handleInputChange = (dayDate: string, field: 'time' | 'operator', value: string) => {
-     setRecords(prev => {
-      const dayRecord = prev[dayDate] || { markedTemp: null, time: '', operator: '' }; 
-      return {
-        ...prev,
-        [dayDate]: {
-          ...dayRecord,
-          [field]: value,
-        }
-      };
-    });
+      setRecords(prev => {
+        const dayRecord = prev[dayDate] || { markedTemp: null, time: '', operator: '' }; 
+        return {
+          ...prev,
+          [dayDate]: {
+            ...dayRecord,
+            [field]: value,
+          }
+        };
+      });
   };
 
   const handleClearMonthData = async () => {
@@ -365,7 +365,7 @@ export default function TemperatureMonitoring() {
         const brightness = (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000;
         headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];}
       } else {
-         headStyles.fillColor = [220,220,220]; headStyles.textColor = [0,0,0];
+          headStyles.fillColor = [220,220,220]; headStyles.textColor = [0,0,0];
       }
 
       const tableHead = [
@@ -453,8 +453,8 @@ export default function TemperatureMonitoring() {
   if (isLoadingConfig && equipmentList.length === 0) {
     return (
         <Card className="shadow-lg">
-            <CardHeader><CardTitle className="flex items-center gap-2"><ThermometerIcon className="w-6 h-6 text-primary"/>Suivi des Températures</CardTitle></CardHeader>
-            <CardContent><div className="flex justify-center items-center p-10"><Loader2 className="mr-2 h-5 w-5 animate-spin"/>Chargement des configurations...</div></CardContent>
+          <CardHeader><CardTitle className="flex items-center gap-2"><ThermometerIcon className="w-6 h-6 text-primary"/>Suivi des Températures</CardTitle></CardHeader>
+          <CardContent><div className="flex justify-center items-center p-10"><Loader2 className="mr-2 h-5 w-5 animate-spin"/>Chargement des configurations...</div></CardContent>
         </Card>
     );
   }
@@ -503,6 +503,10 @@ export default function TemperatureMonitoring() {
             </Button>
           </div>
         </div>
+        <div className="flex justify-end mb-4">
+           <Button onClick={handleManualSave} disabled={isUIDisabled || !selectedEquipmentId || Object.keys(records).length === 0} className="w-full sm:w-auto">
+             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} Sauvegarder
+           </Button></div>
 
         {(isLoadingConfig || (isLoadingRecords && selectedEquipmentId)) ? (
             <div className="flex justify-center items-center p-10">
@@ -511,34 +515,34 @@ export default function TemperatureMonitoring() {
             </div>
         ) : !selectedEquipmentId ? (
              <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
-                <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />
+              <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />
                 <p className="mt-2 text-sm text-muted-foreground">
-                    {equipmentList.length === 0 ? "Aucun équipement n'est configuré." : "Veuillez sélectionner un équipement pour afficher la grille."}
+                  {equipmentList.length === 0 ? "Aucun équipement n'est configuré." : "Veuillez sélectionner un équipement pour afficher la grille."}
                 </p>
-                 {equipmentList.length === 0 && <p className="text-xs text-muted-foreground/70">Configurez les équipements dans Paramètres &gt; Paramètres PMS.</p>}
+                {equipmentList.length === 0 && <p className="text-xs text-muted-foreground/70">Configurez les équipements dans Paramètres &gt; Paramètres PMS.</p>}
             </div>
         ) : (
           <div className="overflow-x-auto border rounded-md">
-            <Table className="min-w-max border-collapse">
+            <Table className="min-w-max border-collapse hidden sm:table">
               <TableHeader className="sticky top-0 z-10 bg-card shadow-sm">
-                <TableRow>
-                  <TableHead className="w-[180px] min-w-[180px] sticky left-0 z-20 bg-card text-xs p-1 text-center border-r">T°C / Zone</TableHead>
+                <TableRow className="[&>th]:sticky [&>th]:left-0 [&>th]:z-20 [&>th]:bg-card [&>th]:text-xs [&>th]:p-1 [&>th]:text-center [&>th]:border-r">
+                  <TableHead className="w-[180px] min-w-[180px] sm:w-[100px] sm:min-w-[100px]">T°C / Zone</TableHead>
                   {monthDays.map(day => (
-                    <TableHead key={day.date} className={cn("w-[40px] min-w-[40px] text-center text-xs p-1 border-r", day.isWeekend && "bg-muted/50")}>
+                    <TableHead key={day.date} className={cn("w-[40px] min-w-[40px] sm:w-[30px] sm:min-w-[30px] text-center text-xs p-1 border-r", day.isWeekend && "bg-muted/50")}>
                       {day.dayOfMonth}<br/>{day.dayName.substring(0,1)}
                     </TableHead>
                   ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {temperatureRowsToDisplay.map(temp => {
+                {temperatureRowsToDisplay.map(temp => { 
                   const zoneInfo = getEquipmentZoneInfo(temp, selectedEquipmentConfig);
                   return (
                     <TableRow key={temp}>
                       <TableCell className={cn(
-                          "sticky left-0 z-10 font-medium text-xs p-1 text-center border-r h-8", 
-                          zoneInfo.colorClass 
-                        )}>
+                        "sticky left-0 z-10 font-medium text-xs p-1 text-center border-r h-8", 
+                        zoneInfo.colorClass 
+                      )}>
                         <div className="flex items-center justify-center h-full">
                           {temp}°C {zoneInfo.label && `- ${zoneInfo.label}`}
                         </div>
@@ -604,6 +608,77 @@ export default function TemperatureMonitoring() {
             </Table>
           </div>
         )}
+
+        {/* Mobile View (displaying current week only) */}
+        <div className="space-y-4 sm:hidden">
+            {monthDays.map(day => {
+              const dayRecord = records[day.date] || { markedTemp: null, time: '', operator: '' };
+              const isWeekend = day.isWeekend;
+              const isDisabled = isWeekend || isUIDisabled;
+              
+              // Determine if the current day is in the current week based on the selected month/year
+              const today = new Date();
+              const currentDayDate = new Date(day.date);
+              const isCurrentWeek = 
+                  (Math.floor(currentDayDate.getDate() / 7) === Math.floor(today.getDate() / 7) && 
+                   currentDayDate.getMonth() === today.getMonth() && 
+                   currentDayDate.getFullYear() === today.getFullYear());
+
+              if (!isCurrentWeek) {
+                  return null; // Skip rendering days not in the current week
+              }
+
+              return (
+                <Card key={day.date} className={cn("border", isWeekend && "bg-muted/30 opacity-70")}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">{format(new Date(day.date), "EEEE dd MMMM", { locale: fr })}</CardTitle>
+                    {isWeekend && <CardDescription className="text-amber-600 dark:text-amber-400">Jour non ouvré - Relevé non requis</CardDescription>}
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-3 gap-2 text-center text-sm font-semibold text-muted-foreground">
+                      <div>T°C</div>
+                      <div>Zone</div>
+                      <div>Sélection</div>
+                    </div>
+                    <div className="space-y-1">
+                      {temperatureRowsToDisplay.map(temp => {
+                        const zoneInfo = getEquipmentZoneInfo(temp, selectedEquipmentConfig);
+                        const isSelected = dayRecord.markedTemp === temp;
+                        
+                        return (
+                          <div
+                            key={`${day.date}-mobile-${temp}`}
+                            className={cn(
+                              "grid grid-cols-3 gap-2 items-center p-2 rounded-md border text-sm",
+                              zoneInfo.colorClass,
+                              isDisabled ? "cursor-not-allowed" : "cursor-pointer hover:ring-1 hover:ring-primary",
+                              isSelected && "ring-2 ring-primary ring-inset"
+                            )}
+                            onClick={() => !isDisabled && handleCellClick(day.date, temp)}
+                          >
+                            <div>{temp}°C</div>
+                            <div>{zoneInfo.label || '-'}</div>
+                            <div className="flex justify-center">{isSelected && <Check className="h-4 w-4" />}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <Label htmlFor={`time-${day.date}-mobile`} className="text-xs">Heure</Label>
+                        <Input id={`time-${day.date}-mobile`} type="time" value={dayRecord.time || ""} onChange={e => handleInputChange(day.date, 'time', e.target.value)} disabled={isDisabled} className="h-8 text-xs"/>
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor={`operator-${day.date}-mobile`} className="text-xs">Opérateur</Label>
+                        <Input id={`operator-${day.date}-mobile`} type="text" placeholder="Op." value={dayRecord.operator || ""} onChange={e => handleInputChange(day.date, 'operator', e.target.value)} disabled={isDisabled} className="h-8 text-xs" maxLength={5}/>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+        </div>
+
         {selectedEquipmentId && !isLoadingConfig && !isLoadingRecords && (
             <div className="mt-4 flex justify-end">
                 <Button variant="destructive" onClick={handleClearMonthData} size="sm" disabled={isSaving || Object.keys(records).length === 0}>
@@ -611,9 +686,9 @@ export default function TemperatureMonitoring() {
                     Effacer Relevés ({selectedEquipmentConfig?.name || 'Mois'})
                 </Button>
             </div>
+        
         )}
       </CardContent>
     </Card>
   );
 }
-

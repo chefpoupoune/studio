@@ -19,7 +19,7 @@ import FryerOilOverallMonitoring from './components/fryer-oil-overall-monitoring
 import PicnicDepartureForm from './components/picnic-departure-form'; // New import
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { useIsMobile } from '@/hooks/use-mobile';
+import useIsMobile from '@/hooks/use-mobile';
 
 const pmsTabsConfig = [
   { value: "kitchen-cleaning", label: "Suivi Net. Cuisine", Icon: SprayCan, component: <KitchenCleaningMonitoring /> },

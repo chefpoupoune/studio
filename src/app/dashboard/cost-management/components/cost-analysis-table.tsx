@@ -14,12 +14,12 @@ import { fr } from 'date-fns/locale';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 import type { CostEntry, DailyCoefficientEntry } from '../types';
 import { months, years, currentYear } from '../types';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { getMonthDays, DayData } from '@/app/dashboard/pms/utils';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { firestore } from '@/lib/firebase';
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { firestore, auth } from '@/lib/firebase';
 
 
 interface jsPDFWithAutoTable extends jsPDF {
@@ -41,11 +41,44 @@ export default function CostAnalysisTable() {
   
   const [costData, setCostData] = useState<CostEntry[]>([]); 
   const [dailyCoeffData, setDailyCoeffData] = useState<DailyCoefficientEntry[]>([]); 
-  
+  const [supplierOptions, setSupplierOptions] = useState<string[]>([]);
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false); // To track changes
   const { toast } = useToast();
+
+  // Fetch supplier options from PMS settings
+  // Fetch supplier options from PMS settings and listen for real-time updates
+  useEffect(() => {
+    const configRef = doc(firestore, "pmsConfigurations", "mainConfig");
+    console.log("useEffect for suppliers is running");
+
+    const unsubscribe = onSnapshot(configRef, (docSnap) => {
+      console.log("Firestore snapshot received for pmsConfigurations/mainConfig");
+      if (docSnap.exists()) {
+        const configData = docSnap.data();
+        console.log("Document data:", configData);
+        // Access the correct field for suppliers and map to names
+        if (configData && Array.isArray(configData.supplierManagement_v1)) {
+          console.log("supplierManagement_v1 field exists and is an array:", configData.supplierManagement_v1);
+          const supplierNames = configData.supplierManagement_v1
+            .filter((item: any) => typeof item.name === 'string') // Ensure item has a name property and it's a string
+            .map((item: any) => item.name as string);
+          setSupplierOptions(supplierNames);
+        } else {
+          console.warn("supplierManagement_v1 field not found or not an array in pmsConfigurations/mainConfig. Setting supplierOptions to empty array.");
+          setSupplierOptions([]);
+        }
+      } else {
+        console.warn("pmsConfigurations/mainConfig document does not exist or is empty. Setting supplierOptions to empty array.");
+        setSupplierOptions([]);
+      }
+    }, (error) => {
+      console.error("Error fetching real-time supplier options:", error);
+    });
+    return () => unsubscribe(); // Cleanup function to unsubscribe
+  }, []);
 
   const getFirestoreDocId = useCallback(() => `entry_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
 
@@ -168,13 +201,16 @@ export default function CostAnalysisTable() {
     }
   };
 
-
-  const handleSupplierInputChange = (rowIndex: number, fieldName: keyof Omit<CostEntry, 'id'>, value: string | number) => {
+  const handleSupplierInputChange = (rowIndex: number, fieldName: 'fournisseur' | 'ht' | 'tva' | 'avoir', value: string | number) => {
     setIsDirty(true);
     setCostData(prevData =>
       prevData.map((row, index) => {
         if (index === rowIndex) {
-          let processedValue = typeof (initialSupplierRow() as any)[fieldName] === 'number'
+          // Only process numeric fields if they are numbers
+          let processedValue = fieldName === 'fournisseur'
+            ? value
+            : typeof (initialSupplierRow() as any)[fieldName] === 'number'
+
             ? parseFloat(value as string) || 0
             : value;
           return { ...row, [fieldName]: processedValue };
@@ -296,6 +332,7 @@ export default function CostAnalysisTable() {
         halign: 'center', valign: 'middle',
       };
       const tableBodyStyles: any = { fontSize: pdfSettings.tableBodyFontSize, valign: 'middle' };
+      const darkFooterCellStyles = { fontStyle: 'bold', fillColor: [45, 55, 72], textColor: [255, 255, 255] };
       const tableFooterStyles: any = { ...tableHeadStyles, fillColor: hexToRgb(pdfSettings.primaryColor || '#E0E0E0') || [220,220,220], textColor: [0,0,0] };
       
       if (pdfSettings.primaryColor) {
@@ -323,10 +360,10 @@ export default function CostAnalysisTable() {
         row.avoir.toFixed(2),
       ]);
       const supplierTableFoot = [[
-        { content: 'Total Fournisseurs', styles: { fontStyle: 'bold', halign: 'right'} },
-        { content: supplierTotals.totalHt.toFixed(2), styles: { fontStyle: 'bold', halign: 'right'} },
-        { content: supplierTotals.totalTva.toFixed(2), styles: { fontStyle: 'bold', halign: 'right'} },
-        { content: supplierTotals.totalAvoir.toFixed(2), styles: { fontStyle: 'bold', halign: 'right'} },
+        { content: 'Total Fournisseurs', styles: { ...darkFooterCellStyles, halign: 'right'} },
+        { content: supplierTotals.totalHt.toFixed(2), styles: { ...darkFooterCellStyles, halign: 'right'} },
+        { content: supplierTotals.totalTva.toFixed(2), styles: { ...darkFooterCellStyles, halign: 'right'} },
+        { content: supplierTotals.totalAvoir.toFixed(2), styles: { ...darkFooterCellStyles, halign: 'right'} },
       ]];
       doc.autoTable({
         head: supplierTableHead, body: supplierTableBody, foot: supplierTableFoot,
@@ -348,32 +385,32 @@ export default function CostAnalysisTable() {
         const dayInfo = daysInMonthArray[dayIndex];
         return [
           `${dayInfo.dayOfMonth} - ${dayInfo.dayName.substring(0,3)}`,
-          entry.imp === "" ? "0.00" : Number(entry.imp).toFixed(2),
-          entry.saj === "" ? "0.00" : Number(entry.saj).toFixed(2),
-          entry.ime === "" ? "0.00" : Number(entry.ime).toFixed(2),
-          entry.esat === "" ? "0.00" : Number(entry.esat).toFixed(2),
-          entry.repasPlus === "" ? "0.00" : Number(entry.repasPlus).toFixed(2),
-          entry.nous === "" ? "0.00" : Number(entry.nous).toFixed(2),
-          { content: dailyCoeffTotals.totalCoeffJour[dayIndex].toFixed(2), styles: { fontStyle: 'bold' } },
+          entry.imp === "" ? "0" : Number(entry.imp).toFixed(0),
+          entry.saj === "" ? "0" : Number(entry.saj).toFixed(0),
+          entry.ime === "" ? "0" : Number(entry.ime).toFixed(0),
+          entry.esat === "" ? "0" : Number(entry.esat).toFixed(0),
+          entry.repasPlus === "" ? "0" : Number(entry.repasPlus).toFixed(0),
+          entry.nous === "" ? "0" : Number(entry.nous).toFixed(0),
+          { content: dailyCoeffTotals.totalCoeffJour[dayIndex].toFixed(0), styles: { fontStyle: 'bold' } },
           entry.pn === "" ? "0" : Number(entry.pn).toFixed(0),
           entry.pnEsat === "" ? "0" : Number(entry.pnEsat).toFixed(0),
           { content: dailyCoeffTotals.totalPnJour[dayIndex].toFixed(0), styles: { fontStyle: 'bold' } },
-          { content: dailyCoeffTotals.totalGlobalJour[dayIndex].toFixed(2), styles: { fontStyle: 'bold' } },
+          { content: dailyCoeffTotals.totalGlobalJour[dayIndex].toFixed(0), styles: { fontStyle: 'bold' } },
         ]
       });
       const dailyCoeffTableFoot = [[
-        { content: 'Total Mois', styles: { fontStyle: 'bold', halign: 'right'} },
-        { content: dailyCoeffTotals.imp.toFixed(2), styles: { fontStyle: 'bold'} }, 
-        { content: dailyCoeffTotals.saj.toFixed(2), styles: { fontStyle: 'bold'} }, 
-        { content: dailyCoeffTotals.ime.toFixed(2), styles: { fontStyle: 'bold'} }, 
-        { content: dailyCoeffTotals.esat.toFixed(2), styles: { fontStyle: 'bold'} }, 
-        { content: dailyCoeffTotals.repasPlus.toFixed(2), styles: { fontStyle: 'bold'} }, 
-        { content: dailyCoeffTotals.nous.toFixed(2), styles: { fontStyle: 'bold'} },
-        { content: (dailyCoeffTotals.totalCoeffJour.reduce((s,v) => s+v,0)).toFixed(2), styles: { fontStyle: 'bold' } },
-        { content: dailyCoeffTotals.pn.toFixed(0), styles: { fontStyle: 'bold'} }, 
-        { content: dailyCoeffTotals.pnEsat.toFixed(0), styles: { fontStyle: 'bold'} },
-        { content: (dailyCoeffTotals.totalPnJour.reduce((s,v) => s+v,0)).toFixed(0), styles: { fontStyle: 'bold' } },
-        { content: grandTotalGlobalJourValue.toFixed(2), styles: { fontStyle: 'bold' } },
+        { content: 'Total Mois', styles: { ...darkFooterCellStyles, halign: 'right'} },
+        { content: dailyCoeffTotals.imp.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
+        { content: dailyCoeffTotals.saj.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
+        { content: dailyCoeffTotals.ime.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
+        { content: dailyCoeffTotals.esat.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
+        { content: dailyCoeffTotals.repasPlus.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
+        { content: dailyCoeffTotals.nous.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
+        { content: (dailyCoeffTotals.totalCoeffJour.reduce((s,v) => s+v,0)).toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center' } },
+        { content: dailyCoeffTotals.pn.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
+        { content: dailyCoeffTotals.pnEsat.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
+        { content: (dailyCoeffTotals.totalPnJour.reduce((s,v) => s+v,0)).toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center' } },
+        { content: grandTotalGlobalJourValue.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center' } },
       ]];
       doc.autoTable({
         head: dailyCoeffTableHead, body: dailyCoeffTableBody, foot: dailyCoeffTableFoot,
@@ -383,7 +420,7 @@ export default function CostAnalysisTable() {
         footStyles: {...tableFooterStyles, fontSize: 7, cellPadding: 1, halign: 'center'},
         columnStyles: { 
             0: { halign: 'left', cellWidth: 35, fontStyle: 'bold' }, 
-            7: { fontStyle: 'bold', fillColor: [203, 213, 225] }, // Total Coeff.
+            7: { fontStyle: 'bold', fillColor: [255, 120, 220] }, // Total Coeff.
             10: { fontStyle: 'bold', fillColor: [191, 219, 254] }, // Total PN
             11: { fontStyle: 'bold', fillColor: [254, 202, 202] }  // TOTAL GLOBAL JOUR
         },
@@ -478,14 +515,26 @@ export default function CostAnalysisTable() {
                   <TableHeader><TableRow>
                     <TableHead className="min-w-[150px]">Fournisseur</TableHead>
                     <TableHead className="min-w-[80px] text-right">HT (€)</TableHead>
-                    <TableHead className="min-w-[80px] text-right">TVA (€)</TableHead>
+                    <TableHead className="min-w-[80px] text-right">TVA (€)</TableHead> {/* Removed extra space */}
                     <TableHead className="min-w-[80px] text-right">Avoir (€)</TableHead>
                     <TableHead className="min-w-[50px] text-center">Action</TableHead>
                   </TableRow></TableHeader>
                   <TableBody>
                     {costData.map((row, rowIndex) => (
                       <TableRow key={row.id || `supplier_new_${rowIndex}`}>
-                        <TableCell className="p-1"><Input type="text" value={row.fournisseur} onChange={e => handleSupplierInputChange(rowIndex, 'fournisseur', e.target.value)} className="text-xs p-1 h-8" disabled={isSaving} /></TableCell>
+                        <TableCell className="p-1">
+                           <Select value={row.fournisseur} onValueChange={(value) => handleSupplierInputChange(rowIndex, 'fournisseur', value as string)} disabled={isSaving}>
+                             <SelectTrigger className="text-xs p-1 h-8">
+ <SelectValue placeholder={"Choisir un fournisseur"} />
+                             </SelectTrigger>
+                             <SelectContent>
+                               {supplierOptions.map(supplier => (
+                                 <SelectItem key={supplier} value={supplier}>{supplier}</SelectItem>
+                               ))}
+                             </SelectContent>
+
+                           </Select>
+                         </TableCell>
                         <TableCell className="p-1"><Input type="number" value={row.ht} onChange={e => handleSupplierInputChange(rowIndex, 'ht', e.target.value)} className="text-xs p-1 h-8 text-right" disabled={isSaving} /></TableCell>
                         <TableCell className="p-1"><Input type="number" value={row.tva} onChange={e => handleSupplierInputChange(rowIndex, 'tva', e.target.value)} className="text-xs p-1 h-8 text-right" disabled={isSaving} /></TableCell>
                         <TableCell className="p-1"><Input type="number" value={row.avoir} onChange={e => handleSupplierInputChange(rowIndex, 'avoir', e.target.value)} className="text-xs p-1 h-8 text-right" disabled={isSaving} /></TableCell>
@@ -495,11 +544,12 @@ export default function CostAnalysisTable() {
                       </TableRow>
                     ))}
                   </TableBody>
-                  <TableFooter><TableRow className="font-bold bg-muted/80">
+                  <TableFooter>
+                    <TableRow className="font-bold bg-muted/80 ">
                     <TableCell>Total Fournisseurs</TableCell>
-                    <TableCell className="text-right">{supplierTotals.totalHt.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">{supplierTotals.totalTva.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">{supplierTotals.totalAvoir.toFixed(2)}</TableCell>
+                    <TableCell className="text-right ">{supplierTotals.totalHt.toFixed(2)}</TableCell>
+                    <TableCell className="text-right ">{supplierTotals.totalTva.toFixed(2)}</TableCell>
+                    <TableCell className="text-right ">{supplierTotals.totalAvoir.toFixed(2)}</TableCell>
                     <TableCell></TableCell>
                   </TableRow></TableFooter>
                 </Table>

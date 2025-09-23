@@ -18,7 +18,7 @@ const playfairDisplay = Playfair_Display({
 
 export const metadata: Metadata = {
   title: 'Excellence Dashboard',
-  description: 'Application de gestion par l’excellence.',
+  description: 'Application de gestion de la cuisine de Brebières par l’excellence.',
 };
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr" suppressHydrationWarning> 
+    <html lang="fr" suppressHydrationWarning className="dark"> 
       <body 
         className={cn(
           inter.variable, 

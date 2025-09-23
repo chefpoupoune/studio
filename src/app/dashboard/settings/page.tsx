@@ -15,7 +15,7 @@ import React, { useState, useEffect } from 'react';
 import type { RubricId } from './components/user-management'; 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { useIsMobile } from '@/hooks/use-mobile';
+import useIsMobile from '@/hooks/use-mobile';
 
 const settingsTabsConfig = [
   { value: "pdf-layout", label: "Mises en Page PDF", Icon: FileCog, component: <PdfLayoutManager /> },

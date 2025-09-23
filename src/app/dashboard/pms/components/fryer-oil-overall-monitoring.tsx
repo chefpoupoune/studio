@@ -19,6 +19,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { format, parseISO, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
+import useMobile from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -78,6 +79,7 @@ export default function FryerOilOverallMonitoring() {
 
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
+  const isMobile = useMobile();
 
   const maintenanceForm = useForm<MaintenanceLogFormData>({ resolver: zodResolver(maintenanceLogSchema) });
   const tpmForm = useForm<TpmLogFormData>({ 
@@ -434,43 +436,45 @@ export default function FryerOilOverallMonitoring() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading && maintenanceLog.length === 0 ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : maintenanceLog.length === 0 ? <p className="text-center text-muted-foreground">Aucune entrée de maintenance.</p> : (
-            <div className="overflow-x-auto border rounded-md">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead rowSpan={2} className="text-center align-middle min-w-[120px]">DATE D'UTILISATION DE LA FRITURE</TableHead>
-                    <TableHead colSpan={2} className="text-center">FILTRATION DE L'HUILE</TableHead>
-                    <TableHead colSpan={2} className="text-center">NETTOYAGE DE LA FRITEUSE</TableHead>
-                    <TableHead colSpan={2} className="text-center">CHANGEMENT D'HUILE</TableHead>
-                    <TableHead rowSpan={2} className="text-center align-middle min-w-[100px]">Actions</TableHead>
-                  </TableRow>
-                  <TableRow>
-                    <TableHead className="text-center">Date</TableHead><TableHead className="text-center">Emargement</TableHead>
-                    <TableHead className="text-center">Date</TableHead><TableHead className="text-center">Emargement</TableHead>
-                    <TableHead className="text-center">Date</TableHead><TableHead className="text-center">Emargement</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {maintenanceLog.map(e => (
-                    <TableRow key={e.id}>
-                      <TableCell className="text-center">{format(parseISO(e.useDate), "dd/MM/yyyy", { locale: fr })}</TableCell>
-                      <TableCell className="text-center">{e.filterDate ? format(parseISO(e.filterDate), "dd/MM/yy") : '-'}</TableCell><TableCell className="text-center">{e.filterSignature || '-'}</TableCell>
-                      <TableCell className="text-center">{e.cleaningDate ? format(parseISO(e.cleaningDate), "dd/MM/yy") : '-'}</TableCell><TableCell className="text-center">{e.cleaningSignature || '-'}</TableCell>
-                      <TableCell className="text-center">{e.changeDate ? format(parseISO(e.changeDate), "dd/MM/yy") : '-'}</TableCell><TableCell className="text-center">{e.changeSignature || '-'}</TableCell>
-                      <TableCell className="text-center space-x-1">
-                        <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5"/></Button></AlertDialogTrigger>
-                        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Supprimer cette entrée de maintenance?</AlertDialogTitle></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annuler</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteMaintenanceEntry(e.id)} disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Supprimer</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
-                        <Button variant="outline" size="icon" onClick={() => handleOpenMaintenanceDialog(e)} className="h-7 w-7" disabled={isLoading}><Edit2 className="h-3.5 w-3.5"/></Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-          {maintenanceLog.length > 0 && <div className="mt-4 flex justify-end"><Button onClick={() => generatePdf('maintenance')} size="sm" disabled={isLoading}>{isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileText className="mr-2 h-4 w-4"/>} Générer PDF</Button></div>}
-        </CardContent>
+  {isLoading && maintenanceLog.length === 0 ? <div className="flex justify-center py-6"><Loader2 className="h-6 w-6 animate-spin"/></div> : maintenanceLog.length === 0 ? <p className="text-center text-muted-foreground py-6">Aucune entrée de maintenance.</p> : !isMobile ? (
+    <div className="overflow-x-auto border rounded-md">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead rowSpan={2} className="text-center align-middle min-w-[120px]">DATE D'UTILISATION DE LA FRITURE</TableHead>
+            <TableHead colSpan={2} className="text-center">FILTRATION DE L'HUILE</TableHead>
+            <TableHead colSpan={2} className="text-center">NETTOYAGE DE LA FRITEUSE</TableHead>
+            <TableHead colSpan={2} className="text-center">CHANGEMENT D'HUILE</TableHead>
+            <TableHead rowSpan={2} className="text-center align-middle min-w-[100px]">Actions</TableHead>
+          </TableRow>
+          <TableRow>
+            <TableHead className="text-center">Date</TableHead><TableHead className="text-center">Emargement</TableHead>
+            <TableHead className="text-center">Date</TableHead><TableHead className="text-center">Emargement</TableHead>
+            <TableHead className="text-center">Date</TableHead><TableHead className="text-center">Emargement</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {maintenanceLog.map(e => (
+            <TableRow key={e.id}>
+              <TableCell className="text-center">{format(parseISO(e.useDate), "dd/MM/yyyy", { locale: fr })}</TableCell>
+              <TableCell className="text-center">{e.filterDate ? format(parseISO(e.filterDate), "dd/MM/yy") : '-'}</TableCell><TableCell className="text-center">{e.filterSignature || '-'}</TableCell>
+              <TableCell className="text-center">{e.cleaningDate ? format(parseISO(e.cleaningDate), "dd/MM/yy") : '-'}</TableCell><TableCell className="text-center">{e.cleaningSignature || '-'}</TableCell>
+              <TableCell className="text-center">{e.changeDate ? format(parseISO(e.changeDate), "dd/MM/yy") : '-'}</TableCell><TableCell className="text-center">{e.changeSignature || '-'}</TableCell>
+              <TableCell className="text-center space-x-1">
+                <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5"/></Button></AlertDialogTrigger>
+                <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Supprimer cette entrée de maintenance?</AlertDialogTitle></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annuler</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteMaintenanceEntry(e.id)} disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Supprimer</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+                <Button variant="outline" size="icon" onClick={() => handleOpenMaintenanceDialog(e)} className="h-7 w-7" disabled={isLoading}><Edit2 className="h-3.5 w-3.5"/></Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  ) : (
+     <p className="text-center text-muted-foreground py-6">Le tableau est masqué sur mobile. <br/> Utilisez le bouton "Ajouter" pour voir ou modifier les entrées.</p>
+  )}
+  {!isMobile && maintenanceLog.length > 0 && <div className="mt-4 flex justify-end"><Button onClick={() => generatePdf('maintenance')} size="sm" disabled={isLoading}>{isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileText className="mr-2 h-4 w-4"/>} Générer PDF</Button></div>}
+</CardContent>
       </Card>
 
       {/* Section 2: Suivi des Huiles (TPM) */}
@@ -506,43 +510,46 @@ export default function FryerOilOverallMonitoring() {
           <CardDescription>Légende TPM: <span className="px-1.5 py-0.5 rounded-sm text-xs font-medium bg-green-500 text-white">Conservation</span> / <span className="px-1.5 py-0.5 rounded-sm text-xs font-medium bg-yellow-400 text-black">Surveillance</span> / <span className="px-1.5 py-0.5 rounded-sm text-xs font-medium bg-red-500 text-white">Changement</span></CardDescription>
         </CardHeader>
         <CardContent>
-           {isLoading && tpmLog.length === 0 ? <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div> : tpmLog.length === 0 ? <p className="text-center text-muted-foreground">Aucun contrôle TPM enregistré.</p> : (
-            <div className="overflow-x-auto border rounded-md">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-center">Date</TableHead><TableHead className="text-center">Opérateur</TableHead>
-                    <TableHead className="text-center">LED TPM</TableHead><TableHead className="text-center">Friteuse N°</TableHead>
-                    <TableHead className="text-center">% TPM</TableHead><TableHead className="text-center">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tpmLog.map(e => (
-                    <TableRow key={e.id}>
-                      <TableCell className="text-center">{format(parseISO(e.date), "dd/MM/yyyy", { locale: fr })}</TableCell>
-                      <TableCell className="text-center">{e.operator || '-'}</TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex justify-center space-x-1">
-                            <span className={cn("w-4 h-4 rounded-sm border border-gray-400 inline-flex items-center justify-center", e.ledTpmStatus === 'lt_20' && "bg-green-500 ring-2 ring-offset-1 ring-black")}>{e.ledTpmStatus === 'lt_20' && <Check className="h-3 w-3 text-white"/>}</span>
-                            <span className={cn("w-4 h-4 rounded-sm border border-gray-400 inline-flex items-center justify-center", e.ledTpmStatus === '20_24' && "bg-yellow-400 ring-2 ring-offset-1 ring-black")}>{e.ledTpmStatus === '20_24' && <Check className="h-3 w-3 text-black"/>}</span>
-                            <span className={cn("w-4 h-4 rounded-sm border border-gray-400 inline-flex items-center justify-center", e.ledTpmStatus === 'gt_24' && "bg-red-500 ring-2 ring-offset-1 ring-black")}>{e.ledTpmStatus === 'gt_24' && <Check className="h-3 w-3 text-white"/>}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">{e.fryerIdentifier}</TableCell>
-                      <TableCell className="text-center">{e.tpmPercentage || '-'}</TableCell>
-                      <TableCell className="text-center space-x-1">
-                        <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5"/></Button></AlertDialogTrigger>
-                        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Supprimer ce contrôle TPM?</AlertDialogTitle></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annuler</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteTpmEntry(e.id)} disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Supprimer</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
-                        <Button variant="outline" size="icon" onClick={() => handleOpenTpmDialog(e)} className="h-7 w-7" disabled={isLoading}><Edit2 className="h-3.5 w-3.5"/></Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-          {tpmLog.length > 0 && <div className="mt-4 flex justify-end"><Button onClick={() => generatePdf('tpm')} size="sm" disabled={isLoading}>{isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileText className="mr-2 h-4 w-4"/>} Générer PDF</Button></div>}
-        </CardContent>
+  {isLoading && tpmLog.length === 0 ? <div className="flex justify-center py-6"><Loader2 className="h-6 w-6 animate-spin"/></div> : tpmLog.length === 0 ? <p className="text-center text-muted-foreground py-6">Aucun contrôle TPM enregistré.</p> : !isMobile ? (
+    <div className="overflow-x-auto border rounded-md">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="text-center">Date</TableHead><TableHead className="text-center">Opérateur</TableHead>
+            <TableHead className="text-center">LED TPM</TableHead><TableHead className="text-center">Friteuse N°</TableHead>
+            <TableHead className="text-center">% TPM</TableHead><TableHead className="text-center">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {tpmLog.map(e => (
+            <TableRow key={e.id}>
+              <TableCell className="text-center">{format(parseISO(e.date), "dd/MM/yyyy", { locale: fr })}</TableCell>
+              <TableCell className="text-center">{e.operator || '-'}</TableCell>
+              <TableCell className="text-center">
+                <div className="flex justify-center space-x-1">
+                    <span className={cn("w-4 h-4 rounded-sm border border-gray-400 inline-flex items-center justify-center", e.ledTpmStatus === 'lt_20' && "bg-green-500 ring-2 ring-offset-1 ring-black")}>{e.ledTpmStatus === 'lt_20' && <Check className="h-3 w-3 text-white"/>}</span>
+                    <span className={cn("w-4 h-4 rounded-sm border border-gray-400 inline-flex items-center justify-center", e.ledTpmStatus === '20_24' && "bg-yellow-400 ring-2 ring-offset-1 ring-black")}>{e.ledTpmStatus === '20_24' && <Check className="h-3 w-3 text-black"/>}</span>
+                    <span className={cn("w-4 h-4 rounded-sm border border-gray-400 inline-flex items-center justify-center", e.ledTpmStatus === 'gt_24' && "bg-red-500 ring-2 ring-offset-1 ring-black")}>{e.ledTpmStatus === 'gt_24' && <Check className="h-3 w-3 text-white"/>}</span>
+                </div>
+              </TableCell>
+              <TableCell className="text-center">{e.fryerIdentifier}</TableCell>
+              <TableCell className="text-center">{e.tpmPercentage || '-'}</TableCell>
+              <TableCell className="text-center space-x-1">
+                <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5"/></Button></AlertDialogTrigger>
+                <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Supprimer ce contrôle TPM?</AlertDialogTitle></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annuler</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteTpmEntry(e.id)} disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Supprimer</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+                <Button variant="outline" size="icon" onClick={() => handleOpenTpmDialog(e)} className="h-7 w-7" disabled={isLoading}><Edit2 className="h-3.5 w-3.5"/></Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  ) : (
+    <p className="text-center text-muted-foreground py-6">Le tableau est masqué sur mobile. <br/> Utilisez le bouton "Ajouter" pour voir ou modifier les entrées.</p>
+  )}
+  {!isMobile && tpmLog.length > 0 && <div className="mt-4 flex justify-end"><Button onClick={() => generatePdf('tpm')} size="sm" disabled={isLoading}>{isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileText className="mr-2 h-4 w-4"/>} Générer PDF</Button></div>}
+</CardContent>
+
       </Card>
     </div>
   );

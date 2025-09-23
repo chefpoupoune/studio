@@ -1,7 +1,5 @@
-
 "use client";
 
-import Link from 'next/link';
 import { FileClock, PlusCircle, History, Eye, Trash2, Edit2, CheckSquare, ListFilter, Clock, CalendarOff, FileText as PdfFileTextIcon, MailQuestion, Loader2, User, CalendarClock } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -9,8 +7,9 @@ import { CurrentDate } from '@/components/current-date';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { OvertimeRequest, PrestationType, AbsenceRequest } from './types';
 import { PRESTATION_TYPE_LABELS } from './types';
-import OvertimeRequestDialog from './components/OvertimeRequestDialog';
-import AbsenceRequestDialog from './components/AbsenceRequestDialog';
+import OvertimeRequestDialog from '@/app/dashboard/declaration-heure/components/OvertimeRequestDialog'; // Correct import path
+import AbsenceRequestDialog from '@/app/dashboard/declaration-heure/components/AbsenceRequestDialog'; // Correct import path
+import ScheduleChangeRequestDialog from '@/app/dashboard/declaration-heure/components/ScheduleChangeRequestDialog'; // Correct import path
 import { useToast } from '@/hooks/use-toast';
 import { format, parseISO, isValid, differenceInCalendarDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -28,8 +27,9 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { BrigadeMember } from '@/app/dashboard/time-tracking/types';
+import type { ScheduleChangeRequest } from './types'; // Import the new type
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useIsMobile } from '@/hooks/use-mobile'; 
+import useIsMobile from '@/hooks/use-mobile'
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import jsPDF from 'jspdf';
@@ -45,6 +45,7 @@ import {
   doc,
   setDoc,
   deleteDoc,
+  where, // Import 'where' for filtering
   Timestamp,
   serverTimestamp, // For server-side timestamping if needed, though client-side is fine for updatedAt
 } from 'firebase/firestore';
@@ -76,6 +77,10 @@ export default function DeclarationHeurePage() {
   const [isAbsenceFormOpen, setIsAbsenceFormOpen] = useState(false);
   const [editingAbsenceRequest, setEditingAbsenceRequest] = useState<AbsenceRequest | null>(null);
   const [isAbsenceApproverViewActive, setIsAbsenceApproverViewActive] = useState(false);
+
+  const [scheduleChangeRequests, setScheduleChangeRequests] = useState<ScheduleChangeRequest[]>([]);
+  const [isScheduleChangeFormOpen, setIsScheduleChangeFormOpen] = useState(false);
+  const [editingScheduleChangeRequest, setEditingScheduleChangeRequest] = useState<ScheduleChangeRequest | null>(null);
   
   const [brigadeMembers, setBrigadeMembers] = useState<BrigadeMember[]>([]);
   const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
@@ -179,16 +184,45 @@ export default function DeclarationHeurePage() {
     }
   }, [isClient, toast]);
 
+  const fetchScheduleChangeRequests = useCallback(async () => {
+    if (!isClient) return;
+    try {
+      const scheduleChangeCollectionRef = collection(firestore, 'scheduleChangeRequests');
+      const q = query(scheduleChangeCollectionRef, orderBy('requestDate', 'desc'));
+      const querySnapshot = await getDocs(q, { source: 'server' }); // Force fetch from server
+      const requestsList = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          requestDate: (data.requestDate as Timestamp)?.toDate ? (data.requestDate as Timestamp).toDate().toISOString() : new Date(data.requestDate).toISOString(),
+          updatedAt: (data.updatedAt as Timestamp)?.toDate ? (data.updatedAt as Timestamp).toDate().toISOString() : new Date(data.updatedAt).toISOString(),
+          date: data.date && (data.date as Timestamp)?.toDate ? (data.date as Timestamp).toDate().toISOString() : new Date(data.date).toISOString(),
+          employeeSignatureDate: data.employeeSignatureDate && (data.employeeSignatureDate as Timestamp)?.toDate ? (data.employeeSignatureDate as Timestamp).toDate().toISOString() : null,
+          directManagerSignatureDate: data.directManagerSignatureDate && (data.directManagerSignatureDate as Timestamp)?.toDate ? (data.directManagerSignatureDate as Timestamp).toDate().toISOString() : null,
+          directorSignatureDate: data.directorSignatureDate && (data.directorSignatureDate as Timestamp)?.toDate ? (data.directorSignatureDate as Timestamp).toDate().toISOString() : null,
+          decisionDate: data.decisionDate && (data.decisionDate as Timestamp)?.toDate ? (data.decisionDate as Timestamp).toDate().toISOString() : null,
+        } as ScheduleChangeRequest;
+      });
+      setScheduleChangeRequests(requestsList);
+      console.log(`[DeclarationHeurePage LOAD SCR] Loaded ${requestsList.length} schedule change requests from Firestore.`);
+    } catch (e) {
+      console.error("[DeclarationHeurePage LOAD SCR] Error loading schedule change requests from Firestore", e);
+      setScheduleChangeRequests([]);
+      toast({ title: "Erreur chargement demandes changement horaire", variant: "destructive" });
+    }
+  }, [isClient, toast]);
+
   useEffect(() => {
     if (isClient) {
       const loadAllData = async () => {
         setIsLoading(true);
-        await Promise.allSettled([fetchOvertimeRequests(), fetchAbsenceRequests()]);
+        await Promise.allSettled([fetchOvertimeRequests(), fetchAbsenceRequests(), fetchScheduleChangeRequests()]);
         setIsLoading(false);
       };
-      loadAllData();
+      loadAllData(); // Initial load for all request types
     }
-  }, [isClient, fetchOvertimeRequests, fetchAbsenceRequests]);
+  }, [isClient, fetchOvertimeRequests, fetchAbsenceRequests, fetchScheduleChangeRequests]); // CORRECTION: Dépendance ajoutée
 
 
   const currentBrigadeMember = useMemo(() => {
@@ -340,23 +374,164 @@ export default function DeclarationHeurePage() {
     setEditingAbsenceRequest(null);
   }, [editingAbsenceRequest, loggedInUsername, currentBrigadeMember, toast, isLoading, fetchAbsenceRequests]);
 
-  const handleDeleteAbsenceRequest = async (requestId: string) => {
+  const handleDeleteAbsenceRequest = useCallback(async (requestId: string) => {
     if (isLoading) return;
      try {
-      await deleteDoc(doc(firestore, 'absenceRequests', requestId));
-      fetchAbsenceRequests();
-      window.dispatchEvent(new CustomEvent('absenceRequestsUpdated'));
-      toast({ title: "Demande d'Absence Supprimée", variant: "destructive" });
+      await deleteDoc(doc(firestore, 'absenceRequests', requestId)); // Correct Firestore delete
+      fetchAbsenceRequests(); // Refresh the list
+      window.dispatchEvent(new CustomEvent('absenceRequestsUpdated')); // Notify other components
+      toast({ title: "Demande d'Absence Supprimée", variant: "destructive" }); // Success toast
     } catch (e) {
       console.error("Error deleting absence request from Firestore:", e);
-      toast({ title: "Erreur suppression demande d'absence", variant: "destructive" });
+      // Optionally toast error here too
+      toast({ title: "Erreur suppression demande d'absence", variant: "destructive" }); // Error toast
     }
-  };
+ }, [isLoading, fetchAbsenceRequests, toast]);
 
   const handleOpenAbsenceForm = (request?: AbsenceRequest, approverMode: boolean = false) => {
     setEditingAbsenceRequest(request || null);
     setIsAbsenceApproverViewActive(approverMode);
     setIsAbsenceFormOpen(true);
+  };
+
+  const handleAddOrUpdateScheduleChangeRequest = useCallback(async (
+    data: Partial<Omit<ScheduleChangeRequest, 'id' | 'employeeName' | 'requestDate' | 'updatedAt'>>
+  ) => {
+    if (isLoading) { toast({ title: "Données non prêtes", variant: "default"}); return; }
+    
+    const employeeNameToUse = editingScheduleChangeRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername || "Système";
+    const positionToUse = data.position || (editingScheduleChangeRequest ? editingScheduleChangeRequest.position : (currentBrigadeMember?.role || ''));
+    const brigadeMemberIdToUse = editingScheduleChangeRequest?.brigadeMemberId || currentBrigadeMember?.id;
+    const now = new Date();
+
+    // Add check for missing brigadeMemberId
+    if (!brigadeMemberIdToUse) {
+      toast({ title: "Erreur sauvegarde demande", description: "Vos informations de membre de brigade sont manquantes. Veuillez vous reconnecter ou contacter un administrateur.", variant: "destructive" });
+      return; // Stop the function execution if brigadeMemberId is missing
+    }
+
+    const requestDataToSave: Omit<ScheduleChangeRequest, 'id'> = { // Ensure type matches
+      ...(data as any), // Use 'as any' here to bypass strict type check for data, or define a more specific type
+      employeeName: employeeNameToUse,
+      position: positionToUse,
+      brigadeMemberId: brigadeMemberIdToUse,
+      requestDate: editingScheduleChangeRequest ? Timestamp.fromDate(new Date(editingScheduleChangeRequest.requestDate)) : Timestamp.fromDate(now),
+      updatedAt: Timestamp.fromDate(now),
+      date: data.date ? Timestamp.fromDate(new Date(data.date)) : Timestamp.fromDate(new Date()),
+      employeeSignatureDate: data.employeeSignatureDate ? Timestamp.fromDate(new Date(data.employeeSignatureDate)) : null,
+      directManagerSignatureDate: data.directManagerSignatureDate ? Timestamp.fromDate(new Date(data.directManagerSignatureDate)) : null,
+      directorSignatureDate: data.directorSignatureDate ? Timestamp.fromDate(new Date(data.directorSignatureDate)) : null,
+      decisionDate: data.decisionDate ? Timestamp.fromDate(new Date(data.decisionDate)) : null,
+    };
+    
+    try {
+      console.log("[handleAddOrUpdateScheduleChangeRequest] Saving schedule change request. Editing:", !!editingScheduleChangeRequest);
+      console.log("[ScheduleChangeRequest] Attempting to save schedule change request to Firestore...");
+      if (editingScheduleChangeRequest) {
+          const originalStatus = editingScheduleChangeRequest.approvalStatus || 'pending';
+          const newStatus = data.approvalStatus;
+
+          if (newStatus && newStatus !== 'pending' && originalStatus === 'pending' && brigadeMemberIdToUse) {
+              const notifTitle = "Demande de changement d'horaire traitée";
+              const notifMessage = `Votre demande de changement d'horaire pour le ${format(parseISO(editingScheduleChangeRequest.date), 'dd/MM/yy')} a été ${newStatus === 'accepted' ? 'acceptée' : 'refusée'}.`;
+              const notificationData = {
+                  userId: brigadeMemberIdToUse,
+                  title: notifTitle,
+                  message: notifMessage,
+                  link: '/dashboard/declaration-heure',
+                  createdAt: Timestamp.fromDate(new Date()),
+                  isRead: false,
+              };
+              await addDoc(collection(firestore, 'notifications'), notificationData);
+          }
+
+          const docRef = doc(firestore, 'scheduleChangeRequests', editingScheduleChangeRequest.id);
+          await setDoc(docRef, requestDataToSave);
+          console.log(`[ScheduleChangeRequest] Successfully updated schedule change request with ID: ${editingScheduleChangeRequest.id}`);
+          toast({ title: "Demande Changement Horaire Modifiée" });
+      } else {
+          const docRef = await addDoc(collection(firestore, 'scheduleChangeRequests'), requestDataToSave);
+          console.log(`[ScheduleChangeRequest] Successfully added new schedule change request with ID: ${docRef.id}`);
+
+
+
+          // --- START: CHEF NOTIFICATION LOGGING ---
+console.log("[ScheduleChangeRequest NOTIF] Attempting to find Chef user for notification...");
+const usersCollectionRef = collection(firestore, 'appUsers'); // Correction: collection AppUsers
+const chefQuery = query(usersCollectionRef, where('username', '==', 'Chef')); // Recherche par username
+const chefQuerySnapshot = await getDocs(chefQuery); // Exécute la requête
+
+if (!chefQuerySnapshot.empty) {
+    console.log(`[ScheduleChangeRequest NOTIF] Found ${chefQuerySnapshot.size} Chef user(s). Creating notifications.`);
+    const notifTitle = "Nouvelle demande de changement d'horaire";
+    const notifMessage = `Une nouvelle demande de changement d'horaire a été soumise par ${employeeNameToUse} pour le ${format(parseISO(data.date as string || now.toISOString()), 'dd/MM/yy')}.`;
+
+    for (const chefDoc of chefQuerySnapshot.docs) {
+        const chefUserId = chefDoc.id;
+        const chefUserData = chefDoc.data();
+        console.log(`[ScheduleChangeRequest NOTIF] Notifying Chef user: ${chefUserData.username || 'Unknown'} (ID: ${chefUserId})`);
+        
+        const notificationData = {
+            userId: chefUserId,
+            title: notifTitle,
+            message: notifMessage,
+            link: '/dashboard/declaration-heure?tab=schedule-change-approval',
+            createdAt: Timestamp.fromDate(new Date()),
+            isRead: false,
+        };
+        
+        try {
+            await addDoc(collection(firestore, 'notifications'), notificationData);
+            console.log(`[ScheduleChangeRequest NOTIF] Notification successfully added for Chef user ID: ${chefUserId}`);
+        } catch (error) {
+            console.error(`[ScheduleChangeRequest NOTIF] Error adding notification for Chef user ID: ${chefUserId}`, error);
+        }
+    }
+    console.log(`[ScheduleChangeRequest NOTIF] Notified ${chefQuerySnapshot.size} Chef users.`);
+} else {
+    console.warn("[ScheduleChangeRequest NOTIF] No user with username 'chef' found. Notification not sent.");
+    
+    // Log supplémentaire pour débogage - vérifier ce qui existe dans AppUsers
+    const allUsersSnapshot = await getDocs(usersCollectionRef);
+    console.log(`[ScheduleChangeRequest NOTIF] Total users in appUsers: ${allUsersSnapshot.size}`);
+    allUsersSnapshot.forEach(doc => {
+        console.log(`[ScheduleChangeRequest NOTIF] User: ${doc.id} - ${JSON.stringify(doc.data())}`);
+    });
+}
+// --- END: CHEF NOTIFICATION LOGGING ---
+
+
+
+          toast({ title: "Demande Changement Horaire Soumise" });
+        fetchScheduleChangeRequests(); // Refresh the list
+        window.dispatchEvent(new CustomEvent('scheduleChangeRequestsUpdated'));
+      }
+      console.log("[ScheduleChangeRequest] Schedule change request save process completed.");
+    } catch (e) {
+      const err = e as Error;
+      console.error("Error saving schedule change request to Firestore:", e);
+      toast({ title: "Erreur sauvegarde demande changement horaire", description: err.message, variant: "destructive"});
+    } 
+    setEditingScheduleChangeRequest(null);
+  }, [editingScheduleChangeRequest, loggedInUsername, currentBrigadeMember, toast, isLoading, fetchScheduleChangeRequests]); // CORRECTION: Dépendance inutile 'activeTab' retirée
+
+  const handleDeleteScheduleChangeRequest = useCallback(async (requestId: string) => {
+    if (isLoading) return;
+     try {
+      await deleteDoc(doc(firestore, 'scheduleChangeRequests', requestId));
+      fetchScheduleChangeRequests();
+      window.dispatchEvent(new CustomEvent('scheduleChangeRequestsUpdated'));
+      toast({ title: "Demande Changement Horaire Supprimée", variant: "destructive" });
+     } catch (e) {
+      console.error("Error deleting schedule change request from Firestore:", e);
+      // Optionally toast error here too
+      toast({ title: "Erreur suppression demande changement horaire", variant: "destructive" });
+    }
+ }, [isLoading, fetchScheduleChangeRequests, toast]);
+
+  const handleOpenScheduleChangeForm = (request?: ScheduleChangeRequest) => {
+    setEditingScheduleChangeRequest(request || null);
+    setIsScheduleChangeFormOpen(true);
   };
 
   const getStatusBadgeVariant = (status?: OvertimeRequest['approvalStatus'] | AbsenceRequest['approvalStatus']) => {
@@ -547,6 +722,107 @@ export default function DeclarationHeurePage() {
     )
   );
 
+  const renderScheduleChangeRequestList = (requestsToList: ScheduleChangeRequest[], approverModeView: boolean) => (
+    requestsToList.length === 0 ? (
+      <p className="text-muted-foreground text-center py-6">
+        {isChef ? "Aucune demande de changement d'horaire à approuver ou en cours." : "Vous n'avez aucune demande de changement d'horaire."}
+      </p>
+    ) : (
+      <ScrollArea className="h-[calc(100vh-26rem)] sm:h-[calc(100vh-24rem)]">
+        <div className="space-y-3 pr-3">
+          {requestsToList.map(req => (
+            <Card key={req.id} className="bg-card/60">
+              <CardHeader className="pb-2 pt-3 px-4">
+                <div className="flex justify-between items-start">
+                    <CardTitle className="text-md">Changement Horaire le {format(parseISO(req.date), "dd/MM/yy", {locale: fr})}</CardTitle>
+                    <Badge variant={getStatusBadgeVariant(req.approvalStatus)}>{getStatusLabel(req.approvalStatus)}</Badge>
+                </div>
+                <CardDescription className="text-xs">
+                  Demandé par: {req.employeeName} {req.position && `(${req.position})`}
+                  {req.requestDate && ` | Le: ${format(parseISO(req.requestDate), "dd/MM/yy HH:mm", { locale: fr })}`}
+                  {req.updatedAt && isValid(parseISO(req.updatedAt)) && ` | Modifié le: ${format(parseISO(req.updatedAt), "dd/MM/yy HH:mm", { locale: fr })}`}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="px-4 pb-3 space-y-1 text-xs">
+                {req.newStartTime && req.newEndTime && (
+                    <p className="text-muted-foreground"><span className="font-medium text-foreground/80">Nouvel horaire:</span> de {req.newStartTime} à {req.newEndTime}</p>
+                )}
+                 {req.prestationTypes && req.prestationTypes.length > 0 && (
+                    <p className="text-muted-foreground"><span className="font-medium text-foreground/80">Prestations:</span>{' '}{req.prestationTypes.map(pt => PRESTATION_TYPE_LABELS[pt as PrestationType] || pt).join(', ')}{req.prestationTypes.includes('autres') && req.prestationTypeAutresDetail && ` (${req.prestationTypeAutresDetail})`}</p>
+                )}
+                {req.reason && <p className="text-muted-foreground"><span className="font-medium text-foreground/80">Motif:</span> {req.reason}</p>}
+                
+                {req.approvalStatus && req.approvalStatus !== 'pending' && (
+                  <div className="border-t mt-2 pt-1">
+                    <p className="font-medium text-foreground/80">Décision Direction:</p>
+                    {req.approvalStatus === 'rejected' && req.rejectionReason && <p>Motif refus: {req.rejectionReason}</p>}
+                    {req.decisionDate && isValid(parseISO(req.decisionDate)) && <p>Date Décision: {format(parseISO(req.decisionDate), "dd/MM/yyyy", {locale:fr})}</p>}
+                  </div>
+                )}
+                 <div className="mt-2 flex justify-end space-x-2 pt-1">
+                    <Button variant="outline" size="sm" className="text-xs" onClick={() => handleOpenScheduleChangeForm(req)}>
+                      <Edit2 className="mr-1 h-3.5 w-3.5"/> {approverModeView ? "Traiter / Voir" : ((req.approvalStatus === 'accepted' || req.approvalStatus === 'rejected') ? "Voir" : "Modifier")}
+                    </Button>
+                    
+                    {/* CORRECTION: Ajout de la possibilité pour l'utilisateur d'annuler sa demande */}
+                    {(!approverModeView && (req.approvalStatus === 'pending' || !req.approvalStatus)) && ( 
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="destructive" size="sm" className="text-xs">
+                            <Trash2 className="mr-1 h-3.5 w-3.5"/> Annuler/Suppr.
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Annuler la demande ?</AlertDialogTitle>
+                            <AlertDialogDescription>Cette action est irréversible.</AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Non</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDeleteScheduleChangeRequest(req.id)}>
+                              Oui, annuler
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+
+                    {(approverModeView && isChef) && ( 
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="destructive" size="sm" className="text-xs">
+                            <Trash2 className="mr-1 h-3.5 w-3.5"/> Supprimer
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Supprimer la demande ?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    Êtes-vous sûr de vouloir supprimer la demande de changement d'horaire de {req.employeeName} pour le {isValid(parseISO(req.date)) ? format(parseISO(req.date), "dd/MM/yyyy") : 'date inconnue'}? Cette action est irréversible.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Non</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeleteScheduleChangeRequest(req.id)}>
+                                    Oui, supprimer
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+                    
+                    {req.approvalStatus === 'accepted' && (
+                       <Button variant="default" size="sm" className="text-xs" onClick={() => handleGenerateScheduleChangeRequestPdf(req)}><PdfFileTextIcon className="mr-1 h-3.5 w-3.5"/> Générer PDF</Button>
+                    )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </ScrollArea>
+    )
+  );
+
   const employeeOvertimeRequests = useMemo(() => {
     if (!isClient || !loggedInUsername || isLoading) return [];
     return overtimeRequests.filter(req => req.employeeName.toLowerCase() === loggedInUsername.toLowerCase());
@@ -557,6 +833,16 @@ export default function DeclarationHeurePage() {
     return absenceRequests.filter(req => req.employeeName.toLowerCase() === loggedInUsername.toLowerCase());
   }, [isClient, loggedInUsername, absenceRequests, isLoading]);
   
+  const employeeScheduleChangeRequests = useMemo(() => {
+    if (!isClient || !loggedInUsername || isLoading) return [];
+    return scheduleChangeRequests.filter(req => req.employeeName.toLowerCase() === loggedInUsername.toLowerCase());
+  }, [isClient, loggedInUsername, scheduleChangeRequests, isLoading]);
+
+ const pendingScheduleChangeRequestsForChef = useMemo(() => {
+    if (!isClient || isLoading) return [];
+    return scheduleChangeRequests.filter(req => req.approvalStatus === 'pending');
+  }, [isClient, scheduleChangeRequests, isLoading]);
+
   const allOvertimeRequestsForChef = useMemo(() => {
      if (!isClient || isLoading) return [];
     return overtimeRequests;
@@ -566,13 +852,21 @@ export default function DeclarationHeurePage() {
      if (!isClient || isLoading) return [];
     return absenceRequests;
   }, [isClient, absenceRequests, isLoading]);
+
+  const allScheduleChangeRequestsForChef = useMemo(() => {
+    if (!isClient || isLoading) return [];
+   return scheduleChangeRequests;
+ }, [isClient, scheduleChangeRequests, isLoading]);
   
   const declarationHeureTabsConfig: DeclarationHeureTab[] = [
     { value: "my-overtime-requests", label: "Dépassement Horaire", Icon: History },
     { value: "my-absence-requests", label: "Demandes Absence", Icon: CalendarOff },
-  ];
+    { value: "my-schedule-changes", label: "Changements Horaire", Icon: CalendarClock },
+ ];
+
   if (isChef) {
     declarationHeureTabsConfig.push({ value: "overtime-approval", label: "Approb. Dépassement", Icon: CheckSquare });
+    declarationHeureTabsConfig.push({ value: "schedule-change-approval", label: "Approb. Changement H.", Icon: CalendarClock });
     declarationHeureTabsConfig.push({ value: "absence-approval", label: "Approb. Absence", Icon: MailQuestion });
   }
 
@@ -610,6 +904,19 @@ export default function DeclarationHeurePage() {
             <CardContent>{renderAbsenceRequestList(isChef ? allAbsenceRequestsForChef : employeeAbsenceRequests, false)}</CardContent>
           </Card>
         );
+      case "my-schedule-changes":
+        return (
+          <Card className="shadow-xl">
+             <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <div><CardTitle>Mes Demandes de Changement d'Horaire</CardTitle><CardDescription>Soumettez et suivez vos demandes de modification de planning ponctuelle.</CardDescription></div>
+              <Button 
+                onClick={() => handleOpenScheduleChangeForm(undefined)} 
+                disabled={isLoading || (!currentBrigadeMember && !isChef)}
+              ><PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande Changement Horaire</Button>
+            </CardHeader>
+            <CardContent>{renderScheduleChangeRequestList(isChef ? allScheduleChangeRequestsForChef : employeeScheduleChangeRequests, false)}</CardContent>
+          </Card>
+        );
       case "overtime-approval":
         return isChef ? (
           <Card className="shadow-xl">
@@ -622,6 +929,13 @@ export default function DeclarationHeurePage() {
           <Card className="shadow-xl">
             <CardHeader><CardTitle>Approbation des Demandes d'Absence</CardTitle><CardDescription>Traitez les demandes d'absence soumises.</CardDescription></CardHeader>
             <CardContent>{renderAbsenceRequestList(allAbsenceRequestsForChef, true)}</CardContent>
+          </Card>
+        ) : null;
+        case "schedule-change-approval": // New case for Schedule Change Approval
+        return isChef ? (
+          <Card className="shadow-xl">
+            <CardHeader><CardTitle>Approbation des Changements d'Horaire</CardTitle><CardDescription>Traitez et gérez les demandes de changement d'horaire.</CardDescription></CardHeader>
+            <CardContent>{renderScheduleChangeRequestList(allScheduleChangeRequestsForChef, true)}</CardContent>
           </Card>
         ) : null;
       default:
@@ -760,6 +1074,70 @@ export default function DeclarationHeurePage() {
     toast({ title: "PDF Généré", description: `Le PDF pour la demande d'absence de ${request.employeeName} a été téléchargé.` });
   };
 
+  const handleGenerateScheduleChangeRequestPdf = (request: ScheduleChangeRequest) => {
+    const pdfSettings = getPdfLayoutSettings('schedule_change_request_form');
+    const doc = new jsPDF({ orientation: pdfSettings.orientation, unit: 'pt', format: pdfSettings.pageSize }) as jsPDFWithAutoTable;
+    doc.setFont(pdfSettings.fontFamily);
+    const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
+    let currentY = pdfSettings.marginTop;
+
+    if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { try { const imgProps = doc.getImageProperties(pdfSettings.logoUrl); const formatType = imgProps.fileType.toUpperCase(); const desiredHeight = 30; const imgWidth = (imgProps.width * desiredHeight) / imgProps.height; doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight); currentY += desiredHeight + 5; } catch(e){ console.error("Error drawing logo in PDF:", e); }}
+    if (pdfSettings.headerText) { const headerLines = pdfSettings.headerText.split('\n'); doc.setFontSize(pdfSettings.headerFontSize); headerLines.forEach(line => { doc.text(line, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize * 0.7 + 2; }); currentY += 5; }
+
+    const moduleDefaultTitle = "Demande de Changement d'Horaire";
+    let pdfTitle;
+    if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
+      pdfTitle = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
+    } else {
+      pdfTitle = moduleDefaultTitle;
+    }
+    doc.setFontSize(pdfSettings.documentTitleFontSize);
+    doc.text(pdfTitle, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
+    currentY += pdfSettings.documentTitleFontSize * 0.7 + 10;
+
+    doc.setFontSize(pdfSettings.defaultFontSize);
+    doc.text(`Nom et prénom du salarié : ${request.employeeName || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
+    doc.text(`Poste occupé à l'IME : ${request.position || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
+
+    const prestationChangeText = (request.prestationTypes || []).map(pt => PRESTATION_TYPE_LABELS[pt] || pt).join(', ') +
+      ((request.prestationTypes || []).includes('autres') && request.prestationTypeAutresDetail ? ` (${request.prestationTypeAutresDetail})` : '');
+    doc.text(`Prestation correspondante : ${prestationChangeText || 'Logistique'}`, pdfSettings.marginLeft, currentY); currentY += 20;
+
+    doc.setFontSize((pdfSettings.defaultFontSize || 10) + 1);
+    doc.text("Détails du changement d'horaire demandé :", pdfSettings.marginLeft, currentY);
+    currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 5;
+
+    // CORRECTION: Amélioration du corps du tableau pour plus de clarté
+    const tableBody = [];
+    tableBody.push(['Date du changement', request.date && isValid(parseISO(request.date)) ? format(parseISO(request.date), 'dd MMMM yyyy', { locale: fr }) : 'N/A']);
+    const originalSchedule = request.originalStartTime ? `${request.originalStartTime} - ${request.originalEndTime}` : "Non spécifié";
+    tableBody.push(['Horaire initial prévu', originalSchedule]);
+    tableBody.push(['Nouvel horaire demandé', `${request.newStartTime || 'N/A'} - ${request.newEndTime || 'N/A'}`]);
+    if (request.reason) {
+        tableBody.push(['Motif du changement', request.reason]);
+    }
+    const headStyles: any = { fontSize: pdfSettings.tableHeaderFontSize, fontStyle: 'bold', fillColor: [230, 230, 230], textColor: [0,0,0] };
+
+     if (pdfSettings.primaryColor) { const primaryRgb = hexToRgb(pdfSettings.primaryColor); if (primaryRgb) { headStyles.fillColor = primaryRgb; const brightness = (primaryRgb[0] * 299 + primaryRgb[1] * 587 + primaryRgb[2] * 114) / 1000; headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255]; }}
+
+    doc.autoTable({ startY: currentY, head: [['Champ', 'Information']], body: tableBody, theme: 'grid', headStyles: headStyles, styles: { fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily, cellPadding: 3, }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 180 }, 1: { cellWidth: 'auto' } }, margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight }, });
+    currentY = (doc as any).lastAutoTable.finalY + 20;
+
+    const sigDate = (dateStr: string | null | undefined) => dateStr && isValid(parseISO(dateStr)) ? format(parseISO(dateStr), "dd/MM/yyyy", { locale: fr }) : 'Non signé';
+    doc.text(`Salarié(e) le : ${sigDate(request.employeeSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 15;
+    doc.text(`Le Responsable Direct le : ${sigDate(request.directManagerSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 15;
+    doc.text(`Le Directeur le : ${sigDate(request.directorSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 25;
+
+    doc.setFont(undefined, 'bold'); doc.text("CADRE RESERVE A LA DIRECTION", pdfSettings.marginLeft, currentY); doc.setFont(undefined, 'normal'); currentY += 15;
+    doc.text(`Acceptée / Refusée : ${getStatusLabel(request.approvalStatus)}`, pdfSettings.marginLeft, currentY); currentY += 15;
+    if (request.approvalStatus === 'rejected' && request.rejectionReason) { doc.text(`Si refusée, motif : ${request.rejectionReason}`, pdfSettings.marginLeft, currentY); currentY += 15; }
+    doc.text(`Date : ${sigDate(request.decisionDate)}`, pdfSettings.marginLeft, currentY); currentY += 15;
+    doc.text(`Signature de la Direction : Dernoncourt Julien / Chef de cuisine`, pdfSettings.marginLeft, currentY);
+
+    const pageCount = doc.internal.getNumberOfPages(); for (let i = 1; i <= pageCount; i++) { doc.setPage(i); if (pdfSettings.footerText) { let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', i.toString()).replace('{totalPages}', pageCount.toString()); doc.setFontSize(pdfSettings.footerFontSize); doc.text(footerStr, pdfSettings.marginLeft, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2)); }}
+    doc.save(`Demande_Changement_Horaire_${request.employeeName.replace(/\s+/g, '_')}_${format(parseISO(request.date), "yyyy-MM-dd")}.pdf`);
+    toast({ title: "PDF Généré", description: `Le PDF pour la demande de changement d'horaire de ${request.employeeName} a été téléchargé.` });
+  };
 
   if (!isClient || isLoading) {
     return (
@@ -794,8 +1172,8 @@ export default function DeclarationHeurePage() {
             </Select>
           </div>
         ) : (
-          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-1 mb-6 bg-card p-1 rounded-lg">
-            {declarationHeureTabsConfig.map(tab => (<TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1"><tab.Icon className="mr-1 sm:mr-2 h-4 w-4" />{tab.label}</TabsTrigger>))}
+          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-1 mb-6 bg-card p-1 rounded-lg">
+            {declarationHeureTabsConfig.map(tab => (<TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-1 py-1 sm:px-2"><tab.Icon className="mr-1 sm:mr-2 h-4 w-4" />{tab.label}</TabsTrigger>))}
           </TabsList>
         )}
         {declarationHeureTabsConfig.map(tab => (<TabsContent key={tab.value} value={tab.value}>{getTabContent(tab.value)}</TabsContent>))}
@@ -814,8 +1192,13 @@ export default function DeclarationHeurePage() {
         currentUser={currentBrigadeMember ? { name: currentBrigadeMember.name, role: currentBrigadeMember.role } : loggedInUsername ? {name: loggedInUsername, role: ''} : null}
         isApproverView={isAbsenceApproverViewActive}
       />
+
+       <ScheduleChangeRequestDialog
+        isOpen={isScheduleChangeFormOpen} onOpenChange={setIsScheduleChangeFormOpen} onSubmitRequest={handleAddOrUpdateScheduleChangeRequest}
+        editingRequest={editingScheduleChangeRequest}
+        isApproverView={isChef && activeTab === 'schedule-change-approval'} // Pass isApproverView based on tab and role
+        currentUser={currentBrigadeMember ? { name: currentBrigadeMember.name, role: currentBrigadeMember.role } : loggedInUsername ? {name: loggedInUsername, role: ''} : null}
+      />
     </div>
   );
 }
-
-    

@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import React, { useState, useEffect } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { useIsMobile } from '@/hooks/use-mobile';
+import useIsMobile from '@/hooks/use-mobile';
 
 const costManagementTabsConfig = [
   { value: "monthly", label: "Coût de Revient Mensuel", Icon: CalendarDays, component: <CostAnalysisTable /> },
