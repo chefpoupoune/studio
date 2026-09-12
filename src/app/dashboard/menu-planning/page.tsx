@@ -1,50 +1,37 @@
+'use client';
 
-"use client";
-
-import Link from 'next/link';
-import { BookOpenText, CalendarDays, ClipboardCheck, Thermometer, FileText as FileTextIcon, Loader2, Trash2 } from 'lucide-react'; // Added Trash2
+import { BookOpenText, CalendarDays, ClipboardCheck, Thermometer, FileText as FileTextIcon, Loader2, Trash2, ShieldAlert, CookingPot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { getDaysInMonth, format, startOfDay, setDate, parseISO, endOfMonth } from 'date-fns';
+import { getDaysInMonth, format, startOfDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { getFrenchPublicHolidays, type PublicHoliday } from '@/lib/holiday-utils';
-import type { DailyMenu, MenuItem, MenuField, StoredMenuThemeValue, MenuThemeIdentifier } from './types';
-import { initialMenuItem, frenchDays, MENU_THEME_OPTIONS_FOR_SELECT, NO_THEME_SELECT_VALUE } from './types';
+import { getFrenchPublicHolidays } from '@/lib/holiday-utils';
+import type { DailyMenu, MenuField, StoredMenuThemeValue } from './types';
+import { initialMenuItem, frenchDays } from './types';
 import MenuPlanningTable from './components/menu-planning-table';
 import WeeklyOrderSheets from './components/weekly-order-sheets';
 import TemperatureSheet from './components/temperature-sheet';
+import RecipeManagement, { Recipe, RecipeCategory } from './components/recipe-management';
+import RecipePickerModal from './components/recipe-picker-modal';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
-import {
-  MENU_THEME_FROID_HEX,
-  MENU_THEME_VEGE_HEX,
-  MENU_THEME_SAM_HEX,
-  MENU_THEME_POISSON_HEX,
-  MENU_THEME_FETE_HEX,
-  MENU_WEEKEND_HEX,
-  MENU_HOLIDAY_WEEKDAY_HEX, MENU_HOLIDAY_WEEKEND_HEX, } from '@/config/colors';
-import  useIsMobile  from '@/hooks/use-mobile'; 
-import { firestore } from '@/lib/firebase';
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { getPdfLayoutSettings, loadPdfLayoutSettingsFromFirestore, hexToRgb } from '@/lib/pdf-settings';
 
+import { MENU_WEEKEND_HEX, MENU_HOLIDAY_WEEKDAY_HEX, MENU_HOLIDAY_WEEKEND_HEX } from '@/config/colors';
+import useIsMobile from '@/hooks/use-mobile';
+import { firestore } from '@/lib/firebase';
+import { doc, getDoc, setDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { useUser } from '@/hooks/use-user';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -57,55 +44,80 @@ const months = Array.from({ length: 12 }, (_, i) => ({
   label: format(new Date(currentYear, i), "MMMM", { locale: fr }),
 }));
 
-const menuPlanningTabsConfig = [
+const allMenuPlanningTabs = [
   { value: "planning", label: "Planification Mensuelle", Icon: CalendarDays },
+  { value: "recipes", label: "Recettes", Icon: CookingPot, permissionId: 'menuPlanning_recipes' },
   { value: "order-sheets", label: "Fiches de Commande", Icon: ClipboardCheck },
-  { value: "temperature-sheets", label: "Fiches de Température", Icon: Thermometer },
+  { value: "temperature-sheets", label: "Fiches de Température", Icon: Thermometer, permissionId: 'menuPlanning_temperatureSheet' },
 ];
 
 export default function MenuPlanningPage() {
+  const { user, isLoading: isLoadingUser } = useUser();
+  const [isClient, setIsClient] = useState(false);
+
+  const visibleTabs = useMemo(() => {
+    if (!user) return [];
+    const { permissions } = user;
+    return allMenuPlanningTabs.filter(tab => {
+      if (tab.permissionId) {
+        return !!permissions[tab.permissionId as keyof typeof permissions];
+      }
+      return !!permissions.canAccessMenuPlanning;
+    });
+  }, [user]);
+
   const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().getMonth().toString());
+  const [monthlyNumberOfGuests, setMonthlyNumberOfGuests] = useState<number>(240);
+  const [isPicnicMonth, setIsPicnicMonth] = useState<boolean>(false);
   const [menuData, setMenuData] = useState<DailyMenu[]>([]);
-  const [dataLoaded, setDataLoaded] = useState(false); 
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isResettingMonthData, setIsResettingMonthData] = useState(false); // New state for reset
+  const [isResettingMonthData, setIsResettingMonthData] = useState(false);
   const [isGeneratingMonthlyPdf, setIsGeneratingMonthlyPdf] = useState(false);
   const { toast } = useToast();
   const isMobile = useIsMobile();
-  const [activeTab, setActiveTab] = useState(menuPlanningTabsConfig[0].value);
+  const [activeTab, setActiveTab] = useState('');
   
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [pickerTarget, setPickerTarget] = useState<{ date: string; field: MenuField, category?: RecipeCategory } | null>(null);
 
-  // Add a console.log to track activeTab changes
   useEffect(() => {
-    console.log("Active tab changed to:", activeTab);
-  }, [activeTab]);
+    setIsClient(true);
+  }, []);
+
+  useEffect(() => {
+    if (visibleTabs.length > 0) {
+      const hash = window.location.hash.replace('#', '');
+      const tabFromHash = visibleTabs.find(tab => tab.value === hash);
+      if (tabFromHash) {
+        setActiveTab(tabFromHash.value);
+      } else if (!visibleTabs.some(t => t.value === activeTab)) {
+        setActiveTab(visibleTabs[0].value);
+      }
+    }
+  }, [visibleTabs, activeTab]);
 
   const generateMonthData = useCallback((year: number, month: number): DailyMenu[] => {
     const daysInSelectedMonth = getDaysInMonth(new Date(year, month));
     const publicHolidaysForYear = getFrenchPublicHolidays(year);
-    
     const holidayMap = new Map<string, string>();
-    publicHolidaysForYear.forEach(h => {
-      holidayMap.set(format(h.date, 'yyyy-MM-dd'), h.name);
-    });
+    publicHolidaysForYear.forEach(h => holidayMap.set(format(h.date, 'yyyy-MM-dd'), h.name));
 
-    const data: DailyMenu[] = [];
-    for (let day = 1; day <= daysInSelectedMonth; day++) {
-      const currentDate = startOfDay(new Date(year, month, day));
+    return Array.from({ length: daysInSelectedMonth }, (_, dayIndex) => {
+      const currentDate = startOfDay(new Date(year, month, dayIndex + 1));
       const dateStr = format(currentDate, 'yyyy-MM-dd');
       const dayOfWeek = currentDate.getDay();
-      
-      data.push({
+      return {
         date: dateStr,
         dayName: frenchDays[dayOfWeek],
         isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
         isHoliday: holidayMap.has(dateStr),
-        holidayName: holidayMap.get(dateStr) || undefined, 
-        ...initialMenuItem, 
-      });
-    }
-    return data;
+        holidayName: holidayMap.get(dateStr) || '', // Corrected: Use empty string instead of undefined
+        ...initialMenuItem,
+      };
+    });
   }, []);
 
   const getFirestoreDocId = useCallback(() => `menu_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
@@ -122,565 +134,363 @@ export default function MenuPlanningPage() {
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           const firestoreData = docSnap.data();
-          const loadedMenuData = (firestoreData.menus as any[] || []).map((d: any) => ({
-             ...initialMenuItem, 
-             ...d,
-             date: d.date, 
-             theme: d.theme || '', 
-             entree: d.entree || '',
-             plat: d.plat || '',
-             feculent: d.feculent || '',
-             legume: d.legume || '',
-             sauce: d.sauce || '',
-             dessert: d.dessert || '',
-             holidayName: d.holidayName || undefined,
-          }));
-          
-          const expectedDays = getDaysInMonth(new Date(yearNum, monthNum));
-          const firstDayLoadedDate = loadedMenuData.length > 0 ? loadedMenuData[0].date : null;
-          const expectedFirstDayPrefix = `${yearNum}-${(monthNum + 1).toString().padStart(2, '0')}`;
-
-            if (loadedMenuData.length === expectedDays && firstDayLoadedDate && firstDayLoadedDate.startsWith(expectedFirstDayPrefix)) {
-                setMenuData(loadedMenuData);
-            } else {
-                console.warn(`Data mismatch for ${docId}. Expected ${expectedDays} days starting with ${expectedFirstDayPrefix}, got ${loadedMenuData.length} days starting with ${firstDayLoadedDate}. Regenerating.`);
-                const freshData = generateMonthData(yearNum, monthNum);
-                setMenuData(freshData);
-                
-                const sanitizedFreshData = freshData.map(dayMenu => ({
-                  ...dayMenu,
-                  entree: dayMenu.entree || '',
-                  plat: dayMenu.plat || '',
-                  feculent: dayMenu.feculent || '',
-                  legume: dayMenu.legume || '',
-                  sauce: dayMenu.sauce || '',
-                  dessert: dayMenu.dessert || '',
-                  theme: dayMenu.theme || '',
-                  holidayName: dayMenu.holidayName || null, 
-                }));
-                await setDoc(docRef, { menus: sanitizedFreshData });
-                 window.dispatchEvent(new CustomEvent('menuDataUpdatedInFirestore'));
-                 console.log("Dispatched menuDataUpdatedInFirestore event after regenerating and saving month data.");
-            }
+          const loadedMenuData = (firestoreData.menus as any[] || []).map(d => ({ ...initialMenuItem, ...d }));
+          setMenuData(loadedMenuData);
+          setMonthlyNumberOfGuests(firestoreData.monthlyNumberOfGuests ?? 240);
+          setIsPicnicMonth(firestoreData.isPicnicMonth ?? false);
         } else {
           const freshData = generateMonthData(yearNum, monthNum);
           setMenuData(freshData);
-          const sanitizedFreshData = freshData.map(dayMenu => ({
-            ...dayMenu,
-            entree: dayMenu.entree || '',
-            plat: dayMenu.plat || '',
-            feculent: dayMenu.feculent || '',
-            legume: dayMenu.legume || '',
-            sauce: dayMenu.sauce || '',
-            dessert: dayMenu.dessert || '',
-            theme: dayMenu.theme || '',
-            holidayName: dayMenu.holidayName || null, 
-          }));
-          await setDoc(docRef, { menus: sanitizedFreshData });
-          window.dispatchEvent(new CustomEvent('menuDataUpdatedInFirestore'));
-          console.log("Dispatched menuDataUpdatedInFirestore event after creating new month data.");
-          toast({ title: "Nouveau mois initialisé", description: `Les données pour ${months[monthNum].label} ${yearNum} ont été créées.`});
+          setMonthlyNumberOfGuests(240); // Default value
+          setIsPicnicMonth(false);
         }
       } catch (error) {
-        console.error("Error loading menu data from Firestore:", error);
-        toast({ title: "Erreur de chargement des menus", description: "Impossible de charger les données. Utilisation des données par défaut.", variant: "destructive"});
+        console.error("Error loading menu data:", error);
+        toast({ title: "Erreur de chargement", variant: "destructive" });
         setMenuData(generateMonthData(yearNum, monthNum));
+      } finally {
+        setDataLoaded(true);
       }
-      setDataLoaded(true);
     };
-
     loadMenuData();
   }, [selectedYear, selectedMonth, generateMonthData, getFirestoreDocId, toast]);
 
-  const handleSaveMenu = useCallback(async () => {
-    if (!dataLoaded || isSaving || isResettingMonthData || menuData.length === 0) {
-      console.log("Save conditions not met. Skipping save.");
-      return;
-    }
-
-    setIsSaving(true);
-    const docId = getFirestoreDocId();
-    const docRef = doc(firestore, "menuPlanning", docId);
-
-    try {
-      const sanitizedMenuData = menuData.map(dayMenu => {
-        const sanitizedDayMenu: Record<string, any> = {};
-        for (const key in dayMenu) {
-          if (Object.prototype.hasOwnProperty.call(dayMenu, key)) {
-            const value = (dayMenu as any)[key];
-            sanitizedDayMenu[key] = value === undefined ? null : (value === '' ? '' : value);
-          }
-        }
-        (Object.keys(initialMenuItem) as Array<keyof MenuItem>).forEach(field => {
-            if (sanitizedDayMenu[field] === undefined) {
-                sanitizedDayMenu[field] = initialMenuItem[field] === undefined ? null : (initialMenuItem[field] || '');
-            }
-          });
-        return sanitizedDayMenu;
-      });
-
-      await setDoc(docRef, { menus: sanitizedMenuData });
-      window.dispatchEvent(new CustomEvent('menuDataUpdatedInFirestore'));
-      toast({ title: "Menus sauvegardés", description: "Les modifications ont été enregistrées." });
-    } catch (error) {
-      console.error("Error saving menu data to Firestore:", error);
-      toast({ title: "Erreur de Sauvegarde", description: "Les modifications n'ont pas pu être enregistrées.", variant: "destructive" });
-    } finally {
-      setIsSaving(false);
-    }
-  }, [menuData, dataLoaded, isSaving, isResettingMonthData, getFirestoreDocId, toast]);
-
   useEffect(() => {
-    // This useEffect is now only for cleanup or side effects that don't involve automatic saving.
+    const fetchRecipes = async () => {
+      try {
+        const q = query(collection(firestore, 'recipes'));
+        const querySnapshot = await getDocs(q);
+        const fetchedRecipes = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Recipe));
+        setRecipes(fetchedRecipes);
+      } catch (error) {
+        console.error("Error fetching recipes:", error);
+        toast({ title: "Erreur de chargement des recettes", variant: "destructive" });
+      }
+    };
+    fetchRecipes();
+  }, [toast]);
 
-  }, [menuData, dataLoaded, isSaving, isResettingMonthData, getFirestoreDocId, toast]);
-
-
-  const handleUpdateMenuEntry = useCallback((date: string, field: MenuField, value: StoredMenuThemeValue) => {
+  const handleUpdateMenuEntry = useCallback((date: string, field: MenuField, value: StoredMenuThemeValue | boolean) => {
     setMenuData(prevData =>
       prevData.map(dayMenu =>
-        dayMenu.date === date ? { ...dayMenu, [field]: value === undefined ? '' : value } : dayMenu 
+        dayMenu.date === date ? { ...dayMenu, [field]: value } : dayMenu
       )
     );
   }, []);
 
-  const handleResetCurrentMonthData = async () => {
+  const handleRecipeSearch = (date: string, field: MenuField, recipeName: string) => {
+    const foundRecipe = recipes.find(recipe => recipe.name.toLowerCase() === recipeName.toLowerCase());
+    if (foundRecipe) {
+      handleUpdateMenuEntry(date, field, foundRecipe.name as StoredMenuThemeValue);
+    }
+  };
+
+  const handleOpenRecipePicker = (date: string, field: MenuField, category?: RecipeCategory) => {
+    setPickerTarget({ date, field, category });
+    setIsPickerOpen(true);
+  };
+
+  const handleRecipeSelect = (recipe: Recipe) => {
+    if (pickerTarget) {
+      handleUpdateMenuEntry(pickerTarget.date, pickerTarget.field, recipe.name as StoredMenuThemeValue);
+    }
+    setIsPickerOpen(false);
+  };
+
+  const handleSaveMenu = useCallback(async () => {
+    if (!dataLoaded || isSaving) return;
+    setIsSaving(true);
+    const docId = getFirestoreDocId();
+    const docRef = doc(firestore, "menuPlanning", docId);
+
+    const sanitizedMenuData = menuData.map(day => ({
+        ...day,
+        theme: day.theme || '',
+        entree: day.entree || '',
+        plat: day.plat || '',
+        feculent: day.feculent || '',
+        legume: day.legume || '',
+        sauce: day.sauce || '',
+        dessert: day.dessert || '',
+        holidayName: day.holidayName || '', 
+    }));
+
+    try {
+      await setDoc(docRef, { 
+        menus: sanitizedMenuData, 
+        monthlyNumberOfGuests, 
+        isPicnicMonth 
+      });
+      toast({ title: "Menus sauvegardés" });
+    } catch (error) {
+      console.error("Error saving menu data:", error);
+      toast({ title: "Erreur de sauvegarde", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+}, [menuData, monthlyNumberOfGuests, isPicnicMonth, dataLoaded, isSaving, getFirestoreDocId, toast]);
+
+ const generateMonthlyPdf = async () => {
+    setIsGeneratingMonthlyPdf(true);
+    try {
+        const defaultSettings = getPdfLayoutSettings();
+        const customSettings = await loadPdfLayoutSettingsFromFirestore('menu_planning_monthly');
+
+        const pdfSettings = {
+            ...defaultSettings,
+            ...customSettings,
+            margins: {
+                top: 40, right: 40, bottom: 40, left: 40, ...((customSettings || {}).margins || {}), 
+            },
+        };
+
+        const doc = new jsPDF(pdfSettings.orientation, 'pt', pdfSettings.format) as jsPDFWithAutoTable;
+
+        const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
+        const title = `Planning des Menus - ${monthLabel} ${selectedYear}`;
+        
+        if (pdfSettings.logoUrl) {
+            doc.addImage(pdfSettings.logoUrl, 'PNG', pdfSettings.margins.left, 40, 60, 60);
+        }
+        
+        doc.setFontSize(18);
+        doc.setTextColor(hexToRgb(pdfSettings.primaryColor).r, hexToRgb(pdfSettings.primaryColor).g, hexToRgb(pdfSettings.primaryColor).b);
+        doc.text(title, doc.internal.pageSize.getWidth() / 2, 70, { align: 'center' });
+
+        const tableColumns = [
+            { header: 'Date', dataKey: 'date' },
+            { header: 'Jour', dataKey: 'dayName' },
+            { header: 'Thème', dataKey: 'theme' },
+            { header: 'Entrée', dataKey: 'entree' },
+            { header: 'Plat', dataKey: 'plat' },
+            { header: 'Féculent', dataKey: 'feculent' },
+            { header: 'Légume', dataKey: 'legume' },
+            { header: 'Dessert', dataKey: 'dessert' },
+        ];
+        
+        const tableRows = menuData.map(item => {
+            const date = new Date(item.date + 'T00:00:00');
+            const formattedDate = format(date, 'dd/MM', { locale: fr });
+            
+            return {
+                ...item,
+                date: formattedDate,
+                dayName: item.holidayName ? `${item.dayName} (${item.holidayName})` : item.dayName,
+            };
+        });
+
+        const BORDEAUX_COLOR = '#800020';
+
+        doc.autoTable({
+            columns: tableColumns,
+            body: tableRows,
+            startY: 90,
+            theme: 'grid',
+            headStyles: {
+                fillColor: BORDEAUX_COLOR,
+                textColor: [255, 255, 255],
+                fontStyle: 'bold',
+            },
+            styles: {
+                cellPadding: 4,
+                fontSize: 8,
+                valign: 'middle',
+                overflow: 'linebreak',
+                lineColor: [0, 0, 0],
+                lineWidth: 0.5,
+            },
+            didParseCell: (data) => {
+                const day = data.row.raw as DailyMenu;
+                if (data.section !== 'body' || !day) return;
+
+                data.cell.styles.textColor = [0, 0, 0];
+
+                const POISSON_COLOR = '#FFD1DC';
+                const FETE_COLOR = '#FFDAB9';
+                const VEGE_COLOR = '#C8E6C9';
+                const FROID_COLOR = '#B3E5FC';
+                const SAM_COLOR = '#FFFFE0';
+                const FERIER_COLOR = '#A9A9A9';
+
+
+                let fillColor: string | undefined = undefined;
+                const theme = (day.theme || '').trim().toLowerCase();
+
+                if (day.holidayName) {
+                    fillColor = FETE_COLOR;
+                } else {
+                    if (theme === 'poisson') {
+                        fillColor = POISSON_COLOR;
+                    } else if (theme === 'végé' || theme === 'vege') {
+                        fillColor = VEGE_COLOR;
+                    } else if (theme === 'froid') {
+                        fillColor = FROID_COLOR;
+                    } else if (theme === 'sam') {
+                        fillColor = SAM_COLOR;
+                    } else if (theme === 'ferier') {
+                      fillColor = FERIER_COLOR;
+                  } else if (theme === 'fete') {
+                    fillColor = FETE_COLOR;
+                }
+                }
+
+                if (!fillColor) {
+                    if (day.isHoliday) {
+                        fillColor = day.isWeekend ? MENU_HOLIDAY_WEEKEND_HEX : MENU_HOLIDAY_WEEKDAY_HEX;
+                    } else if (day.isWeekend) {
+                        fillColor = MENU_WEEKEND_HEX;
+                    }
+                }
+
+                if (fillColor) {
+                    data.cell.styles.fillColor = fillColor;
+                    data.cell.styles.fontStyle = 'bold';
+                }
+            }
+        });
+
+        // --- Add Legend after the table ---
+        const finalY = (doc as any).lastAutoTable.finalY;
+        let legendY = finalY + 25;
+
+        if (legendY > doc.internal.pageSize.getHeight() - 50) {
+            doc.addPage();
+            legendY = pdfSettings.margins.top;
+        }
+
+        const POISSON_COLOR = '#FFD1DC';
+        const FETE_COLOR = '#FFDAB9';
+        const VEGE_COLOR = '#C8E6C9';
+        const FROID_COLOR = '#B3E5FC';
+        const SAM_COLOR = '#FFFFE0';
+        const FERIER_COLOR = '#A9A9A9';
+
+        const legendItems = [
+            { text: 'Fête', color: FETE_COLOR },
+            { text: 'SAM', color: SAM_COLOR },
+            { text: 'Poisson', color: POISSON_COLOR },
+            { text: 'Végé', color: VEGE_COLOR },
+            { text: 'Froid', color: FROID_COLOR },
+            { text: 'Weekend', color: MENU_WEEKEND_HEX },
+            { text: 'Jour Férié', color: MENU_HOLIDAY_WEEKDAY_HEX },
+            { text: 'Ferier', color: FERIER_COLOR },
+        ];
+
+        doc.setFontSize(10);
+        doc.setTextColor(0, 0, 0);
+        doc.text("Légende :", pdfSettings.margins.left, legendY);
+
+        legendY += 20;
+
+        doc.setFontSize(9);
+        const rectSize = 10;
+        const itemPadding = 15;
+        let currentX = pdfSettings.margins.left;
+
+        legendItems.forEach(item => {
+            const textWidth = doc.getStringUnitWidth(item.text) * 9;
+            const itemWidth = rectSize + 5 + textWidth;
+
+            if (currentX + itemWidth > doc.internal.pageSize.getWidth() - pdfSettings.margins.right) {
+                legendY += 20;
+                currentX = pdfSettings.margins.left;
+            }
+
+            doc.setFillColor(item.color);
+            doc.rect(currentX, legendY - rectSize, rectSize, rectSize, 'F');
+            doc.setDrawColor(0);
+            doc.rect(currentX, legendY - rectSize, rectSize, rectSize, 'S');
+            doc.setTextColor(0, 0, 0);
+            doc.text(item.text, currentX + rectSize + 5, legendY);
+            currentX += itemWidth + itemPadding;
+        });
+
+        const pageCount = (doc.internal as any).pages.length;
+        doc.setFontSize(8);
+        for(let i = 1; i <= pageCount; i++) {
+            doc.setPage(i);
+            const text = `Page ${i} / ${pageCount}`;
+            const textWidth = doc.getStringUnitWidth(text) * doc.getFontSize() / doc.internal.scaleFactor;
+            doc.text(text, doc.internal.pageSize.getWidth() - pdfSettings.margins.right - textWidth, doc.internal.pageSize.getHeight() - 20);
+        }
+
+        doc.save(`planning_menus_${selectedYear}_${monthLabel}.pdf`);
+        toast({ title: "PDF généré avec succès" });
+
+    } catch (error) {
+        console.error("Error generating PDF:", error);
+        toast({ title: "Erreur lors de la génération du PDF", description: "Veuillez réessayer.", variant: "destructive" });
+    } finally {
+        setIsGeneratingMonthlyPdf(false);
+    }
+  };
+
+  const handleResetMonthData = async () => {
     setIsResettingMonthData(true);
     const yearNum = parseInt(selectedYear, 10);
     const monthNum = parseInt(selectedMonth, 10);
     const freshData = generateMonthData(yearNum, monthNum);
-    const sanitizedFreshData = freshData.map(dayMenu => ({
-        ...dayMenu,
-        entree: dayMenu.entree || '',
-        plat: dayMenu.plat || '',
-        feculent: dayMenu.feculent || '',
-        legume: dayMenu.legume || '',
-        sauce: dayMenu.sauce || '',
-        dessert: dayMenu.dessert || '',
-        theme: dayMenu.theme || '',
-        holidayName: dayMenu.holidayName || null,
-    }));
-    
     const docId = getFirestoreDocId();
     const docRef = doc(firestore, "menuPlanning", docId);
 
     try {
-      await setDoc(docRef, { menus: sanitizedFreshData });
-      setMenuData(freshData); // Update local state after successful save
-      window.dispatchEvent(new CustomEvent('menuDataUpdatedInFirestore'));
-      toast({ title: "Mois Réinitialisé", description: `Les menus pour ${months[monthNum].label} ${yearNum} ont été réinitialisés.` });
+      await setDoc(docRef, { 
+        menus: freshData, 
+        monthlyNumberOfGuests: 240,
+        isPicnicMonth: false,
+      });
+      
+      setMenuData(freshData);
+      setMonthlyNumberOfGuests(240);
+      setIsPicnicMonth(false);
+      
+      toast({ 
+        title: "Mois réinitialisé", 
+        description: `Le planning pour ${months[monthNum].label} ${yearNum} a été réinitialisé.` 
+      });
     } catch (error) {
-      console.error("Error resetting month data in Firestore:", error);
-      toast({ title: "Erreur de Réinitialisation", variant: "destructive" });
+      console.error("Error resetting month data:", error);
+      toast({ 
+        title: "Erreur lors de la réinitialisation",
+        variant: "destructive" 
+      });
     } finally {
       setIsResettingMonthData(false);
     }
   };
 
-  const generateMonthlyMenuPdf = () => {
-    if (menuData.length === 0) {
-      toast({
-        title: "Aucune Donnée",
-        description: "Aucun menu à exporter pour le mois sélectionné.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    setIsGeneratingMonthlyPdf(true);
-    
-
-    try {
-      const pdfSettings = getPdfLayoutSettings('menu_planning_monthly');
-      const doc = new jsPDF({
-        orientation: pdfSettings.orientation,
-        unit: 'pt',
-        format: pdfSettings.pageSize,
-      }) as jsPDFWithAutoTable;
-      doc.setFont(pdfSettings.fontFamily);
-
-      const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
-      const yearLabel = selectedYear;
-      const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
-
-      let currentY = pdfSettings.marginTop;
-
-      if (pdfSettings.headerText) {
-        const headerRows = pdfSettings.headerText.split('\n').map(rowText => 
-          rowText.split('|').map(cellText => cellText.trim())
-        );
-        const headerTableBody = headerRows.map(row => row.map(cell => cell === '{logo}' ? '' : cell));
-
-        doc.autoTable({
-          body: headerTableBody,
-          startY: currentY,
-          theme: 'plain',
-          styles: { fontSize: pdfSettings.headerFontSize, cellPadding: 1, font: pdfSettings.fontFamily },
-          columnStyles: { 0: { cellWidth: 'auto'} },
-          margin: { top: pdfSettings.marginTop, left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
-          didDrawCell: (data) => {
-            if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image') && headerRows[data.row.index][data.column.index] === '{logo}') {
-              try {
-                const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
-                const formatType = imgProps.fileType.toUpperCase();
-                const cellPadding = 2; 
-                let imgWidth = data.cell.width - 2 * cellPadding;
-                let imgHeight = data.cell.height - 2 * cellPadding;
-                const cellAspectRatio = data.cell.width / data.cell.height;
-                const imgAspectRatio = imgProps.width / imgProps.height;
-
-                if (imgAspectRatio > cellAspectRatio) { 
-                    imgHeight = imgWidth / imgAspectRatio;
-                } else { 
-                    imgWidth = imgHeight * imgAspectRatio;
-                }
-                const imgX = data.cell.x + (data.cell.width - imgWidth) / 2;
-                const imgY = data.cell.y + (data.cell.height - imgHeight) / 2;
-                doc.addImage(pdfSettings.logoUrl, formatType, imgX, imgY, imgWidth, imgHeight);
-              } catch (e: any) { 
-                console.error(`Error drawing logo in PDF header table: ${e.message || e}. Cell:`, data.cell, {logoUrl: pdfSettings.logoUrl ? pdfSettings.logoUrl.substring(0, 50) + "..." : "N/A"});
-                doc.setFillColor(230, 230, 230); doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
-                doc.setFontSize(8); doc.setTextColor(100); doc.text("LOGO_ERR", data.cell.x + data.cell.width/2, data.cell.y + data.cell.height/2, {align: 'center', baseline: 'middle'});
-              }
-            } else if (pdfSettings.logoUrl && headerRows[data.row.index][data.column.index] === '{logo}') { 
-                doc.setFillColor(230, 230, 230); doc.rect(data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4, 'F');
-                doc.setFontSize(8); doc.setTextColor(100); doc.text("LOGO", data.cell.x + data.cell.width/2, data.cell.y + data.cell.height/2, {align: 'center', baseline: 'middle'});
-            }
-          },
-        });
-        currentY = (doc as any).lastAutoTable.finalY + 5;
-      } else if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { 
-        try {
-            const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
-            const formatType = imgProps.fileType.toUpperCase();
-            const desiredHeight = 30; 
-            const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
-            doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
-            currentY += desiredHeight + 5;
-        } catch(e: any) {
-            console.error(`Error drawing standalone logo in PDF: ${e.message || e}.`, {logoUrl: pdfSettings.logoUrl ? pdfSettings.logoUrl.substring(0, 50) + "..." : "N/A"});
-            doc.setFontSize(pdfSettings.headerFontSize); doc.text(`[Logo Error]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize + 5;
-        }
-      } else if (pdfSettings.logoUrl) {
-         doc.setFontSize(pdfSettings.headerFontSize); doc.text(`[Logo URL: ${pdfSettings.logoUrl}]`, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize + 5;
-      }
-      
-      const moduleDefaultTitle = `Planification des Menus - ${monthLabel} ${yearLabel}`;
-      let finalTitle = "";
-      if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
-        finalTitle = pdfSettings.documentBaseTitle.trim();
-      }
-      if (pdfSettings.showModuleTitle) {
-        if (finalTitle) {
-          finalTitle += ` - ${moduleDefaultTitle}`;
-        } else {
-          finalTitle = moduleDefaultTitle;
-        }
-      }
-      
-      if (finalTitle) {
-        doc.setFontSize(pdfSettings.documentTitleFontSize);
-        doc.text(finalTitle, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
-        currentY += pdfSettings.documentTitleFontSize * 0.7 + 5; 
-      }
-
-      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontStyle?: string, fontSize?: number } = { 
-        fontStyle: 'bold',
-        fontSize: pdfSettings.tableHeaderFontSize,
-      };
-      if (pdfSettings.primaryColor) {
-        const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
-        if (primaryColorRgb) {
-          headStyles.fillColor = primaryColorRgb;
-          const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
-          headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
-        }
-      }
-
-      const head = [['Date', 'Jour', 'Thème', 'Entrée', 'Plat', 'Féculent', 'Légume', 'Sauce', 'Dessert']];
-      const body = menuData.map(dayMenu => {
-        const currentThemeValueForSelect = dayMenu.theme === '' ? NO_THEME_SELECT_VALUE : dayMenu.theme;
-        const themeLabel = MENU_THEME_OPTIONS_FOR_SELECT.find(t => t.value === currentThemeValueForSelect)?.label || '-';
-        return [
-          format(parseISO(dayMenu.date), 'dd/MM', { locale: fr }),
-          dayMenu.dayName + (dayMenu.holidayName ? `\n(${dayMenu.holidayName})` : ''), 
-          themeLabel,
-          dayMenu.entree || '-',
-          dayMenu.plat || '-',
-          dayMenu.feculent || '-',
-          dayMenu.legume || '-',
-          dayMenu.sauce || '-',
-          dayMenu.dessert || '-',
-        ];
-      });
-
-      const themeRgbColors: Record<MenuThemeIdentifier, [number, number, number] | null> = MENU_THEME_OPTIONS_FOR_SELECT.reduce((acc, themeOption) => {
-        if (themeOption.value !== NO_THEME_SELECT_VALUE) { // Exclure l'option "Pas de thème"
-           acc[themeOption.value as MenuThemeIdentifier] = hexToRgb(
-                (({
-                    froid: MENU_THEME_FROID_HEX, vege: MENU_THEME_VEGE_HEX, sam: MENU_THEME_SAM_HEX, poisson: MENU_THEME_POISSON_HEX, fete: MENU_THEME_FETE_HEX
-                })[themeOption.value as MenuThemeIdentifier]) || ''
-           );
-        }
-        return acc;
-    }, {} as Record<MenuThemeIdentifier, [number, number, number] | null>);
-    console.log("themeRgbColors:", themeRgbColors); // Conservez cette ligne de log que vous avez ajoutée
-    
-      const holidayWeekendColor = hexToRgb(MENU_HOLIDAY_WEEKEND_HEX);
-      const holidayWeekdayColor = hexToRgb(MENU_HOLIDAY_WEEKDAY_HEX);
-      const weekendColor = hexToRgb(MENU_WEEKEND_HEX);
-
- doc.autoTable({
-        headStyles: headStyles,
-        styles: { 
-          fontSize: pdfSettings.tableBodyFontSize, 
-          cellPadding: 1.5, 
-          valign: 'middle', 
-          font: pdfSettings.fontFamily,
-      },        
-        columnStyles: {
- 0: { cellWidth: 30 }, // Date
- 1: { cellWidth: 40 }, // Jour
- 2: { cellWidth: 40 }, // Thème
- 3: { cellWidth: 60 }, // Entrée
- 4: { cellWidth: 55 }, // Plat
- 5: { cellWidth: 55 }, // Féculent
- 6: { cellWidth: 55 }, // Légume
- 7: { cellWidth: 55 }, // Sauce
- 8: { cellWidth: 55 }, // Dessert
-        },
-        head: head,
- body: body,
- didParseCell: (data) => {
-  if (data.section === 'body' && data.row && typeof data.row.index ==='number' && data.row.index < menuData.length) {
-     // Récupérer les données du jour correspondant
-     const dayMenu = menuData[data.row.index];
-
-     let fillColorToApply: [number, number, number] | undefined = undefined;
-     const defaultRowColor: [number, number, number] = [255, 255, 255]; // Couleur par défaut au blanc
-
-     // Appliquer la logique de couleur (thème, jour férié, week-end)
-     if (dayMenu.theme && dayMenu.theme !== '' && themeRgbColors[dayMenu.theme as MenuThemeIdentifier]) {
-          fillColorToApply = themeRgbColors[dayMenu.theme as MenuThemeIdentifier];
-     } else if (dayMenu.isHoliday) {
-         fillColorToApply = dayMenu.isWeekend ? holidayWeekendColor : holidayWeekdayColor;
-     } else if (dayMenu.isWeekend) {
-         fillColorToApply = weekendColor;
-     }
-
-     // Si aucune couleur spécifique n\'est appliquée, utiliser la couleur blanche par défaut
-     if (!fillColorToApply) {
-         fillColorToApply = defaultRowColor;
-     }
-
-     // Appliquer la couleur au style de la cellule pour que jspdf-autotable la dessine
-     // S\'assurer que la propriété styles existe sur la cellule courante
-     if (!data.cell.styles) {
-         data.cell.styles = {};
-     }
-     data.cell.styles.fillColor = fillColorToApply;
-      // Ajouter les styles de bordure par défaut
-      data.cell.styles.lineWidth = 0.1; // Épaisseur de la ligne
-      data.cell.styles.lineColor = [0, 0, 0]; // Couleur de la ligne (noir)
-
-      console.log(`didParseCell: Applied color [${fillColorToApply}] to cell [${data.row.index}, ${data.column.index}]`); // Log
+  if (!isClient || isLoadingUser) {
+    return <div className="flex justify-center items-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin"/></div>;
   }
-},
 
-        didDrawPage: (data) => {
-          const pageCount = doc.internal.getNumberOfPages();
-          if (pdfSettings.footerText) {
-            let footerStr = pdfSettings.footerText
-              .replace('{date}', generationDateFormatted)
-              .replace('{pageNumber}', data.pageNumber.toString())
-              .replace('{totalPages}', pageCount.toString());
-            doc.setFontSize(pdfSettings.footerFontSize);
-            doc.text(footerStr, pdfSettings.marginLeft, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
-          }
-        },
-        margin: { 
-            top: pdfSettings.marginTop, 
-            right: pdfSettings.marginRight, 
-            bottom: pdfSettings.marginBottom, 
-            left: pdfSettings.marginLeft 
-        },
-      });
+  if (visibleTabs.length === 0) {
+    return (
+      <div className="container mx-auto p-4 md:p-6 lg:p-8 flex-grow flex items-center justify-center">
+        <Alert variant="destructive" className="max-w-lg">
+          <ShieldAlert className="h-4 w-4" />
+          <AlertTitle>Accès non autorisé</AlertTitle>
+          <AlertDescription>
+            Vous n'avez pas les permissions nécessaires pour accéder à cette section. Veuillez contacter un administrateur.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
-      doc.save(`Planification_Menus_${monthLabel}_${yearLabel}.pdf`);
-      toast({ title: "PDF Mensuel Généré", description: `La planification des menus pour ${monthLabel} ${yearLabel} a été téléchargée.` });
-    } catch (error) {
-      console.error("Error generating monthly menu PDF:", error);
- console.error("Erreur lors de la génération du PDF des menus:", error);
-      toast({ title: "Erreur PDF", description: "La génération du PDF des menus a échoué.", variant: "destructive" });
-    } finally {
-      setIsGeneratingMonthlyPdf(false);
+  const renderTabContent = (tabValue: string) => {
+    switch(tabValue) {
+      case 'planning':
+        return <MenuPlanningTable menuData={menuData} onUpdateMenuEntry={handleUpdateMenuEntry} onSave={handleSaveMenu} onOpenRecipePicker={handleOpenRecipePicker} onRecipeSearch={handleRecipeSearch} />;
+      case 'recipes':
+        return <RecipeManagement />;
+      case 'order-sheets':
+        return <WeeklyOrderSheets year={parseInt(selectedYear)} month={parseInt(selectedMonth)} menuData={menuData} isLoading={!dataLoaded} monthlyNumberOfGuests={monthlyNumberOfGuests} isPicnicMonth={isPicnicMonth} />;
+      case 'temperature-sheets':
+        return <TemperatureSheet year={parseInt(selectedYear)} month={parseInt(selectedMonth)} menuData={menuData} isLoading={!dataLoaded} />;
+      default:
+        return null;
     }
-  };
-  
-  const planningContent = (
-    <Card className="shadow-lg">
-      <CardHeader>
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <CalendarDays className="w-6 h-6 text-primary"/>
-              Sélection et Création des Menus
-            </CardTitle>
-            <CardDescription>
-              Choisissez une année et un mois pour afficher et modifier les menus. Les samedis et dimanches sont en gris, les jours fériés en jaune.
-              Les thèmes colorient la ligne : Bleu (Froid), Vert (Végé), Jaune (SAM), Rose (Poisson), Orange (Fête).
-              Les données sont sauvegardées automatiquement dans Firestore.
-            </CardDescription>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto self-start sm:self-center">
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" disabled={!dataLoaded || isSaving || isResettingMonthData} className="w-full sm:w-auto">
-                  {(isResettingMonthData) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-                  Réinitialiser Mois
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Confirmer la réinitialisation</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Êtes-vous sûr de vouloir réinitialiser tous les menus pour ${months.find(m => m.value === selectedMonth)?.label} ${selectedYear} ? Cette action est irréversible.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Annuler</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleResetCurrentMonthData}>
-                    Réinitialiser
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-            <Button onClick={generateMonthlyMenuPdf} disabled={!dataLoaded || isGeneratingMonthlyPdf || isSaving || isResettingMonthData} className="w-full sm:w-auto">
-              {(isGeneratingMonthlyPdf || isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileTextIcon className="mr-2 h-4 w-4" />}
-              Générer PDF Mensuel
-            </Button>
-
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
-          <div>
-            <Label htmlFor="year-select-planning">Année</Label>
-            <Select value={selectedYear} onValueChange={setSelectedYear}>
-              <SelectTrigger id="year-select-planning">
-                <SelectValue placeholder="Sélectionner une année" />
-              </SelectTrigger>
-              <SelectContent>
-                {years.map(year => (
-                  <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label htmlFor="month-select-planning">Mois</Label>
-            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger id="month-select-planning">
-                <SelectValue placeholder="Sélectionner un mois" />
-              </SelectTrigger>
-              <SelectContent>
-                {months.map(month => (
-                  <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {!dataLoaded ? (
-          <div className="flex justify-center items-center py-10">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <span className="ml-2 text-muted-foreground">Chargement des menus...</span>
-          </div>
-        ) : (
-          <MenuPlanningTable
-            year={parseInt(selectedYear)}
-            month={parseInt(selectedMonth)}
-            menuData={menuData}
-            onUpdateMenuEntry={handleUpdateMenuEntry}
- onSave={handleSaveMenu}
-          />
-        )}\n\n
-      </CardContent>
-    </Card>
-  );
-
-  const orderSheetsContent = (
- <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ClipboardCheck className="w-6 h-6 text-primary"/>
-            Fiches de Commande Hebdomadaires
-          </CardTitle>
-          <CardDescription>
-            Générez les fiches de commande pour chaque semaine du mois sélectionné. Les données des menus sont issues de Firestore.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <WeeklyOrderSheets
-            year={parseInt(selectedYear)}
-            month={parseInt(selectedMonth)}
-            menuData={menuData}
-            isLoading={!dataLoaded}
-          />
-        </CardContent>
-      </Card>
-
- );
-
- const orderSheetsTestContent = (
- <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ClipboardCheck className="w-6 h-6 text-primary"/>
-            Fiches de Commande Hebdomadaires (Test)
-          </CardTitle>
-          <CardDescription>
-            Test de la fiche de commande dans une nouvelle section.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <WeeklyOrderSheets
-            year={parseInt(selectedYear)}
-            month={parseInt(selectedMonth)}
-            menuData={menuData}
-            isLoading={!dataLoaded}
-          />
-        </CardContent>
-      </Card>);
-  const temperatureSheetsContent = (
-     <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Thermometer className="w-6 h-6 text-primary"/>
-            Fiches de Température Hebdomadaires
-          </CardTitle>
-          <CardDescription>
-            Consultez et remplissez les fiches de température pour chaque semaine du mois sélectionné, basées sur les plats planifiés (issus de Firestore).
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <TemperatureSheet
-            year={parseInt(selectedYear)}
-            month={parseInt(selectedMonth)}
-            menuData={menuData}
-            isLoading={!dataLoaded}
-          />
-        </CardContent>
-      </Card>
-  );
-
-  const tabsContentMap: Record<string, React.ReactNode> = {
-    "planning": planningContent,
-    "order-sheets": orderSheetsContent,
-    "temperature-sheets": temperatureSheetsContent,
-  };
+  }
 
   return (
     <div className="container mx-auto p-4 md:p-6 lg:p-8 min-h-screen">
@@ -691,48 +501,139 @@ export default function MenuPlanningPage() {
             Planification des Menus
           </h1>
         </div>
-        
       </div>
-      <div className="mb-6 text-center sm:text-left">
-        <CurrentDate />
-      </div>
+      <div className="mb-6 text-center sm:text-left"><CurrentDate /></div>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Contrôles du Planning</CardTitle>
+          <CardDescription>Sélectionnez la période et définissez les options pour le mois.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div>
+              <Label htmlFor="month-select">Mois</Label>
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger id="month-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {months.map(month => (
+                    <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="year-select">Année</Label>
+              <Select value={selectedYear} onValueChange={setSelectedYear}>
+                <SelectTrigger id="year-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {years.map(year => (
+                    <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="guest-count-input">Nombre de convives</Label>
+              <Input
+                id="guest-count-input"
+                type="number"
+                value={monthlyNumberOfGuests}
+                onChange={(e) => setMonthlyNumberOfGuests(Number(e.target.value))}
+                placeholder="Ex: 240"
+              />
+            </div>
+            <div className="flex items-center space-x-2 pt-4 sm:pt-6">
+                <Checkbox id="picnic-checkbox" checked={isPicnicMonth} onCheckedChange={(checked) => setIsPicnicMonth(checked as boolean)} />
+                <Label htmlFor="picnic-checkbox" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Activer le menu Pique-Nique pour le mois
+                </Label>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
       
+      {activeTab === 'planning' && (
+        <Card className="mb-6">
+            <CardHeader>
+                <CardTitle>Actions</CardTitle>
+                <CardDescription>Générer des documents ou réinitialiser les données pour le mois sélectionné.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-2">
+                <Button onClick={generateMonthlyPdf} disabled={isGeneratingMonthlyPdf}>
+                    {isGeneratingMonthlyPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileTextIcon className="mr-2 h-4 w-4" />} 
+                    Générer PDF Mensuel
+                </Button>
+                <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                        <Button variant="destructive" disabled={isResettingMonthData}>
+                            {isResettingMonthData ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                            Réinitialiser le mois
+                        </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Êtes-vous sûr de vouloir réinitialiser ?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                Cette action est irréversible. Toutes les données du planning pour le mois de {months[parseInt(selectedMonth)].label} {selectedYear} seront perdues et remplacées par un planning vide. Le nombre de convives sera également réinitialisé.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Annuler</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleResetMonthData}>Confirmer</AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            </CardContent>
+        </Card>
+      )}
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         {isMobile ? (
-          <div className="mb-4">
-            <Label htmlFor="mobile-menuplanning-nav-select" className="text-sm font-medium">Naviguer vers :</Label>
+          visibleTabs.length > 0 && <div className="mb-4">
+            <Label htmlFor="mobile-menu-nav">Naviguer vers :</Label>
             <Select value={activeTab} onValueChange={setActiveTab}>
-              <SelectTrigger id="mobile-menuplanning-nav-select" className="w-full mt-1">
-                <SelectValue placeholder="Choisir une section..." />
-              </SelectTrigger>
+              <SelectTrigger id="mobile-menu-nav"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {menuPlanningTabsConfig.map(tab => (
-                  <SelectItem key={tab.value} value={tab.value} className="text-sm">
-                    <span className="flex items-center">
-                      <tab.Icon className="mr-2 h-4 w-4" />
-                      {tab.label}
-                    </span>
+                {visibleTabs.map(tab => (
+                  <SelectItem key={tab.value} value={tab.value}>
+                    <span className="flex items-center"><tab.Icon className="mr-2 h-4 w-4" />{tab.label}</span>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
         ) : (
-          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-4 gap-1 mb-6 bg-card p-1 rounded-lg">
-            {menuPlanningTabsConfig.map(tab => (
-              <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
-                <tab.Icon className="mr-1 sm:mr-2 h-4 w-4" /> {tab.label}
+          visibleTabs.length > 0 && <TabsList className="grid w-full mb-6 gap-2" style={{ gridTemplateColumns: `repeat(${visibleTabs.length}, 1fr)` }}>
+            {visibleTabs.map(tab => (
+              <TabsTrigger key={tab.value} value={tab.value} asChild>
+                <Button variant={activeTab === tab.value ? 'default' : 'outline'} className="w-full">
+                  <tab.Icon className="mr-2 h-4 w-4" />
+                  {tab.label}
+                </Button>
               </TabsTrigger>
             ))}
           </TabsList>
         )}
         
-        {menuPlanningTabsConfig.map(tab => (
+        {visibleTabs.map(tab => (
           <TabsContent key={tab.value} value={tab.value}>
-            {tabsContentMap[tab.value]}
+             {activeTab === tab.value && renderTabContent(tab.value)}
           </TabsContent>
         ))}
       </Tabs>
+
+      {/* La modale est maintenant ici, au niveau le plus haut */}
+      <RecipePickerModal
+        open={isPickerOpen}
+        onOpenChange={setIsPickerOpen}
+        categoryFilter={pickerTarget?.category}
+        onSelectRecipe={handleRecipeSelect}
+      />
     </div>
-);
+  );
 }

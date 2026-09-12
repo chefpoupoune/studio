@@ -206,7 +206,7 @@ export default function ManageTasks({ tasks, onAddTask, onUpdateTask, onDeleteTa
                 <FormField control={statusUpdateForm.control} name="appointmentDate" render={({ field }) => (
                   <FormItem className="flex flex-col">
                     <FormLabel>Date du Rendez-vous</FormLabel>
-                    <Popover>
+                    <Popover modal={true}>
                       <PopoverTrigger asChild>
                         <FormControl>
                           <Button variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>

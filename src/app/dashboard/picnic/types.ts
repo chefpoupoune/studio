@@ -1,4 +1,3 @@
-
 export interface PicnicRowDailyValues {
   lundi?: number | string;
   mardi?: number | string;
@@ -29,7 +28,7 @@ export interface DisplayRowConfig {
   pdfBgColor?: [number, number, number];
 }
 
-export type BreadChoice = 'baguette' | 'faluche' | 'none';
+export type BreadChoice = 'baguette' | 'faluche' | 'salade' | 'none';
 
 export interface DailyClientPicnicData {
   nbPn: string; 

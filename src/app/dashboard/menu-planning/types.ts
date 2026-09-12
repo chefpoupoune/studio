@@ -1,6 +1,6 @@
 
 // Actual theme identifiers, cannot be empty string
-export type MenuThemeIdentifier = 'froid' | 'vege' | 'sam' | 'poisson' | 'fete';
+export type MenuThemeIdentifier = 'froid' | 'vege' | 'sam' | 'poisson' | 'fete'| 'férier';
 
 // Value used in SelectItem for "no theme" option. This MUST be a non-empty string.
 export const NO_THEME_SELECT_VALUE = "_aucun_theme_";
@@ -17,6 +17,7 @@ export const MENU_THEME_OPTIONS_FOR_SELECT: { value: MenuThemeIdentifier | typeo
   { value: 'sam', label: 'Spécial SAM' },
   { value: 'poisson', label: 'Poisson' },
   { value: 'fete', label: 'Fête' },
+  { value: 'ferier', label: 'Férier' },
 ];
 
 // Styles map uses the actual theme identifiers. It does not include '' or NO_THEME_SELECT_VALUE.
@@ -27,6 +28,7 @@ export const menuThemeStyles: Record<MenuThemeIdentifier, string> = {
   sam: 'bg-yellow-100 dark:bg-yellow-700 text-yellow-800 dark:text-yellow-100', // Adjusted yellow for dark
   poisson: 'bg-pink-100 dark:bg-pink-900 text-pink-800 dark:text-pink-100',
   fete: 'bg-orange-100 dark:bg-orange-800 text-orange-800 dark:text-orange-100',
+  ferier: 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100',
 };
 
 
@@ -36,6 +38,7 @@ export interface MenuItem {
   feculent: string;
   legume: string;
   sauce: string;
+  fromage: string;
   dessert: string;
   theme: StoredMenuThemeValue; // Data model stores '' for "no theme"
 }
@@ -56,6 +59,7 @@ export const initialMenuItem: MenuItem = {
   feculent: '',
   legume: '',
   sauce: '',
+  fromage: '',
   dessert: '',
   theme: '', // Initially no theme (represented by an empty string in data)
 };
@@ -65,4 +69,3 @@ export const frenchMonths = [
   "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
   "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
 ];
-

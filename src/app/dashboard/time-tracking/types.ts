@@ -3,6 +3,7 @@ export interface BrigadeMember {
   id: string;
   name: string;
   role: string; // e.g., "Chef de Cuisine", "Second", "Cuisinier", "Plongeur"
+  email?: string; // Optional email field
   assignedScheduleTemplateIds?: string[]; // Changed from string to string[]
 }
 

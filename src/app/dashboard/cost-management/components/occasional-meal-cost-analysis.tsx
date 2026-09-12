@@ -20,7 +20,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+import { getPdfLayoutSettings, hexToRgb, loadPdfLayoutSettingsFromFirestore } from '@/lib/pdf-settings';
 import { firestore } from '@/lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
@@ -188,43 +188,47 @@ export default function OccasionalMealCostAnalysis() {
     toast({ title: "Ingrédient Supprimé", description: `"${ingredientToDeleteName}" a été supprimé de ${mealPartLabels[ingredientToDelete.mealPart]}.`, variant: "destructive" });
   }
 
-  const generatePdf = () => {
+const generatePdf = async () => {
     if (starterIngredients.length === 0 && mainIngredients.length === 0 && dessertIngredients.length === 0) {
       toast({ title: "Aucun Ingrédient", description: "Veuillez ajouter des ingrédients.", variant: "destructive" });
       return;
     }
     setIsLoading(true);
     try {
-      const pdfSettings = getPdfLayoutSettings('occasional_meal_cost');
+      const pdfSettings = await getPdfLayoutSettings('occasional_meal_cost');
+
       const doc = new jsPDF({
         orientation: pdfSettings.orientation,
         unit: 'pt',
         format: pdfSettings.pageSize,
       }) as jsPDFWithAutoTable;
+
       doc.setFont(pdfSettings.fontFamily);
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
-
+      
       let currentY = pdfSettings.marginTop;
-      if (pdfSettings.headerText) {
-        doc.setFontSize(pdfSettings.headerFontSize);
-        doc.text(pdfSettings.headerText, pdfSettings.marginLeft, currentY);
-        currentY += pdfSettings.headerFontSize + 5; 
-      }
+      const pageContentWidth = doc.internal.pageSize.width - pdfSettings.marginLeft - pdfSettings.marginRight;
 
-      if (pdfSettings.logoUrl) {
-        doc.setFontSize(pdfSettings.defaultFontSize -2); 
-        doc.text(`Logo: ${pdfSettings.logoUrl}`, pdfSettings.marginLeft, currentY);
-        currentY += (pdfSettings.defaultFontSize -2) + 5; 
+      if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
+          try {
+              const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+              const logoHeight = 40;
+              const logoWidth = (imgProps.width * logoHeight) / imgProps.height;
+              doc.addImage(pdfSettings.logoUrl, imgProps.fileType.toUpperCase(), pdfSettings.marginLeft, currentY, logoWidth, logoHeight);
+              currentY += logoHeight + 15;
+          } catch (e) {
+              console.error("Error adding logo:", e);
+          }
       }
       
-      const moduleDefaultTitle = `Coût de Revient Repas Occasionnel (${numberOfPeople} personnes)`;
+      const moduleDefaultTitle = "";
       let finalTitle = "";
       if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
         finalTitle = pdfSettings.documentBaseTitle.trim();
       }
       if (pdfSettings.showModuleTitle) {
         if (finalTitle) {
-          finalTitle += ` - ${moduleDefaultTitle}`;
+          finalTitle += ` ${moduleDefaultTitle}`;
         } else {
           finalTitle = moduleDefaultTitle;
         }
@@ -232,53 +236,100 @@ export default function OccasionalMealCostAnalysis() {
       
       if (finalTitle) {
         doc.setFontSize(pdfSettings.documentTitleFontSize); 
-        doc.text(finalTitle, pdfSettings.marginLeft, currentY); 
-        currentY += pdfSettings.documentTitleFontSize * 0.7 + 10;
+        doc.text(finalTitle, doc.internal.pageSize.width / 2, currentY, { align: 'center', maxWidth: pageContentWidth }); 
+        currentY += doc.getTextDimensions(finalTitle, { fontSize: pdfSettings.documentTitleFontSize, maxWidth: pageContentWidth }).h + 10;
       }
 
-      const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontSize?: number } = { fontSize: pdfSettings.tableHeaderFontSize };
-       if (pdfSettings.primaryColor) {
-        const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
-        if (primaryColorRgb) {
-          headStyles.fillColor = primaryColorRgb;
-          const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
-          headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
-        }
-      }
+            // CORRECTION: Convertit la couleur (objet) au format attendu (tableau)
+      const getHeadStyles = () => {
+          const styles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontSize?: number, fontStyle?: string } = { 
+              fontSize: pdfSettings.tableHeaderFontSize || 10,
+              fontStyle: 'bold' 
+          };
+          
+          if (pdfSettings.primaryColor) {
+            // hexToRgb retourne un objet {r, g, b}
+            const primaryColorRgbObject = hexToRgb(pdfSettings.primaryColor);
+            
+            // On vérifie que l'objet est valide, puis on le transforme en tableau
+            if (primaryColorRgbObject) { 
+              const colorArray: [number, number, number] = [primaryColorRgbObject.r, primaryColorRgbObject.g, primaryColorRgbObject.b];
+              styles.fillColor = colorArray; 
+              
+              // On calcule la luminosité pour décider de la couleur du texte (noir ou blanc)
+              const brightness = (colorArray[0] * 299 + colorArray[1] * 587 + colorArray[2] * 114) / 1000;
+              styles.textColor = brightness > 125 ? [0, 0, 0] : [255, 255, 255];
+            }
+          }
+          return styles;
+      };
 
       const addSectionToPdf = (partLabel: string, ingredients: IngredientOccasional[], partCost: number) => {
         if (ingredients.length > 0) {
           doc.setFontSize(pdfSettings.defaultFontSize + 2); 
           doc.text(partLabel, pdfSettings.marginLeft, currentY); 
           currentY += (pdfSettings.defaultFontSize + 2) * 0.7 + 3;
-          doc.autoTable({
-            head: [['Ingrédient', 'Unité', 'Prix/Unité (€)', 'Qté/Pers.', 'Coût/Pers. (€)']],
-            body: ingredients.map(ing => [
-              ing.name, ing.unit, ing.unitPrice.toFixed(2), ing.quantityPerSingleMeal.toFixed(3),
-              (ing.unitPrice * ing.quantityPerSingleMeal).toFixed(2),
-            ]),
-            foot: [[{ content: `Total ${partLabel} / Pers.`, colSpan: 4, styles: { fontStyle: 'bold', halign: 'right' } }, { content: partCost.toFixed(2), styles: { fontStyle: 'bold', halign: 'right' } }]],
-            startY: currentY, theme: 'grid', 
-            headStyles: headStyles, 
-            styles: { fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily },
-            footStyles: { fillColor: [230, 230, 230], textColor: [0,0,0], fontSize: pdfSettings.tableBodyFontSize }
-          });
-          currentY = (doc as any).lastAutoTable.finalY + 10;
+                       doc.autoTable({
+                head: [['Ingrédient', 'Unité', 'Prix/Unité (HT.€)', 'Qté/Pers.', 'Coût/Pers. (€)']],
+                body: ingredients.map(ing => [
+                  ing.name, 
+                  ing.unit, 
+                  `${ing.unitPrice.toFixed(2)} €`, 
+                  ing.quantityPerSingleMeal.toFixed(3),
+                  `${(ing.unitPrice * ing.quantityPerSingleMeal).toFixed(2)} €`,
+                ]),
+                foot: [[{ content: `Total ${partLabel} / Pers.`, colSpan: 4, styles: { fontStyle: 'bold', halign: 'right' } }, { content: `${partCost.toFixed(2)} €`, styles: { fontStyle: 'bold', halign: 'right' } }]],
+                startY: currentY, 
+                theme: 'grid', 
+                headStyles: getHeadStyles(),
+                styles: { fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily, cellPadding: 2 },
+                columnStyles: {
+                  2: { halign: 'right' },
+                  3: { halign: 'right' },
+                  4: { halign: 'right' },
+                },
+                footStyles: { fillColor: [230, 230, 230], textColor: [0,0,0], fontSize: pdfSettings.tableBodyFontSize, fontStyle: 'bold' },
+                margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight }
+              });
+
+          currentY = (doc as any).lastAutoTable.finalY + 15;
         }
       };
       
-      addSectionToPdf("Entrée", starterIngredients, starterCostPerPerson);
-      addSectionToPdf("Plat Principal", mainIngredients, mainCostPerPerson);
-      addSectionToPdf("Dessert", dessertIngredients, dessertCostPerPerson);
+      addSectionToPdf("Entrée :", starterIngredients, starterCostPerPerson);
+      addSectionToPdf("Plat Principal :", mainIngredients, mainCostPerPerson);
+      addSectionToPdf("Dessert :", dessertIngredients, dessertCostPerPerson);
+      
+            if ((doc as any).lastAutoTable.finalY > currentY) {
+          currentY = (doc as any).lastAutoTable.finalY;
+      }
+      currentY += 25; // Espace augmenté avant le bloc récapitulatif
 
-      doc.setFontSize(pdfSettings.defaultFontSize + 2);
-      doc.text("Récapitulatif:", pdfSettings.marginLeft, currentY); 
-      currentY += (pdfSettings.defaultFontSize + 2) * 0.7 + 3;
+      // Section Récapitulatif
+               // Section Récapitulatif
+          doc.setFontSize(pdfSettings.defaultFontSize + 2);
+          doc.setFont(undefined, 'bold'); // Mettre en gras
+          
+          const recapTitle = "Récapitulatif:";
+          const titleWidth = doc.getTextWidth(recapTitle);
+          doc.text(recapTitle, pdfSettings.marginLeft, currentY);
+          doc.line(pdfSettings.marginLeft, currentY + 2, pdfSettings.marginLeft + titleWidth, currentY + 2); // Souligner
+          
+          doc.setFont(undefined, 'normal'); // Réinitialiser à la police normale
+          currentY += (pdfSettings.defaultFontSize + 2); // Espacement après le titre
+
       doc.setFontSize(pdfSettings.defaultFontSize);
-      doc.text(`Nombre de personnes: ${numberOfPeople}`, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.defaultFontSize * 0.7) + 2;
-      doc.text(`Coût total par personne: ${totalCostPerPerson.toFixed(2)} €`, pdfSettings.marginLeft, currentY); currentY += (pdfSettings.defaultFontSize * 0.7) + 2;
-      doc.setFontSize(pdfSettings.defaultFontSize + 1); doc.setFont(undefined, 'bold');
-      doc.text(`Coût total pour ${numberOfPeople} personnes: ${totalCostForAllPeople.toFixed(2)} €`, pdfSettings.marginLeft, currentY);
+      doc.text(`Nombre de personnes: ${numberOfPeople}`, pdfSettings.marginLeft, currentY);
+      currentY += (pdfSettings.defaultFontSize + 6); // Espacement augmenté
+
+      doc.text(`Coût total par personne (HT): ${totalCostPerPerson.toFixed(2)} € `, pdfSettings.marginLeft, currentY);
+      currentY += (pdfSettings.defaultFontSize + 6); // Espacement augmenté
+
+      doc.setFontSize(pdfSettings.defaultFontSize + 1);
+      doc.setFont(undefined, 'bold');
+      doc.text(`Coût total pour ${numberOfPeople} personnes (HT): ${totalCostForAllPeople.toFixed(2)} €`, pdfSettings.marginLeft, currentY);
+      doc.setFont(undefined, 'normal');
+
 
       const pageCount = doc.internal.getNumberOfPages();
       for (let i = 1; i <= pageCount; i++) {
@@ -297,11 +348,14 @@ export default function OccasionalMealCostAnalysis() {
       toast({ title: "PDF Généré", description: "Le PDF du coût repas occasionnel a été téléchargé." });
     } catch (error) {
       console.error("Error generating PDF:", error);
-      toast({ title: "Erreur PDF", description: "La génération du PDF a échoué.", variant: "destructive" });
+      toast({ title: "Erreur PDF", description: `La génération du PDF a échoué: ${error instanceof Error ? error.message : 'Erreur inconnue'}`, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
   };
+
+
+
   
   const renderMealPartSection = (mealPart: OccasionalMealPartType, ingredients: IngredientOccasional[], costPerPerson: number) => (
     <Card>

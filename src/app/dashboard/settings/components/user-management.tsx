@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -32,7 +33,7 @@ import {
 import { firestore } from '@/lib/firebase';
 import { collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy } from 'firebase/firestore';
 
-// --- VRAIE SOURCE DE VÉRITÉ POUR LES PERMISSIONS ---
+// --- VRAIE SOURCE DE VÉRITÉ POUR LES PERMISSIONS -- -
 export const LOGGED_IN_USER_PERMISSIONS_KEY = 'loggedInUserPermissions';
 export const LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY = 'loggedInUserHourViewConfig';
 
@@ -47,6 +48,7 @@ export const RUBRICS = [
   { id: 'canAccessPicnic', label: 'Pique Nique' },
   { id: 'canAccessPms', label: 'PMS' },
   { id: 'canAccessFinDuMois', label: 'Fin du Mois !' },
+  { id: 'canAccessFinDeSemaine', label: 'Fin de Semaine' },
   { id: 'canAccessTimeTracking', label: 'Suivi des Heures (Accès général)' },
   { id: 'canAccessSettings', label: 'Paramètres (Accès général)' },
 ] as const;
@@ -58,7 +60,16 @@ export const TIME_TRACKING_SUB_RUBRICS = [
   { id: 'timeTracking_schedules', label: '— Modèles d\'Horaires' },
 ] as const;
 
-export type RubricId = typeof RUBRICS[number]['id'] | typeof TIME_TRACKING_SUB_RUBRICS[number]['id'];
+export const MENU_PLANNING_SUB_RUBRICS = [
+  { id: 'menuPlanning_recipes', label: '— Gestion des Recettes' },
+  { id: 'menuPlanning_temperatureSheet', label: '— Fiche de Température' },
+] as const;
+
+export const PICNIC_SUB_RUBRICS = [
+  { id: 'picnic_recapPn', label: '— Recap PN' },
+] as const;
+
+export type RubricId = typeof RUBRICS[number]['id'] | typeof TIME_TRACKING_SUB_RUBRICS[number]['id'] | typeof MENU_PLANNING_SUB_RUBRICS[number]['id'] | typeof PICNIC_SUB_RUBRICS[number]['id'];
 
 export interface ViewableHourSummaryConfig {
   type: 'none' | 'own' | 'all' | 'specific';
@@ -79,6 +90,8 @@ export interface AppUser {
 export const ALL_RUBRIC_IDS: RubricId[] = [
   ...RUBRICS.map(r => r.id),
   ...TIME_TRACKING_SUB_RUBRICS.map(sr => sr.id),
+  ...MENU_PLANNING_SUB_RUBRICS.map(sr => sr.id),
+  ...PICNIC_SUB_RUBRICS.map(sr => sr.id),
 ];
 
 const permissionsSchemaObject = ALL_RUBRIC_IDS.reduce((acc, id) => {
@@ -161,13 +174,6 @@ export default function UserManagement() {
   const handleUserFormSubmit = async (data: UserFormData) => {
     let permissionsToSave = { ...data.permissions };
 
-    const hasTimeTrackingSubPermission = TIME_TRACKING_SUB_RUBRICS.some(
-      subRubric => !!permissionsToSave[subRubric.id]
-    );
-    if (hasTimeTrackingSubPermission) {
-      permissionsToSave.canAccessTimeTracking = true;
-    }
-
     const summaryConfig: ViewableHourSummaryConfig = {
         type: data.viewableHourSummary_type,
         specificMemberId: data.viewableHourSummary_type === 'specific' ? (data.viewableHourSummary_specificMemberId || null) : null,
@@ -183,11 +189,11 @@ export default function UserManagement() {
     if (editingUser) {
       const userRef = doc(firestore, "appUsers", editingUser.id);
       await setDoc(userRef, {
-        ...editingUser, 
+        ...editingUser,
         passwordRequired: editingUser.role === 'admin' || editingUser.role === 'superviseur' ? true : data.passwordRequired,
         simulatedStoredPassword: passwordToStore,
         permissions: permissionsToSave,
-        viewableHourSummaryConfig: editingUser.role ? { type: 'all' } : summaryConfig,
+        viewableHourSummaryConfig: editingUser.role === 'admin' ? { type: 'all' } : summaryConfig,
       }, { merge: true });
       toast({ title: "Utilisateur mis à jour" });
     } else {
@@ -331,23 +337,51 @@ export default function UserManagement() {
                     
                     <h3 className="text-md font-semibold mb-2 mt-3">Permissions</h3>
                     {RUBRICS.map(rubric => (
-                      <FormField key={rubric.id} control={form.control} name={`permissions.${rubric.id}`} render={({ field }) => (
-                        <FormItem className="flex items-center space-x-3 space-y-0 rounded-md border p-3">
-                          <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={editingUser?.role === 'admin' || (editingUser?.role === 'superviseur' && rubric.id !== 'canAccessSettings')} /></FormControl>
-                          <FormLabel className="font-normal flex-grow">{rubric.label}</FormLabel>
-                        </FormItem>
-                      )}/>
-                    ))}
-                    <div className="pl-6 border-l-2 ml-2 mt-2 space-y-2">
-                      {TIME_TRACKING_SUB_RUBRICS.map(subRubric => (
-                        <FormField key={subRubric.id} control={form.control} name={`permissions.${subRubric.id}`} render={({ field }) => (
+                      <React.Fragment key={rubric.id}>
+                        <FormField control={form.control} name={`permissions.${rubric.id}`} render={({ field }) => (
                           <FormItem className="flex items-center space-x-3 space-y-0 rounded-md border p-3">
-                            <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={!!editingUser?.role} /></FormControl>
-                            <FormLabel className="font-normal flex-grow">{subRubric.label}</FormLabel>
+                            <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={editingUser?.role === 'admin'} /></FormControl>
+                            <FormLabel className="font-normal flex-grow">{rubric.label}</FormLabel>
                           </FormItem>
                         )}/>
-                      ))}
-                    </div>
+                        {rubric.id === 'canAccessMenuPlanning' && (
+                          <div className="pl-6 border-l-2 ml-2 mt-2 space-y-2">
+                            {MENU_PLANNING_SUB_RUBRICS.map(subRubric => (
+                              <FormField key={subRubric.id} control={form.control} name={`permissions.${subRubric.id}`} render={({ field }) => (
+                                <FormItem className="flex items-center space-x-3 space-y-0 rounded-md border p-3">
+                                  <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={!!editingUser?.role} /></FormControl>
+                                  <FormLabel className="font-normal flex-grow">{subRubric.label}</FormLabel>
+                                </FormItem>
+                              )}/>
+                            ))}
+                          </div>
+                        )}
+                        {rubric.id === 'canAccessPicnic' && (
+                          <div className="pl-6 border-l-2 ml-2 mt-2 space-y-2">
+                            {PICNIC_SUB_RUBRICS.map(subRubric => (
+                              <FormField key={subRubric.id} control={form.control} name={`permissions.${subRubric.id}`} render={({ field }) => (
+                                <FormItem className="flex items-center space-x-3 space-y-0 rounded-md border p-3">
+                                  <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={!!editingUser?.role} /></FormControl>
+                                  <FormLabel className="font-normal flex-grow">{subRubric.label}</FormLabel>
+                                </FormItem>
+                              )}/>
+                            ))}
+                          </div>
+                        )}
+                        {rubric.id === 'canAccessTimeTracking' && (
+                          <div className="pl-6 border-l-2 ml-2 mt-2 space-y-2">
+                            {TIME_TRACKING_SUB_RUBRICS.map(subRubric => (
+                              <FormField key={subRubric.id} control={form.control} name={`permissions.${subRubric.id}`} render={({ field }) => (
+                                <FormItem className="flex items-center space-x-3 space-y-0 rounded-md border p-3">
+                                  <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={!!editingUser?.role} /></FormControl>
+                                  <FormLabel className="font-normal flex-grow">{subRubric.label}</FormLabel>
+                                </FormItem>
+                              )}/>
+                            ))}
+                          </div>
+                        )}
+                      </React.Fragment>
+                    ))}
                   </div>
                 </ScrollArea>
                 <DialogFooter className="pt-4">

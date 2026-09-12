@@ -7,14 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, Edit2, Trash2, Users } from 'lucide-react';
-import { useForm, Controller } from 'react-hook-form'; // Added Controller
+import { PlusCircle, Edit2, Trash2, Users, Mail } from 'lucide-react';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox'; // Added Checkbox
-import { ScrollArea } from '@/components/ui/scroll-area'; // Added ScrollArea
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,7 +31,8 @@ import { Badge } from '@/components/ui/badge';
 const memberSchema = z.object({
   name: z.string().min(1, "Le nom est requis."),
   role: z.string().min(1, "Le rôle est requis."),
-  assignedScheduleTemplateIds: z.array(z.string()).optional().default([]), // Changed to array
+  email: z.string().email("Format d'email invalide.").optional().or(z.literal('')),
+  assignedScheduleTemplateIds: z.array(z.string()).optional().default([]),
 });
 
 type MemberFormData = z.infer<typeof memberSchema>;
@@ -53,6 +54,7 @@ export default function ManageBrigadeMembers({ members, scheduleTemplates, onAdd
     defaultValues: {
       name: '',
       role: '',
+      email: '',
       assignedScheduleTemplateIds: [],
     },
   });
@@ -63,14 +65,15 @@ export default function ManageBrigadeMembers({ members, scheduleTemplates, onAdd
         form.reset({
           name: editingMember.name,
           role: editingMember.role,
+          email: editingMember.email || '',
           assignedScheduleTemplateIds: editingMember.assignedScheduleTemplateIds || [],
         });
       } else {
-        form.reset({ name: '', role: '', assignedScheduleTemplateIds: [] });
+        form.reset({ name: '', role: '', email: '', assignedScheduleTemplateIds: [] });
       }
     } else {
       setEditingMember(null);
-      form.reset({ name: '', role: '', assignedScheduleTemplateIds: [] });
+      form.reset({ name: '', role: '', email: '', assignedScheduleTemplateIds: [] });
     }
   }, [editingMember, form, isFormDialogOpen]);
 
@@ -78,6 +81,7 @@ export default function ManageBrigadeMembers({ members, scheduleTemplates, onAdd
     const memberDataToSave: Partial<BrigadeMember> = {
       name: data.name,
       role: data.role,
+      email: data.email,
       assignedScheduleTemplateIds: data.assignedScheduleTemplateIds || [],
     };
 
@@ -137,6 +141,19 @@ export default function ManageBrigadeMembers({ members, scheduleTemplates, onAdd
                       <FormLabel>Rôle</FormLabel>
                       <FormControl>
                         <Input placeholder="Ex: Cuisinier, Chef de Partie" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Ex: jean.dupont@email.com" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -202,6 +219,7 @@ export default function ManageBrigadeMembers({ members, scheduleTemplates, onAdd
                 <TableRow>
                   <TableHead>Nom</TableHead>
                   <TableHead>Rôle</TableHead>
+                  <TableHead>Email</TableHead>
                   <TableHead>Modèles d'Horaires Attribués</TableHead>
                   <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
@@ -213,6 +231,7 @@ export default function ManageBrigadeMembers({ members, scheduleTemplates, onAdd
                     <TableRow key={member.id}>
                       <TableCell className="font-medium">{member.name}</TableCell>
                       <TableCell>{member.role}</TableCell>
+                      <TableCell>{member.email || <span className="italic text-muted-foreground">N/A</span>}</TableCell>
                       <TableCell className="text-xs">
                         {assignedTemplates.length > 0 ? (
                           <div className="flex flex-wrap gap-1">

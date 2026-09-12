@@ -230,165 +230,156 @@ export default function ColdChainMonitoring() {
     toast({ title: "Entrée Supprimée", variant: "destructive" });
   };
   
-  const generatePdf = (dataType: 'cooldown' | 'delivery') => {
-    setIsLoading(true); 
+   const generatePdf = async (dataType: 'cooldown' | 'delivery') => {
+    setIsLoading(true);
     try {
       const isCooldown = dataType === 'cooldown';
       const dataToExport = isCooldown ? coolDownEntries : deliveryEntries;
-      const title = isCooldown ? "Suivi Baisse en Température du Jour" : "Suivi Livraison du Jour";
+      const moduleTitle = isCooldown ? "Suivi Baisse en Température du Jour" : "Suivi Livraison du Jour";
       const filenameSuffix = isCooldown ? "Baisse_Temperature" : "Livraison";
       const settingsKey = isCooldown ? 'pms_cooldown_monitoring' : 'pms_delivery_monitoring';
 
       if(dataToExport.length === 0) {
-        toast({title: "Aucune donnée", description: `Aucune donnée à exporter pour ${title.toLowerCase()}.`, variant: "destructive"});
+        toast({title: "Aucune donnée", description: `Aucune donnée à exporter.`, variant: "destructive"});
         setIsLoading(false);
         return;
       }
 
-      const pdfSettings = getPdfLayoutSettings(settingsKey); 
+      const pdfSettings = await getPdfLayoutSettings(settingsKey); 
       const doc = new jsPDF({
-        orientation: pdfSettings.orientation || 'landscape',
+        orientation: pdfSettings.orientation as any || 'landscape',
         unit: 'pt',
-        format: pdfSettings.pageSize || 'a4',
+        format: pdfSettings.pageSize as any || 'a4',
       }) as jsPDFWithAutoTable;
-      doc.setFont(pdfSettings.fontFamily || 'helvetica');
+      
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
-
-      let currentY = pdfSettings.marginTop || 15;
-      if (pdfSettings.headerText) { doc.setFontSize(pdfSettings.headerFontSize || 10); doc.text(pdfSettings.headerText, pdfSettings.marginLeft || 14, currentY); currentY += (pdfSettings.headerFontSize || 10) + 5; }
-      if (pdfSettings.logoUrl) { doc.setFontSize(8); doc.text(`Logo: ${pdfSettings.logoUrl}`, pdfSettings.marginLeft || 14, currentY); currentY += 5; }
       
-      doc.setFontSize(pdfSettings.documentTitleFontSize || 16); doc.text(`${title} - ${format(new Date(), "dd/MM/yyyy", {locale: fr})}`, pdfSettings.marginLeft || 14, currentY); currentY += (pdfSettings.documentTitleFontSize || 16) * 0.7 + 12;
+      // --- EN-TÊTE GLOBAL (LOGO, ETC.) ---
+      let currentY = pdfSettings.marginTop;
+      const pageContentWidth = doc.internal.pageSize.width - pdfSettings.marginLeft - pdfSettings.marginRight;
+      const effectiveHeaderText = pdfSettings.headerText || (pdfSettings.logoUrl ? '{logo}' : '');
 
-      const tableHeaderFontSize = pdfSettings.tableHeaderFontSize || 7; // Smaller base for headers
-      const tableBodyFontSize = pdfSettings.tableBodyFontSize || 6.5;   // Smaller base for body
-      const cellPadding = 1;
+      if (effectiveHeaderText) {
+          const headerRows = effectiveHeaderText.split('\n');
+          doc.setFontSize(pdfSettings.headerFontSize);
+          for (const row of headerRows) {
+              const cells = row.split('|');
+              if (cells.length === 0) continue;
+              let maxHeightInRow = 0;
+              const cellWidth = pageContentWidth / cells.length;
+              cells.forEach(cell => {
+                  const cellText = cell.trim();
+                  if (cellText === '{logo}' && pdfSettings.logoUrl) {
+                      maxHeightInRow = Math.max(maxHeightInRow, 30);
+                  } else {
+                      const textLines = doc.splitTextToSize(cellText, cellWidth - 6);
+                      maxHeightInRow = Math.max(maxHeightInRow, (textLines.length * pdfSettings.headerFontSize * 0.7) + 6);
+                  }
+              });
 
-      const headStyles: any = { 
-        fontStyle: 'bold', 
-        halign: 'center', 
-        valign: 'middle',
-        fontSize: tableHeaderFontSize,
-        cellPadding: cellPadding,
-      };
-      if (pdfSettings.primaryColor) {
-        const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
-        if (primaryColorRgb) headStyles.fillColor = primaryColorRgb;
-        headStyles.textColor = (hexToRgb(pdfSettings.primaryColor)![0] * 299 + hexToRgb(pdfSettings.primaryColor)![1] * 587 + hexToRgb(pdfSettings.primaryColor)![2] * 114) / 1000 > 125 ? [0,0,0] : [255,255,255];
-      } else {
-        headStyles.fillColor = [220,220,220]; 
-        headStyles.textColor = [0,0,0];
+              let currentX = pdfSettings.marginLeft;
+              for (const cell of cells) {
+                  const cellText = cell.trim();
+                  doc.rect(currentX, currentY, cellWidth, maxHeightInRow, 'S');
+                  if (cellText === '{logo}' && pdfSettings.logoUrl) {
+                      try {
+                          const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+                          const imgHeight = Math.min(maxHeightInRow - 6, 40);
+                          const imgWidth = (imgProps.width * imgHeight) / imgProps.height;
+                          doc.addImage(pdfSettings.logoUrl, imgProps.fileType, currentX + (cellWidth - imgWidth) / 2, currentY + (maxHeightInRow - imgHeight) / 2, imgWidth, imgHeight);
+                      } catch (e) { console.error("Error adding logo.", e); }
+                  } else if (cellText !== '{logo}') {
+                      doc.text(cellText, currentX + (cellWidth / 2), currentY + (maxHeightInRow / 2), { align: 'center', baseline: 'middle', maxWidth: cellWidth - 6 });
+                  }
+                  currentX += cellWidth;
+              }
+              currentY += maxHeightInRow;
+          }
+          currentY += 10;
       }
-      
+
+      // --- TITRE DU DOCUMENT ---
+      const moduleDefaultTitleWithDate = `${moduleTitle} - ${format(new Date(), "dd/MM/yyyy", {locale: fr})}`;
+      let finalTitle = pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle ? pdfSettings.documentBaseTitle.trim() : "";
+      if (pdfSettings.showModuleTitle) {
+          finalTitle = finalTitle ? `${finalTitle} - ${moduleDefaultTitleWithDate}` : moduleDefaultTitleWithDate;
+      }
+      if(finalTitle) {
+        doc.setFontSize(pdfSettings.documentTitleFontSize);
+        doc.text(finalTitle, doc.internal.pageSize.width / 2, currentY, { align: 'center' });
+        currentY += pdfSettings.documentTitleFontSize + 5;
+      }
+
+      // --- STYLES & COULEURS ---
+      const baseHeadStyles = { fontSize: 7, fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1, textColor: [0, 0, 0] };
+      const mainHeadStyles = { ...baseHeadStyles, fillColor: pdfSettings.primaryColor || '#4b5563', textColor: '#FFFFFF' };
+      if (pdfSettings.primaryColor) {
+          const rgb = hexToRgb(pdfSettings.primaryColor);
+          if(rgb){
+              mainHeadStyles.fillColor = pdfSettings.primaryColor;
+              mainHeadStyles.textColor = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000 > 125 ? '#000000' : '#FFFFFF';
+          }
+      }
+
       let head: any[], body: any[][], columnStyles: any = {};
-      const orangeBg = hexToRgb('#FFA500') || [255, 165, 0]; 
-      const blueBg = hexToRgb('#ADD8E6') || [173, 216, 230];   
-      const greyBg = hexToRgb('#D3D3D3') || [211, 211, 211];   
-      const greenBg = hexToRgb('#90EE90') || [144, 238, 144]; 
-      const yellowBg = hexToRgb('#FFFFE0') || [255, 255, 224]; 
-      const blackText: [number, number, number] = [0,0,0];
-      const coloredHeadStyle = (bgColor: [number,number,number] | string, textColor: [number,number,number]) => ({ ...headStyles, fillColor: bgColor, textColor: textColor });
 
       if (isCooldown) {
+        const orangeHeadStyle = { ...baseHeadStyles, fillColor: '#f97316' }; // orange-500
+        const blueHeadStyle = { ...baseHeadStyles, fillColor: '#3b82f6' };   // blue-500
+        const greyHeadStyle = { ...baseHeadStyles, fillColor: '#9ca3af' };   // gray-400
+        const orangeBodyStyle = { fillColor: '#fed7aa' }; // orange-200
+        const blueBodyStyle = { fillColor: '#bfdbfe' };   // blue-200
+        const greyBodyStyle = { fillColor: '#e5e7eb' };   // gray-200
+
         head = [
-          [ 
-            { content: 'Produits', rowSpan: 2, styles: headStyles }, 
-            { content: 'Quantité', rowSpan: 2, styles: headStyles },
-            { content: 'Pièces / Plats', rowSpan: 2, styles: headStyles },
-            { content: 'Debut', colSpan: 2, styles: coloredHeadStyle(orangeBg, blackText) },
-            { content: 'Fin', colSpan: 2, styles: coloredHeadStyle(blueBg, blackText) },
-            { content: 'VISA', colSpan: 1, styles: coloredHeadStyle(greyBg, blackText) }, 
-          ],
-          [ 
-            { content: 'heure', styles: coloredHeadStyle(orangeBg, blackText) },
-            { content: 'T°', styles: coloredHeadStyle(orangeBg, blackText) },
-            { content: 'heure', styles: coloredHeadStyle(blueBg, blackText) },
-            { content: 'T°', styles: coloredHeadStyle(blueBg, blackText) },
-            { content: 'Sign.', styles: coloredHeadStyle(greyBg, blackText) },
-          ]
+          [ { content: 'Produits', rowSpan: 2, styles: mainHeadStyles }, { content: 'Qté', rowSpan: 2, styles: mainHeadStyles }, { content: 'Pcs/Plats', rowSpan: 2, styles: mainHeadStyles },
+            { content: 'Debut', colSpan: 2, styles: orangeHeadStyle }, { content: 'Fin', colSpan: 2, styles: blueHeadStyle }, { content: 'VISA', colSpan: 1, styles: greyHeadStyle } ],
+          [ { content: 'heure', styles: orangeHeadStyle }, { content: 'T°', styles: orangeHeadStyle }, { content: 'heure', styles: blueHeadStyle }, { content: 'T°', styles: blueHeadStyle }, { content: 'Sign.', styles: greyHeadStyle } ]
         ];
         body = (dataToExport as DailyCoolDownEntry[]).map(e => [
-            e.productName, 
-            e.quantity, 
-            e.piecesOrPlats || '-', 
-            { content: e.startTime || '-', styles: { fillColor: orangeBg } }, 
-            { content: e.startTemp || '-', styles: { fillColor: orangeBg } }, 
-            { content: e.endTime || '-', styles: { fillColor: blueBg } }, 
-            { content: e.endTemp || '-', styles: { fillColor: blueBg } }, 
-            { content: e.visa || '-', styles: { fillColor: greyBg } }
+            e.productName, e.quantity, e.piecesOrPlats || '-', 
+            { content: e.startTime || '-', styles: orangeBodyStyle }, { content: e.startTemp || '-', styles: orangeBodyStyle }, 
+            { content: e.endTime || '-', styles: blueBodyStyle }, { content: e.endTemp || '-', styles: blueBodyStyle }, 
+            { content: e.visa || '-', styles: greyBodyStyle }
         ]);
-        columnStyles = { 
-          0: { cellWidth: 110 }, 1: { cellWidth: 40 }, 2: { cellWidth: 60 },
-          3: { cellWidth: 35 },  4: { cellWidth: 35 }, 5: { cellWidth: 35 },
-          6: { cellWidth: 35 },  7: { cellWidth: 40 },
-        };
+        columnStyles = { 0: { cellWidth: 110 }, 1: { cellWidth: 40 }, 2: { cellWidth: 60 }, 3: { cellWidth: 35 }, 4: { cellWidth: 35 }, 5: { cellWidth: 35 }, 6: { cellWidth: 35 }, 7: { cellWidth: 40 } };
+      
       } else { // Delivery
+        const greenHeadStyle = { ...baseHeadStyles, fillColor: '#22c55e' }; // green-500
+        const yellowHeadStyle = { ...baseHeadStyles, fillColor: '#eab308' }; // yellow-500
+        const greyHeadStyle = { ...baseHeadStyles, fillColor: '#9ca3af' };   // gray-400
+        const greenBodyStyle = { fillColor: '#bbf7d0' }; // green-200
+        const yellowBodyStyle = { fillColor: '#fef08a' }; // yellow-200
+        const greyBodyStyle = { fillColor: '#e5e7eb' };   // gray-200
+
         head = [
-          [ 
-            { content: 'Produits', rowSpan: 2, styles: headStyles },
-            { content: 'Qté', rowSpan: 2, styles: headStyles },
-            { content: 'Pcs/Plats', rowSpan: 2, styles: headStyles },
-            { content: 'Départ', colSpan: 2, styles: coloredHeadStyle(greenBg, blackText) },
-            { content: 'Arrivé', colSpan: 2, styles: coloredHeadStyle(yellowBg, blackText) },
-            { content: 'VISA', colSpan: 2, styles: coloredHeadStyle(greyBg, blackText) }
-          ],
-          [ 
-            { content: 'H', styles: coloredHeadStyle(greenBg, blackText) },
-            { content: 'T°', styles: coloredHeadStyle(greenBg, blackText) },
-            { content: 'H', styles: coloredHeadStyle(yellowBg, blackText) },
-            { content: 'T°', styles: coloredHeadStyle(yellowBg, blackText) },
-            { content: 'Livr.', styles: coloredHeadStyle(greyBg, blackText) },
-            { content: 'Cli.', styles: coloredHeadStyle(greyBg, blackText) }
-          ]
+          [ { content: 'Produits', rowSpan: 2, styles: mainHeadStyles }, { content: 'Qté', rowSpan: 2, styles: mainHeadStyles }, { content: 'Pcs/Plats', rowSpan: 2, styles: mainHeadStyles },
+            { content: 'Départ', colSpan: 2, styles: greenHeadStyle }, { content: 'Arrivé', colSpan: 2, styles: yellowHeadStyle }, { content: 'VISA', colSpan: 2, styles: greyHeadStyle } ],
+          [ { content: 'H', styles: greenHeadStyle }, { content: 'T°', styles: greenHeadStyle }, { content: 'H', styles: yellowHeadStyle }, { content: 'T°', styles: yellowHeadStyle }, { content: 'Livr.', styles: greyHeadStyle }, { content: 'Cli.', styles: greyHeadStyle } ]
         ];
         body = (dataToExport as DailyDeliveryEntry[]).map(e => [
-          e.productName, 
-          e.quantity || '-', 
-          e.piecesOrPlats || '-', 
-          { content: e.departureTime || '-', styles: { fillColor: greenBg } }, 
-          { content: e.departureTemp || '-', styles: { fillColor: greenBg } }, 
-          { content: e.arrivalTime || '-', styles: { fillColor: yellowBg } }, 
-          { content: e.arrivalTemp || '-', styles: { fillColor: yellowBg } }, 
-          { content: e.visaLivreur || '-', styles: { fillColor: greyBg } }, 
-          { content: e.visaClient || '-', styles: { fillColor: greyBg } }
+          e.productName, e.quantity || '-', e.piecesOrPlats || '-', 
+          { content: e.departureTime || '-', styles: greenBodyStyle }, { content: e.departureTemp || '-', styles: greenBodyStyle },
+          { content: e.arrivalTime || '-', styles: yellowBodyStyle }, { content: e.arrivalTemp || '-', styles: yellowBodyStyle },
+          { content: e.visaLivreur || '-', styles: greyBodyStyle }, { content: e.visaClient || '-', styles: greyBodyStyle }
         ]);
-         columnStyles = { 
-          0: { cellWidth: 100 }, 1: { cellWidth: 35 },  2: { cellWidth: 60 },  
-          3: { cellWidth: 30 },  4: { cellWidth: 50 },  5: { cellWidth: 30 },  
-          6: { cellWidth: 50 },  7: { cellWidth: 40 },  8: { cellWidth: 40 },
-        };
+        columnStyles = { 0: { cellWidth: 100 }, 1: { cellWidth: 35 }, 2: { cellWidth: 60 }, 3: { cellWidth: 30 }, 4: { cellWidth: 50 }, 5: { cellWidth: 30 }, 6: { cellWidth: 50 }, 7: { cellWidth: 40 }, 8: { cellWidth: 40 } };
       }
-
+      
       doc.autoTable({
         head, body, startY: currentY, theme: 'grid', 
-        styles: { 
-            fontSize: tableBodyFontSize, 
-            cellPadding: cellPadding, 
-            valign: 'middle', 
-            halign: 'center' 
-        },
-        columnStyles: columnStyles,
-        margin: { 
-          top: pdfSettings.marginTop || 15, 
-          right: pdfSettings.marginRight || 15, 
-          bottom: pdfSettings.marginBottom || 15, 
-          left: pdfSettings.marginLeft || 15
-        },
-        tableWidth: 'auto', // Let the sum of column widths determine table width
-        didDrawPage: (hookData) => { 
-             const pageCount = doc.internal.getNumberOfPages();
-             if (pdfSettings.footerText) {
-                let footerStr = pdfSettings.footerText
-                .replace('{date}', generationDateFormatted)
-                .replace('{pageNumber}', hookData.pageNumber.toString())
-                .replace('{totalPages}', pageCount.toString());
-                doc.setFontSize(pdfSettings.footerFontSize || 9);
-                doc.text(footerStr, hookData.settings.margin.left, doc.internal.pageSize.height - ((pdfSettings.marginBottom || 15)/2));
-            }
+        styles: { fontSize: 7, cellPadding: 1, valign: 'middle', halign: 'center', textColor: '#000000' },
+        columnStyles: { ...columnStyles, 0: { ...columnStyles[0], halign: 'left' } },
+        margin: { top: pdfSettings.marginTop, right: pdfSettings.marginRight, bottom: pdfSettings.marginBottom, left: pdfSettings.marginLeft },
+        didDrawPage: (data) => { 
+          if (pdfSettings.footerText) {
+            doc.setFontSize(pdfSettings.footerFontSize);
+            doc.text(pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', data.pageNumber.toString()).replace('{totalPages}', doc.internal.getNumberOfPages().toString()), data.settings.margin.left, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
+          }
         }
       });
       doc.save(`Suivi_${filenameSuffix}_${todayKey}.pdf`);
-      toast({ title: "PDF Généré", description: `Le PDF pour ${title.toLowerCase()} a été téléchargé.` });
+      toast({ title: "PDF Généré", description: `Le PDF a été téléchargé.` });
     } catch (error) {
       console.error("Error generating PDF:", error);
       toast({ title: "Erreur PDF", description: "La génération du PDF a échoué.", variant: "destructive" });
@@ -396,6 +387,9 @@ export default function ColdChainMonitoring() {
       setIsLoading(false);
     }
   };
+
+
+
 
   const cellBgClasses = {
     debut: "bg-orange-400 text-white",

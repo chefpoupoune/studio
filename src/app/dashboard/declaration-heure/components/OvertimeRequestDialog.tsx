@@ -21,7 +21,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { format, parseISO, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { timeToMinutes, calculateDurationInMinutes, minutesToDecimalHoursString } from '@/app/dashboard/time-tracking/utils';
+import { timeToMinutes, calculateDurationInMinutes, minutesToTime } from '@/app/dashboard/time-tracking/utils';
 
 const overtimeDetailSchema = z.object({
   id: z.string().optional(),
@@ -39,7 +39,7 @@ const formSchema = z.object({
   prestationTypeAutresDetail: z.string().max(100, "Détail max 100 caractères.").optional(),
   overtimeDetails: z.array(overtimeDetailSchema).optional().default([]),
   totalOvertimeHours: z.string().max(50, "Total heures max 50 caractères.").optional(),
-  
+  brigadeMemberId: z.string().optional(),
   employeeSignatureDate: z.date().optional().nullable(),
   directManagerSignatureDate: z.date().optional().nullable(),
   directorSignatureDate: z.date().optional().nullable(),
@@ -72,7 +72,7 @@ export interface OvertimeRequestDialogProps {
   onOpenChange: (isOpen: boolean) => void;
   onSubmitRequest: (data: Partial<OvertimeRequest>) => void;
   editingRequest?: OvertimeRequest | null;
-  currentUser?: { name: string; role: string } | null;
+  currentUser?: { name: string; role: string; brigadeMemberId?: string; } | null;
   isApproverView?: boolean; 
 }
 
@@ -92,13 +92,14 @@ export default function OvertimeRequestDialog({
       prestationTypes: ['logistique'], // Default to logistique
       prestationTypeAutresDetail: '',
       overtimeDetails: [],
-      totalOvertimeHours: '0.00 heures',
+      totalOvertimeHours: '00:00',
       employeeSignatureDate: null,
       directManagerSignatureDate: null,
       directorSignatureDate: null,
       approvalStatus: 'pending',
       rejectionReason: '',
       decisionDate: null,
+      brigadeMemberId: undefined,
     },
   });
 
@@ -115,17 +116,21 @@ export default function OvertimeRequestDialog({
   const approvalStatusWatched = useWatch({ control: form.control, name: "approvalStatus" });
   const prestationTypesWatched = useWatch({ control: form.control, name: "prestationTypes" });
 
+  const isChefCreating = useMemo(() => !editingRequest && currentUser?.name?.toLowerCase() === 'chef', [editingRequest, currentUser]);
+
   const isFormLockedForEmployee = useMemo(() => {
     return !isApproverView && editingRequest && (editingRequest.approvalStatus === 'accepted' || editingRequest.approvalStatus === 'rejected');
   }, [isApproverView, editingRequest]);
 
   const employeeFieldsActuallyDisabled = useMemo(() => {
+    if (isChefCreating) return false;
     return (isApproverView && !!editingRequest) || isFormLockedForEmployee;
-  }, [isApproverView, editingRequest, isFormLockedForEmployee]);
+  }, [isApproverView, editingRequest, isFormLockedForEmployee, isChefCreating]);
 
   const directionFieldsActuallyDisabled = useMemo(() => {
+    if (isChefCreating) return false;
     return !isApproverView;
-  }, [isApproverView]);
+  }, [isApproverView, isChefCreating]);
 
 
   useEffect(() => {
@@ -137,14 +142,20 @@ export default function OvertimeRequestDialog({
         }
       });
     }
-    form.setValue('totalOvertimeHours', minutesToDecimalHoursString(totalMinutes) + " heures");
+    form.setValue('totalOvertimeHours', minutesToTime(totalMinutes));
   }, [overtimeDetailsWatched, form]);
 
   useEffect(() => {
     if (isOpen) {
+      const isChef = currentUser?.name?.toLowerCase() === 'chef';
+
       let initialPosition = editingRequest?.position || '';
-      if (!editingRequest && currentUser?.role) {
-        initialPosition = currentUser.role;
+      if (!editingRequest) {
+        if (isChef) {
+          initialPosition = 'Chef de cuisine';
+        } else if (currentUser?.role) {
+          initialPosition = currentUser.role;
+        }
       }
 
       let initialOvertimeDetails: any[] = [];
@@ -164,13 +175,15 @@ export default function OvertimeRequestDialog({
       let managerSigDate = editingRequest?.directManagerSignatureDate ? parseISO(editingRequest.directManagerSignatureDate) : null;
       let directorSigDate = editingRequest?.directorSignatureDate ? parseISO(editingRequest.directorSignatureDate) : null;
       let decDate = editingRequest?.decisionDate ? parseISO(editingRequest.decisionDate) : null;
+      let approvalStatus = editingRequest?.approvalStatus || 'pending';
 
       if (!editingRequest) { // New request
         empSigDate = new Date();
-        if (isApproverView) { // if chef is creating directly
-          if (!decDate && form.getValues('approvalStatus') !== 'pending') decDate = new Date();
-          if (!managerSigDate) managerSigDate = new Date();
-          if (!directorSigDate) directorSigDate = new Date();
+        if (isChef) {
+          approvalStatus = 'accepted';
+          decDate = new Date();
+          managerSigDate = new Date();
+          directorSigDate = new Date();
         }
       } else { // Editing existing request
         if (!isApproverView && (!empSigDate || !isValid(empSigDate))) {
@@ -189,11 +202,12 @@ export default function OvertimeRequestDialog({
         prestationTypes: editingRequest?.prestationTypes || ['logistique'], // Default for new
         prestationTypeAutresDetail: editingRequest?.prestationTypeAutresDetail || '',
         overtimeDetails: initialOvertimeDetails,
-        totalOvertimeHours: editingRequest?.totalOvertimeHours || '0.00 heures', // Recalculated by effect anyway
+        totalOvertimeHours: editingRequest?.totalOvertimeHours || '00:00', // Recalculated by effect anyway
+        brigadeMemberId: editingRequest?.brigadeMemberId || currentUser?.brigadeMemberId,
         employeeSignatureDate: empSigDate,
         directManagerSignatureDate: managerSigDate,
         directorSignatureDate: directorSigDate,
-        approvalStatus: editingRequest?.approvalStatus || 'pending',
+        approvalStatus: approvalStatus,
         rejectionReason: editingRequest?.rejectionReason || '',
         decisionDate: decDate,
       });
@@ -205,33 +219,22 @@ export default function OvertimeRequestDialog({
           totalMinutes += calculateDurationInMinutes(detail.startTime, detail.endTime);
         }
       });
-      form.setValue('totalOvertimeHours', minutesToDecimalHoursString(totalMinutes) + " heures");
+      form.setValue('totalOvertimeHours', minutesToTime(totalMinutes));
 
     }
   }, [isOpen, editingRequest, currentUser, form, isApproverView]);
 
-  useEffect(() => {
-    if (isApproverView && (approvalStatusWatched === 'accepted' || approvalStatusWatched === 'rejected')) {
-      if (!form.getValues('decisionDate')) {
-        form.setValue('decisionDate', new Date());
-      }
-      if (currentUser?.name?.toLowerCase() === 'chef') { // Ensure 'chef' is case-insensitive
-        if (!form.getValues('directManagerSignatureDate')) {
-          form.setValue('directManagerSignatureDate', new Date());
-        }
-        if (!form.getValues('directorSignatureDate')) {
-          form.setValue('directorSignatureDate', new Date());
-        }
-      }
-    }
-  }, [approvalStatusWatched, isApproverView, form, currentUser]);
-
 
   const handleSubmit = (data: FormDataType) => {
+    const isChef = currentUser?.name?.toLowerCase() === 'chef';
+    const employeeName = isChef && !editingRequest ? 'Julien Dernoncourt' : (editingRequest?.employeeName || currentUser?.name || "Employé inconnu");
+    const position = isChef && !editingRequest ? 'Chef de cuisine' : (data.position || editingRequest?.position || currentUser?.role || '');
+
     const submitData: Partial<OvertimeRequest> = {
       ...data,
-      employeeName: editingRequest?.employeeName || currentUser?.name || "Employé inconnu",
-      position: data.position || (editingRequest ? editingRequest.position : (currentUser?.role || '')),
+      employeeName,
+      position,
+      brigadeMemberId: data.brigadeMemberId,
       employeeSignatureDate: data.employeeSignatureDate ? data.employeeSignatureDate.toISOString() : undefined,
       directManagerSignatureDate: data.directManagerSignatureDate ? data.directManagerSignatureDate.toISOString() : undefined,
       directorSignatureDate: data.directorSignatureDate ? data.directorSignatureDate.toISOString() : undefined,
@@ -297,7 +300,7 @@ export default function OvertimeRequestDialog({
                     <FormLabel>Nom et prénom du salarié</FormLabel>
                     <FormControl>
                         <Input 
-                        value={editingRequest?.employeeName || currentUser?.name || "Non identifié"} 
+                        value={isChefCreating ? "Julien Dernoncourt" : (editingRequest?.employeeName || currentUser?.name || "Non identifié")} 
                         disabled 
                         className="bg-muted/50" />
                     </FormControl>
@@ -393,7 +396,7 @@ export default function OvertimeRequestDialog({
                         render={({ field: dateField, fieldState: dateFieldState }) => (
                           <FormItem className="flex-grow">
                             <FormLabel className="text-xs">Date</FormLabel>
-                            <Popover>
+                            <Popover modal={true}>
                               <PopoverTrigger asChild>
                                 <FormControl>
                                   <Button

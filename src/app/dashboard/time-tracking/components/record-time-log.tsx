@@ -1,9 +1,9 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react'; // Added useEffect, useMemo
+import React, { useState, useEffect, useMemo } from 'react';
 import type { BrigadeMember, TimeEntry } from '../types';
-import type { RubricId } from '@/app/dashboard/settings/components/user-management'; // New import
+import type { RubricId } from '@/app/dashboard/settings/components/user-management';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -34,14 +34,30 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { formatHours } from '@/lib/time-utils';
 
 const timeEntrySchema = z.object({
   memberId: z.string().min(1, "Veuillez sélectionner un membre."),
   date: z.date({ required_error: "La date est requise." }),
-  hours: z.coerce.number().min(0.1, "Les heures doivent être supérieures à 0.").max(24, "Les heures ne peuvent excéder 24 par jour."),
+  hours: z.string()
+    .min(1, "Le nombre d'heures est requis.")
+    .refine(val => /^\d+([,.]\d{1,2})?$/.test(val), {
+        message: "Format invalide. Utilisez 'h.mm' (ex: 1.30 pour 1h30).",
+    })
+    .refine(val => {
+        const parts = val.replace(',', '.').split('.');
+        if (parts.length > 1) {
+            const minutes = parseInt(parts[1], 10);
+            if (minutes >= 60) return false;
+        }
+        return true;
+    }, {
+        message: "Les minutes ne peuvent pas être supérieures ou égales à 60.",
+    }),
   type: z.enum(['addition', 'deduction'], { required_error: "Veuillez sélectionner un type d'entrée." }),
   reason: z.string().min(1, "La raison est requise.").max(200, "La raison ne peut excéder 200 caractères."),
 });
+
 
 type TimeEntryFormData = z.infer<typeof timeEntrySchema>;
 
@@ -49,6 +65,7 @@ interface RecordTimeLogProps {
   members: BrigadeMember[];
   timeEntries: TimeEntry[];
   onAddTimeEntry: (entry: Omit<TimeEntry, 'id' | 'memberName'>) => void;
+  onDeleteTimeEntry: (entryId: string) => void;
   onDeleteAllTimeEntries: () => void;
   loggedInUsername: string | null;
   userPermissions: Partial<Record<RubricId, boolean>>;
@@ -58,6 +75,7 @@ export default function RecordTimeLog({
   members,
   timeEntries,
   onAddTimeEntry,
+  onDeleteTimeEntry,
   onDeleteAllTimeEntries,
   loggedInUsername,
   userPermissions
@@ -82,7 +100,7 @@ export default function RecordTimeLog({
     defaultValues: {
       memberId: '',
       date: new Date(),
-      hours: 1,
+      hours: '1.00',
       type: 'addition',
       reason: '',
     },
@@ -94,7 +112,7 @@ export default function RecordTimeLog({
         form.reset({
             memberId: currentUserBrigadeMember.id,
             date: new Date(),
-            hours: 1,
+            hours: '1.00',
             type: 'addition',
             reason: '',
         });
@@ -102,7 +120,7 @@ export default function RecordTimeLog({
         form.reset({
             memberId: '',
             date: new Date(),
-            hours: 1,
+            hours: '1.00',
             type: 'addition',
             reason: '',
         });
@@ -113,12 +131,21 @@ export default function RecordTimeLog({
 
   const onSubmit = (data: TimeEntryFormData) => {
     if (!isChef && currentUserBrigadeMember && data.memberId !== currentUserBrigadeMember.id) {
-        // This case should ideally be prevented by disabling the select, but as a safeguard:
         alert("Vous ne pouvez enregistrer des heures que pour vous-même.");
         return;
     }
-    onAddTimeEntry(data);
-    // form.reset() will be handled by useEffect on isDialogOpen change
+    
+    const [hoursStr, minutesStr] = data.hours.replace(',', '.').split('.');
+    const hours = parseInt(hoursStr, 10);
+    const minutes = parseInt(minutesStr || '0', 10);
+    const decimalHours = hours + (minutes / 60);
+
+    const submissionData = {
+        ...data,
+        hours: decimalHours
+    };
+
+    onAddTimeEntry(submissionData);
     setIsDialogOpen(false);
   };
 
@@ -204,7 +231,7 @@ export default function RecordTimeLog({
                     render={({ field }) => (
                       <FormItem className="flex flex-col">
                         <FormLabel>Date</FormLabel>
-                        <Popover>
+                        <Popover modal={true}>
                           <PopoverTrigger asChild>
                             <FormControl>
                               <Button
@@ -247,7 +274,7 @@ export default function RecordTimeLog({
                       <FormItem>
                         <FormLabel>Nombre d'Heures</FormLabel>
                         <FormControl>
-                          <Input type="number" step="0.25" placeholder="Ex: 8.5" {...field} />
+                          <Input type="text" placeholder="Ex: 8.30 (pour 8h30)" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -339,6 +366,7 @@ export default function RecordTimeLog({
                     <TableHead>Type</TableHead>
                     <TableHead className="text-right">Heures</TableHead>
                     <TableHead>Raison</TableHead>
+                    {isChef && <TableHead className="text-right">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -351,8 +379,33 @@ export default function RecordTimeLog({
                           {entry.type === 'addition' ? 'Ajout' : 'Déduction'}
                         </span>
                       </TableCell>
-                      <TableCell className="text-right">{entry.hours.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})}</TableCell>
+                      <TableCell className="text-right">{formatHours(entry.hours)}</TableCell>
                       <TableCell className="text-sm text-muted-foreground truncate max-w-[200px] sm:max-w-xs">{entry.reason}</TableCell>
+                      {isChef && (
+                        <TableCell className="text-right">
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Supprimer l'entrée ?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Êtes-vous sûr de vouloir supprimer cette entrée d'heures ? Cette action est irréversible.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Annuler</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => onDeleteTimeEntry(entry.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                  Supprimer
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>

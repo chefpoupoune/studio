@@ -1,7 +1,7 @@
 
 "use client";
 
-import { format, startOfWeek, endOfWeek, addWeeks, isSameMonth, parseISO } from 'date-fns';
+import { format, startOfWeek, endOfWeek, addWeeks, isSameMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import type { DailyMenu } from './types';
 
@@ -12,42 +12,48 @@ export interface WeekData {
   menus: DailyMenu[];
 }
 
-export function groupMenusByWeek(year: number, month: number, allMenusForMonth: DailyMenu[]): WeekData[] {
-  console.log('groupMenusByWeek input allMenusForMonth:', allMenusForMonth); // Log input data
+// Helper function to parse a YYYY-MM-DD string as a local date.
+function parseDateAsLocal(dateString: string): Date {
+    const [year, month, day] = dateString.split('-').map(Number);
+    // Create a date in the local timezone.
+    return new Date(year, month - 1, day);
+}
 
+export function groupMenusByWeek(year: number, month: number, allMenusForMonth: DailyMenu[]): WeekData[] {
   const weeks: WeekData[] = [];
-  if (!allMenusForMonth || allMenusForMonth.length === 0) return weeks;
+  if (!allMenusForMonth) {
+    return weeks;
+  }
 
   const firstDayOfMonth = new Date(year, month, 1);
   const lastDayOfMonth = new Date(year, month + 1, 0);
 
-  let currentIterationDate = startOfWeek(firstDayOfMonth, { locale: fr, weekStartsOn: 1 });
+  let currentWeekStart = startOfWeek(firstDayOfMonth, { locale: fr, weekStartsOn: 1 });
   let weekCounter = 1;
 
-  while (currentIterationDate <= lastDayOfMonth) {
-    const weekStartDate = currentIterationDate < firstDayOfMonth ? firstDayOfMonth : currentIterationDate;
-    let weekEndDate = endOfWeek(currentIterationDate, { locale: fr, weekStartsOn: 1 });
-    weekEndDate = weekEndDate > lastDayOfMonth ? lastDayOfMonth : weekEndDate;
-
-    console.log(`Week ${weekCounter} period: ${format(weekStartDate, 'yyyy-MM-dd')} to ${format(weekEndDate, 'yyyy-MM-dd')}`); // Log week period
-
+  while (currentWeekStart <= lastDayOfMonth) {
+    const currentWeekEnd = endOfWeek(currentWeekStart, { locale: fr, weekStartsOn: 1 });
 
     const weekMenus = allMenusForMonth.filter(menu => {
-      const menuDate = parseISO(menu.date); // Dates from menuData are strings
-      return menuDate >= weekStartDate && menuDate <= weekEndDate && isSameMonth(menuDate, firstDayOfMonth);
+      const menuDate = parseDateAsLocal(menu.date);
+      // Only include menus that are in the current month
+      return isSameMonth(menuDate, firstDayOfMonth) && 
+             menuDate >= currentWeekStart && 
+             menuDate <= currentWeekEnd;
     });
-    
-    if (weekStartDate <= lastDayOfMonth && weekEndDate >= firstDayOfMonth) {
+
+    // Add week if it overlaps with the current month
+    if (currentWeekStart <= lastDayOfMonth && currentWeekEnd >= firstDayOfMonth) {
         weeks.push({
             weekNumberInMonth: weekCounter,
-            startDate: weekStartDate,
-            endDate: weekEndDate,
+            startDate: currentWeekStart, // Use the real week start
+            endDate: currentWeekEnd,       // Use the real week end
             menus: weekMenus,
         });
-        console.log(`Week ${weekCounter} included menus (dates):`, weekMenus.map(m => m.date)); // Log included menu dates
         weekCounter++;
     }
-    currentIterationDate = addWeeks(currentIterationDate, 1);
+
+    currentWeekStart = addWeeks(currentWeekStart, 1);
   }
   return weeks;
 }

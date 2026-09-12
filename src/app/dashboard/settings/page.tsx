@@ -2,7 +2,7 @@
 "use client"; 
 
 import Link from 'next/link';
-import { Settings as SettingsIcon, FileCog, Settings2 as AppSettingsIcon, ShieldAlert, Users, ShieldX } from 'lucide-react'; 
+import { Settings as SettingsIcon, FileCog, Settings2 as AppSettingsIcon, ShieldAlert, Users, ShieldX, Rocket } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CurrentDate } from '@/components/current-date';
@@ -11,6 +11,7 @@ import PdfLayoutManager from './components/pdf-layout-manager';
 import ApplicationSettingsManager from './components/application-settings-manager';
 import PmsConfigManager from './components/pms-config-manager';
 import UserManagement from './components/user-management';
+import { ApplicationUpdateManager } from './components/application-update-manager';
 import React, { useState, useEffect } from 'react'; 
 import type { RubricId } from './components/user-management'; 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -22,13 +23,14 @@ const settingsTabsConfig = [
   { value: "app-settings", label: "Paramètres Application", Icon: AppSettingsIcon, component: <ApplicationSettingsManager /> },
   { value: "pms-config", label: "Paramètres PMS", Icon: ShieldAlert, component: <PmsConfigManager /> },
   { value: "user-management", label: "Gestion Utilisateurs", Icon: Users, component: <UserManagement /> },
+  { value: "update", label: "Mise à jour", Icon: Rocket, component: <ApplicationUpdateManager />, adminOnly: true },
 ];
 
 export default function SettingsPage() {
   const [isClient, setIsClient] = useState(false);
   const [hasAccess, setHasAccess] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const isMobile = useIsMobile();
-  const [activeTab, setActiveTab] = useState(settingsTabsConfig[0].value);
   
   useEffect(() => {
     setIsClient(true);
@@ -36,16 +38,15 @@ export default function SettingsPage() {
       const username = localStorage.getItem('loggedInUsername');
       const permissionsRaw = localStorage.getItem('loggedInUserPermissions');
       
-      if (username?.toLowerCase() === 'chef') {
+      const isUserAdmin = username?.toLowerCase() === 'chef';
+      setIsAdmin(isUserAdmin);
+
+      if (isUserAdmin) {
         setHasAccess(true);
       } else if (permissionsRaw) {
         try {
           const permissions = JSON.parse(permissionsRaw) as Partial<Record<RubricId, boolean>>;
-          if (permissions.settings === true) {
-            setHasAccess(true);
-          } else {
-            setHasAccess(false);
-          }
+          setHasAccess(permissions.settings === true);
         } catch (e) {
           console.error("Error parsing permissions for settings access", e);
           setHasAccess(false);
@@ -55,6 +56,12 @@ export default function SettingsPage() {
       }
     }
   }, []);
+
+  const availableTabs = isAdmin 
+    ? settingsTabsConfig 
+    : settingsTabsConfig.filter(tab => !tab.adminOnly);
+
+  const [activeTab, setActiveTab] = useState(availableTabs[0]?.value || "");
 
   if (!isClient) {
     return (
@@ -104,7 +111,7 @@ export default function SettingsPage() {
                 <SelectValue placeholder="Choisir une section..." />
               </SelectTrigger>
               <SelectContent>
-                {settingsTabsConfig.map(tab => (
+                {availableTabs.map(tab => (
                   <SelectItem key={tab.value} value={tab.value} className="text-sm">
                     <span className="flex items-center">
                       <tab.Icon className="mr-2 h-4 w-4" />
@@ -116,16 +123,19 @@ export default function SettingsPage() {
             </Select>
           </div>
         ) : (
-          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-4 mb-6 bg-card p-1 rounded-lg">
-            {settingsTabsConfig.map(tab => (
-              <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
+          <TabsList className="flex h-auto flex-wrap items-center justify-start mb-6 rounded-lg p-1">
+            {availableTabs.map(tab => (
+              <TabsTrigger 
+                key={tab.value} 
+                value={tab.value} 
+                className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-3 py-1.5 rounded-md">
                 <tab.Icon className="mr-1 sm:mr-2 h-4 w-4" /> {tab.label}
               </TabsTrigger>
             ))}
           </TabsList>
         )}
 
-        {settingsTabsConfig.map(tab => (
+        {availableTabs.map(tab => (
           <TabsContent key={tab.value} value={tab.value}>
             {tab.component}
           </TabsContent>

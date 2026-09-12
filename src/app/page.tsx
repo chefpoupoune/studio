@@ -20,6 +20,18 @@ export default function HomePage() {
         </div>
       </div>
 
+       {/* Section 2: Text */}
+       <div className="w-full text-center pt-12 sm:pt-16 md:pt-20">
+        <h1 
+          className="text-2xl sm:text-2xl md:text-3xl font-serif font-bold text-foreground "
+        >
+          L'applis de gestion, pour une cuisine bien tenu !!!
+        </h1>
+        <div className="mt-10 md:mt-5 text-3xl"> 
+        Je vous souhaite une bonne journée !!!
+        </div>
+      </div>
+
       {/* Section 2: Homepage Image - REMOVED */}
       {/* 
       <div className="my-8 md:my-12">
@@ -43,7 +55,7 @@ export default function HomePage() {
               size="lg" 
               className="text-lg px-8 py-6 rounded-lg shadow-lg hover:shadow-accent/30 transform hover:scale-105 transition-all duration-300 ease-out group"
             >
-              Bon courage
+              Bon courage !!!
               <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
             </Button>
           </Link>

@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import type { PicnicDepartureEntry } from '../types';
+import type { PicnicDepartureEntry, PmsZone } from '../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
@@ -34,7 +34,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { firestore } from '@/lib/firebase';
-import { collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, getDoc, addDoc, doc, setDoc, deleteDoc, query, orderBy, Timestamp } from 'firebase/firestore';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // Added Select
 import useMobile from '@/hooks/use-mobile';
 
 interface jsPDFWithAutoTable extends jsPDF {
@@ -42,6 +43,9 @@ interface jsPDFWithAutoTable extends jsPDF {
 }
 
 const FIRESTORE_COLLECTION = "pmsPicnicDepartureForms";
+const PMS_CONFIG_COLLECTION = "pmsConfigurations";
+const PMS_CONFIG_DOC_ID = "mainConfig";
+const PMS_CLIENT_MANAGEMENT_KEY = 'clientManagement_v1';
 
 const picnicDepartureSchema = z.object({
   orderReceivedDate: z.date({ required_error: "Date de réception de commande requise." }),
@@ -54,14 +58,14 @@ const picnicDepartureSchema = z.object({
 type PicnicDepartureFormData = z.infer<typeof picnicDepartureSchema>;
 
 // Helper function to draw a single form page
-const drawSingleFormPage = (doc: jsPDFWithAutoTable, entry: PicnicDepartureEntry, pageNumber: number, totalPages: number) => {
-    const pdfSettings = getPdfLayoutSettings('pms_picnic_departure_form');
+const drawSingleFormPage = async (doc: jsPDFWithAutoTable, entry: PicnicDepartureEntry, pageNumber: number, totalPages: number) => {
+    // Note: This function is now async to await getPdfLayoutSettings
+    const pdfSettings = await getPdfLayoutSettings('pms_picnic_departure_form');
     doc.setFont(pdfSettings.fontFamily || 'helvetica');
-    const defaultFontSize = pdfSettings.defaultFontSize || 10;
     const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
     
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.height;
+    const pageWidth = doc.internal.pageSize.width;
     const marginLeft = pdfSettings.marginLeft || 40;
     const marginRight = pdfSettings.marginRight || 40;
     const marginTop = pdfSettings.marginTop || 40;
@@ -70,66 +74,64 @@ const drawSingleFormPage = (doc: jsPDFWithAutoTable, entry: PicnicDepartureEntry
     
     let currentY = marginTop;
 
-    if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
-      try {
-        const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
-        const formatType = imgProps.fileType.toUpperCase();
-        const desiredHeight = 30;
-        const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
-        doc.addImage(pdfSettings.logoUrl, formatType, marginLeft, currentY, imgWidth, desiredHeight);
-        currentY += desiredHeight + 10;
-      } catch (e) {
-        console.error("Error drawing logo in PDF:", e);
-        doc.setFontSize(pdfSettings.headerFontSize || 8); doc.text("[Erreur Logo]", marginLeft, currentY); currentY += 15;
-      }
-    } else if (pdfSettings.headerText) {
-      doc.setFontSize(pdfSettings.headerFontSize || 10);
-      const headerLines = pdfSettings.headerText.split('\n');
-      headerLines.forEach(line => {
-          doc.text(line, marginLeft, currentY, {maxWidth: contentWidth});
-          currentY += (pdfSettings.headerFontSize || 10) * 0.7 + 2;
-      });
-      currentY += 5;
-    } else {
-      doc.setFontSize(10); doc.setTextColor(150, 150, 150);
-      doc.text("LA VIE ACTIVE - I.M.E BREBIERES", marginLeft, currentY); 
-      doc.setTextColor(0,0,0);
-      currentY += 20;
+    // --- EN-TÊTE ---
+    const effectiveHeaderText = pdfSettings.headerText || (pdfSettings.logoUrl ? '{logo}' : '');
+    if (effectiveHeaderText) {
+        const headerRows = effectiveHeaderText.split('\n');
+        doc.setFontSize(pdfSettings.headerFontSize);
+        for (const row of headerRows) {
+            const cells = row.split('|');
+            if (cells.length === 0) continue;
+            let maxHeightInRow = 0;
+            const cellWidth = contentWidth / cells.length; // LIGNE CORRIGÉE
+            cells.forEach(cell => {
+                const cellText = cell.trim();
+                if (cellText === '{logo}' && pdfSettings.logoUrl) {
+                    maxHeightInRow = Math.max(maxHeightInRow, 30);
+                } else {
+                    const textLines = doc.splitTextToSize(cellText, cellWidth - 6);
+                    maxHeightInRow = Math.max(maxHeightInRow, (textLines.length * pdfSettings.headerFontSize * 0.7) + 6);
+                }
+            });
+
+            let currentX = marginLeft;
+            for (const cell of cells) {
+                const cellText = cell.trim();
+                doc.rect(currentX, currentY, cellWidth, maxHeightInRow, 'S');
+                if (cellText === '{logo}' && pdfSettings.logoUrl) {
+                    try {
+                        const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+                        const imgHeight = Math.min(maxHeightInRow - 6, 40);
+                        const imgWidth = (imgProps.width * imgHeight) / imgProps.height;
+                        doc.addImage(pdfSettings.logoUrl, imgProps.fileType, currentX + (cellWidth - imgWidth) / 2, currentY + (maxHeightInRow - imgHeight) / 2, imgWidth, imgHeight);
+                    } catch (e) { console.error("Erreur logo.", e); }
+                } else if (cellText !== '{logo}') {
+                    doc.text(cellText, currentX + (cellWidth / 2), currentY + (maxHeightInRow / 2), { align: 'center', baseline: 'middle', maxWidth: cellWidth - 6 });
+                }
+                currentX += cellWidth;
+            }
+            currentY += maxHeightInRow;
+        }
+        currentY += 10;
     }
     
-    const topRightBoxWidth = 120;
-    const topRightBoxHeight = 30;
-    const topRightBoxX = pageWidth - marginRight - topRightBoxWidth;
-    const topRightBoxY = marginTop - 10 > 0 ? marginTop -10 : marginTop;
+    // --- TITRE DU DOCUMENT ---
+    const moduleDefaultTitle = `Fiche d'Enlèvement Pique-Nique - ${entry.clientName}`;
+    let finalTitle = pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle ? pdfSettings.documentBaseTitle.trim() : "";
+    if (pdfSettings.showModuleTitle) {
+        finalTitle = finalTitle ? `${finalTitle} - ${moduleDefaultTitle}` : moduleDefaultTitle;
+    }
+    if (finalTitle) {
+        doc.setFontSize(pdfSettings.documentTitleFontSize);
+        doc.text(finalTitle, pageWidth / 2, currentY, { align: 'center' });
+        currentY += pdfSettings.documentTitleFontSize + 15;
+    }
 
-    doc.rect(topRightBoxX, topRightBoxY, topRightBoxWidth, topRightBoxHeight);
-    doc.setFontSize(8); doc.setTextColor(0,0,0);
-    doc.text("09-GFL-F-17", topRightBoxX + 5, topRightBoxY + 12);
-    doc.text("Version : 2.0", topRightBoxX + 5, topRightBoxY + 22);
-    
-    currentY = Math.max(currentY, topRightBoxY + topRightBoxHeight + 15);
-
-    doc.setFontSize((pdfSettings.documentTitleFontSize || 14)); doc.setFont(undefined, 'bold');
-    doc.text("ENLEVEMENT DE PREPARATION CULINAIRE", pageWidth / 2, currentY, { align: 'center' });
-    currentY += (pdfSettings.documentTitleFontSize || 14) + 15;
-
-    doc.setFontSize(defaultFontSize - 1); doc.setFont(undefined, 'normal');
-    const addressLines = [
-      "I.M.E Jean de Saint Aubert",
-      "46, chemin du bois des Caures",
-      "62117 BREBIERES",
-      "Tel: 03.21.50.00.36"
-    ];
-    addressLines.forEach(line => {
-      doc.text(line, pageWidth / 2, currentY, { align: 'center' });
-      currentY += (defaultFontSize -1) * 1.2;
-    });
-    currentY += 15;
-
+    doc.setFontSize(10); doc.setFont(undefined, 'normal');
     const paragraph1 = "Ce Repas a été préparé en respectant scrupuleusement les règles d'hygiène en vigueur. Les repas sont stockés en réfrigération positive à 3° en attente d'enlèvement.";
     const paragraph2 = "Afin de conserver cette commande, il est impératif de le garder stocké en glacière, avec pains de glace ou plaques eutectiques.";
-    const paragraph3 = "L'I.M.E Jean de Saint Aubert décline toute responsabilité après enlèvement de ce repas.";
-
+    const paragraph3 = "L'établissement décline toute responsabilité après enlèvement de ce repas.";
+    
     doc.text(doc.splitTextToSize(paragraph1, contentWidth), marginLeft, currentY);
     currentY += doc.getTextDimensions(doc.splitTextToSize(paragraph1, contentWidth)).h + 10;
     doc.text(doc.splitTextToSize(paragraph2, contentWidth), marginLeft, currentY);
@@ -140,42 +142,35 @@ const drawSingleFormPage = (doc: jsPDFWithAutoTable, entry: PicnicDepartureEntry
     const orderDateStr = isValid(parseISO(entry.orderReceivedDate)) ? format(parseISO(entry.orderReceivedDate), "dd/MM/yyyy", { locale: fr }) : "Date Invalide";
     
     let detailsY = currentY;
-    doc.setFontSize(defaultFontSize);
+    doc.setFontSize(11);
     doc.setFont(undefined, 'bold');
     doc.text("Commande reçue le:", marginLeft, detailsY);
     doc.setFont(undefined, 'normal');
     doc.text(orderDateStr, marginLeft + 140, detailsY);
-    detailsY += 15;
+    detailsY += 20;
 
     doc.setFont(undefined, 'bold');
     doc.text("À:", marginLeft, detailsY);
     doc.setFont(undefined, 'normal');
     doc.text(`${(entry.orderReceivedTime || 'N/A').replace(':', 'H')}`, marginLeft + 140, detailsY);
-    detailsY += 15;
+    detailsY += 20;
 
     doc.setFont(undefined, 'bold');
     doc.text("Lieu:", marginLeft, detailsY);
     doc.setFont(undefined, 'normal');
     doc.text("Brebières", marginLeft + 140, detailsY);
     
-    currentY = detailsY + 25;
+    currentY = detailsY + 30;
 
     const signatureTableBody = [
-      [
-        { content: 'Le cuisinier\nMr Dernoncourt Julien', styles: { halign: 'center', valign: 'top', minCellHeight: 80 } },
-        { content: `Le client\n${entry.clientName}`, styles: { halign: 'center', valign: 'top', minCellHeight: 80 } }
-      ]
+      [{ content: 'Le cuisinier\nMr Dernoncourt Julien', styles: { halign: 'center', valign: 'top', minCellHeight: 80 } },
+       { content: `Le client\n${entry.clientName}`, styles: { halign: 'center', valign: 'top', minCellHeight: 80 } }]
     ];
-    const sigTableColWidth = (contentWidth - (doc.getLineWidth() * 3)) / 2;
 
     doc.autoTable({
-      startY: currentY,
-      body: signatureTableBody,
-      theme: 'grid',
-      styles: { fontSize: defaultFontSize, cellPadding: 5, font: pdfSettings.fontFamily || 'helvetica' },
-      columnStyles: { 0: { cellWidth: sigTableColWidth }, 1: { cellWidth: sigTableColWidth } },
+      startY: currentY, body: signatureTableBody, theme: 'grid',
+      styles: { fontSize: 10, cellPadding: 5, font: pdfSettings.fontFamily || 'helvetica' },
       margin: { left: marginLeft, right: marginRight },
-      tableWidth: 'auto'
     });
     currentY = (doc as any).lastAutoTable.finalY + 20;
 
@@ -193,23 +188,18 @@ const drawSingleFormPage = (doc: jsPDFWithAutoTable, entry: PicnicDepartureEntry
     
     currentY = finalDetailsY + 15;
     
-    if (currentY > pageHeight - marginBottom - (pdfSettings.footerFontSize || 8) - 10) { 
-       currentY = pageHeight - marginBottom - (pdfSettings.footerFontSize || 8) - 5;
-    }
-
     if (pdfSettings.footerText) {
-      let footerStr = pdfSettings.footerText
-          .replace('{date}', generationDateFormatted)
-          .replace('{pageNumber}', String(pageNumber))
-          .replace('{totalPages}', String(totalPages));
-      doc.setFontSize(pdfSettings.footerFontSize || 8);
-      doc.text(footerStr, marginLeft, pageHeight - (marginBottom / 2));
+      doc.setFontSize(pdfSettings.footerFontSize);
+      doc.text(
+        pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', String(pageNumber)).replace('{totalPages}', String(totalPages)),
+        marginLeft, pageHeight - (marginBottom / 2)
+      );
     }
 };
 
-
 export default function PicnicDepartureForm() {
   const [forms, setForms] = useState<PicnicDepartureEntry[]>([]);
+  const [clients, setClients] = useState<PmsZone[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingForm, setEditingForm] = useState<PicnicDepartureEntry | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -228,6 +218,22 @@ export default function PicnicDepartureForm() {
       departureTemperature: '',
     },
   });
+
+  const fetchClients = useCallback(async () => {
+    try {
+      const docRef = doc(firestore, PMS_CONFIG_COLLECTION, PMS_CONFIG_DOC_ID);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setClients(data[PMS_CLIENT_MANAGEMENT_KEY] || []);
+      } else {
+        setClients([]);
+      }
+    } catch (error) {
+      console.error("Error loading clients from Firestore:", error);
+      toast({ title: "Erreur de chargement des clients", variant: "destructive" });
+    }
+  }, [toast]);
 
   const fetchForms = useCallback(async () => {
     setIsLoading(true);
@@ -255,7 +261,8 @@ export default function PicnicDepartureForm() {
 
   useEffect(() => {
     fetchForms();
-  }, [fetchForms]);
+    fetchClients();
+  }, [fetchForms, fetchClients]);
 
   const handleOpenDialog = (entry?: PicnicDepartureEntry) => {
     setEditingForm(entry || null);
@@ -331,17 +338,17 @@ export default function PicnicDepartureForm() {
     }
   };
   
-  const generatePdfForEntry = (entry: PicnicDepartureEntry) => {
+  const generatePdfForEntry = async (entry: PicnicDepartureEntry) => {
     setIsLoading(true);
     try {
-      const pdfSettings = getPdfLayoutSettings('pms_picnic_departure_form');
+      const pdfSettings = await getPdfLayoutSettings('pms_picnic_departure_form');
       const doc = new jsPDF({ 
         unit: 'pt', 
-        format: pdfSettings.pageSize || 'a4',
-        orientation: pdfSettings.orientation || 'portrait',
+        format: pdfSettings.pageSize as any || 'a4',
+        orientation: pdfSettings.orientation as any || 'portrait',
       }) as jsPDFWithAutoTable;
       
-      drawSingleFormPage(doc, entry, 1, 1);
+      await drawSingleFormPage(doc, entry, 1, 1);
       
       doc.save(`Fiche_Depart_PN_${entry.clientName.replace(/\s+/g, '_')}_${format(parseISO(entry.orderReceivedDate), "yyyyMMdd")}.pdf`);
       toast({ title: "PDF Fiche Départ Généré" });
@@ -365,17 +372,14 @@ export default function PicnicDepartureForm() {
       });
 
       if (monthlyForms.length === 0) {
-        toast({ title: "Aucune Donnée", description: "Aucune fiche de départ pour le mois sélectionné.", variant: "default" });
+        toast({ title: "Aucune Donnée", description: "Aucune fiche de départ pour le mois sélectionné." });
         setIsLoading(false);
         return;
       }
 
-      // Group forms by client name
       const formsByClient = monthlyForms.reduce((acc, form) => {
         const clientName = form.clientName || 'Client Inconnu';
-        if (!acc[clientName]) {
-          acc[clientName] = [];
-        }
+        if (!acc[clientName]) acc[clientName] = [];
         acc[clientName].push(form);
         return acc;
       }, {} as Record<string, PicnicDepartureEntry[]>);
@@ -383,23 +387,19 @@ export default function PicnicDepartureForm() {
       const clientCount = Object.keys(formsByClient).length;
 
       for (const clientName in formsByClient) {
-        const clientForms = formsByClient[clientName];
-        // Sort this client's forms by date
-        clientForms.sort((a, b) => new Date(a.orderReceivedDate).getTime() - new Date(b.orderReceivedDate).getTime());
+        const clientForms = formsByClient[clientName].sort((a, b) => new Date(a.orderReceivedDate).getTime() - new Date(b.orderReceivedDate).getTime());
 
-        const pdfSettings = getPdfLayoutSettings('pms_picnic_departure_form');
+        const pdfSettings = await getPdfLayoutSettings('pms_picnic_departure_form');
         const doc = new jsPDF({ 
           unit: 'pt', 
-          format: pdfSettings.pageSize || 'a4',
-          orientation: pdfSettings.orientation || 'portrait',
+          format: pdfSettings.pageSize as any || 'a4',
+          orientation: pdfSettings.orientation as any || 'portrait',
         }) as jsPDFWithAutoTable;
         
-        clientForms.forEach((entry, index) => {
-          if (index > 0) {
-            doc.addPage();
-          }
-          drawSingleFormPage(doc, entry, index + 1, clientForms.length);
-        });
+        for (let i = 0; i < clientForms.length; i++) {
+          if (i > 0) doc.addPage();
+          await drawSingleFormPage(doc, clientForms[i], i + 1, clientForms.length);
+        }
 
         doc.save(`Fiches_${clientName.replace(/\s+/g, '_')}_${format(selectedMonth, "yyyy_MM")}.pdf`);
       }
@@ -413,6 +413,7 @@ export default function PicnicDepartureForm() {
       setIsLoading(false);
     }
   };
+
   
   const filteredForms = forms.filter(f => {
       const orderDate = parseISO(f.orderReceivedDate);
@@ -424,7 +425,8 @@ export default function PicnicDepartureForm() {
       <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-3 py-2 max-h-[70vh] overflow-y-auto pr-2">
         <FormField control={form.control} name="orderReceivedDate" render={({ field }) => (
           <FormItem className="flex flex-col"><FormLabel>Commande reçue le</FormLabel>
-          <Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+          <Popover modal={true}>
+            <PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
               {field.value ? format(field.value, "dd/MM/yyyy", { locale: fr }) : <span>Choisir date</span>}
               <LucideCalendarIcon className="ml-auto h-4 w-4 opacity-50" />
           </Button></FormControl></PopoverTrigger>
@@ -432,12 +434,31 @@ export default function PicnicDepartureForm() {
           </FormItem>
         )} />
         <FormField control={form.control} name="orderReceivedTime" render={({ field }) => (<FormItem><FormLabel>À ... H ... (Heure de réception)</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormMessage /></FormItem>)} />
-        <FormField control={form.control} name="clientName" render={({ field }) => (<FormItem><FormLabel>Le Client</FormLabel><FormControl><Input placeholder="Nom du client" {...field} /></FormControl><FormMessage /></FormItem>)} />
+        <FormField control={form.control} name="clientName" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Le Client</FormLabel>
+            <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <FormControl>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionnez un client" />
+                </SelectTrigger>
+              </FormControl>
+              <SelectContent>
+                {clients.map(client => (
+                  <SelectItem key={client.id} value={client.name}>
+                    {client.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <FormMessage />
+          </FormItem>
+        )} />
         <FormField control={form.control} name="numberOfPicnics" render={({ field }) => (<FormItem><FormLabel>Nombre de Pique-Niques</FormLabel><FormControl><Input type="number" placeholder="0" min="1" {...field} /></FormControl><FormMessage /></FormItem>)} />
         <FormField control={form.control} name="departureTemperature" render={({ field }) => (<FormItem><FormLabel>T° de Départ</FormLabel><FormControl><Input placeholder="Ex: 3" {...field} /></FormControl><FormMessage /></FormItem>)} />
         <DialogFooter className="pt-4">
           <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Annuler</Button>
-          <Button type="submit" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingForm ? "Enregistrer" : "Ajouter Fiche"}</Button>
+          <Button type="submit" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingForm ? "Enregistrer" : "Ajouter Fiche"}</Button>
         </DialogFooter>
       </form>
     </Form>
@@ -508,7 +529,7 @@ export default function PicnicDepartureForm() {
             Fiche d'Enlèvement Pique-Nique
           </div>
            <div className="flex items-center gap-2">
-              <Popover>
+              <Popover modal={true}>
                 <PopoverTrigger asChild>
                   <Button variant={"outline"}>
                     <LucideCalendarIcon className="mr-2 h-4 w-4" />

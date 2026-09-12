@@ -2,6 +2,7 @@
 
 export interface PdfLayoutSettings {
   logoUrl?: string;
+  logoWidth?: number;
   primaryColor?: string; // e.g., hex code like #RRGGBB
   headerText?: string;   // Text for the PDF header
   footerText?: string;   // Text for the PDF footer, can include placeholders like {pageNumber}, {totalPages}, {date}
@@ -55,6 +56,7 @@ export const PMS_RESTAURANT_CLEANING_KEY = 'restaurantCleaning_v1';
 export const PMS_TEMPERATURE_MONITORING_KEY = 'temperatureMonitoring_v1';
 export const PMS_DELIVERY_MONITORING_KEY = 'deliveryMonitoring_v1';
 export const PMS_SUPPLIER_MANAGEMENT_KEY = 'supplierManagement_v1'; // New key for suppliers
+export const PMS_CLIENT_MANAGEMENT_KEY = 'clientManagement_v1'; // New key for clients
 // Key for storing all PMS module configurations
-export const PMS_CONFIG_STORAGE_KEY = 'pms_module_configurations_v5'; // Incremented version
+export const PMS_CONFIG_STORAGE_KEY = 'pms_module_configurations_v6'; // Incremented version
     

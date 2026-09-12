@@ -7,11 +7,9 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { BellRing, Loader2, ChevronsRight } from 'lucide-react';
-import type { OvertimeRequest, AbsenceRequest } from '@/app/dashboard/declaration-heure/types';
+import type { OvertimeRequest, AbsenceRequest, ScheduleChangeRequest } from '@/app/dashboard/declaration-heure/types';
 import { firestore } from '@/lib/firebase';
 import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
-
-// OVERTIME_REQUESTS_STORAGE_KEY and ABSENCE_REQUESTS_STORAGE_KEY removed
 
 interface PendingRequestsAlertProps {
   loggedInUsername: string | null;
@@ -20,6 +18,7 @@ interface PendingRequestsAlertProps {
 export default function PendingRequestsAlert({ loggedInUsername }: PendingRequestsAlertProps) {
   const [pendingOvertimeCount, setPendingOvertimeCount] = useState(0);
   const [pendingAbsenceCount, setPendingAbsenceCount] = useState(0);
+  const [pendingScheduleChangeCount, setPendingScheduleChangeCount] = useState(0); // Added state for schedule changes
   const [isLoading, setIsLoading] = useState(true);
   const [isClient, setIsClient] = useState(false);
 
@@ -30,29 +29,32 @@ export default function PendingRequestsAlert({ loggedInUsername }: PendingReques
   const loadPendingCounts = useCallback(async () => {
     if (!isClient) return;
     setIsLoading(true);
-    let overtimeCount = 0;
-    let absenceCount = 0;
     try {
       // Fetch pending overtime requests
       const overtimeCollectionRef = collection(firestore, 'overtimeRequests');
       const overtimeQuery = query(overtimeCollectionRef, where('approvalStatus', '==', 'pending'));
       const overtimeSnapshot = await getDocs(overtimeQuery);
-      overtimeCount = overtimeSnapshot.size;
-      setPendingOvertimeCount(overtimeCount);
+      setPendingOvertimeCount(overtimeSnapshot.size);
 
       // Fetch pending absence requests
       const absenceCollectionRef = collection(firestore, 'absenceRequests');
       const absenceQuery = query(absenceCollectionRef, where('approvalStatus', '==', 'pending'));
       const absenceSnapshot = await getDocs(absenceQuery);
-      absenceCount = absenceSnapshot.size;
-      setPendingAbsenceCount(absenceCount);
+      setPendingAbsenceCount(absenceSnapshot.size);
 
-      console.log(`[PendingAlerts] Fetched counts - Overtime: ${overtimeCount}, Absence: ${absenceCount}`);
+      // Fetch pending schedule change requests
+      const scheduleChangeCollectionRef = collection(firestore, 'scheduleChangeRequests');
+      const scheduleChangeQuery = query(scheduleChangeCollectionRef, where('approvalStatus', '==', 'pending'));
+      const scheduleChangeSnapshot = await getDocs(scheduleChangeQuery);
+      setPendingScheduleChangeCount(scheduleChangeSnapshot.size);
+
+      console.log(`[PendingAlerts] Fetched counts - Overtime: ${overtimeSnapshot.size}, Absence: ${absenceSnapshot.size}, ScheduleChange: ${scheduleChangeSnapshot.size}`);
 
     } catch (e) {
       console.error("Error loading pending requests counts from Firestore:", e);
       setPendingOvertimeCount(0);
       setPendingAbsenceCount(0);
+      setPendingScheduleChangeCount(0);
     } finally {
       setIsLoading(false);
     }
@@ -62,12 +64,8 @@ export default function PendingRequestsAlert({ loggedInUsername }: PendingReques
     if (isClient && loggedInUsername?.toLowerCase() === 'chef') { // Only load for chef
       loadPendingCounts(); // Initial load
 
-      const handleOvertimeUpdate = () => {
-        console.log("PendingRequestsAlert: overtimeRequestsUpdated event received");
-        loadPendingCounts();
-      };
-      const handleAbsenceUpdate = () => {
-        console.log("PendingRequestsAlert: absenceRequestsUpdated event received");
+      const handleUpdate = () => {
+        console.log("PendingRequestsAlert: an update event was received");
         loadPendingCounts();
       };
       const handleVisibilityChange = () => {
@@ -77,19 +75,22 @@ export default function PendingRequestsAlert({ loggedInUsername }: PendingReques
         }
       };
 
-      window.addEventListener('overtimeRequestsUpdated', handleOvertimeUpdate);
-      window.addEventListener('absenceRequestsUpdated', handleAbsenceUpdate);
+      window.addEventListener('overtimeRequestsUpdated', handleUpdate);
+      window.addEventListener('absenceRequestsUpdated', handleUpdate);
+      window.addEventListener('scheduleChangeRequestsUpdated', handleUpdate); // Listen for schedule change updates
       document.addEventListener('visibilitychange', handleVisibilityChange);
 
       return () => {
-        window.removeEventListener('overtimeRequestsUpdated', handleOvertimeUpdate);
-        window.removeEventListener('absenceRequestsUpdated', handleAbsenceUpdate);
+        window.removeEventListener('overtimeRequestsUpdated', handleUpdate);
+        window.removeEventListener('absenceRequestsUpdated', handleUpdate);
+        window.removeEventListener('scheduleChangeRequestsUpdated', handleUpdate);
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
     } else {
       // If not chef, or not client-side yet, ensure counts are 0 and not loading
       setPendingOvertimeCount(0);
       setPendingAbsenceCount(0);
+      setPendingScheduleChangeCount(0);
       setIsLoading(false);
     }
   }, [isClient, loggedInUsername, loadPendingCounts]);
@@ -110,7 +111,7 @@ export default function PendingRequestsAlert({ loggedInUsername }: PendingReques
     );
   }
 
-  const totalPending = pendingOvertimeCount + pendingAbsenceCount;
+  const totalPending = pendingOvertimeCount + pendingAbsenceCount + pendingScheduleChangeCount;
 
   if (totalPending === 0) {
     return null; 
@@ -133,6 +134,11 @@ export default function PendingRequestsAlert({ loggedInUsername }: PendingReques
                 Vous avez <Badge variant="destructive" className="mx-1">{pendingAbsenceCount}</Badge> demande(s) d'absence en attente.
               </div>
             )}
+            {pendingScheduleChangeCount > 0 && (
+              <div>
+                Vous avez <Badge variant="destructive" className="mx-1">{pendingScheduleChangeCount}</Badge> demande(s) de changement d'horaire en attente.
+              </div>
+            )}
           </div>
           <Button asChild variant="outline" size="sm" className="mt-2 sm:mt-0 border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive">
             <Link href="/dashboard/declaration-heure">
@@ -144,5 +150,3 @@ export default function PendingRequestsAlert({ loggedInUsername }: PendingReques
     </Alert>
   );
 }
-
-    

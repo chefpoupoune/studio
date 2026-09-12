@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, FormEvent } from 'react';
@@ -53,7 +54,13 @@ export default function LoginPage() {
         try {
           const usersCollectionRef = collection(firestore, 'appUsers');
           const allPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
-          const supervisorPermissions = { ...allPermissions, canAccessSettings: false };
+          
+          // Define read-only permissions for supervisor
+          const readOnlyPermissions = ALL_RUBRIC_IDS.reduce((acc, rubricId) => {
+              acc[rubricId] = false; // Set all to false initially
+              return acc;
+          }, {} as { [key in RubricId]?: boolean });
+          readOnlyPermissions.dashboard = true; // Allow access to the dashboard
 
           // --- Chef Logic: Create or Update ---
           const chefQuery = query(usersCollectionRef, where("username", "==", "Chef"));
@@ -72,7 +79,7 @@ export default function LoginPage() {
           } else {
             const chefDoc = chefSnapshot.docs[0];
             if (chefDoc.data().role !== 'admin') {
-              await setDoc(chefDoc.ref, { role: 'admin' }, { merge: true });
+              await setDoc(chefDoc.ref, { role: 'admin', permissions: allPermissions }, { merge: true });
             }
           }
 
@@ -85,11 +92,11 @@ export default function LoginPage() {
               role: 'superviseur',
               passwordRequired: true,
               simulatedStoredPassword: simulatedHash('cds000'),
-              permissions: supervisorPermissions,
+              permissions: readOnlyPermissions, // Use read-only permissions
               viewableHourSummaryConfig: { type: 'all' },
             };
             await addDoc(usersCollectionRef, defaultCds);
-            toast({ title: "Compte 'Chef de service' Initialisé" });
+            toast({ title: "Compte 'Chef de service' Initialisé (Lecteur)" });
           } else {
             const cdsDoc = cdsSnapshot.docs[0];
             if (cdsDoc.data().role !== 'superviseur') {
@@ -120,12 +127,11 @@ export default function LoginPage() {
 
     let permissionsToStore: Partial<Record<RubricId, boolean>>;
     
+    // Special handling for admin remains
     if (user.role === 'admin') {
       permissionsToStore = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
-    } else if (user.role === 'superviseur') {
-      permissionsToStore = ALL_RUBRIC_IDS.reduce((acc, rubricId) => ({ ...acc, [rubricId]: true }), {});
-      permissionsToStore.canAccessSettings = false;
     } else {
+      // For all other users, including 'superviseur', use the permissions from the database.
       permissionsToStore = user.permissions || {};
     }
 

@@ -1,11 +1,10 @@
 
 export const TASK_STATUSES = [
   "mr_dufay_prevenue",
-  "devis_fait",
-  "devis_envoye",
-  "DA_envoyer",
-  "en_cours",
-  "devis_signature",
+  "devis_demander",
+  "da_devis_envoye",
+  "commande_passe",
+  "en_attente",
   "rendez_vous",
   "termine",
   "annule",
@@ -14,15 +13,14 @@ export const TASK_STATUSES = [
 export type TaskStatus = typeof TASK_STATUSES[number];
 
 export const taskStatusLabels: Record<TaskStatus, string> = {
-  mr_dufay_prevenue: "Mr Dufay prévenue",
-  devis_fait: "Devis fait",
-  devis_envoye: "Devis envoyé",
-  DA_envoyer: "DA envoyer !",
-  en_cours: "En cours",
-  devis_signature: "Devis parti en signature",
+  mr_dufay_prevenue: "Mr dufay prevenue",
+  devis_demander: "Devis demander",
+  da_devis_envoye: "DA + devis envoyé",
+  commande_passe: "Commande passé",
+  en_attente: "En Attente",
   rendez_vous: "Rendez-vous",
-  termine: "Terminé",
-  annule: "Annulé",
+  termine: "Terminer",
+  annule: "Annuler",
 };
 
 export interface StatusLogEntry {

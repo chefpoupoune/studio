@@ -14,7 +14,7 @@
     --popover-foreground: 35 30% 90%;
 
     /* Default primary/accent/ring color (Gold) HSL components */
-    --primary-h: 45;
+    --primary-h: 0;
     --primary-s: 100%;
     --primary-l: 51%;
     --primary: hsl(var(--primary-h), var(--primary-s), var(--primary-l));
@@ -41,7 +41,7 @@
     --muted: 345 20% 30%;
     --muted-foreground: 35 20% 70%;
 
-    --accent-h: 45; /* Same as primary by default */
+    --accent-h: 0; /* Same as primary by default */
     --accent-s: 100%;
     --accent-l: 51%;
     --accent: hsl(var(--accent-h), var(--accent-s), var(--accent-l));
@@ -66,7 +66,7 @@
     --border: 345 20% 40%;
     --input: 345 20% 40%;
     
-    --ring-h: 45; /* Same as primary by default */
+    --ring-h: 0; /* Same as primary by default */
     --ring-s: 100%;
     --ring-l: 51%;
     --ring: hsl(var(--ring-h), var(--ring-s), var(--ring-l));
@@ -147,3 +147,22 @@
 }
 
 /* Keyframes for animations are now in tailwind.config.ts */
+
+/* Custom scrollbar for a more modern look */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--sidebar-background));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--sidebar-accent));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--sidebar-primary));
+}

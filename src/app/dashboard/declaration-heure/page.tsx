@@ -36,6 +36,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
 import { firestore } from '@/lib/firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
   collection,
   query,
@@ -57,11 +58,50 @@ interface jsPDFWithAutoTable extends jsPDF {
 const BRIGADE_MEMBERS_STORAGE_KEY = 'time_tracking_members_v2'; 
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
+// --- AJOUT : Initialisation de Firebase Functions ---
+const functions = getFunctions(undefined, 'us-central1');
+const sendRequestStatusEmailCallable = httpsCallable(functions, 'sendRequestStatusEmail');
+const deleteAllDeclarationsOfTypeCallable = httpsCallable(functions, 'deleteAllDeclarationsOfType');
+// --------------------------------------------------
+
 
 interface DeclarationHeureTab {
   value: string;
   label: string;
   Icon: React.ElementType;
+}
+
+/**
+ * Complète les champs manquants d'un objet de mise en page PDF avec des valeurs
+ * de secours numériques valides. Sert de filet de sécurité : si
+ * getPdfLayoutSettings() renvoie un objet incomplet (champ undefined) pour un
+ * type de formulaire donné, jsPDF finit par recevoir des coordonnées
+ * "undefined" ou "NaN" dans doc.text(...), ce qui provoque l'erreur
+ * "Invalid arguments passed to jsPDF.text".
+ */
+function withPdfSettingsDefaults(settings: any) {
+  return {
+    orientation: settings?.orientation ?? 'portrait',
+    pageSize: settings?.pageSize ?? 'a4',
+    fontFamily: settings?.fontFamily ?? 'helvetica', // jsPDF ne connaît nativement que helvetica/times/courier
+    marginLeft: settings?.marginLeft ?? 40,
+    marginRight: settings?.marginRight ?? 40,
+    marginTop: settings?.marginTop ?? 40,
+    marginBottom: settings?.marginBottom ?? 40,
+    headerText: settings?.headerText ?? '',
+    headerFontSize: settings?.headerFontSize ?? 10,
+    footerText: settings?.footerText ?? '',
+    footerFontSize: settings?.footerFontSize ?? 8,
+    defaultFontSize: settings?.defaultFontSize ?? 10,
+    documentTitleFontSize: settings?.documentTitleFontSize ?? 14,
+    tableHeaderFontSize: settings?.tableHeaderFontSize ?? 10,
+    tableBodyFontSize: settings?.tableBodyFontSize ?? 9,
+    logoUrl: settings?.logoUrl ?? null,
+    primaryColor: settings?.primaryColor ?? '#CCCCCC',
+    showDocumentBaseTitle: settings?.showDocumentBaseTitle ?? false,
+    documentBaseTitle: settings?.documentBaseTitle ?? '',
+    ...settings, // on garde toute autre propriété déjà valide renvoyée par settings
+  };
 }
 
 export default function DeclarationHeurePage() {
@@ -121,6 +161,33 @@ export default function DeclarationHeurePage() {
     };
     fetchInitialLocalData();
   }, [isClient, toast]);
+
+  // new
+    
+      // COLLEZ CE BLOC POUR REMPLACER L'ANCIENNE FONCTION
+
+const deleteAllDeclarations = async (type: 'overtime' | 'absence' | 'scheduleChange') => {
+    setIsSubmitting(true);
+    try {
+        const deleteAllDeclarationsOfType = httpsCallable(functions, 'deleteAllDeclarationsOfType');
+        
+        // On appelle la fonction en ne passant QUE le type
+        const result = await deleteAllDeclarationsOfType({ type: type });
+        
+        toast({ title: 'Succès', description: `Toutes les déclarations de type '${type}' ont été supprimées.` });
+    } catch (error: any) {
+        console.error('Error deleting declarations:', error);
+        // On affiche l'erreur exacte qui vient du serveur, c'est très important
+        toast({ title: 'Erreur', description: error.message, variant: 'destructive' });
+    } finally {
+        setIsSubmitting(false);
+    }
+};
+
+
+
+    // fin du new
+
 
   const fetchOvertimeRequests = useCallback(async () => {
     if (!isClient) return;
@@ -232,14 +299,98 @@ export default function DeclarationHeurePage() {
     return null;
   }, [loggedInUsername, brigadeMembers]);
 
+  /// nouv //
+
+    // --- AJOUT : Nouvelle fonction pour générer le PDF et envoyer l'e-mail ---
+  const handleSendApprovalEmail = async (
+    request: OvertimeRequest | AbsenceRequest | ScheduleChangeRequest, 
+    requestType: 'overtime' | 'absence' | 'scheduleChange', 
+    newStatus: 'accepted' | 'rejected',
+    rejectionReasonFromForm?: string
+  ) => {
+    if (!request.brigadeMemberId) {
+        console.error("Impossible d'envoyer l'e-mail, l'ID du membre de la brigade est manquant.");
+        toast({ title: "Erreur critique", description: "ID de l'employé manquant pour l'envoi de l'e-mail.", variant: "destructive" });
+        return;
+    }
+
+    let pdfBase64 = '';
+    let requestDetails: any = '';
+
+    try {
+        if (requestType === 'overtime') {
+            const r = request as OvertimeRequest;
+            requestDetails = `Dépassement pour le motif : ${r.reasonStub}. Total: ${r.totalOvertimeHours}h.`;
+        } else if (requestType === 'absence') {
+            const r = request as AbsenceRequest;
+            requestDetails = `Absence du ${format(parseISO(r.startDate), 'dd/MM/yy')} au ${format(parseISO(r.endDate), 'dd/MM/yy')}. Motif : ${r.reason}.`;
+        } else if (requestType === 'scheduleChange') {
+            const r = request as ScheduleChangeRequest;
+            
+            // CORRECTIF : S'assurer que chaque détail utilise sa propre date.
+            if (r.scheduleChangeDetails && Array.isArray(r.scheduleChangeDetails) && r.scheduleChangeDetails.length > 0) {
+                // On passe directement les détails, ils contiennent déjà les bonnes dates individuelles.
+                requestDetails = r.scheduleChangeDetails;
+            } else {
+                // Ancien format (fallback)
+                requestDetails = [{
+                    date: r.date,
+                    newStartTime: r.newStartTime,
+                    newEndTime: r.newEndTime,
+                    originalStartTime: r.originalStartTime,
+                    originalEndTime: r.originalEndTime
+                }];
+            }
+        }
+
+        const dataToSend = {
+            userId: request.brigadeMemberId,
+            requestType: requestType,
+            status: newStatus,
+            reason: rejectionReasonFromForm || '',
+            requestDetails: requestDetails,
+            requestReason: request.reason || '',
+            pdfBase64: pdfBase64,
+        };
+        
+        toast({ title: "Envoi de l'e-mail...", description: `Notification en cours d'envoi à ${request.employeeName}.`});
+        await sendRequestStatusEmailCallable(dataToSend);
+        toast({ title: "E-mail envoyé !", description: `L'employé a été notifié de la décision.`, variant: "success"});
+
+    } catch (error) {
+        console.error("Erreur lors de l'envoi de l'e-mail d'approbation:", error);
+        toast({ title: "Erreur d'envoi de l'e-mail", description: "La notification n'a pas pu être envoyée. Vérifiez la console pour plus de détails.", variant: "destructive" });
+    }
+  };
+
+////// fin du nouv//
+
   const handleAddOrUpdateOvertimeRequest = useCallback(async (
     data: Partial<Omit<OvertimeRequest, 'id' | 'employeeName' | 'requestDate' | 'updatedAt' >>
   ) => {
     if (isLoading) { toast({ title: "Données non prêtes", variant: "default" }); return; }
     
-    const employeeNameToUse = editingOvertimeRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername || "Système";
-    const positionToUse = data.position || (editingOvertimeRequest ? editingOvertimeRequest.position : (currentBrigadeMember?.role || ''));
-    const brigadeMemberIdToUse = editingOvertimeRequest?.brigadeMemberId || currentBrigadeMember?.id;
+    const isChefCreatingOvertime = !editingOvertimeRequest && loggedInUsername?.toLowerCase() === 'chef';
+const chefAsEmployeeForOvertime = isChefCreatingOvertime ? brigadeMembers.find(m => m.name.toLowerCase() === 'julien dernoncourt') : null;
+
+const isChefCreating = !editingOvertimeRequest && isChef;
+const employeeNameToUse = isChefCreating ? "Julien Dernoncourt" : (data.employeeName || editingOvertimeRequest?.employeeName || currentBrigadeMember?.name || "Employé Inconnu");
+const positionToUse = isChefCreating ? "Chef de cuisine" : (data.position || editingOvertimeRequest?.position || currentBrigadeMember?.role || '');
+
+let brigadeMemberIdToUse: string | undefined;
+if (isChefCreating) {
+  brigadeMemberIdToUse = 'chef_special_id';
+} else {
+  brigadeMemberIdToUse = data.brigadeMemberId || editingOvertimeRequest?.brigadeMemberId || currentBrigadeMember?.id;
+}
+
+if (!brigadeMemberIdToUse) {
+  toast({ title: "Erreur de sauvegarde", description: "L'identifiant de l'employé est manquant.", variant: "destructive" });
+  return;
+}
+
+
+
     const now = new Date();
 
     const requestDataToSave = {
@@ -265,8 +416,13 @@ export default function DeclarationHeurePage() {
         const originalStatus = editingOvertimeRequest.approvalStatus || 'pending';
         const newStatus = data.approvalStatus;
 
-        if (newStatus && newStatus !== 'pending' && originalStatus === 'pending' && brigadeMemberIdToUse) {
-            const notifTitle = "Demande de dépassement traitée";
+            // new //
+
+if (newStatus && newStatus !== 'pending' && originalStatus === 'pending' && brigadeMemberIdToUse) {
+    await handleSendApprovalEmail(editingOvertimeRequest, 'overtime', newStatus, data.rejectionReason);
+
+          
+          const notifTitle = "Demande de dépassement traitée";
             const notifMessage = `Votre demande de dépassement du ${format(parseISO(editingOvertimeRequest.requestDate), 'dd/MM/yyyy')} a été ${newStatus === 'accepted' ? 'acceptée' : 'refusée'}.`;
             const notificationData = {
                 userId: brigadeMemberIdToUse,
@@ -293,7 +449,7 @@ export default function DeclarationHeurePage() {
       toast({ title: "Erreur sauvegarde demande dépassement", variant: "destructive"});
     }
     setEditingOvertimeRequest(null); 
-  }, [editingOvertimeRequest, loggedInUsername, currentBrigadeMember, toast, isLoading, fetchOvertimeRequests]);
+  }, [editingOvertimeRequest, loggedInUsername, currentBrigadeMember, toast, isLoading, fetchOvertimeRequests, isChef]);
   
   const handleDeleteOvertimeRequest = async (requestId: string) => {
     if (isLoading) return;
@@ -319,9 +475,26 @@ export default function DeclarationHeurePage() {
   ) => {
     if (isLoading) { toast({ title: "Données non prêtes", variant: "default"}); return; }
     
-    const employeeNameToUse = editingAbsenceRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername || "Système";
-    const positionToUse = data.position || (editingAbsenceRequest ? editingAbsenceRequest.position : (currentBrigadeMember?.role || ''));
-    const brigadeMemberIdToUse = editingAbsenceRequest?.brigadeMemberId || currentBrigadeMember?.id;
+   
+   const isChefCreatingAbsence = !editingAbsenceRequest && loggedInUsername?.toLowerCase() === 'chef';
+const chefAsEmployeeForAbsence = isChefCreatingAbsence ? brigadeMembers.find(m => m.name.toLowerCase() === 'julien dernoncourt') : null;
+
+const isChefCreating = !editingAbsenceRequest && isChef;
+const employeeNameToUse = isChefCreating ? "Julien Dernoncourt" : (data.employeeName || editingAbsenceRequest?.employeeName || currentBrigadeMember?.name || "Employé Inconnu");
+const positionToUse = isChefCreating ? "Chef de cuisine" : (data.position || editingAbsenceRequest?.position || currentBrigadeMember?.role || '');
+
+let brigadeMemberIdToUse: string | undefined;
+if (isChefCreating) {
+  brigadeMemberIdToUse = 'chef_special_id';
+} else {
+  brigadeMemberIdToUse = data.brigadeMemberId || editingAbsenceRequest?.brigadeMemberId || currentBrigadeMember?.id;
+}
+
+if (!brigadeMemberIdToUse) {
+  toast({ title: "Erreur de sauvegarde", description: "L'identifiant de l'employé est manquant.", variant: "destructive" });
+  return;
+}
+
     const now = new Date();
 
     const requestDataToSave = {
@@ -344,8 +517,17 @@ export default function DeclarationHeurePage() {
           const originalStatus = editingAbsenceRequest.approvalStatus || 'pending';
           const newStatus = data.approvalStatus;
 
-          if (newStatus && newStatus !== 'pending' && originalStatus === 'pending' && brigadeMemberIdToUse) {
-              const notifTitle = "Demande d'absence traitée";
+          
+             
+            // new
+if (newStatus && newStatus !== 'pending' && originalStatus === 'pending' && brigadeMemberIdToUse) {
+    await handleSendApprovalEmail(editingAbsenceRequest, 'absence', newStatus, data.rejectionReason);
+
+          // new
+
+            
+            
+            const notifTitle = "Demande d'absence traitée";
               const notifMessage = `Votre demande d'absence du ${format(parseISO(editingAbsenceRequest.startDate), 'dd/MM/yy')} au ${format(parseISO(editingAbsenceRequest.endDate), 'dd/MM/yy')} a été ${newStatus === 'accepted' ? 'acceptée' : 'refusée'}.`;
               const notificationData = {
                   userId: brigadeMemberIdToUse,
@@ -372,7 +554,7 @@ export default function DeclarationHeurePage() {
       toast({ title: "Erreur sauvegarde demande d'absence", variant: "destructive"});
     }
     setEditingAbsenceRequest(null);
-  }, [editingAbsenceRequest, loggedInUsername, currentBrigadeMember, toast, isLoading, fetchAbsenceRequests]);
+  }, [editingAbsenceRequest, loggedInUsername, currentBrigadeMember, toast, isLoading, fetchAbsenceRequests, isChef]);
 
   const handleDeleteAbsenceRequest = useCallback(async (requestId: string) => {
     if (isLoading) return;
@@ -399,9 +581,26 @@ export default function DeclarationHeurePage() {
   ) => {
     if (isLoading) { toast({ title: "Données non prêtes", variant: "default"}); return; }
     
-    const employeeNameToUse = editingScheduleChangeRequest?.employeeName || currentBrigadeMember?.name || loggedInUsername || "Système";
-    const positionToUse = data.position || (editingScheduleChangeRequest ? editingScheduleChangeRequest.position : (currentBrigadeMember?.role || ''));
-    const brigadeMemberIdToUse = editingScheduleChangeRequest?.brigadeMemberId || currentBrigadeMember?.id;
+   
+    const isChefCreatingScheduleChange = !editingScheduleChangeRequest && loggedInUsername?.toLowerCase() === 'chef';
+const chefAsEmployeeForScheduleChange = isChefCreatingScheduleChange ? brigadeMembers.find(m => m.name.toLowerCase() === 'julien dernoncourt') : null;
+
+const isChefCreating = !editingScheduleChangeRequest && isChef;
+const employeeNameToUse = isChefCreating ? "Julien Dernoncourt" : (data.employeeName || editingScheduleChangeRequest?.employeeName || currentBrigadeMember?.name || "Employé Inconnu");
+const positionToUse = isChefCreating ? "Chef de cuisine" : (data.position || editingScheduleChangeRequest?.position || currentBrigadeMember?.role || '');
+
+let brigadeMemberIdToUse: string | undefined;
+if (isChefCreating) {
+  brigadeMemberIdToUse = 'chef_special_id';
+} else {
+  brigadeMemberIdToUse = data.brigadeMemberId || editingScheduleChangeRequest?.brigadeMemberId || currentBrigadeMember?.id;
+}
+
+if (!brigadeMemberIdToUse) {
+  toast({ title: "Erreur de sauvegarde", description: "L'identifiant de l'employé est manquant.", variant: "destructive" });
+  return;
+}
+
     const now = new Date();
 
     // Add check for missing brigadeMemberId
@@ -431,8 +630,17 @@ export default function DeclarationHeurePage() {
           const originalStatus = editingScheduleChangeRequest.approvalStatus || 'pending';
           const newStatus = data.approvalStatus;
 
-          if (newStatus && newStatus !== 'pending' && originalStatus === 'pending' && brigadeMemberIdToUse) {
-              const notifTitle = "Demande de changement d'horaire traitée";
+          
+            // new
+if (newStatus && newStatus !== 'pending' && originalStatus === 'pending' && brigadeMemberIdToUse) {
+  await handleSendApprovalEmail(editingScheduleChangeRequest, 'scheduleChange', newStatus, data.rejectionReason);
+
+    // ...
+
+            
+            
+            
+            const notifTitle = "Demande de changement d'horaire traitée";
               const notifMessage = `Votre demande de changement d'horaire pour le ${format(parseISO(editingScheduleChangeRequest.date), 'dd/MM/yy')} a été ${newStatus === 'accepted' ? 'acceptée' : 'refusée'}.`;
               const notificationData = {
                   userId: brigadeMemberIdToUse,
@@ -455,43 +663,42 @@ export default function DeclarationHeurePage() {
 
 
 
-          // --- START: CHEF NOTIFICATION LOGGING ---
-console.log("[ScheduleChangeRequest NOTIF] Attempting to find Chef user for notification...");
-const usersCollectionRef = collection(firestore, 'appUsers'); // Correction: collection AppUsers
-const chefQuery = query(usersCollectionRef, where('username', '==', 'Chef')); // Recherche par username
-const chefQuerySnapshot = await getDocs(chefQuery); // Exécute la requête
+// --- START: CHEF NOTIFICATION LOGGING ---
+console.log("[ScheduleChangeRequest NOTIF] Attempting to find admin users for notification...");
+const usersCollectionRef = collection(firestore, 'appUsers');
+const adminQuery = query(usersCollectionRef, where('role', '==', 'admin'));
+const adminQuerySnapshot = await getDocs(adminQuery);
 
-if (!chefQuerySnapshot.empty) {
-    console.log(`[ScheduleChangeRequest NOTIF] Found ${chefQuerySnapshot.size} Chef user(s). Creating notifications.`);
+if (!adminQuerySnapshot.empty) {
+    console.log(`[ScheduleChangeRequest NOTIF] Found ${adminQuerySnapshot.size} admin user(s). Creating notifications.`);
     const notifTitle = "Nouvelle demande de changement d'horaire";
     const notifMessage = `Une nouvelle demande de changement d'horaire a été soumise par ${employeeNameToUse} pour le ${format(parseISO(data.date as string || now.toISOString()), 'dd/MM/yy')}.`;
 
-    for (const chefDoc of chefQuerySnapshot.docs) {
-        const chefUserId = chefDoc.id;
-        const chefUserData = chefDoc.data();
-        console.log(`[ScheduleChangeRequest NOTIF] Notifying Chef user: ${chefUserData.username || 'Unknown'} (ID: ${chefUserId})`);
-        
+    for (const adminDoc of adminQuerySnapshot.docs) {
+        const adminUserId = adminDoc.id;
+        const adminUserData = adminDoc.data();
+        console.log(`[ScheduleChangeRequest NOTIF] Notifying admin user: ${adminUserData.username || 'Unknown'} (ID: ${adminUserId})`);
+
         const notificationData = {
-            userId: chefUserId,
+            userId: adminUserId,
             title: notifTitle,
             message: notifMessage,
             link: '/dashboard/declaration-heure?tab=schedule-change-approval',
             createdAt: Timestamp.fromDate(new Date()),
             isRead: false,
         };
-        
+
         try {
             await addDoc(collection(firestore, 'notifications'), notificationData);
-            console.log(`[ScheduleChangeRequest NOTIF] Notification successfully added for Chef user ID: ${chefUserId}`);
+            console.log(`[ScheduleChangeRequest NOTIF] Notification successfully added for admin user ID: ${adminUserId}`);
         } catch (error) {
-            console.error(`[ScheduleChangeRequest NOTIF] Error adding notification for Chef user ID: ${chefUserId}`, error);
+            console.error(`[ScheduleChangeRequest NOTIF] Error adding notification for admin user ID: ${adminUserId}`, error);
         }
     }
-    console.log(`[ScheduleChangeRequest NOTIF] Notified ${chefQuerySnapshot.size} Chef users.`);
+    console.log(`[ScheduleChangeRequest NOTIF] Notified ${adminQuerySnapshot.size} admin users.`);
 } else {
-    console.warn("[ScheduleChangeRequest NOTIF] No user with username 'chef' found. Notification not sent.");
-    
-    // Log supplémentaire pour débogage - vérifier ce qui existe dans AppUsers
+    console.warn("[ScheduleChangeRequest NOTIF] No user with role 'admin' found. Notification not sent.");
+
     const allUsersSnapshot = await getDocs(usersCollectionRef);
     console.log(`[ScheduleChangeRequest NOTIF] Total users in appUsers: ${allUsersSnapshot.size}`);
     allUsersSnapshot.forEach(doc => {
@@ -513,7 +720,7 @@ if (!chefQuerySnapshot.empty) {
       toast({ title: "Erreur sauvegarde demande changement horaire", description: err.message, variant: "destructive"});
     } 
     setEditingScheduleChangeRequest(null);
-  }, [editingScheduleChangeRequest, loggedInUsername, currentBrigadeMember, toast, isLoading, fetchScheduleChangeRequests]); // CORRECTION: Dépendance inutile 'activeTab' retirée
+  }, [editingScheduleChangeRequest, loggedInUsername, currentBrigadeMember, toast, isLoading, fetchScheduleChangeRequests, isChef]); // CORRECTION: Dépendance inutile 'activeTab' retirée
 
   const handleDeleteScheduleChangeRequest = useCallback(async (requestId: string) => {
     if (isLoading) return;
@@ -528,6 +735,40 @@ if (!chefQuerySnapshot.empty) {
       toast({ title: "Erreur suppression demande changement horaire", variant: "destructive" });
     }
  }, [isLoading, fetchScheduleChangeRequests, toast]);
+ 
+   const handleDeleteAllDeclarations = async (declarationType: 'overtime' | 'absence' | 'scheduleChange') => {
+    if (!isChef) {
+      toast({ title: "Accès non autorisé", variant: "destructive" });
+      return;
+    }
+
+    const declarationTypeNames = {
+      overtime: "de dépassement d'horaire",
+      absence: "d'absence",
+      scheduleChange: "de changement d'horaire"
+    };
+    const declarationName = declarationTypeNames[declarationType];
+
+    try {
+      toast({ title: "Suppression en cours...", description: `Suppression de toutes les demandes ${declarationName}.` });
+      
+      await deleteAllDeclarationsOfTypeCallable({ type: declarationType });
+      
+      if (declarationType === 'overtime') {
+        await fetchOvertimeRequests();
+      } else if (declarationType === 'absence') {
+        await fetchAbsenceRequests();
+      } else if (declarationType === 'scheduleChange') {
+        await fetchScheduleChangeRequests();
+      }
+      
+      toast({ title: "Suppression réussie", description: `Toutes les demandes ${declarationName} ont été supprimées.`, variant: "success" });
+    } catch (error) {
+      const err = error as Error;
+      console.error(`Erreur lors de la suppression de toutes les demandes de type '${declarationType}':`, err);
+      toast({ title: "Erreur de suppression", description: err.message, variant: "destructive" });
+    }
+  };
 
   const handleOpenScheduleChangeForm = (request?: ScheduleChangeRequest) => {
     setEditingScheduleChangeRequest(request || null);
@@ -879,12 +1120,37 @@ if (!chefQuerySnapshot.empty) {
           <Card className="shadow-xl">
             <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
               <div><CardTitle>Mes Demandes de Dépassement d'Horaire</CardTitle><CardDescription>Soumettez et suivez vos demandes.</CardDescription></div>
-              <Button 
-                onClick={() => handleOpenOvertimeForm(undefined, false)} 
-                disabled={isLoading || (!currentBrigadeMember && !isChef)}
-              >
-                <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande Dépassement
-              </Button>
+              <div className="flex items-center gap-2">
+                {isChef && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm">
+                        <Trash2 className="mr-2 h-4 w-4" /> Tout Supprimer
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Supprimer toutes les demandes de dépassement ?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Cette action est irréversible et supprimera TOUTES les demandes de dépassement d'horaire. Êtes-vous certain ?
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Annuler</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => handleDeleteAllDeclarations('overtime')}>
+                          Oui, tout supprimer
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+                <Button 
+                  onClick={() => handleOpenOvertimeForm(undefined, false)} 
+                  disabled={isLoading || (!currentBrigadeMember && !isChef)}
+                >
+                  <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>{renderOvertimeRequestList(isChef ? allOvertimeRequestsForChef : employeeOvertimeRequests, false)}</CardContent>
           </Card>
@@ -894,12 +1160,37 @@ if (!chefQuerySnapshot.empty) {
           <Card className="shadow-xl">
              <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
               <div><CardTitle>Mes Demandes d'Absence</CardTitle><CardDescription>Soumettez et suivez vos demandes.</CardDescription></div>
-              <Button 
-                onClick={() => handleOpenAbsenceForm(undefined, false)} 
-                disabled={isLoading || (!currentBrigadeMember && !isChef)}
-              >
-                <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande Absence
-              </Button>
+              <div className="flex items-center gap-2">
+                {isChef && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm">
+                        <Trash2 className="mr-2 h-4 w-4" /> Tout Supprimer
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Supprimer toutes les demandes d'absence ?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Cette action est irréversible et supprimera TOUTES les demandes d'absence. Êtes-vous certain ?
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Annuler</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => handleDeleteAllDeclarations('absence')}>
+                          Oui, tout supprimer
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+                <Button 
+                  onClick={() => handleOpenAbsenceForm(undefined, false)} 
+                  disabled={isLoading || (!currentBrigadeMember && !isChef)}
+                >
+                  <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>{renderAbsenceRequestList(isChef ? allAbsenceRequestsForChef : employeeAbsenceRequests, false)}</CardContent>
           </Card>
@@ -909,10 +1200,37 @@ if (!chefQuerySnapshot.empty) {
           <Card className="shadow-xl">
              <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
               <div><CardTitle>Mes Demandes de Changement d'Horaire</CardTitle><CardDescription>Soumettez et suivez vos demandes de modification de planning ponctuelle.</CardDescription></div>
-              <Button 
-                onClick={() => handleOpenScheduleChangeForm(undefined)} 
-                disabled={isLoading || (!currentBrigadeMember && !isChef)}
-              ><PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande Changement Horaire</Button>
+              <div className="flex items-center gap-2">
+                {isChef && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm">
+                        <Trash2 className="mr-2 h-4 w-4" /> Tout Supprimer
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Supprimer toutes les demandes de changement d'horaire ?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Cette action est irréversible et supprimera TOUTES les demandes de changement d'horaire. Êtes-vous certain ?
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Annuler</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => handleDeleteAllDeclarations('scheduleChange')}>
+                          Oui, tout supprimer
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+                <Button 
+                  onClick={() => handleOpenScheduleChangeForm(undefined)} 
+                  disabled={isLoading || (!currentBrigadeMember && !isChef)}
+                >
+                  <PlusCircle className="mr-2 h-4 w-4"/> Nouvelle Demande
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>{renderScheduleChangeRequestList(isChef ? allScheduleChangeRequestsForChef : employeeScheduleChangeRequests, false)}</CardContent>
           </Card>
@@ -943,201 +1261,719 @@ if (!chefQuerySnapshot.empty) {
     }
   };
 
-  const handleGenerateOvertimeRequestPdf = (request: OvertimeRequest) => {
-    const pdfSettings = getPdfLayoutSettings('overtime_request_form');
-    const doc = new jsPDF({ orientation: pdfSettings.orientation, unit: 'pt', format: pdfSettings.pageSize }) as jsPDFWithAutoTable;
-    doc.setFont(pdfSettings.fontFamily);
-    const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
-    let currentY = pdfSettings.marginTop;
-    if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { try { const imgProps = doc.getImageProperties(pdfSettings.logoUrl); const formatType = imgProps.fileType.toUpperCase(); const desiredHeight = 30; const imgWidth = (imgProps.width * desiredHeight) / imgProps.height; doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight); currentY += desiredHeight + 5; } catch(e){ console.error("Error drawing logo in PDF:", e); }}
-    if (pdfSettings.headerText) { const headerLines = pdfSettings.headerText.split('\n'); doc.setFontSize(pdfSettings.headerFontSize); headerLines.forEach(line => { doc.text(line, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize * 0.7 + 2; }); currentY += 5; }
-    
-    const moduleDefaultTitle = "Demande de Dépassement d'Horaire";
-    let pdfTitle;
-    if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
-      pdfTitle = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
-    } else {
-      pdfTitle = moduleDefaultTitle;
-    }
-    doc.setFontSize(pdfSettings.documentTitleFontSize); 
-    doc.text(pdfTitle, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' }); 
-    currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+                      // section PDF DEbut
 
-    doc.setFontSize(pdfSettings.defaultFontSize); doc.text(`Nom et prénom du salarié : ${request.employeeName || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    doc.text(`Poste occupé à l'IME : ${request.position || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 20;
-    const prestationText = (request.prestationTypes || []).map(pt => PRESTATION_TYPE_LABELS[pt] || pt).join(', ') + 
-      ((request.prestationTypes || []).includes('autres') && request.prestationTypeAutresDetail ? ` (${request.prestationTypeAutresDetail})` : '');
-    doc.text(`Prestation correspondante : ${prestationText || 'Logistique'}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    doc.text("Motif de la demande :", pdfSettings.marginLeft, currentY); currentY += 15; doc.text(request.reasonStub || 'N/A', pdfSettings.marginLeft + 10, currentY, { maxWidth: doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - 20 }); currentY += (doc.splitTextToSize(request.reasonStub || 'N/A', doc.internal.pageSize.getWidth() - pdfSettings.marginLeft - pdfSettings.marginRight - 20).length * (pdfSettings.defaultFontSize * 0.7)) + 10;
-    if (request.overtimeDetails && request.overtimeDetails.length > 0) { doc.text("Détail des heures supplémentaires :", pdfSettings.marginLeft, currentY); currentY += 5; doc.autoTable({ startY: currentY, head: [['Date', 'Heure début', 'Heure fin']], body: request.overtimeDetails.map(d => [ d.date && isValid(parseISO(d.date)) ? format(parseISO(d.date), 'dd/MM/yyyy', { locale: fr }) : 'N/A', d.startTime || '-', d.endTime || '-', ]), theme: 'grid', styles: { fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily }, headStyles: { fillColor: hexToRgb(pdfSettings.primaryColor || '#CCCCCC') || [220,220,220], textColor: [0,0,0], fontSize: pdfSettings.tableHeaderFontSize }, margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight }, }); currentY = (doc as any).lastAutoTable.finalY + 10; }
-    doc.text(`Total des heures en plus de l'horaire prévu : ${request.totalOvertimeHours || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 20;
-    const sigDate = (dateStr: string | null | undefined) => dateStr && isValid(parseISO(dateStr)) ? format(parseISO(dateStr), "dd/MM/yyyy", { locale: fr }) : 'Non signé';
-    doc.text(`Salarié(e) le : ${sigDate(request.employeeSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 15; doc.text(`Le Responsable Direct le : ${sigDate(request.directManagerSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 15; doc.text(`Le Directeur le : ${sigDate(request.directorSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 25;
-    doc.setFont(undefined, 'bold'); doc.text("CADRE RESERVE A LA DIRECTION", pdfSettings.marginLeft, currentY); doc.setFont(undefined, 'normal'); currentY += 15; doc.text(`Acceptée / Refusée : ${getStatusLabel(request.approvalStatus)}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    if (request.approvalStatus === 'rejected' && request.rejectionReason) { doc.text(`Si refusée, motif : ${request.rejectionReason}`, pdfSettings.marginLeft, currentY); currentY += 15; }
-    doc.text(`Date : ${sigDate(request.decisionDate)}`, pdfSettings.marginLeft, currentY); currentY += 15; 
-    doc.text(`Signature de la Direction : Dernoncourt Julien / Chef de cuisine`, pdfSettings.marginLeft, currentY);
-    const pageCount = doc.internal.getNumberOfPages(); for (let i = 1; i <= pageCount; i++) { doc.setPage(i); if (pdfSettings.footerText) { let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', i.toString()).replace('{totalPages}', pageCount.toString()); doc.setFontSize(pdfSettings.footerFontSize); doc.text(footerStr, pdfSettings.marginLeft, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2)); }}
-    doc.save(`Demande_Depassement_${request.employeeName.replace(/\s+/g, '_')}_${format(parseISO(request.requestDate), "yyyy-MM-dd")}.pdf`);
-    toast({ title: "PDF Généré", description: `Le PDF pour la demande de ${request.employeeName} a été téléchargé.` });
-  };
-  
-  const handleGenerateAbsenceRequestPdf = (request: AbsenceRequest) => {
-    const pdfSettings = getPdfLayoutSettings('absence_request_form');
-    const doc = new jsPDF({ orientation: pdfSettings.orientation, unit: 'pt', format: pdfSettings.pageSize }) as jsPDFWithAutoTable;
-    doc.setFont(pdfSettings.fontFamily);
-    const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
-    let currentY = pdfSettings.marginTop;
+     const handleGenerateOvertimeRequestPdf = async (request: OvertimeRequest) => { // Note: function is now async
+    try {
+        // Helper to fetch local image and convert to Base64
+        const fetchImageAsBase64 = (url: string): Promise<string | null> => {
+            return new Promise(async (resolve) => {
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) { resolve(null); return; }
+                    const blob = await response.blob();
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.onerror = () => resolve(null);
+                    reader.readAsDataURL(blob);
+                } catch { resolve(null); }
+            });
+        };
 
-    if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { try { const imgProps = doc.getImageProperties(pdfSettings.logoUrl); const formatType = imgProps.fileType.toUpperCase(); const desiredHeight = 30; const imgWidth = (imgProps.width * desiredHeight) / imgProps.height; doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight); currentY += desiredHeight + 5; } catch(e){ console.error("Error drawing logo in PDF:", e); }}
-    if (pdfSettings.headerText) { const headerLines = pdfSettings.headerText.split('\n'); doc.setFontSize(pdfSettings.headerFontSize); headerLines.forEach(line => { doc.text(line, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize * 0.7 + 2; }); currentY += 5; }
+        const logoUrl = '/logo/logo1.png'; // Path from the public folder
+        const logoBase64 = await fetchImageAsBase64(logoUrl);
 
-    const moduleDefaultTitle = "Demande d'Absence";
-    let pdfTitle;
-    if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
-      pdfTitle = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
-    } else {
-      pdfTitle = moduleDefaultTitle;
-    }
-    doc.setFontSize(pdfSettings.documentTitleFontSize); 
-    doc.text(pdfTitle, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' }); 
-    currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
-    
-    doc.setFontSize(pdfSettings.defaultFontSize);
-    doc.text(`Nom et prénom du salarié : ${request.employeeName || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    doc.text(`Poste occupé à l'IME : ${request.position || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    
-    const prestationAbsenceText = (request.prestationTypes || []).map(pt => PRESTATION_TYPE_LABELS[pt] || pt).join(', ') +
-      ((request.prestationTypes || []).includes('autres') && request.prestationTypeAutresDetail ? ` (${request.prestationTypeAutresDetail})` : '');
-    doc.text(`Prestation correspondante : ${prestationAbsenceText || 'Logistique'}`, pdfSettings.marginLeft, currentY); currentY += 20;
+        const doc = new jsPDF('p', 'pt', 'a4') as jsPDFWithAutoTable;
+        const pageWidth = doc.internal.pageSize.width;
+        const margin = 40;
 
-    doc.setFontSize((pdfSettings.defaultFontSize || 10) + 1);
-    doc.text("Récapitulatif de la demande :", pdfSettings.marginLeft, currentY);
-    currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 5;
+          // couleur page (bleu)
 
-    const tableBody = [];
-    tableBody.push(['Date de début', format(parseISO(request.startDate), "dd/MM/yyyy", { locale: fr })]);
-    tableBody.push(['Date de fin', format(parseISO(request.endDate), "dd/MM/yyyy", { locale: fr })]);
-    tableBody.push(["Nombre de jours d'absence", request.numberOfDays?.toString() || 'N/A']);
-    if (request.hoursPerDay) {
-        tableBody.push(["Heures par jour", `${request.hoursPerDay}h`]);
-    }
-    if (request.totalAbsenceHours && request.totalAbsenceHours > 0) {
-        tableBody.push(["Total heures d'absence", `${request.totalAbsenceHours.toFixed(1)}h`]);
-    }
-    if (request.reason) {
-        tableBody.push(['Motif', request.reason]);
-    }
+          doc.setFillColor(230, 247, 255); // Définit la couleur de remplissage
+          doc.rect(0, 0, pageWidth, doc.internal.pageSize.height, 'F'); // Dessine un rectangle rempli sur toute la page
 
-    const headStyles: any = { fontSize: pdfSettings.tableHeaderFontSize, fontStyle: 'bold', fillColor: [230, 230, 230], textColor: [0,0,0] };
-    if (pdfSettings.primaryColor) {
-        const primaryRgb = hexToRgb(pdfSettings.primaryColor);
-        if (primaryRgb) {
-          headStyles.fillColor = primaryRgb;
-          const brightness = (primaryRgb[0] * 299 + primaryRgb[1] * 587 + primaryRgb[2] * 114) / 1000;
-          headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
+
+
+
+        const calculateHours = (start?: string, end?: string): string => {
+            if (!start || !end) return '';
+            try {
+                const [startH, startM] = start.split(':').map(Number);
+                const [endH, endM] = end.split(':').map(Number);
+                if (isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM)) return '';
+                const totalMinutes = (endH * 60 + endM) - (startH * 60 + startM);
+                if (totalMinutes < 0) return '';
+                const hours = Math.floor(totalMinutes / 60);
+                const minutes = totalMinutes % 60;
+                return `${hours}h${minutes > 0 ? String(minutes).padStart(2, '0') : ''}`;
+            } catch { return ''; }
+        };
+
+        // --- NEW & IMPROVED HEADER TABLE ---
+        let currentY = margin;
+        const headerTableHeight = 50; 
+
+        doc.autoTable({
+            startY: currentY,
+            // Use empty strings to prevent "[object Object]" watermark
+            body: [['', '', '']], 
+            theme: 'grid',
+            styles: {
+                cellPadding: 0,
+                lineWidth: 1,
+                lineColor: 0,
+                minCellHeight: headerTableHeight,
+                valign: 'middle',
+            },
+            columnStyles: {
+                0: { cellWidth: 160, styles: { cellPadding: 2 } },
+                1: { cellWidth: 'auto', halign: 'center' },
+                2: { cellWidth: 150, halign: 'center' }
+            },
+            didDrawCell: (data) => {
+                if (data.row.index === 0) {
+                    const cell = data.cell;
+                    if (data.column.index === 0) { // Column 1: Logo
+                        if (logoBase64) {
+                            // Centered and properly resized logo
+                            const logoWidth = 80;
+                            const logoHeight = 34;
+                            const x = cell.x + (cell.width - logoWidth) / 2;
+                            const y = cell.y + (cell.height - logoHeight) / 2;
+                            doc.addImage(logoBase64, 'PNG', x, y, logoWidth, logoHeight, undefined, 'FAST');
+                        }
+                    } else if (data.column.index === 1) { // Column 2: Title
+                        doc.setFontSize(12);
+                        doc.setFont(undefined, 'bold');
+                        doc.text("DEMANDE DE DEPASSEMENT\nD'HORAIRE", cell.x + cell.width / 2, cell.y + cell.height / 2, {
+                            align: 'center',
+                            baseline: 'middle'
+                        });
+                    } else if (data.column.index === 2) { // Column 3: Ref
+                        doc.setFontSize(9);
+                        doc.setFont(undefined, 'normal');
+                        const topBoxHeight = cell.height * 0.5;
+                        doc.text("16-MES-F-05 Version 2", cell.x + cell.width / 2, cell.y + topBoxHeight / 2, {
+                            align: 'center',
+                            baseline: 'middle'
+                        });
+                        doc.line(cell.x, cell.y + topBoxHeight, cell.x + cell.width, cell.y + topBoxHeight);
+                        doc.text("Pôle Enfance de la Gohelle", cell.x + cell.width / 2, cell.y + topBoxHeight + (cell.height - topBoxHeight) / 2, {
+                            align: 'center',
+                            baseline: 'middle'
+                        });
+                    }
+                }
+            },
+            margin: { left: margin, right: margin }
+        });
+        currentY = (doc as any).autoTable.previous.finalY + 20; // Adjust spacing after header
+        doc.setFont(undefined, 'normal');
+        
+        // --- MAIN INFO ---
+        doc.setFontSize(9);
+        doc.text("La demande doit être soumise à l'avis du pilote de prestation avec un préavis de 48h si possible", margin, currentY);
+        currentY += 30;
+
+        const drawUnderlinedText = (label: string, value: string, y: number) => {
+            doc.setFontSize(10);
+            const labelDims = doc.getTextDimensions(label);
+            doc.text(label, margin, y);
+            doc.setLineWidth(0.5);
+            doc.line(margin, y + 2, margin + labelDims.w, y + 2);
+            doc.text(value, margin + labelDims.w + 8, y);
         }
-      }
 
-    doc.autoTable({
-        startY: currentY,
-        head: [['Détail', 'Information']],
-        body: tableBody,
-        theme: 'grid',
-        headStyles: headStyles,
-        styles: { 
-            fontSize: pdfSettings.tableBodyFontSize, 
-            font: pdfSettings.fontFamily,
-            cellPadding: 3,
-        },
-        columnStyles: {
-            0: { fontStyle: 'bold', cellWidth: 150 },
-            1: { cellWidth: 'auto' }
-        },
-        margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
-    });
-    currentY = (doc as any).lastAutoTable.finalY + 20;
-    
-    const sigDate = (dateStr: string | null | undefined) => dateStr && isValid(parseISO(dateStr)) ? format(parseISO(dateStr), "dd/MM/yyyy", { locale: fr }) : 'Non signé';
-    doc.text(`Salarié(e) le : ${sigDate(request.employeeSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    doc.text(`Le Responsable Direct le : ${sigDate(request.directManagerSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    doc.text(`Le Directeur le : ${sigDate(request.directorSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 25;
-    
-    doc.setFont(undefined, 'bold'); doc.text("CADRE RESERVE A LA DIRECTION", pdfSettings.marginLeft, currentY); doc.setFont(undefined, 'normal'); currentY += 15;
-    doc.text(`Acceptée / Refusée : ${getStatusLabel(request.approvalStatus)}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    if (request.approvalStatus === 'rejected' && request.rejectionReason) { doc.text(`Si refusée, motif : ${request.rejectionReason}`, pdfSettings.marginLeft, currentY); currentY += 15; }
-    doc.text(`Date : ${sigDate(request.decisionDate)}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    doc.text(`Signature de la Direction : Dernoncourt Julien / Chef de cuisine`, pdfSettings.marginLeft, currentY); 
+        drawUnderlinedText("Nom et Prénom:", request.employeeName || '.....................................', currentY);
+        currentY += 25;
+        drawUnderlinedText("Poste occupé à l'IME:", request.position || '.....................................', currentY);
+        currentY += 30;
 
-    const pageCount = doc.internal.getNumberOfPages(); for (let i = 1; i <= pageCount; i++) { doc.setPage(i); if (pdfSettings.footerText) { let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', i.toString()).replace('{totalPages}', pageCount.toString()); doc.setFontSize(pdfSettings.footerFontSize); doc.text(footerStr, pdfSettings.marginLeft, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2)); }}
-    doc.save(`Demande_Absence_${request.employeeName.replace(/\s+/g, '_')}_${format(parseISO(request.startDate), "yyyy-MM-dd")}.pdf`);
-    toast({ title: "PDF Généré", description: `Le PDF pour la demande d'absence de ${request.employeeName} a été téléchargé.` });
+        // --- PRESTATIONS ---
+        const prestLabel = "Prestation :";
+        const prestLabelDims = doc.getTextDimensions(prestLabel);
+        doc.text(prestLabel, margin, currentY);
+        doc.setLineWidth(0.5);
+        doc.line(margin, currentY + 2, margin + prestLabelDims.w, currentY + 2);
+        doc.setFontSize(8);
+        doc.text("Entourer la prestation correspondante", margin + 100, currentY);
+        doc.setFontSize(10);
+        currentY += 25;
+        
+        const allPrestations = {
+            'Hébergement': { x: margin + 50, y: currentY }, 'Educatif': { x: margin + 180, y: currentY }, 'Médico-psycho-sociale': { x: margin + 310, y: currentY },
+            'Administratif': { x: margin + 50, y: currentY + 20 }, 'Logistique': { x: margin + 180, y: currentY + 20 }
+        };
+        const requestPrestationLabels = (request.prestationTypes || []).map(p => PRESTATION_TYPE_LABELS[p as PrestationType] || p);
+        Object.entries(allPrestations).forEach(([label, pos]) => {
+            if (requestPrestationLabels.includes(label)) {
+                const dims = doc.getTextDimensions(label);
+                doc.setFillColor(255, 255, 0); // Yellow
+                doc.rect(pos.x - 2, pos.y - dims.h + 2, dims.w + 4, dims.h, 'F');
+            }
+            doc.text(label, pos.x, pos.y);
+        });
+        currentY += 45;
+
+        // --- MOTIF ---
+        const motifLabel = "Motif de la demande :";
+        const motifLabelDims = doc.getTextDimensions(motifLabel);
+        doc.text(motifLabel, margin, currentY);
+        doc.setLineWidth(0.5);
+        doc.line(margin, currentY + 2, margin + motifLabelDims.w, currentY + 2);
+        currentY += 10;
+        doc.setLineWidth(0.5);
+        doc.rect(margin, currentY, pageWidth - 2 * margin, 40);
+        doc.text(request.reasonStub || '', margin + 5, currentY + 12, { maxWidth: pageWidth - 2 * margin - 10 });
+        currentY += 65;
+
+        // --- TABLE ---
+        doc.setFont(undefined, 'bold');
+        doc.text("Proposition de dépassement (jours et/ou heures travaillés exceptionnellement)", pageWidth / 2, currentY, { align: 'center' });
+        doc.setFont(undefined, 'normal');
+        currentY += 25;
+
+        const tableBody = (request.overtimeDetails || []).map(detail => [
+            `Le : ${isValid(parseISO(detail.date)) ? format(parseISO(detail.date), 'dd/MM/yyyy') : '..../..../....'}`,
+            `de ${detail.startTime || '......h......'} à ${detail.endTime || '......h......'}`,
+            calculateHours(detail.startTime, detail.endTime)
+        ]);
+        while (tableBody.length < 2) { tableBody.push([`Le : ..../..../....`, `de ......h...... à ......h......`, '']); }
+
+        doc.autoTable({
+            startY: currentY,
+            head: [['', 'Horaires', "Nombre total\nd'heures"]],
+            body: tableBody,
+            theme: 'grid',
+            styles: { lineWidth: 1, lineColor: [0, 0, 0], halign: 'center', valign: 'middle' },
+            headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], halign: 'center' },
+            margin: { left: margin, right: margin }
+        });
+        currentY = (doc as any).autoTable.previous.finalY + 30;
+
+        // --- SUMMARY & LOCATION ---
+        doc.text(`Au total, le dépassement représente ${request.totalOvertimeHours || '.....'} heures en plus de l'horaire prévu.`, margin, currentY);
+        currentY += 35;
+        doc.text(`Fait à : Brebières`, margin, currentY);
+        doc.text(`Le : ${format(new Date(), 'dd/MM/yyyy')}`, pageWidth / 2 + 50, currentY);
+        currentY += 70;
+        
+        // --- SIGNATURES ---
+        const sigBoxWidth = 220; const sigBoxHeight = 80;
+        doc.rect(margin, currentY, sigBoxWidth, sigBoxHeight);
+        doc.text(request.employeeName, margin + sigBoxWidth / 2, currentY + 35, { align: 'center' });
+        doc.text("Signature du demandeur", margin + sigBoxWidth / 2, currentY + sigBoxHeight + 15, { align: 'center' });
+        doc.rect(pageWidth - margin - sigBoxWidth, currentY, sigBoxWidth, sigBoxHeight);
+        doc.text("Mr Dernoncourt Julien", pageWidth - margin - sigBoxWidth / 2, currentY + 30, { align: 'center' });
+        doc.text("Chef de cuisine IME Brebières", pageWidth - margin - sigBoxWidth / 2, currentY + 45, { align: 'center' });
+        doc.text("Signature du responsable", pageWidth - margin - sigBoxWidth / 2, currentY + sigBoxHeight + 15, { align: 'center' });
+        currentY += sigBoxHeight + 50;
+
+        // --- FOOTER & DECISION ---
+        const isAccepted = request.approvalStatus === 'accepted';
+        doc.setFontSize(12);
+        const acceptedText = "Demande Accordée";
+        const rejectedText = "Demande refusée";
+        if (isAccepted) {
+            const dims = doc.getTextDimensions(acceptedText);
+            doc.setFillColor(255, 255, 0); // Yellow
+            doc.rect(margin - 2, currentY - dims.h + 2, dims.w + 4, dims.h + 2, 'F');
+        } else {
+             const dims = doc.getTextDimensions(rejectedText);
+             doc.setFillColor(255, 255, 0); // Yellow
+             doc.rect(margin + 130 - 2, currentY - dims.h + 2, dims.w + 4, dims.h + 2, 'F');
+        }
+        doc.setTextColor(0,0,0);
+        doc.text(acceptedText, margin, currentY);
+        doc.text("/", margin + 115, currentY);
+        doc.text(rejectedText, margin + 130, currentY);
+        doc.setFontSize(10);
+        doc.text("version février 2022", pageWidth - margin, currentY, { align: 'right' });
+
+        // --- SAVE ---
+        doc.save(`Demande_Depassement_Horaire_${request.employeeName.replace(/\s+/g, '_')}.pdf`);
+        toast({ title: "PDF Généré", description: `La demande de dépassement a été téléchargée.` });
+    } catch (e) {
+        console.error("Erreur génération PDF dépassement:", e);
+        toast({ title: "Erreur génération PDF", description: (e as Error).message, variant: "destructive" });
+    }
   };
 
-  const handleGenerateScheduleChangeRequestPdf = (request: ScheduleChangeRequest) => {
-    const pdfSettings = getPdfLayoutSettings('schedule_change_request_form');
-    const doc = new jsPDF({ orientation: pdfSettings.orientation, unit: 'pt', format: pdfSettings.pageSize }) as jsPDFWithAutoTable;
-    doc.setFont(pdfSettings.fontFamily);
-    const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
-    let currentY = pdfSettings.marginTop;
 
-    if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) { try { const imgProps = doc.getImageProperties(pdfSettings.logoUrl); const formatType = imgProps.fileType.toUpperCase(); const desiredHeight = 30; const imgWidth = (imgProps.width * desiredHeight) / imgProps.height; doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight); currentY += desiredHeight + 5; } catch(e){ console.error("Error drawing logo in PDF:", e); }}
-    if (pdfSettings.headerText) { const headerLines = pdfSettings.headerText.split('\n'); doc.setFontSize(pdfSettings.headerFontSize); headerLines.forEach(line => { doc.text(line, pdfSettings.marginLeft, currentY); currentY += pdfSettings.headerFontSize * 0.7 + 2; }); currentY += 5; }
+     const handleGenerateAbsenceRequestPdf = async (request: AbsenceRequest) => {
+    try {
+        const fetchImageAsBase64 = (url: string): Promise<string | null> => {
+             return new Promise(async (resolve) => {
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) { resolve(null); return; }
+                    const blob = await response.blob();
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.onerror = () => resolve(null);
+                    reader.readAsDataURL(blob);
+                } catch { resolve(null); }
+            });
+        };
 
-    const moduleDefaultTitle = "Demande de Changement d'Horaire";
-    let pdfTitle;
-    if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
-      pdfTitle = `${pdfSettings.documentBaseTitle} - ${moduleDefaultTitle}`;
-    } else {
-      pdfTitle = moduleDefaultTitle;
+        const logoUrl = '/logo/logo1.png';
+        const logoBase64 = await fetchImageAsBase64(logoUrl);
+
+        const doc = new jsPDF('p', 'pt', 'a4') as jsPDFWithAutoTable;
+        const pageWidth = doc.internal.pageSize.width;
+        const margin = 40;
+
+        // Fond de page rose claire 
+
+        doc.setFillColor(255, 182, 193); // Définit la couleur de remplissage 
+        doc.rect(0, 0, pageWidth, doc.internal.pageSize.height, 'F'); // Dessine un rectangle rempli sur toute la page
+
+
+
+
+        // --- HEADER TABLE (Same as Overtime) ---
+        let currentY = margin;
+        const headerTableHeight = 50; 
+        doc.autoTable({
+            startY: currentY,
+            body: [['', '', '']], 
+            theme: 'grid',
+            styles: { cellPadding: 0, lineWidth: 1, lineColor: 0, minCellHeight: headerTableHeight, valign: 'middle' },
+            columnStyles: {
+                0: { cellWidth: 160, styles: { cellPadding: 2 } },
+                1: { cellWidth: 'auto', halign: 'center' },
+                2: { cellWidth: 150, halign: 'center' }
+            },
+            didDrawCell: (data) => {
+                if (data.row.index === 0) {
+                    const cell = data.cell;
+                    if (data.column.index === 0) { // Logo
+                        if (logoBase64) {
+                            const logoWidth = 80; const logoHeight = 34;
+                            const x = cell.x + (cell.width - logoWidth) / 2;
+                            const y = cell.y + (cell.height - logoHeight) / 2;
+                            doc.addImage(logoBase64, 'PNG', x, y, logoWidth, logoHeight, undefined, 'FAST');
+                        }
+                    } else if (data.column.index === 1) { // Title
+                        doc.setFontSize(12);
+                        doc.setFont(undefined, 'bold');
+                        doc.text("DEMANDE D'AUTORISATION\nD'ABSENCE", cell.x + cell.width / 2, cell.y + cell.height / 2, { align: 'center', baseline: 'middle' });
+                    } else if (data.column.index === 2) { // Ref
+                        doc.setFontSize(9);
+                        doc.setFont(undefined, 'normal');
+                        const topBoxHeight = cell.height * 0.5;
+                        doc.text("16-MES-F-04 Version 2.1", cell.x + cell.width / 2, cell.y + topBoxHeight / 2, { align: 'center', baseline: 'middle' });
+                        doc.line(cell.x, cell.y + topBoxHeight, cell.x + cell.width, cell.y + topBoxHeight);
+                        doc.text("Pôle Enfance de la Gohelle", cell.x + cell.width / 2, cell.y + topBoxHeight + (cell.height - topBoxHeight) / 2, { align: 'center', baseline: 'middle' });
+                    }
+                }
+            },
+            margin: { left: margin, right: margin }
+        });
+        currentY = (doc as any).autoTable.previous.finalY + 20;
+        doc.setFont(undefined, 'normal');
+        
+        // --- MAIN INFO ---
+        doc.setFontSize(9);
+        doc.text("La demande doit être soumise à l'avis du pilote de prestation avec un préavis de 48h si possible", margin, currentY);
+        currentY += 30;
+
+        const drawUnderlinedText = (label: string, value: string, y: number) => {
+            doc.setFontSize(10);
+            const labelDims = doc.getTextDimensions(label);
+            doc.text(label, margin, y);
+            doc.setLineWidth(0.5);
+            doc.line(margin, y + 2, margin + labelDims.w, y + 2);
+            doc.text(value, margin + labelDims.w + 8, y);
+        }
+
+        drawUnderlinedText("Nom et Prénom:", request.employeeName || '.....................................', currentY);
+        currentY += 25;
+        drawUnderlinedText("Poste occupé à l'IME:", request.position || '.....................................', currentY);
+        currentY += 30;
+
+        // --- PRESTATIONS ---
+        const prestLabel = "Prestation :";
+        const prestLabelDims = doc.getTextDimensions(prestLabel);
+        doc.text(prestLabel, margin, currentY);
+        doc.setLineWidth(0.5);
+        doc.line(margin, currentY + 2, margin + prestLabelDims.w, currentY + 2);
+        doc.setFontSize(8);
+        doc.text("Entourer la prestation correspondante", margin + 100, currentY);
+        doc.setFontSize(10);
+        currentY += 25;
+        
+        const allPrestations = {
+            'Hébergement': { x: margin + 50, y: currentY }, 'Educatif': { x: margin + 180, y: currentY }, 'Médico-psycho-sociale': { x: margin + 310, y: currentY },
+            'Administratif': { x: margin + 50, y: currentY + 20 }, 'Logistique': { x: margin + 180, y: currentY + 20 }
+        };
+        const requestPrestationLabels = (request.prestationTypes || []).map(p => PRESTATION_TYPE_LABELS[p as PrestationType] || p);
+        Object.entries(allPrestations).forEach(([label, pos]) => {
+            if (requestPrestationLabels.includes(label)) {
+                const dims = doc.getTextDimensions(label);
+                doc.setFillColor(255, 255, 0);
+                doc.rect(pos.x - 2, pos.y - dims.h + 2, dims.w + 4, dims.h, 'F');
+            }
+            doc.text(label, pos.x, pos.y);
+        });
+        currentY += 45;
+
+        // --- MOTIF ---
+        const motifLabel = "Motif de la demande :";
+        const motifLabelDims = doc.getTextDimensions(motifLabel);
+        doc.text(motifLabel, margin, currentY);
+        doc.setLineWidth(0.5);
+        doc.line(margin, currentY + 2, margin + motifLabelDims.w, currentY + 2);
+        // Use a simple line for the motif value
+        doc.line(margin + motifLabelDims.w + 5, currentY + 2, pageWidth - margin, currentY + 2);
+        doc.text(request.reason || '', margin + motifLabelDims.w + 8, currentY, {maxWidth: pageWidth - margin * 2 - motifLabelDims.w - 8});
+        currentY += 40;
+
+        // --- NEW ABSENCE TABLE ---
+        doc.autoTable({
+            startY: currentY,
+            head: [[
+                { content: "Date de l'absence prévue (jours et/ou heures initialement travaillés)", colSpan: 3 }
+            ]],
+            body: [
+                [
+                    `Le : ${isValid(parseISO(request.startDate)) ? format(parseISO(request.startDate), 'dd/MM/yyyy') : '..../..../....'}`,
+                    'Horaires', 
+                    'Nombre total d\'heures'
+                ],
+                ['', 'Matin ................... de .......... H .......... À .......... H ..........', '................... H ...................'],
+                ['', 'Après-midi ............ de .......... H .......... À .......... H ..........', '................... H ...................'],
+            ],
+            theme: 'grid',
+            styles: { lineWidth: 1, lineColor: 0, halign: 'center' },
+            headStyles: { fontStyle: 'bold', fillColor: [255, 255, 255], textColor: [0, 0, 0] },
+
+            columnStyles: { 0: { cellWidth: 120 }, 1: { cellWidth: 'auto' }, 2: { cellWidth: 120 } },
+            didParseCell: (data) => {
+                if (data.row.index > 0) { // For Matin/Apres-midi rows
+                    data.cell.styles.halign = 'left';
+                }
+                if (data.row.index === 1 && data.column.index === 2) {
+                     data.cell.text = [`${request.totalAbsenceHours || '...'} H`];
+                     data.cell.styles.halign = 'center';
+                     data.cell.styles.valign = 'middle';
+                }
+            },
+            willDrawCell: (data) => {
+                 if (data.row.index === 1 && data.column.index === 2) {
+                     // Merge the cell for total hours
+                     data.cell.rowSpan = 2;
+                 }
+            },
+            margin: { left: margin, right: margin }
+        });
+        currentY = (doc as any).autoTable.previous.finalY + 20;
+
+        // --- SUMMARY & LOCATION ---
+        doc.text(`Au total, l'absence représente ........ ${request.totalAbsenceHours || '...'} ........ heures ........ en moins de l'horaire prévu.`, margin, currentY);
+        currentY += 35;
+        doc.text(`Fait à : Brebières`, margin, currentY);
+        doc.text(`Le : ${format(new Date(), 'dd/MM/yyyy')}`, pageWidth / 2 + 50, currentY);
+        currentY += 70;
+        
+        // --- SIGNATURES ---
+        const sigBoxWidth = 220; const sigBoxHeight = 80;
+        doc.rect(margin, currentY, sigBoxWidth, sigBoxHeight);
+        doc.text(request.employeeName, margin + sigBoxWidth / 2, currentY + 35, { align: 'center' });
+        doc.text("Signature du demandeur", margin + sigBoxWidth / 2, currentY + sigBoxHeight + 15, { align: 'center' });
+        doc.rect(pageWidth - margin - sigBoxWidth, currentY, sigBoxWidth, sigBoxHeight);
+        doc.text("Mr Dernoncourt Julien", pageWidth - margin - sigBoxWidth / 2, currentY + 30, { align: 'center' });
+        doc.text("Chef de cuisine IME Brebières", pageWidth - margin - sigBoxWidth / 2, currentY + 45, { align: 'center' });
+        doc.text("Signature du responsable", pageWidth - margin - sigBoxWidth / 2, currentY + sigBoxHeight + 15, { align: 'center' });
+        currentY += sigBoxHeight + 50;
+
+        // --- FOOTER & DECISION ---
+        const isAccepted = request.approvalStatus === 'accepted';
+        doc.setFontSize(12);
+        const acceptedText = "Demande Accordée";
+        const rejectedText = "Demande refusée";
+        if (isAccepted) {
+            const dims = doc.getTextDimensions(acceptedText);
+            doc.setFillColor(255, 255, 0); // Yellow
+            doc.rect(margin - 2, currentY - dims.h + 2, dims.w + 4, dims.h + 2, 'F');
+        } else {
+             const dims = doc.getTextDimensions(rejectedText);
+             doc.setFillColor(255, 255, 0); // Yellow
+             doc.rect(margin + 130 - 2, currentY - dims.h + 2, dims.w + 4, dims.h + 2, 'F');
+        }
+        doc.setTextColor(0,0,0);
+        doc.text(acceptedText, margin, currentY);
+        doc.text("/", margin + 115, currentY);
+        doc.text(rejectedText, margin + 130, currentY);
+        doc.setFontSize(10);
+        doc.text("version septembre 2025", pageWidth - margin, currentY, { align: 'right' });
+
+        // --- SAVE ---
+        doc.save(`Demande_Absence_${request.employeeName.replace(/\s+/g, '_')}.pdf`);
+        toast({ title: "PDF Généré", description: `La demande d'absence a été téléchargée.` });
+    } catch (e) {
+        console.error("Erreur génération PDF absence:", e);
+        toast({ title: "Erreur génération PDF", description: (e as Error).message, variant: "destructive" });
     }
-    doc.setFontSize(pdfSettings.documentTitleFontSize);
-    doc.text(pdfTitle, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
-    currentY += pdfSettings.documentTitleFontSize * 0.7 + 10;
-
-    doc.setFontSize(pdfSettings.defaultFontSize);
-    doc.text(`Nom et prénom du salarié : ${request.employeeName || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    doc.text(`Poste occupé à l'IME : ${request.position || 'N/A'}`, pdfSettings.marginLeft, currentY); currentY += 15;
-
-    const prestationChangeText = (request.prestationTypes || []).map(pt => PRESTATION_TYPE_LABELS[pt] || pt).join(', ') +
-      ((request.prestationTypes || []).includes('autres') && request.prestationTypeAutresDetail ? ` (${request.prestationTypeAutresDetail})` : '');
-    doc.text(`Prestation correspondante : ${prestationChangeText || 'Logistique'}`, pdfSettings.marginLeft, currentY); currentY += 20;
-
-    doc.setFontSize((pdfSettings.defaultFontSize || 10) + 1);
-    doc.text("Détails du changement d'horaire demandé :", pdfSettings.marginLeft, currentY);
-    currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 5;
-
-    // CORRECTION: Amélioration du corps du tableau pour plus de clarté
-    const tableBody = [];
-    tableBody.push(['Date du changement', request.date && isValid(parseISO(request.date)) ? format(parseISO(request.date), 'dd MMMM yyyy', { locale: fr }) : 'N/A']);
-    const originalSchedule = request.originalStartTime ? `${request.originalStartTime} - ${request.originalEndTime}` : "Non spécifié";
-    tableBody.push(['Horaire initial prévu', originalSchedule]);
-    tableBody.push(['Nouvel horaire demandé', `${request.newStartTime || 'N/A'} - ${request.newEndTime || 'N/A'}`]);
-    if (request.reason) {
-        tableBody.push(['Motif du changement', request.reason]);
-    }
-    const headStyles: any = { fontSize: pdfSettings.tableHeaderFontSize, fontStyle: 'bold', fillColor: [230, 230, 230], textColor: [0,0,0] };
-
-     if (pdfSettings.primaryColor) { const primaryRgb = hexToRgb(pdfSettings.primaryColor); if (primaryRgb) { headStyles.fillColor = primaryRgb; const brightness = (primaryRgb[0] * 299 + primaryRgb[1] * 587 + primaryRgb[2] * 114) / 1000; headStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255]; }}
-
-    doc.autoTable({ startY: currentY, head: [['Champ', 'Information']], body: tableBody, theme: 'grid', headStyles: headStyles, styles: { fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily, cellPadding: 3, }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 180 }, 1: { cellWidth: 'auto' } }, margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight }, });
-    currentY = (doc as any).lastAutoTable.finalY + 20;
-
-    const sigDate = (dateStr: string | null | undefined) => dateStr && isValid(parseISO(dateStr)) ? format(parseISO(dateStr), "dd/MM/yyyy", { locale: fr }) : 'Non signé';
-    doc.text(`Salarié(e) le : ${sigDate(request.employeeSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    doc.text(`Le Responsable Direct le : ${sigDate(request.directManagerSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    doc.text(`Le Directeur le : ${sigDate(request.directorSignatureDate)}`, pdfSettings.marginLeft, currentY); currentY += 25;
-
-    doc.setFont(undefined, 'bold'); doc.text("CADRE RESERVE A LA DIRECTION", pdfSettings.marginLeft, currentY); doc.setFont(undefined, 'normal'); currentY += 15;
-    doc.text(`Acceptée / Refusée : ${getStatusLabel(request.approvalStatus)}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    if (request.approvalStatus === 'rejected' && request.rejectionReason) { doc.text(`Si refusée, motif : ${request.rejectionReason}`, pdfSettings.marginLeft, currentY); currentY += 15; }
-    doc.text(`Date : ${sigDate(request.decisionDate)}`, pdfSettings.marginLeft, currentY); currentY += 15;
-    doc.text(`Signature de la Direction : Dernoncourt Julien / Chef de cuisine`, pdfSettings.marginLeft, currentY);
-
-    const pageCount = doc.internal.getNumberOfPages(); for (let i = 1; i <= pageCount; i++) { doc.setPage(i); if (pdfSettings.footerText) { let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', i.toString()).replace('{totalPages}', pageCount.toString()); doc.setFontSize(pdfSettings.footerFontSize); doc.text(footerStr, pdfSettings.marginLeft, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2)); }}
-    doc.save(`Demande_Changement_Horaire_${request.employeeName.replace(/\s+/g, '_')}_${format(parseISO(request.date), "yyyy-MM-dd")}.pdf`);
-    toast({ title: "PDF Généré", description: `Le PDF pour la demande de changement d'horaire de ${request.employeeName} a été téléchargé.` });
   };
+
+     const handleGenerateScheduleChangeRequestPdf = async (request: ScheduleChangeRequest) => {
+    try {
+        const fetchImageAsBase64 = (url: string): Promise<string | null> => {
+             return new Promise(async (resolve) => {
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) { resolve(null); return; }
+                    const blob = await response.blob();
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.onerror = () => resolve(null);
+                    reader.readAsDataURL(blob);
+                } catch { resolve(null); }
+            });
+        };
+
+        const logoUrl = '/logo/logo1.png';
+        const logoBase64 = await fetchImageAsBase64(logoUrl);
+
+        const doc = new jsPDF('p', 'pt', 'a4') as jsPDFWithAutoTable;
+        const pageWidth = doc.internal.pageSize.width;
+        const margin = 40;
+
+        // fond de page couleur jaune clair
+
+        doc.setFillColor(255, 255, 224); // Définit la couleur de remplissage (un jaune très clair)
+        doc.rect(0, 0, pageWidth, doc.internal.pageSize.height, 'F'); // Dessine un rectangle rempli sur toute la page
+
+
+        // --- HEADER ---
+        let currentY = margin;
+        const headerTableHeight = 50; 
+        doc.autoTable({
+            startY: currentY,
+            body: [['', '', '']], 
+            theme: 'grid', styles: { cellPadding: 0, lineWidth: 1, lineColor: 0, minCellHeight: headerTableHeight, valign: 'middle' },
+            columnStyles: {
+                0: { cellWidth: 160, styles: { cellPadding: 2 } },
+                1: { cellWidth: 'auto', halign: 'center' },
+                2: { cellWidth: 150, halign: 'center' }
+            },
+            didDrawCell: (data) => {
+                if (data.row.index === 0) {
+                    const cell = data.cell;
+                    if (data.column.index === 0) {
+                        if (logoBase64) {
+                            const logoWidth = 80; const logoHeight = 34;
+                            const x = cell.x + (cell.width - logoWidth) / 2;
+                            const y = cell.y + (cell.height - logoHeight) / 2;
+                            doc.addImage(logoBase64, 'PNG', x, y, logoWidth, logoHeight, undefined, 'FAST');
+                        }
+                    } else if (data.column.index === 1) {
+                        doc.setFontSize(12); doc.setFont(undefined, 'bold');
+                        doc.text("DEMANDE D'INVERSION\nHORAIRE", cell.x + cell.width / 2, cell.y + cell.height / 2, { align: 'center', baseline: 'middle' });
+                    } else if (data.column.index === 2) {
+                        doc.setFontSize(9); doc.setFont(undefined, 'normal');
+                        const topBoxHeight = cell.height * 0.5;
+                        doc.text("16-MES-F-02 Version 2.1", cell.x + cell.width / 2, cell.y + topBoxHeight / 2, { align: 'center', baseline: 'middle' });
+                        doc.line(cell.x, cell.y + topBoxHeight, cell.x + cell.width, cell.y + topBoxHeight);
+                        doc.text("Pôle Enfance de la Gohelle", cell.x + cell.width / 2, cell.y + topBoxHeight + (cell.height - topBoxHeight) / 2, { align: 'center', baseline: 'middle' });
+                    }
+                }
+            },
+            margin: { left: margin, right: margin }
+        });
+        currentY = (doc as any).autoTable.previous.finalY + 15;
+        doc.setFont(undefined, 'normal');
+        
+        // --- MAIN INFO ---
+        doc.setFontSize(9);
+        doc.text("La demande doit être soumise à l'avis du pilote de prestation avec un préavis de 48h si possible", margin, currentY);
+        currentY += 25;
+
+        const drawUnderlinedText = (label: string, value: string, y: number) => {
+            doc.setFontSize(10); const labelDims = doc.getTextDimensions(label);
+            doc.text(label, margin, y); doc.setLineWidth(0.5);
+            doc.line(margin, y + 2, margin + labelDims.w, y + 2);
+            doc.text(value, margin + labelDims.w + 8, y);
+        }
+
+        drawUnderlinedText("Nom et Prénom:", request.employeeName || '.....................................', currentY);
+        currentY += 25;
+        drawUnderlinedText("Poste occupé au PEG:", request.position || '.....................................', currentY);
+        currentY += 25;
+
+        // --- PRESTATIONS ---
+        const prestLabel = "Prestation :";
+        const prestLabelDims = doc.getTextDimensions(prestLabel);
+        doc.text(prestLabel, margin, currentY); doc.setLineWidth(0.5);
+        doc.line(margin, currentY + 2, margin + prestLabelDims.w, currentY + 2);
+        doc.setFontSize(8); doc.text("Entourer la prestation correspondante", margin + 100, currentY);
+        doc.setFontSize(10); currentY += 25;
+        
+        const allPrestations = {
+            'Hébergement': { x: margin + 50, y: currentY }, 'Educatif': { x: margin + 180, y: currentY }, 'Médico-psycho-sociale': { x: margin + 310, y: currentY },
+            'Administratif': { x: margin + 50, y: currentY + 20 }, 'Logistique': { x: margin + 180, y: currentY + 20 }
+        };
+        const requestPrestationLabels = (request.prestationTypes || []).map(p => PRESTATION_TYPE_LABELS[p as PrestationType] || p);
+        Object.entries(allPrestations).forEach(([label, pos]) => {
+            if (requestPrestationLabels.includes(label)) {
+                const dims = doc.getTextDimensions(label); doc.setFillColor(255, 255, 0);
+                doc.rect(pos.x - 2, pos.y - dims.h + 2, dims.w + 4, dims.h, 'F');
+            }
+            doc.text(label, pos.x, pos.y);
+        });
+        currentY += 40;
+
+        // --- MOTIF (THE REAL CORRECTION) ---
+        const motifLabel = "Motif de la demande :";
+        const motifLabelDims = doc.getTextDimensions(motifLabel);
+        doc.text(motifLabel, margin, currentY);
+        doc.setLineWidth(0.5);
+        doc.line(margin, currentY + 2, margin + motifLabelDims.w, currentY + 2);
+        doc.line(margin + motifLabelDims.w + 5, currentY + 2, pageWidth - margin, currentY + 2);
+        doc.text(request.reasonStub || '', margin + motifLabelDims.w + 8, currentY, { maxWidth: pageWidth - margin * 2 - motifLabelDims.w - 8 });
+        currentY += 25;
+
+        // --- DYNAMIC TABLES & CALCULATION LOGIC ---
+        const calculateDuration = (start?: string, end?: string): { totalMinutes: number, formatted: string } => {
+            if (!start || !end || start.trim() === '' || end.trim() === '') return { totalMinutes: 0, formatted: '.........' };
+            try {
+                const [startH, startM] = start.split(':').map(Number);
+                const [endH, endM] = end.split(':').map(Number);
+                if (isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM)) return { totalMinutes: 0, formatted: '.........' };
+                let totalMinutes = (endH * 60 + endM) - (startH * 60 + startM);
+                if (totalMinutes < 0) totalMinutes = 0;
+                const h = Math.floor(totalMinutes / 60);
+                const m = totalMinutes % 60;
+                return { totalMinutes, formatted: `${h}h${m > 0 ? String(m).padStart(2, '0') : ''}` };
+            } catch { return { totalMinutes: 0, formatted: '.........' }; }
+        };
+        
+        let totalDiffMinutes = 0;
+        const allDetails = request.scheduleChangeDetails || [];
+        allDetails.forEach(detail => {
+            const originalDuration = calculateDuration(detail.originalStartTime, detail.originalEndTime);
+            const newDuration = calculateDuration(detail.newStartTime, detail.newEndTime);
+            totalDiffMinutes += newDuration.totalMinutes - originalDuration.totalMinutes;
+        });
+
+        const absences = allDetails.filter(d => calculateDuration(d.originalStartTime, d.originalEndTime).totalMinutes > 0);
+        const recoveries = allDetails.filter(d => calculateDuration(d.newStartTime, d.newEndTime).totalMinutes > 0);
+
+        for (let i = 0; i < 2; i++) {
+            const absenceDetail = absences[i];
+            const recoveryDetail = recoveries[i];
+
+            const originalDuration = absenceDetail ? calculateDuration(absenceDetail.originalStartTime, absenceDetail.originalEndTime) : { formatted: '.........' };
+            const newDuration = recoveryDetail ? calculateDuration(recoveryDetail.newStartTime, recoveryDetail.newEndTime) : { formatted: '.........' };
+            
+            const absenceDate = absenceDetail?.date;
+            const recoveryDate = recoveryDetail?.date;
+
+            if (i > 0) { 
+                doc.setLineWidth(0.5);
+                doc.line(margin, currentY + 5, pageWidth - margin, currentY + 5);
+                currentY += 15;
+            }
+
+            const absenceBody = [
+                [{ content: `Le : ${absenceDate && isValid(new Date(absenceDate)) ? format(new Date(absenceDate), 'dd/MM/yyyy') : '..../..../....'}`, styles: { halign: 'center' } }, `Matin .................. de ${absenceDetail?.originalStartTime || '...'} H à ${absenceDetail?.originalEndTime || '...'} H`, { content: `${originalDuration.formatted} H`, styles: { halign: 'center' }}],
+                [{ content: '', styles: { minCellHeight: 20 } }, 'Après-midi ............ de .......... H .......... À .......... H ..........', { content: '......... H', styles: { halign: 'center' }}],
+            ];
+            const recoveryBody = [
+                 [{ content: `Le : ${recoveryDate && isValid(new Date(recoveryDate)) ? format(new Date(recoveryDate), 'dd/MM/yyyy') : '..../..../....'}`, styles: { halign: 'center' } }, `Matin .................. de ${recoveryDetail?.newStartTime || '...'} H à ${recoveryDetail?.newEndTime || '...'} H`, { content: `${newDuration.formatted} H`, styles: { halign: 'center' }}],
+                 [{ content: '', styles: { minCellHeight: 20 } }, 'Après-midi ............ de .......... H .......... À .......... H ..........', { content: '......... H', styles: { halign: 'center' }}],
+            ];
+
+            doc.autoTable({
+                startY: currentY,
+                head: [[{ content: "Date de l'absence prévue (jours et/ou heures initialement travaillés)", colSpan: 3 }]],
+                body: absenceBody, theme: 'grid', styles: { lineWidth: 1, lineColor: 0, halign: 'left', valign: 'middle' },
+                headStyles: { fontStyle: 'bold', fillColor: [255, 255, 255], textColor: [0, 0, 0], halign: 'center' },
+                columnStyles: { 0: { cellWidth: 120 }, 2: { cellWidth: 120 } }
+            });
+            currentY = (doc as any).autoTable.previous.finalY;
+            doc.autoTable({
+                startY: currentY,
+                head: [[{ content: "Proposition de récupération (jours et/ou heures travaillés exceptionnellement)", colSpan: 3 }]],
+                body: recoveryBody, theme: 'grid', styles: { lineWidth: 1, lineColor: 0, halign: 'left', valign: 'middle' },
+                headStyles: { fontStyle: 'bold', fillColor: [255, 255, 255], textColor: [0, 0, 0], halign: 'center' },
+                columnStyles: { 0: { cellWidth: 120 }, 2: { cellWidth: 120 } }
+            });
+            currentY = (doc as any).autoTable.previous.finalY;
+        }
+        currentY += 15;
+
+        // --- SUMMARY ---
+        let summaryPlus = '................ heures ................';
+        let summaryMoins = '................ heures ................';
+
+        if (totalDiffMinutes !== 0) {
+            const absDiffMinutes = Math.abs(totalDiffMinutes);
+            const h = Math.floor(absDiffMinutes / 60);
+            const m = absDiffMinutes % 60;
+            const diffFormatted = `${h > 0 ? `${h} heures` : ''}${m > 0 ? ` ${m}` : ''}`.trim();
+            if (totalDiffMinutes > 0) {
+                summaryPlus = `........ ${diffFormatted} ........`;
+            } else {
+                summaryMoins = `........ ${diffFormatted} ........`;
+            }
+        }
+        
+        doc.text(`Au total, l'inversion représente ${summaryPlus} en plus de l'horaire prévu.`, margin, currentY);
+        currentY += 15;
+        doc.text(`ou ${summaryMoins} en moins de l'horaire prévu.`, margin + 110, currentY);
+        currentY += 30;
+
+        // --- SIGNATURES ---
+        const sigBoxWidth = 220; const sigBoxHeight = 60;
+        doc.rect(margin, currentY, sigBoxWidth, sigBoxHeight);
+        doc.text(request.employeeName, margin + sigBoxWidth / 2, currentY + 25, { align: 'center' });
+        doc.text("Signature du demandeur", margin + sigBoxWidth / 2, currentY + sigBoxHeight + 12, { align: 'center' });
+        doc.rect(pageWidth - margin - sigBoxWidth, currentY, sigBoxWidth, sigBoxHeight);
+        doc.text("Mr Dernoncourt Julien", pageWidth - margin - sigBoxWidth / 2, currentY + 20, { align: 'center' });
+        doc.text("Chef de cuisine IME Brebières", pageWidth - margin - sigBoxWidth / 2, currentY + 35, { align: 'center' });
+        doc.text("Signature du responsable", pageWidth - margin - sigBoxWidth / 2, currentY + sigBoxHeight + 12, { align: 'center' });
+        currentY += sigBoxHeight + 30;
+
+        // --- FOOTER ---
+        doc.text(`Fait à : Brebières`, margin, currentY);
+        doc.text(`le : ${format(new Date(), 'dd/MM/yyyy')}`, pageWidth / 2 + 50, currentY);
+        currentY += 30;
+
+        const isAccepted = request.approvalStatus === 'accepted';
+        doc.setFontSize(12);
+        const acceptedText = "Demande Accordée";
+        const rejectedText = "Demande refusée";
+        if (isAccepted) {
+            const dims = doc.getTextDimensions(acceptedText);
+            doc.setFillColor(255, 255, 0); doc.rect(margin - 2, currentY - dims.h + 2, dims.w + 4, dims.h + 2, 'F');
+        } else {
+             const dims = doc.getTextDimensions(rejectedText);
+             doc.setFillColor(255, 255, 0); doc.rect(margin + 130 - 2, currentY - dims.h + 2, dims.w + 4, dims.h + 2, 'F');
+        }
+        doc.setTextColor(0,0,0);
+        doc.text(acceptedText, margin, currentY);
+        doc.text("/", margin + 115, currentY);
+        doc.text(rejectedText, margin + 130, currentY);
+        doc.setFontSize(10);
+        doc.text("version septembre 2025", pageWidth - margin, currentY, { align: 'right' });
+
+        // --- SAVE ---
+        doc.save(`Demande_Inversion_Horaire_${request.employeeName.replace(/\s+/g, '_')}.pdf`);
+        toast({ title: "PDF Généré", description: `La demande d'inversion d'horaire a été téléchargée.` });
+    } catch (e) {
+        console.error("Erreur génération PDF changement horaire:", e);
+        toast({ title: "Erreur génération PDF", description: (e as Error).message, variant: "destructive" });
+    }
+  };
+
+
+
+
+                  // section PDF FIN
+
+
 
   if (!isClient || isLoading) {
     return (

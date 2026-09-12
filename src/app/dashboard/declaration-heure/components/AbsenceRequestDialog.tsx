@@ -116,6 +116,8 @@ export default function AbsenceRequestDialog({
   const [displayedNumberOfDays, setDisplayedNumberOfDays] = useState<string>('1 jour(s)');
   const [displayedTotalAbsenceHours, setDisplayedTotalAbsenceHours] = useState<string>('0.0 heures');
 
+  const isChefCreating = useMemo(() => !editingRequest && currentUser?.name?.toLowerCase() === 'chef', [editingRequest, currentUser]);
+
   useEffect(() => {
     let days = 1;
     if (formStartDate && isValid(formStartDate)) {
@@ -147,30 +149,45 @@ export default function AbsenceRequestDialog({
   }, [isApproverView, editingRequest]);
 
   const employeeFieldsActuallyDisabled = useMemo(() => {
+    if (isChefCreating) return false;
     return (isApproverView && !!editingRequest) || isFormLockedForEmployee;
-  }, [isApproverView, editingRequest, isFormLockedForEmployee]);
+  }, [isApproverView, editingRequest, isFormLockedForEmployee, isChefCreating]);
   
   const directionFieldsActuallyDisabled = useMemo(() => {
+    if (isChefCreating) return false;
     return !isApproverView;
-  }, [isApproverView]);
+  }, [isApproverView, isChefCreating]);
 
   useEffect(() => {
     if (isOpen) {
+      const isChef = currentUser?.name?.toLowerCase() === 'chef';
+      
       let initialPosition = editingRequest?.position || '';
-      if (!editingRequest && currentUser?.role) {
-        initialPosition = currentUser.role;
+      if (!editingRequest) {
+        if (isChef) {
+          initialPosition = 'Chef de cuisine';
+        } else if (currentUser?.role) {
+          initialPosition = currentUser.role;
+        }
       }
 
       let empSigDate = editingRequest?.employeeSignatureDate && isValid(parseISO(editingRequest.employeeSignatureDate)) ? parseISO(editingRequest.employeeSignatureDate) : null;
       let managerSigDate = editingRequest?.directManagerSignatureDate && isValid(parseISO(editingRequest.directManagerSignatureDate)) ? parseISO(editingRequest.directManagerSignatureDate) : null;
       let directorSigDate = editingRequest?.directorSignatureDate && isValid(parseISO(editingRequest.directorSignatureDate)) ? parseISO(editingRequest.directorSignatureDate) : null;
       let decDate = editingRequest?.decisionDate && isValid(parseISO(editingRequest.decisionDate)) ? parseISO(editingRequest.decisionDate) : null;
-      
+      let approvalStatus = editingRequest?.approvalStatus || 'pending';
+
       const defaultStartDate = new Date();
       const defaultEndDate = addDays(new Date(), 0);
 
       if (!editingRequest) { 
         empSigDate = new Date();
+        if (isChef) {
+          approvalStatus = 'accepted';
+          decDate = new Date();
+          managerSigDate = new Date();
+          directorSigDate = new Date();
+        }
       } else { 
           if (!isApproverView && !empSigDate) {
               empSigDate = new Date();
@@ -188,27 +205,19 @@ export default function AbsenceRequestDialog({
         employeeSignatureDate: empSigDate,
         directManagerSignatureDate: managerSigDate,
         directorSignatureDate: directorSigDate,
-        approvalStatus: editingRequest?.approvalStatus || 'pending',
+        approvalStatus: approvalStatus,
         rejectionReason: editingRequest?.rejectionReason || '',
         decisionDate: decDate,
       });
     }
   }, [isOpen, editingRequest, currentUser, form, isApproverView]);
 
-  useEffect(() => {
-    if (isOpen && isApproverView && (approvalStatusWatched === 'accepted' || approvalStatusWatched === 'rejected')) {
-      if (!form.getValues('decisionDate')) {
-        form.setValue('decisionDate', new Date());
-      }
-      if (currentUser?.name?.toLowerCase() === 'chef') {
-        if (!form.getValues('directManagerSignatureDate')) form.setValue('directManagerSignatureDate', new Date());
-        if (!form.getValues('directorSignatureDate')) form.setValue('directorSignatureDate', new Date());
-      }
-    }
-  }, [approvalStatusWatched, isApproverView, currentUser, form, isOpen]);
-
 
   const handleSubmit = (data: AbsenceFormData) => {
+    const isChef = currentUser?.name?.toLowerCase() === 'chef';
+    const employeeName = isChef && !editingRequest ? 'Julien Dernoncourt' : (editingRequest?.employeeName || currentUser?.name || "Employé inconnu");
+    const position = isChef && !editingRequest ? 'Chef de cuisine' : (data.position || editingRequest?.position || currentUser?.role || '');
+
     let calculatedNumberOfDays = 1;
     if (data.startDate && data.endDate && isValid(data.startDate) && isValid(data.endDate) && data.endDate >= data.startDate) {
         calculatedNumberOfDays = differenceInCalendarDays(data.endDate, data.startDate) + 1;
@@ -219,8 +228,10 @@ export default function AbsenceRequestDialog({
         calculatedTotalAbsenceHours = calculatedNumberOfDays * data.hoursPerDay;
     }
     
-    const submitData: Partial<Omit<AbsenceRequest, 'id' | 'employeeName' | 'requestDate' | 'updatedAt'>> = {
+    const submitData: Partial<Omit<AbsenceRequest, 'id' | 'requestDate' | 'updatedAt'>> & { employeeName: string } = {
         ...data,
+        employeeName,
+        position,
         startDate: format(data.startDate, 'yyyy-MM-dd'),
         endDate: format(data.endDate, 'yyyy-MM-dd'),
         numberOfDays: calculatedNumberOfDays,
@@ -244,7 +255,7 @@ export default function AbsenceRequestDialog({
       render={({ field }) => (
         <FormItem className="flex flex-col">
           <FormLabel>{label}</FormLabel>
-          <Popover>
+          <Popover modal={true}>
             <PopoverTrigger asChild>
               <FormControl>
                 <Button
@@ -273,7 +284,7 @@ export default function AbsenceRequestDialog({
         <DialogHeader>
           <DialogTitle>{editingRequest ? "Modifier la" : "Nouvelle"} Demande d'Absence</DialogTitle>
           <DialogDescription>
-            {currentUser?.name && `Demandeur: ${currentUser.name}`}
+            {isChefCreating ? `Demandeur: Julien Dernoncourt` : (currentUser?.name && `Demandeur: ${currentUser.name}`)}
             {editingRequest?.employeeName && !currentUser?.name && `Demandeur: ${editingRequest.employeeName}`}
           </DialogDescription>
         </DialogHeader>
@@ -291,7 +302,7 @@ export default function AbsenceRequestDialog({
                         <FormLabel>Nom et prénom du salarié</FormLabel>
                         <FormControl>
                             <Input 
-                            value={editingRequest?.employeeName || currentUser?.name || "Non identifié"} 
+                            value={isChefCreating ? "Julien Dernoncourt" : (editingRequest?.employeeName || currentUser?.name || "Non identifié")} 
                             disabled 
                             className="bg-muted/50" />
                         </FormControl>

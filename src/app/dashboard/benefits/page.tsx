@@ -83,7 +83,7 @@ export default function BenefitsPage() {
   }
 
   return (
-    <div className="container mx-auto p-4 md:p-6 lg:p-8 min-h-screen">
+    <div className="w-full">
       <div className="flex flex-col sm:flex-row items-center justify-between mb-6 gap-4">
         <div className="flex items-center space-x-3">
           <FileSpreadsheet className="w-10 h-10 text-accent" />
@@ -97,12 +97,12 @@ export default function BenefitsPage() {
       </div>
       
       <div className="space-y-8">
-        <Card className="shadow-lg">
+        <Card className="shadow-lg w-full">
           <CardHeader>
             <CardTitle>Suivi Mensuel des Avantages en Nature</CardTitle>
             <CardDescription>
               Sélectionnez un mois et une année, puis remplissez le tableau de suivi pour les employés de la brigade. Les données sont sauvegardées automatiquement dans Firestore.
-              Les employés sont gérés dans la section "Suivi des Heures" &gt; "Gestion Personnel".
+              Les employés sont gérés dans la section "Suivi des Heures" > "Gestion Personnel".
             </CardDescription>
           </CardHeader>
           <CardContent>

@@ -8,13 +8,14 @@ import {
   PMS_RESTAURANT_CLEANING_KEY, 
   PMS_TEMPERATURE_MONITORING_KEY,
   PMS_DELIVERY_MONITORING_KEY,
-  PMS_SUPPLIER_MANAGEMENT_KEY, // Import new key
+  PMS_SUPPLIER_MANAGEMENT_KEY,
+  PMS_CLIENT_MANAGEMENT_KEY,
 } from '../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { PlusCircle, Edit2, Trash2, ShieldAlert, ClipboardEdit, SprayCan, Sparkles, Thermometer, Flame, Loader2, Truck, Building2 } from 'lucide-react'; // Added Truck, Building2
+import { PlusCircle, Edit2, Trash2, ShieldAlert, ClipboardEdit, SprayCan, Sparkles, Thermometer, Flame, Loader2, Truck, Building2 } from 'lucide-react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -40,7 +41,7 @@ const FIRESTORE_COLLECTION_NAME = "pmsConfigurations";
 const FIRESTORE_DOCUMENT_ID = "mainConfig";
 
 const baseZoneSchema = z.object({
-  name: z.string().min(1, "Le nom de la zone/équipement/point de contrôle/fournisseur est requis."),
+  name: z.string().min(1, "Le nom de la zone/équipement/point de contrôle/fournisseur/client est requis."),
 });
 
 const temperatureEquipmentSchema = baseZoneSchema.extend({
@@ -94,7 +95,8 @@ export default function PmsConfigManager() {
     [PMS_RESTAURANT_CLEANING_KEY]: [],
     [PMS_TEMPERATURE_MONITORING_KEY]: [],
     [PMS_DELIVERY_MONITORING_KEY]: [],
-    [PMS_SUPPLIER_MANAGEMENT_KEY]: [], // Add new key here
+    [PMS_SUPPLIER_MANAGEMENT_KEY]: [],
+    [PMS_CLIENT_MANAGEMENT_KEY]: [],
   };
 
   useEffect(() => {
@@ -191,7 +193,8 @@ export default function PmsConfigManager() {
     const itemLabel = 
         currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : 
         currentCategoryKey === PMS_DELIVERY_MONITORING_KEY ? "Point de Contrôle" : 
-        currentCategoryKey === PMS_SUPPLIER_MANAGEMENT_KEY ? "Fournisseur" : "Zone";
+        currentCategoryKey === PMS_SUPPLIER_MANAGEMENT_KEY ? "Fournisseur" : 
+        currentCategoryKey === PMS_CLIENT_MANAGEMENT_KEY ? "Client" : "Zone";
     
     let updatedItemData: PmsZone;
     let newItems: PmsZone[];
@@ -256,7 +259,8 @@ export default function PmsConfigManager() {
     const itemLabel = 
         currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" : 
         currentCategoryKey === PMS_DELIVERY_MONITORING_KEY ? "Point de Contrôle" : 
-        currentCategoryKey === PMS_SUPPLIER_MANAGEMENT_KEY ? "Fournisseur" : "Zone";
+        currentCategoryKey === PMS_SUPPLIER_MANAGEMENT_KEY ? "Fournisseur" : 
+        currentCategoryKey === PMS_CLIENT_MANAGEMENT_KEY ? "Client" : "Zone";
     
     setPmsConfigs(newConfigs); 
 
@@ -375,7 +379,7 @@ export default function PmsConfigManager() {
 
   const renderCategoryConfig = (categoryKey: string, categoryLabel: string, IconComponent: React.ElementType, itemLabel: string = "Zone", taskItemLabel: string = "Tâche") => {
     const itemsForCategory = pmsConfigs[categoryKey] || [];
-    const showTasksForThisCategory = ![PMS_TEMPERATURE_MONITORING_KEY, PMS_SUPPLIER_MANAGEMENT_KEY].includes(categoryKey);
+    const showTasksForThisCategory = ![PMS_TEMPERATURE_MONITORING_KEY, PMS_SUPPLIER_MANAGEMENT_KEY, PMS_CLIENT_MANAGEMENT_KEY].includes(categoryKey);
 
 
     return (
@@ -390,7 +394,7 @@ export default function PmsConfigManager() {
         <CardContent>
           <div className="mb-4">
             <Button onClick={() => handleOpenZoneDialog(categoryKey)} disabled={isLoading || isSaving}>
-              <PlusCircle className="mr-2 h-4 w-4" /> Ajouter {itemLabel === "Zone" || itemLabel === "Point de Contrôle" || itemLabel === "Fournisseur" ? "un(e)" : "un"} {itemLabel.toLowerCase()}
+              <PlusCircle className="mr-2 h-4 w-4" /> Ajouter {itemLabel === "Zone" || itemLabel === "Point de Contrôle" || itemLabel === "Fournisseur" || itemLabel === "Client" ? "un(e)" : "un"} {itemLabel.toLowerCase()}
             </Button>
           </div>
 
@@ -524,21 +528,24 @@ export default function PmsConfigManager() {
       {renderCategoryConfig(PMS_TEMPERATURE_MONITORING_KEY, "Suivi des Températures", Thermometer, "Équipement")}
       {renderCategoryConfig(PMS_DELIVERY_MONITORING_KEY, "Suivi de Livraison", Truck, "Point de Contrôle", "Vérification")}
       {renderCategoryConfig(PMS_SUPPLIER_MANAGEMENT_KEY, "Gestion des Fournisseurs", Building2, "Fournisseur")} 
+      {renderCategoryConfig(PMS_CLIENT_MANAGEMENT_KEY, "Gestion des Clients", Building2, "Client")}
       
       <Dialog open={isZoneDialogOpen} onOpenChange={setIsZoneDialogOpen}>
         <DialogContent className="sm:max-w-lg md:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{editingZone ? "Modifier" : "Nouvel"} {
+            <DialogTitle>{editingZone ? "Modifier" : "Nouveau(elle)"} {
                 currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" :
                 currentCategoryKey === PMS_DELIVERY_MONITORING_KEY ? "Point de Contrôle" :
-                currentCategoryKey === PMS_SUPPLIER_MANAGEMENT_KEY ? "Fournisseur" : "Zone"
+                currentCategoryKey === PMS_SUPPLIER_MANAGEMENT_KEY ? "Fournisseur" :
+                currentCategoryKey === PMS_CLIENT_MANAGEMENT_KEY ? "Client" : "Zone"
             }</DialogTitle>
             {currentCategoryKey && <CardDescription>Pour: {
                 currentCategoryKey === PMS_KITCHEN_CLEANING_KEY ? "Nettoyage Cuisine" : 
                 currentCategoryKey === PMS_RESTAURANT_CLEANING_KEY ? "Nettoyage Restaurant" :
                 currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Suivi des Températures" :
                 currentCategoryKey === PMS_DELIVERY_MONITORING_KEY ? "Suivi de Livraison" : 
-                currentCategoryKey === PMS_SUPPLIER_MANAGEMENT_KEY ? "Gestion Fournisseurs" : ""
+                currentCategoryKey === PMS_SUPPLIER_MANAGEMENT_KEY ? "Gestion Fournisseurs" :
+                currentCategoryKey === PMS_CLIENT_MANAGEMENT_KEY ? "Gestion Clients" : ""
             }</CardDescription>}
           </DialogHeader>
           <Form {...form}>
@@ -548,12 +555,14 @@ export default function PmsConfigManager() {
                   <FormLabel>Nom de l'{
                     currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Équipement" :
                     currentCategoryKey === PMS_DELIVERY_MONITORING_KEY ? "Point de Contrôle" :
-                    currentCategoryKey === PMS_SUPPLIER_MANAGEMENT_KEY ? "Fournisseur" : "Zone"
+                    currentCategoryKey === PMS_SUPPLIER_MANAGEMENT_KEY ? "Fournisseur" :
+                    currentCategoryKey === PMS_CLIENT_MANAGEMENT_KEY ? "Client" : "Zone"
                   }</FormLabel>
                   <FormControl><Input placeholder={
                       currentCategoryKey === PMS_TEMPERATURE_MONITORING_KEY ? "Ex: Frigo Positif Cuisine" : 
                       currentCategoryKey === PMS_DELIVERY_MONITORING_KEY ? "Ex: État du véhicule" :
                       currentCategoryKey === PMS_SUPPLIER_MANAGEMENT_KEY ? "Ex: Transgourmet" :
+                      currentCategoryKey === PMS_CLIENT_MANAGEMENT_KEY ? "Ex: École St Joseph" :
                       "Ex: Plans de travail"
                     } {...field} />
                   </FormControl>
@@ -617,7 +626,7 @@ export default function PmsConfigManager() {
         </DialogContent>
       </Dialog>
 
-      {(currentCategoryKey && ![PMS_TEMPERATURE_MONITORING_KEY, PMS_SUPPLIER_MANAGEMENT_KEY].includes(currentCategoryKey)) && 
+      {(currentCategoryKey && ![PMS_TEMPERATURE_MONITORING_KEY, PMS_SUPPLIER_MANAGEMENT_KEY, PMS_CLIENT_MANAGEMENT_KEY].includes(currentCategoryKey)) && 
         <Dialog open={isTaskDialogOpen} onOpenChange={setIsTaskDialogOpen}>
             <DialogContent className="sm:max-w-md">
             <DialogHeader>
@@ -658,4 +667,3 @@ export default function PmsConfigManager() {
     </div>
   );
 }
-

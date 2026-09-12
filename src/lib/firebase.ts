@@ -3,6 +3,7 @@
 import { initializeApp, getApp, getApps } from "firebase/app";
 import { getFirestore } from "firebase/firestore"; // Import Firestore
 import { getAuth } from "firebase/auth";
+import { getFunctions } from "firebase/functions"; // Ajout de l'import pour Functions
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -29,8 +30,9 @@ const auth = getAuth(app);
 // Set auth language to French
 auth.languageCode = 'fr';
 
-// Export Firestore and Auth instances
+// Initialize and export other services
 export const firestore = getFirestore(app);
+export const functions = getFunctions(app); // Initialisation et export de Functions
 export { auth };
 
 export default app;

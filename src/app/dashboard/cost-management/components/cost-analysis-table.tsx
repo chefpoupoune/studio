@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -11,7 +10,7 @@ import { PlusCircle, Trash2, FileText, Loader2, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format, getDaysInMonth as dfnsGetDaysInMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+import { getPdfLayoutSettings, hexToRgb, loadPdfLayoutSettingsFromFirestore } from '@/lib/pdf-settings';
 import type { CostEntry, DailyCoefficientEntry } from '../types';
 import { months, years, currentYear } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -20,7 +19,8 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { firestore, auth } from '@/lib/firebase';
-
+import { getEffectifsForMonth } from '@/app/dashboard/effectifs/services';
+import { Effectif } from '@/app/dashboard/effectifs/types';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -34,7 +34,6 @@ const initialDailyCoefficientEntry = (day: number): DailyCoefficientEntry => ({
   day, imp: "", saj: "", ime: "", esat: "", repasPlus: "", nous: "", pn: "", pnEsat: ""
 });
 
-
 export default function CostAnalysisTable() {
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().getMonth().toString());
   const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
@@ -45,85 +44,33 @@ export default function CostAnalysisTable() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [isDirty, setIsDirty] = useState(false); // To track changes
+  const [isDirty, setIsDirty] = useState(false);
+  const [needsAutoSave, setNeedsAutoSave] = useState(false);
   const { toast } = useToast();
 
-  // Fetch supplier options from PMS settings
-  // Fetch supplier options from PMS settings and listen for real-time updates
   useEffect(() => {
     const configRef = doc(firestore, "pmsConfigurations", "mainConfig");
-    console.log("useEffect for suppliers is running");
-
     const unsubscribe = onSnapshot(configRef, (docSnap) => {
-      console.log("Firestore snapshot received for pmsConfigurations/mainConfig");
       if (docSnap.exists()) {
         const configData = docSnap.data();
-        console.log("Document data:", configData);
-        // Access the correct field for suppliers and map to names
         if (configData && Array.isArray(configData.supplierManagement_v1)) {
-          console.log("supplierManagement_v1 field exists and is an array:", configData.supplierManagement_v1);
           const supplierNames = configData.supplierManagement_v1
-            .filter((item: any) => typeof item.name === 'string') // Ensure item has a name property and it's a string
+            .filter((item: any) => typeof item.name === 'string')
             .map((item: any) => item.name as string);
           setSupplierOptions(supplierNames);
         } else {
-          console.warn("supplierManagement_v1 field not found or not an array in pmsConfigurations/mainConfig. Setting supplierOptions to empty array.");
           setSupplierOptions([]);
         }
       } else {
-        console.warn("pmsConfigurations/mainConfig document does not exist or is empty. Setting supplierOptions to empty array.");
         setSupplierOptions([]);
       }
     }, (error) => {
       console.error("Error fetching real-time supplier options:", error);
     });
-    return () => unsubscribe(); // Cleanup function to unsubscribe
+    return () => unsubscribe();
   }, []);
 
   const getFirestoreDocId = useCallback(() => `entry_${selectedYear}_${selectedMonth}`, [selectedYear, selectedMonth]);
-
-  useEffect(() => {
-    const docId = getFirestoreDocId();
-    if (!docId) return;
-
-    const loadData = async () => {
-        setIsLoading(true);
-        setIsDirty(false); // Reset dirty state on new data load
-        const docRef = doc(firestore, "costAnalysisMonthlyEntries", docId);
-        try {
-            const docSnap = await getDoc(docRef);
-            const daysInMonth = dfnsGetDaysInMonth(new Date(parseInt(selectedYear), parseInt(selectedMonth)));
-
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                const suppliers = data.suppliers && data.suppliers.length > 0 ? data.suppliers : [{ ...initialSupplierRow(), id: `supplier_init_${Date.now()}` }];
-                setCostData(suppliers.map((s: any, index: number) => ({ ...initialSupplierRow(), ...s, id: s.id || `supplier_${Date.now()}_${index}` })));
-                
-                const dailyCoeffs = data.dailyCoefficients || Array.from({ length: daysInMonth }, (_, i) => initialDailyCoefficientEntry(i + 1));
-                setDailyCoeffData(dailyCoeffs.length !== daysInMonth ? Array.from({ length: daysInMonth }, (_, i) => initialDailyCoefficientEntry(i + 1)) : dailyCoeffs);
-            } else {
-                setCostData([{ ...initialSupplierRow(), id: `supplier_init_${Date.now()}` }]);
-                setDailyCoeffData(Array.from({ length: daysInMonth }, (_, i) => initialDailyCoefficientEntry(i + 1)));
-            }
-        } catch (error) {
-            console.error("Error loading data from Firestore:", error);
-            toast({ title: "Erreur de chargement", description: "Données mensuelles corrompues.", variant: "destructive" });
-        } finally {
-            setIsLoading(false);
-        }
-    };
-    loadData();
-  }, [selectedMonth, selectedYear, getFirestoreDocId, toast]);
-
-  const supplierTotals = useMemo(() => {
-    let totalHt = 0, totalTva = 0, totalAvoir = 0;
-    costData.forEach(row => {
-      totalHt += Number(row.ht) || 0;
-      totalTva += Number(row.tva) || 0;
-      totalAvoir += Number(row.avoir) || 0;
-    });
-    return { totalHt, totalTva, totalAvoir };
-  }, [costData]);
 
   const dailyCoeffTotals = useMemo(() => {
     const totals: { [K in keyof Omit<DailyCoefficientEntry, 'day'>]: number } & { totalCoeffJour: number[], totalPnJour: number[], totalGlobalJour: number[] } = {
@@ -138,8 +85,8 @@ export default function CostAnalysisTable() {
       let currentDayTotalPn = 0;
       (Object.keys(dayEntry) as Array<keyof DailyCoefficientEntry>).forEach(key => {
         if (key !== 'day') {
-          const val = Number(dayEntry[key]) || 0;
-          (totals[key] as number) += val;
+          const val = Number(dayEntry[key as keyof DailyCoefficientEntry]) || 0;
+          (totals[key as keyof typeof totals] as number) += val;
           if (['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'].includes(key)) {
             currentDayTotalCoeff += val;
           }
@@ -155,21 +102,21 @@ export default function CostAnalysisTable() {
     return totals;
   }, [dailyCoeffData]);
   
-   const totalEffectifSumForMonth = useMemo(() => {
-    return (dailyCoeffTotals.pn || 0) + (dailyCoeffTotals.pnEsat || 0);
-  }, [dailyCoeffTotals]);
-  
   const grandTotalGlobalJourValue = useMemo(() => {
     return dailyCoeffTotals.totalGlobalJour.reduce((sum, val) => sum + val, 0);
   }, [dailyCoeffTotals.totalGlobalJour]);
 
-  const prixDeRevientMensuel = useMemo(() => {
-    const coutMatierePremiere = supplierTotals.totalHt - supplierTotals.totalAvoir;
-    if (grandTotalGlobalJourValue === 0) return 0;
-    return coutMatierePremiere / grandTotalGlobalJourValue;
-  }, [supplierTotals, grandTotalGlobalJourValue]);
-  
-  const handleSaveData = async () => {
+  const supplierTotals = useMemo(() => {
+    let totalHt = 0, totalTva = 0, totalAvoir = 0;
+    costData.forEach(row => {
+      totalHt += Number(row.ht) || 0;
+      totalTva += Number(row.tva) || 0;
+      totalAvoir += Number(row.avoir) || 0;
+    });
+    return { totalHt, totalTva, totalAvoir };
+  }, [costData]);
+
+  const handleSaveData = useCallback(async () => {
     setIsSaving(true);
     const docId = getFirestoreDocId();
     if (!docId) {
@@ -181,36 +128,130 @@ export default function CostAnalysisTable() {
     const docRef = doc(firestore, "costAnalysisMonthlyEntries", docId);
     
     const dataToSave = {
-        suppliers: costData.filter(s => s.fournisseur.trim() !== ''), // Only save rows with a supplier name
+        suppliers: costData.filter(s => s.fournisseur.trim() !== ''),
         dailyCoefficients: dailyCoeffData,
         totalHtSum: supplierTotals.totalHt,
         totalTvaSum: supplierTotals.totalTva,
         totalAvoirSum: supplierTotals.totalAvoir,
-        totalEffectifSumForMonth: totalEffectifSumForMonth,
+        totalEffectifSumForMonth: grandTotalGlobalJourValue,
     };
 
     try {
         await setDoc(docRef, dataToSave, { merge: true });
-        toast({ title: "Données Sauvegardées", description: "Vos modifications ont été enregistrées avec succès." });
-        setIsDirty(false); // Reset dirty flag after successful save
+        toast({ title: "Données Sauvegardées", description: "Les modifications ont été enregistrées avec succès." });
+        setIsDirty(false);
     } catch (error) {
         console.error("Error saving data to Firestore:", error);
         toast({ title: "Erreur de sauvegarde", description: "Les modifications n'ont pas pu être enregistrées.", variant: "destructive" });
     } finally {
         setIsSaving(false);
     }
-  };
+  }, [getFirestoreDocId, costData, dailyCoeffData, supplierTotals, grandTotalGlobalJourValue, toast]);
 
+  useEffect(() => {
+    const fetchAndSyncData = async () => {
+        setIsLoading(true);
+        setIsDirty(false);
+
+        const docId = getFirestoreDocId();
+        const docRef = doc(firestore, "costAnalysisMonthlyEntries", docId);
+        
+        try {
+            const dateForEffectifs = new Date(parseInt(selectedYear), parseInt(selectedMonth));
+            const effectifsData = await getEffectifsForMonth(dateForEffectifs);
+            
+            const docSnap = await getDoc(docRef);
+            const daysInMonth = dfnsGetDaysInMonth(new Date(parseInt(selectedYear), parseInt(selectedMonth)));
+
+            let currentCostData: CostEntry[];
+            let currentDailyCoeffs: DailyCoefficientEntry[];
+            let savedTotalEffectif = 0;
+
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                currentCostData = data.suppliers && data.suppliers.length > 0 ? data.suppliers : [{ ...initialSupplierRow(), id: `supplier_init_${Date.now()}` }];
+                currentDailyCoeffs = data.dailyCoefficients || Array.from({ length: daysInMonth }, (_, i) => initialDailyCoefficientEntry(i + 1));
+                savedTotalEffectif = data.totalEffectifSumForMonth || 0;
+            } else {
+                currentCostData = [{ ...initialSupplierRow(), id: `supplier_init_${Date.now()}` }];
+                currentDailyCoeffs = Array.from({ length: daysInMonth }, (_, i) => initialDailyCoefficientEntry(i + 1));
+            }
+
+            const syncedDailyCoeffs = currentDailyCoeffs.map((dayEntry, index) => {
+                const dayOfMonth = index + 1;
+                const dateStr = `${selectedYear}-${String(parseInt(selectedMonth) + 1).padStart(2, '0')}-${String(dayOfMonth).padStart(2, '0')}`;
+                const effectifForDay = effectifsData.find(e => e.date === dateStr);
+
+                if (effectifForDay) {
+                    const pnTotal = (effectifForDay.impPn || 0) + (effectifForDay.sajPn || 0) + (effectifForDay.imePn || 0);
+                    return {
+                        ...dayEntry,
+                        imp: effectifForDay.imp || 0,
+                        saj: effectifForDay.saj || 0,
+                        ime: effectifForDay.ime || 0,
+                        esat: effectifForDay.esat || 0,
+                        repasPlus: effectifForDay.repasExceptionnel || 0,
+                        nous: effectifForDay.nous || 0,
+                        pn: pnTotal,
+                        pnEsat: effectifForDay.esatPn || 0,
+                    };
+                }
+                return dayEntry;
+            });
+
+            const newGrandTotal = syncedDailyCoeffs.reduce((monthTotal, dayEntry) => {
+                const dayTotal = (Object.keys(dayEntry) as (keyof DailyCoefficientEntry)[]).reduce((daySum, key) => {
+                    if (key !== 'day') {
+                        return daySum + (Number(dayEntry[key]) || 0);
+                    }
+                    return daySum;
+                }, 0);
+                return monthTotal + dayTotal;
+            }, 0);
+
+            const coeffsChanged = JSON.stringify(syncedDailyCoeffs) !== JSON.stringify(currentDailyCoeffs);
+            const totalIsIncorrect = newGrandTotal !== savedTotalEffectif;
+
+            setCostData(currentCostData.map((s: any, index: number) => ({ ...initialSupplierRow(), ...s, id: s.id || `supplier_${Date.now()}_${index}` })));
+            setDailyCoeffData(syncedDailyCoeffs.length !== daysInMonth ? Array.from({ length: daysInMonth }, (_, i) => initialDailyCoefficientEntry(i + 1)) : syncedDailyCoeffs);
+
+            if (coeffsChanged || totalIsIncorrect) {
+                setNeedsAutoSave(true);
+            }
+
+        } catch (error) {
+            console.error("Error loading or syncing data:", error);
+            toast({ title: "Erreur de chargement", description: "Données corrompues ou erreur de synchronisation.", variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    fetchAndSyncData();
+  }, [selectedMonth, selectedYear, getFirestoreDocId, toast]);
+
+  useEffect(() => {
+    if (needsAutoSave && !isLoading) {
+        toast({ title: "Synchronisation...", description: "Sauvegarde automatique des nouvelles données." });
+        handleSaveData();
+        setNeedsAutoSave(false);
+    }
+  }, [needsAutoSave, isLoading, handleSaveData, toast]);
+
+  const prixDeRevientMensuel = useMemo(() => {
+    const coutMatierePremiere = supplierTotals.totalHt - supplierTotals.totalAvoir;
+    if (grandTotalGlobalJourValue === 0) return 0;
+    return coutMatierePremiere / grandTotalGlobalJourValue;
+  }, [supplierTotals, grandTotalGlobalJourValue]);
+  
   const handleSupplierInputChange = (rowIndex: number, fieldName: 'fournisseur' | 'ht' | 'tva' | 'avoir', value: string | number) => {
     setIsDirty(true);
     setCostData(prevData =>
       prevData.map((row, index) => {
         if (index === rowIndex) {
-          // Only process numeric fields if they are numbers
           let processedValue = fieldName === 'fournisseur'
             ? value
             : typeof (initialSupplierRow() as any)[fieldName] === 'number'
-
             ? parseFloat(value as string) || 0
             : value;
           return { ...row, [fieldName]: processedValue };
@@ -250,215 +291,280 @@ export default function CostAnalysisTable() {
     toast({ title: "Ligne Fournisseur Supprimée" });
   };
 
-
-  const generatePdf = () => {
+  const generatePdf = async () => {
     setIsLoading(true);
     try {
-      const pdfSettings = getPdfLayoutSettings('monthly_cost');
-      const doc = new jsPDF({
-        orientation: pdfSettings.orientation,
-        unit: 'pt',
-        format: pdfSettings.pageSize,
-      }) as jsPDFWithAutoTable;
-      
-      doc.setFont(pdfSettings.fontFamily || 'helvetica');
-      const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
-      const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
-      const yearLabel = selectedYear;
-      
-      let currentY = pdfSettings.marginTop;
+        const allConfigs = await loadPdfLayoutSettingsFromFirestore();
+        const pdfSettings = await getPdfLayoutSettings('monthly_cost', allConfigs);
+        
+        const doc = new jsPDF({
+            orientation: pdfSettings.orientation,
+            unit: 'pt',
+            format: pdfSettings.pageSize,
+        }) as jsPDFWithAutoTable;
+        
+        doc.setFont(pdfSettings.fontFamily || 'helvetica');
+        const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
+        const monthLabel = months.find(m => m.value === selectedMonth)?.label || '';
+        const yearLabel = selectedYear;
+        
+        let currentY = pdfSettings.marginTop;
+        const pageContentWidth = doc.internal.pageSize.width - pdfSettings.marginLeft - pdfSettings.marginRight;
 
-      // PDF Header (Logo & Text)
-      if (pdfSettings.headerText) {
-        const headerRows = pdfSettings.headerText.split('\n').map(rowText => rowText.split('|').map(cellText => cellText.trim()));
-        const headerTableBody = headerRows.map(row => row.map(cell => cell === '{logo}' ? '' : cell));
-        doc.autoTable({
-          body: headerTableBody, startY: currentY, theme: 'plain',
-          styles: { fontSize: pdfSettings.headerFontSize, cellPadding: 1, font: pdfSettings.fontFamily },
-          columnStyles: { 0: { cellWidth: 'auto'} },
-          margin: { top: pdfSettings.marginTop, left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
-          didDrawCell: (data) => {
-            if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image') && headerRows[data.row.index][data.column.index] === '{logo}') {
-              try {
-                const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
-                const formatType = imgProps.fileType.toUpperCase();
-                const cellPadding = 2;
-                let imgWidth = data.cell.width - 2 * cellPadding;
-                let imgHeight = data.cell.height - 2 * cellPadding;
-                const cellAspectRatio = data.cell.width / data.cell.height;
-                const imgAspectRatio = imgProps.width / imgProps.height;
-                if (imgAspectRatio > cellAspectRatio) imgHeight = imgWidth / imgAspectRatio;
-                else imgWidth = imgHeight * imgAspectRatio;
-                const imgX = data.cell.x + (data.cell.width - imgWidth) / 2;
-                const imgY = data.cell.y + (data.cell.height - imgHeight) / 2;
-                doc.addImage(pdfSettings.logoUrl, formatType, imgX, imgY, imgWidth, imgHeight);
-              } catch (e: any) { console.error("Error drawing logo in PDF header table:", e); }
+        if (pdfSettings.headerText) {
+            const headerRows = pdfSettings.headerText.split('\n');
+            doc.setFontSize(pdfSettings.headerFontSize);
+
+            for (const row of headerRows) {
+                const cells = row.split('|');
+                if (cells.length === 0) continue;
+                
+                const cellWidth = pageContentWidth / cells.length;
+                let maxHeightInRow = 0;
+                
+                cells.forEach(cell => {
+                    const cellText = cell.trim();
+                    if (cellText === '{logo}' && pdfSettings.logoUrl) {
+                        maxHeightInRow = Math.max(maxHeightInRow, 30);
+                    } else {
+                        const textLines = doc.splitTextToSize(cellText, cellWidth - 6);
+                        const textHeight = textLines.length * pdfSettings.headerFontSize * 0.7;
+                        maxHeightInRow = Math.max(maxHeightInRow, textHeight);
+                    }
+                });
+                maxHeightInRow += 6;
+
+                let currentX = pdfSettings.marginLeft;
+                for (const cell of cells) {
+                    const cellText = cell.trim();
+                    doc.rect(currentX, currentY, cellWidth, maxHeightInRow, 'S');
+
+                    if (cellText === '{logo}' && pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
+                        try {
+                            const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+                            const formatType = imgProps.fileType.toUpperCase();
+                            const desiredImgHeight = Math.min(maxHeightInRow - 6, 40);
+                            const imgWidth = (imgProps.width * desiredImgHeight) / imgProps.height;
+                            const imgX = currentX + (cellWidth - imgWidth) / 2;
+                            const imgY = currentY + (maxHeightInRow - desiredImgHeight) / 2;
+                            doc.addImage(pdfSettings.logoUrl, formatType, imgX, imgY, imgWidth, desiredImgHeight);
+                        } catch (e) {
+                            console.error("Error adding logo to PDF header cell:", e);
+                            doc.text("Logo", currentX + 3, currentY + pdfSettings.headerFontSize);
+                        }
+                    } else {
+                        doc.text(cellText, currentX + 3, currentY + pdfSettings.headerFontSize * 0.8, {
+                            maxWidth: cellWidth - 6,
+                            align: 'left'
+                        });
+                    }
+                    currentX += cellWidth;
+                }
+                currentY += maxHeightInRow;
             }
-          },
-        });
-        currentY = (doc as any).lastAutoTable.finalY + 5;
-      } else if (pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
-        try {
-          const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
-          const formatType = imgProps.fileType.toUpperCase();
-          const desiredHeight = 30;
-          const imgWidth = (imgProps.width * desiredHeight) / imgProps.height;
-          doc.addImage(pdfSettings.logoUrl, formatType, pdfSettings.marginLeft, currentY, imgWidth, desiredHeight);
-          currentY += desiredHeight + 5;
-        } catch(e: any) { console.error("Error drawing standalone logo in PDF:", e); }
-      }
-      
-      const moduleDefaultTitle = `Fiche de Coût de Revient Mensuel - ${monthLabel} ${yearLabel}`;
-      let finalTitle = "";
-      if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
-        finalTitle = pdfSettings.documentBaseTitle.trim();
-      }
-      if (pdfSettings.showModuleTitle) {
-        if (finalTitle) {
-          finalTitle += ` - ${moduleDefaultTitle}`;
+            currentY += 10;
+        }
+        
+        const moduleDefaultTitle = `Fiche de Coût de Revient Mensuel - ${monthLabel} ${yearLabel}`;
+        let finalTitle = "";
+        if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle && pdfSettings.documentBaseTitle.trim() !== "") {
+            finalTitle = pdfSettings.documentBaseTitle.trim();
+        }
+        if (pdfSettings.showModuleTitle) {
+            if (finalTitle) {
+                finalTitle += ` - ${moduleDefaultTitle}`;
+            } else {
+                finalTitle = moduleDefaultTitle;
+            }
+        }
+        
+        if(finalTitle) {
+            doc.setFontSize(pdfSettings.documentTitleFontSize);
+            doc.text(finalTitle, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
+            currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+        }
+
+        const tableHeadStyles: any = {
+            fontStyle: 'bold', fontSize: pdfSettings.tableHeaderFontSize,
+            halign: 'center', valign: 'middle',
+        };
+        const tableBodyStyles: any = { fontSize: pdfSettings.tableBodyFontSize, valign: 'middle' };
+        const darkFooterCellStyles = { fontStyle: 'bold', fillColor: [45, 55, 72], textColor: [255, 255, 255] };
+        
+        if (pdfSettings.primaryColor) {
+            const primaryRgb = hexToRgb(pdfSettings.primaryColor);
+            if (primaryRgb) {
+                tableHeadStyles.fillColor = [primaryRgb.r, primaryRgb.g, primaryRgb.b];
+                const brightness = (primaryRgb.r * 299 + primaryRgb.g * 587 + primaryRgb.b * 114) / 1000;
+                tableHeadStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
+            }
         } else {
-          finalTitle = moduleDefaultTitle;
+            tableHeadStyles.fillColor = [200,200,200]; 
+            tableHeadStyles.textColor = [0,0,0];
         }
-      }
-      
-      if(finalTitle) {
-        doc.setFontSize(pdfSettings.documentTitleFontSize);
-        doc.text(finalTitle, doc.internal.pageSize.getWidth() / 2, currentY, { align: 'center' });
-        currentY += (pdfSettings.documentTitleFontSize || 18) * 0.7 + 5;
-      }
 
-      const tableHeadStyles: any = {
-        fontStyle: 'bold', fontSize: pdfSettings.tableHeaderFontSize,
-        halign: 'center', valign: 'middle',
-      };
-      const tableBodyStyles: any = { fontSize: pdfSettings.tableBodyFontSize, valign: 'middle' };
-      const darkFooterCellStyles = { fontStyle: 'bold', fillColor: [45, 55, 72], textColor: [255, 255, 255] };
-      const tableFooterStyles: any = { ...tableHeadStyles, fillColor: hexToRgb(pdfSettings.primaryColor || '#E0E0E0') || [220,220,220], textColor: [0,0,0] };
-      
-      if (pdfSettings.primaryColor) {
-        const primaryRgb = hexToRgb(pdfSettings.primaryColor);
-        if (primaryRgb) {
-          tableHeadStyles.fillColor = primaryRgb;
-          const brightness = (primaryRgb[0] * 299 + primaryRgb[1] * 587 + primaryRgb[2] * 114) / 1000;
-          tableHeadStyles.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
+        doc.setFontSize(pdfSettings.defaultFontSize + 2);
+        doc.setFont(undefined, 'bold');
+        
+        const titleText1 = "Tableau des Fournisseurs";
+        doc.text(titleText1, pdfSettings.marginLeft, currentY);
+
+        const textWidth1 = doc.getTextDimensions(titleText1).w;
+        doc.setLineWidth(0.5); 
+        doc.line(pdfSettings.marginLeft, currentY + 2, pdfSettings.marginLeft + textWidth1, currentY + 2);
+        
+        doc.setFont(undefined, 'normal');
+        currentY += (pdfSettings.defaultFontSize + 2) * 0.7 + 3;
+
+        const supplierTableHead = [['Fournisseur', 'HT (€)', 'TVA (€)', 'Avoir (€)']];
+        const supplierTableBody = costData.map(row => [
+            row.fournisseur,
+            row.ht.toFixed(2),
+            row.tva.toFixed(2),
+            row.avoir.toFixed(2),
+        ]);
+        const supplierTableFoot = [[
+            { content: 'Total Fournisseurs', styles: { ...darkFooterCellStyles, halign: 'right'} },
+            { content: supplierTotals.totalHt.toFixed(2), styles: { ...darkFooterCellStyles, halign: 'right'} },
+            { content: supplierTotals.totalTva.toFixed(2), styles: { ...darkFooterCellStyles, halign: 'right'} },
+            { content: supplierTotals.totalAvoir.toFixed(2), styles: { ...darkFooterCellStyles, halign: 'right'} },
+        ]];
+        doc.autoTable({
+            head: supplierTableHead, body: supplierTableBody, foot: supplierTableFoot,
+            startY: currentY, theme: 'grid',
+            headStyles: tableHeadStyles, styles: {...tableBodyStyles, halign: 'left'},
+            columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
+            margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
+            tableWidth: 'auto'
+        });
+        currentY = (doc as any).lastAutoTable.finalY + 10;
+
+        doc.setFontSize(pdfSettings.defaultFontSize + 2);
+        doc.setFont(undefined, 'bold');
+        
+        const titleText2 = "Tableau des Coefficients et Quantités Journaliers";
+        doc.text(titleText2, pdfSettings.marginLeft, currentY);
+        
+        const textWidth2 = doc.getTextDimensions(titleText2).w;
+        doc.setLineWidth(0.5); 
+        doc.line(pdfSettings.marginLeft, currentY + 2, pdfSettings.marginLeft + textWidth2, currentY + 2);
+        
+        doc.setFont(undefined, 'normal');
+        currentY += (pdfSettings.defaultFontSize + 2) * 0.7 + 3;
+
+        const daysInMonthArray = getMonthDays(parseInt(selectedYear, 10), parseInt(selectedMonth, 10));
+        const dailyCoeffTableHead = [['Jour', 'IMP', 'SAJ', 'IME', 'ESAT', 'Repas ++', 'Nous', 'Total Coeff.', 'PN', 'PN ESAT', 'Total PN', 'TOTAL GLOBAL JOUR.']];
+        const dailyCoeffTableBody = dailyCoeffData.map((entry, dayIndex) => {
+            const dayInfo = daysInMonthArray[dayIndex];
+            return [
+                `${dayInfo.dayOfMonth} - ${dayInfo.dayName.substring(0,3)}`,
+                entry.imp === "" ? "0" : Number(entry.imp).toFixed(0),
+                entry.saj === "" ? "0" : Number(entry.saj).toFixed(0),
+                entry.ime === "" ? "0" : Number(entry.ime).toFixed(0),
+                entry.esat === "" ? "0" : Number(entry.esat).toFixed(0),
+                entry.repasPlus === "" ? "0" : Number(entry.repasPlus).toFixed(0),
+                entry.nous === "" ? "0" : Number(entry.nous).toFixed(0),
+                { content: dailyCoeffTotals.totalCoeffJour[dayIndex].toFixed(0), styles: { fontStyle: 'bold' } },
+                entry.pn === "" ? "0" : Number(entry.pn).toFixed(0),
+                entry.pnEsat === "" ? "0" : Number(entry.pnEsat).toFixed(0),
+                { content: dailyCoeffTotals.totalPnJour[dayIndex].toFixed(0), styles: { fontStyle: 'bold' } },
+                { content: dailyCoeffTotals.totalGlobalJour[dayIndex].toFixed(0), styles: { fontStyle: 'bold' } },
+            ]
+        });
+        const dailyCoeffTableFoot = [[
+            { content: 'Total Mois', styles: { ...darkFooterCellStyles, halign: 'right'} },
+            { content: dailyCoeffTotals.imp.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
+            { content: dailyCoeffTotals.saj.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
+            { content: dailyCoeffTotals.ime.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
+            { content: dailyCoeffTotals.esat.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
+            { content: dailyCoeffTotals.repasPlus.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
+            { content: dailyCoeffTotals.nous.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
+            { content: (dailyCoeffTotals.totalCoeffJour.reduce((s,v) => s+v,0)).toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center' } },
+            { content: dailyCoeffTotals.pn.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
+            { content: dailyCoeffTotals.pnEsat.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
+            { content: (dailyCoeffTotals.totalPnJour.reduce((s,v) => s+v,0)).toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center' } },
+            { content: grandTotalGlobalJourValue.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center' } },
+        ]];
+        doc.autoTable({
+            head: dailyCoeffTableHead, body: dailyCoeffTableBody, foot: dailyCoeffTableFoot,
+            startY: currentY, theme: 'grid',
+            headStyles: {...tableHeadStyles, fontSize: 7, cellPadding: 1}, 
+            styles: {...tableBodyStyles, fontSize: 6.5, cellPadding: 0.5, halign: 'center'}, 
+            footStyles: { ...tableHeadStyles, fontSize: 7, cellPadding: 1, halign: 'center', fillColor: darkFooterCellStyles.fillColor, textColor: darkFooterCellStyles.textColor },
+            columnStyles: { 
+                0: { halign: 'left', cellWidth: 35, fontStyle: 'bold' }, 
+                7: { fontStyle: 'bold', fillColor: [227, 242, 253] },
+                10: { fontStyle: 'bold', fillColor: [232, 245, 233] },
+                11: { fontStyle: 'bold', fillColor: [253, 237, 237] } 
+            },
+            margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
+            pageBreak: 'avoid',
+            didDrawPage: (data) => {
+                const pageCount = doc.internal.getNumberOfPages();
+                if (pdfSettings.footerText) {
+                    let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', data.pageNumber.toString()).replace('{totalPages}', pageCount.toString());
+                    doc.setFontSize(pdfSettings.footerFontSize);
+                    doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
+                }
+            },
+        });
+        currentY = (doc as any).lastAutoTable.finalY + 20;
+
+        doc.setFontSize(pdfSettings.defaultFontSize + 2);
+        doc.setFont(undefined, 'bold');
+        doc.text("Calcul du Prix de Revient Mensuel", pdfSettings.marginLeft, currentY);
+        doc.setFont(undefined, 'normal');
+        currentY += (pdfSettings.defaultFontSize + 2) * 0.7 + 15;
+
+        const coutMatierePrem = supplierTotals.totalHt - supplierTotals.totalAvoir;
+
+        const drawUnderlinedTitle = (title: string, value: string, y: number) => {
+            doc.setFontSize(pdfSettings.defaultFontSize);
+            doc.setFont(undefined, 'normal');
+            const titleText = `${title}:`;
+            const titleWidth = doc.getTextDimensions(titleText).w;
+            doc.text(titleText, pdfSettings.marginLeft, y);
+            doc.setLineWidth(0.5);
+            doc.line(pdfSettings.marginLeft, y + 2, pdfSettings.marginLeft + titleWidth, y + 2);
+            doc.setFont(undefined, 'bold');
+            doc.text(value, pdfSettings.marginLeft + titleWidth + 5, y);
+            doc.setFont(undefined, 'normal');
+            return y + pdfSettings.defaultFontSize * 0.7 + 12;
         }
-      } else {
-         tableHeadStyles.fillColor = [200,200,200]; 
-         tableHeadStyles.textColor = [0,0,0];
-      }
 
-      // Table 1: Données Fournisseurs
-      doc.setFontSize((pdfSettings.defaultFontSize || 10) + 2);
-      doc.text("Tableau des Fournisseurs", pdfSettings.marginLeft, currentY);
-      currentY += ((pdfSettings.defaultFontSize || 10) + 2) * 0.7 + 3;
+        currentY = drawUnderlinedTitle(
+            "Coût Matière Première (Total HT Fournisseurs - Total Avoir Fournisseurs)",
+            `${coutMatierePrem.toFixed(2)} €`,
+            currentY
+        );
 
-      const supplierTableHead = [['Fournisseur', 'HT (€)', 'TVA (€)', 'Avoir (€)']];
-      const supplierTableBody = costData.map(row => [
-        row.fournisseur,
-        row.ht.toFixed(2),
-        row.tva.toFixed(2),
-        row.avoir.toFixed(2),
-      ]);
-      const supplierTableFoot = [[
-        { content: 'Total Fournisseurs', styles: { ...darkFooterCellStyles, halign: 'right'} },
-        { content: supplierTotals.totalHt.toFixed(2), styles: { ...darkFooterCellStyles, halign: 'right'} },
-        { content: supplierTotals.totalTva.toFixed(2), styles: { ...darkFooterCellStyles, halign: 'right'} },
-        { content: supplierTotals.totalAvoir.toFixed(2), styles: { ...darkFooterCellStyles, halign: 'right'} },
-      ]];
-      doc.autoTable({
-        head: supplierTableHead, body: supplierTableBody, foot: supplierTableFoot,
-        startY: currentY, theme: 'grid',
-        headStyles: tableHeadStyles, styles: {...tableBodyStyles, halign: 'left'}, footStyles: tableFooterStyles,
-        columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
-        margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
-        tableWidth: 'auto'
-      });
-      currentY = (doc as any).lastAutoTable.finalY + 10;
+        currentY = drawUnderlinedTitle(
+            "Total du Mois ",
+            `${grandTotalGlobalJourValue.toFixed(2)}`,
+            currentY
+        );
 
-      // Table 2: Coefficients Journaliers
-      doc.setFontSize((pdfSettings.defaultFontSize || 10) + 2);
-      doc.text("Tableau des Coefficients et Quantités Journaliers", pdfSettings.marginLeft, currentY);
-      currentY += ((pdfSettings.defaultFontSize || 10) + 2) * 0.7 + 3;
+        currentY += 10;
 
-      const dailyCoeffTableHead = [['Jour', 'IMP', 'SAJ', 'IME', 'ESAT', 'Repas ++', 'Nous', 'Total Coeff.', 'PN', 'PN ESAT', 'Total PN', 'TOTAL GLOBAL JOUR.']];
-      const dailyCoeffTableBody = dailyCoeffData.map((entry, dayIndex) => {
-        const dayInfo = daysInMonthArray[dayIndex];
-        return [
-          `${dayInfo.dayOfMonth} - ${dayInfo.dayName.substring(0,3)}`,
-          entry.imp === "" ? "0" : Number(entry.imp).toFixed(0),
-          entry.saj === "" ? "0" : Number(entry.saj).toFixed(0),
-          entry.ime === "" ? "0" : Number(entry.ime).toFixed(0),
-          entry.esat === "" ? "0" : Number(entry.esat).toFixed(0),
-          entry.repasPlus === "" ? "0" : Number(entry.repasPlus).toFixed(0),
-          entry.nous === "" ? "0" : Number(entry.nous).toFixed(0),
-          { content: dailyCoeffTotals.totalCoeffJour[dayIndex].toFixed(0), styles: { fontStyle: 'bold' } },
-          entry.pn === "" ? "0" : Number(entry.pn).toFixed(0),
-          entry.pnEsat === "" ? "0" : Number(entry.pnEsat).toFixed(0),
-          { content: dailyCoeffTotals.totalPnJour[dayIndex].toFixed(0), styles: { fontStyle: 'bold' } },
-          { content: dailyCoeffTotals.totalGlobalJour[dayIndex].toFixed(0), styles: { fontStyle: 'bold' } },
-        ]
-      });
-      const dailyCoeffTableFoot = [[
-        { content: 'Total Mois', styles: { ...darkFooterCellStyles, halign: 'right'} },
-        { content: dailyCoeffTotals.imp.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
-        { content: dailyCoeffTotals.saj.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
-        { content: dailyCoeffTotals.ime.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
-        { content: dailyCoeffTotals.esat.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
-        { content: dailyCoeffTotals.repasPlus.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
-        { content: dailyCoeffTotals.nous.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
-        { content: (dailyCoeffTotals.totalCoeffJour.reduce((s,v) => s+v,0)).toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center' } },
-        { content: dailyCoeffTotals.pn.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
-        { content: dailyCoeffTotals.pnEsat.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center'} },
-        { content: (dailyCoeffTotals.totalPnJour.reduce((s,v) => s+v,0)).toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center' } },
-        { content: grandTotalGlobalJourValue.toFixed(0), styles: { ...darkFooterCellStyles, halign: 'center' } },
-      ]];
-      doc.autoTable({
-        head: dailyCoeffTableHead, body: dailyCoeffTableBody, foot: dailyCoeffTableFoot,
-        startY: currentY, theme: 'grid',
-        headStyles: {...tableHeadStyles, fontSize: 7, cellPadding: 1}, 
-        styles: {...tableBodyStyles, fontSize: 6.5, cellPadding: 0.5, halign: 'center'}, 
-        footStyles: {...tableFooterStyles, fontSize: 7, cellPadding: 1, halign: 'center'},
-        columnStyles: { 
-            0: { halign: 'left', cellWidth: 35, fontStyle: 'bold' }, 
-            7: { fontStyle: 'bold', fillColor: [255, 120, 220] }, // Total Coeff.
-            10: { fontStyle: 'bold', fillColor: [191, 219, 254] }, // Total PN
-            11: { fontStyle: 'bold', fillColor: [254, 202, 202] }  // TOTAL GLOBAL JOUR
-        },
-        margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight },
-        didDrawPage: (data) => {
-            const pageCount = doc.internal.getNumberOfPages();
-            if (pdfSettings.footerText) {
-                let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', data.pageNumber.toString()).replace('{totalPages}', pageCount.toString());
-                doc.setFontSize(pdfSettings.footerFontSize || 8); doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - ((pdfSettings.marginBottom || 40) / 2));
-            }
-        },
-      });
-      currentY = (doc as any).lastAutoTable.finalY + 10;
+        doc.setFontSize(pdfSettings.defaultFontSize + 2); 
+        doc.setFont(undefined, 'bold');
+        const prixRevientText = `Prix de Revient du Mois:`;
+        const prixRevientWidth = doc.getTextDimensions(prixRevientText).w;
+        doc.text(prixRevientText, pdfSettings.marginLeft, currentY);
+        doc.setLineWidth(0.5);
+        doc.line(pdfSettings.marginLeft, currentY + 2, pdfSettings.marginLeft + prixRevientWidth, currentY + 2);
+        doc.text(`${prixDeRevientMensuel.toFixed(2)} €`, pdfSettings.marginLeft + prixRevientWidth + 10, currentY);
+        doc.setFont(undefined, 'normal');
 
-      // Récapitulatif Final
-      doc.setFontSize((pdfSettings.defaultFontSize || 10) + 1);
-      doc.text("Calcul du Prix de Revient Mensuel", pdfSettings.marginLeft, currentY);
-      currentY += ((pdfSettings.defaultFontSize || 10) + 1) * 0.7 + 3;
-      doc.setFontSize(pdfSettings.defaultFontSize || 10);
-      const coutMatierePrem = supplierTotals.totalHt - supplierTotals.totalAvoir;
-      doc.text(`Coût Matière Première (Total HT Fournisseurs - Total Avoir Fournisseurs): ${coutMatierePrem.toFixed(2)} €`, pdfSettings.marginLeft, currentY);
-      currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 2;
-      doc.text(`Total du Mois (Σ TOTAL GLOBAL JOUR.): ${grandTotalGlobalJourValue.toFixed(2)}`, pdfSettings.marginLeft, currentY);
-      currentY += (pdfSettings.defaultFontSize || 10) * 0.7 + 2;
-      doc.setFontSize((pdfSettings.defaultFontSize || 10) + 1); doc.setFont(undefined, 'bold');
-      doc.text(`Prix de Revient du Mois: ${prixDeRevientMensuel.toFixed(2)} €`, pdfSettings.marginLeft, currentY);
-      doc.setFont(undefined, 'normal');
-
-      doc.save(`Cout_Revient_Mensuel_${monthLabel}_${yearLabel}.pdf`);
-      toast({ title: "PDF Généré", description: "Le PDF du coût de revient mensuel a été téléchargé." });
+        doc.save(`Cout_Revient_Mensuel_${monthLabel}_${yearLabel}.pdf`);
+        toast({ title: "PDF Généré", description: "Le PDF du coût de revient mensuel a été téléchargé." });
     } catch (error: any) {
-      console.error("Error generating PDF:", error);
-      toast({ title: "Erreur PDF", description: `La génération du PDF a échoué: ${error.message || 'Erreur inconnue'}.`, variant: "destructive" });
+        console.error("Error generating PDF:", error);
+        toast({ title: "Erreur PDF", description: `La génération du PDF a échoué: ${error.message || 'Erreur inconnue'}.`, variant: "destructive" });
     } finally {
-      setIsLoading(false);
+        setIsLoading(false);
     }
   };
-
 
   const daysInMonthArray = useMemo(() => {
     const year = parseInt(selectedYear, 10);
@@ -515,7 +621,7 @@ export default function CostAnalysisTable() {
                   <TableHeader><TableRow>
                     <TableHead className="min-w-[150px]">Fournisseur</TableHead>
                     <TableHead className="min-w-[80px] text-right">HT (€)</TableHead>
-                    <TableHead className="min-w-[80px] text-right">TVA (€)</TableHead> {/* Removed extra space */}
+                    <TableHead className="min-w-[80px] text-right">TVA (€)</TableHead>
                     <TableHead className="min-w-[80px] text-right">Avoir (€)</TableHead>
                     <TableHead className="min-w-[50px] text-center">Action</TableHead>
                   </TableRow></TableHeader>
@@ -525,14 +631,13 @@ export default function CostAnalysisTable() {
                         <TableCell className="p-1">
                            <Select value={row.fournisseur} onValueChange={(value) => handleSupplierInputChange(rowIndex, 'fournisseur', value as string)} disabled={isSaving}>
                              <SelectTrigger className="text-xs p-1 h-8">
- <SelectValue placeholder={"Choisir un fournisseur"} />
+                                <SelectValue placeholder={"Choisir un fournisseur"} />
                              </SelectTrigger>
                              <SelectContent>
                                {supplierOptions.map(supplier => (
                                  <SelectItem key={supplier} value={supplier}>{supplier}</SelectItem>
                                ))}
                              </SelectContent>
-
                            </Select>
                          </TableCell>
                         <TableCell className="p-1"><Input type="number" value={row.ht} onChange={e => handleSupplierInputChange(rowIndex, 'ht', e.target.value)} className="text-xs p-1 h-8 text-right" disabled={isSaving} /></TableCell>
@@ -561,7 +666,7 @@ export default function CostAnalysisTable() {
           <Card className="mt-8">
             <CardHeader>
               <CardTitle>Coefficients et Quantités Journaliers</CardTitle>
-              <CardDescription>Saisissez les coefficients (IMP, SAJ, etc.) et les quantités (PN) pour chaque jour du mois.</CardDescription>
+              <CardDescription>Les données des effectifs sont synchronisées automatiquement. Les champs sont en lecture seule.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto border rounded-md">
@@ -586,13 +691,13 @@ export default function CostAnalysisTable() {
                         <TableCell className="font-medium text-center">{daysInMonthArray[dayIndex]?.dayOfMonth} - {daysInMonthArray[dayIndex]?.dayName.substring(0,3)}</TableCell>
                         {(['imp', 'saj', 'ime', 'esat', 'repasPlus', 'nous'] as const).map(field => (
                           <TableCell key={field} className="p-1">
-                            <Input type="number" value={entry[field]} onChange={e => handleDailyCoeffInputChange(dayIndex, field, e.target.value)} className="text-xs p-1 h-8 text-center" placeholder="0" disabled={isSaving} />
+                            <Input type="number" value={entry[field]} onChange={e => handleDailyCoeffInputChange(dayIndex, field, e.target.value)} className="text-xs p-1 h-8 text-center" placeholder="0" disabled={true} />
                           </TableCell>
                         ))}
                         <TableCell className="text-center font-semibold bg-blue-100 dark:bg-blue-800/30">{dailyCoeffTotals.totalCoeffJour[dayIndex].toFixed(2)}</TableCell>
                          {(['pn', 'pnEsat'] as const).map(field => (
                             <TableCell key={field} className="p-1">
-                                <Input type="number" value={entry[field]} onChange={e => handleDailyCoeffInputChange(dayIndex, field, e.target.value)} className="text-xs p-1 h-8 text-center" placeholder="0" disabled={isSaving} />
+                                <Input type="number" value={entry[field]} onChange={e => handleDailyCoeffInputChange(dayIndex, field, e.target.value)} className="text-xs p-1 h-8 text-center" placeholder="0" disabled={true} />
                             </TableCell>
                         ))}
                         <TableCell className="text-center font-semibold bg-green-100 dark:bg-green-800/30">{dailyCoeffTotals.totalPnJour[dayIndex].toFixed(0)}</TableCell>

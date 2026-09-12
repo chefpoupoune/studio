@@ -115,18 +115,21 @@ export default function ScheduleChangeRequestDialog({
 
   const approvalStatusWatched = useWatch({ control: form.control, name: "approvalStatus" });
   const prestationTypesWatched = useWatch({ control: form.control, name: "prestationTypes" });
+  const isChefCreating = useMemo(() => !editingRequest && currentUser?.name?.toLowerCase() === 'chef', [editingRequest, currentUser]);
 
   const isFormLockedForEmployee = useMemo(() => {
     return !isApproverView && editingRequest && (editingRequest.approvalStatus === 'accepted' || editingRequest.approvalStatus === 'rejected');
   }, [isApproverView, editingRequest]);
 
   const employeeFieldsActuallyDisabled = useMemo(() => {
+    if (isChefCreating) return false;
     return (isApproverView && !!editingRequest) || isFormLockedForEmployee;
-  }, [isApproverView, editingRequest, isFormLockedForEmployee]);
+  }, [isApproverView, editingRequest, isFormLockedForEmployee, isChefCreating]);
 
   const directionFieldsActuallyDisabled = useMemo(() => {
+    if (isChefCreating) return false;
     return !isApproverView;
-  }, [isApproverView]);
+  }, [isApproverView, isChefCreating]);
 
 
   useEffect(() => {
@@ -149,11 +152,15 @@ export default function ScheduleChangeRequestDialog({
 
   useEffect(() => {
     if (isOpen) {
-      console.log("Editing Request Schedule Change Details:", editingRequest?.scheduleChangeDetails);
+      const isChef = currentUser?.name?.toLowerCase() === 'chef';
 
       let initialPosition = editingRequest?.position || '';
-      if (!editingRequest && currentUser?.role) {
-        initialPosition = currentUser.role;
+      if (!editingRequest) {
+        if (isChef) {
+          initialPosition = 'Chef de cuisine';
+        } else if (currentUser?.role) {
+          initialPosition = currentUser.role;
+        }
       }
 
       let initialScheduleChangeDetails: any[] = [];
@@ -175,13 +182,15 @@ export default function ScheduleChangeRequestDialog({
       let managerSigDate = editingRequest?.directManagerSignatureDate ? parseISO(editingRequest.directManagerSignatureDate) : null;
       let directorSigDate = editingRequest?.directorSignatureDate ? parseISO(editingRequest.directorSignatureDate) : null;
       let decDate = editingRequest?.decisionDate ? parseISO(editingRequest.decisionDate) : null;
+      let approvalStatus = editingRequest?.approvalStatus || 'pending';
 
       if (!editingRequest) { // New request
         empSigDate = new Date();
-        if (isApproverView) { // if chef is creating directly
-          if (!decDate && form.getValues('approvalStatus') !== 'pending') decDate = new Date();
-          if (!managerSigDate) managerSigDate = new Date();
-          if (!directorSigDate) directorSigDate = new Date();
+        if (isChef) {
+          approvalStatus = 'accepted';
+          decDate = new Date();
+          managerSigDate = new Date();
+          directorSigDate = new Date();
         }
       } else { // Editing existing request
         if (!isApproverView && (!empSigDate || !isValid(empSigDate))) {
@@ -197,55 +206,30 @@ export default function ScheduleChangeRequestDialog({
       form.reset({
         reasonStub: editingRequest?.reasonStub || '',
         position: initialPosition,
-        prestationTypes: editingRequest?.prestationTypes || ['logistique'], // Default for new
+        prestationTypes: editingRequest?.prestationTypes || ['logistique'],
         prestationTypeAutresDetail: editingRequest?.prestationTypeAutresDetail || '',
         scheduleChangeDetails: initialScheduleChangeDetails,
-        totalScheduleChangeHours: editingRequest?.totalScheduleChangeHours || '0.00 heures', // Recalculated by effect anyway
+        totalScheduleChangeHours: editingRequest?.totalScheduleChangeHours || '0.00 heures',
         employeeSignatureDate: empSigDate,
         directManagerSignatureDate: managerSigDate,
         directorSignatureDate: directorSigDate,
-        approvalStatus: editingRequest?.approvalStatus || 'pending',
+        approvalStatus: approvalStatus,
         rejectionReason: editingRequest?.rejectionReason || '',
         decisionDate: decDate,
       });
 
-      // Recalculate total hours after reset, especially for editing mode
-      let totalMinutesDifference = 0;
-      initialScheduleChangeDetails.forEach(detail => {
-        const originalDuration = (detail.originalStartTime && detail.originalEndTime) ? calculateDurationInMinutes(detail.originalStartTime, detail.originalEndTime) : 0;
-        const newDuration = (detail.newStartTime && detail.newEndTime) ? calculateDurationInMinutes(detail.newStartTime, detail.newEndTime) : 0;
-        totalMinutesDifference += (newDuration - originalDuration);
-      });
-      const sign = totalMinutesDifference >= 0 ? '+' : '-';
-      const absoluteMinutes = Math.abs(totalMinutesDifference);
-      form.setValue('totalScheduleChangeHours', `${sign}${minutesToDecimalHoursString(absoluteMinutes)} heures`);
-
     }
   }, [isOpen, editingRequest, currentUser, form, isApproverView]);
 
-  useEffect(() => {
-    if (isApproverView && (approvalStatusWatched === 'accepted' || approvalStatusWatched === 'rejected')) {
-      if (!form.getValues('decisionDate')) {
-        form.setValue('decisionDate', new Date());
-      }
-      if (currentUser?.name?.toLowerCase() === 'chef') { // Ensure 'chef' is case-insensitive
-        if (!form.getValues('directManagerSignatureDate')) {
-          form.setValue('directManagerSignatureDate', new Date());
-        }
-        if (!form.getValues('directorSignatureDate')) {
-          form.setValue('directorSignatureDate', new Date());
-        }
-      }
-    }
-  }, [approvalStatusWatched, isApproverView, form, currentUser]);
-
-
   const handleSubmit = (data: FormDataType) => {
-    console.log("Submitting data:", data); // Log data before submission
+    const isChef = currentUser?.name?.toLowerCase() === 'chef';
+    const employeeName = isChef && !editingRequest ? 'Julien Dernoncourt' : (editingRequest?.employeeName || currentUser?.name || "Employé inconnu");
+    const position = isChef && !editingRequest ? 'Chef de cuisine' : (data.position || editingRequest?.position || currentUser?.role || '');
+
     const submitData: Partial<ScheduleChangeRequest> = {
       ...data,
-      employeeName: editingRequest?.employeeName || currentUser?.name || "Employé inconnu",
-      position: data.position || (editingRequest ? editingRequest.position : (currentUser?.role || '')),
+      employeeName,
+      position,
       employeeSignatureDate: data.employeeSignatureDate ? data.employeeSignatureDate.toISOString() : undefined,
       directManagerSignatureDate: data.directManagerSignatureDate ? data.directManagerSignatureDate.toISOString() : undefined,
       directorSignatureDate: data.directorSignatureDate ? data.directorSignatureDate.toISOString() : undefined,
@@ -266,7 +250,7 @@ export default function ScheduleChangeRequestDialog({
   const renderDateField = (name: keyof FormDataType, label: string, disabled: boolean = false) => (
     <FormField
       control={form.control}
-      name={name as any} // Cast to any because of potential date/null union
+      name={name as any}
       render={({ field }) => (
         <FormItem className="flex flex-col">
           <FormLabel>{label}</FormLabel>
@@ -313,7 +297,7 @@ export default function ScheduleChangeRequestDialog({
                     <FormLabel>Nom et prénom du salarié</FormLabel>
                     <FormControl>
                         <Input
-                        value={editingRequest?.employeeName || currentUser?.name || "Non identifié"}
+                        value={isChefCreating ? "Julien Dernoncourt" : (editingRequest?.employeeName || currentUser?.name || "Non identifié")}
                         disabled
                         className="bg-muted/50" />
                     </FormControl>
@@ -330,7 +314,7 @@ export default function ScheduleChangeRequestDialog({
                               {...field}
                               value={field.value || ''}
                               disabled={employeeFieldsActuallyDisabled || (!editingRequest && !!currentUser?.role)}
-                              className={ (employeeFieldsActuallyDisabled || (!editingRequest && !!currentUser?.role)) ? "bg-muted/50" : ""}
+                              className={(employeeFieldsActuallyDisabled || (!editingRequest && !!currentUser?.role)) ? "bg-muted/50" : ""}
                             />
                           </FormControl>
                           <FormMessage />
@@ -401,93 +385,124 @@ export default function ScheduleChangeRequestDialog({
 
                 <div>
                   <FormLabel>Détail des changements d'horaire</FormLabel>
-                  {fields.map((fieldItem, index) => (
-                    <div key={fieldItem.id} className="flex flex-wrap items-end gap-2 p-2 border rounded-md mb-2">
-                      <Controller
-                        control={form.control}
-                        name={`scheduleChangeDetails.${index}.date`}
-                        render={({ field: dateField, fieldState: dateFieldState }) => (
-                          <FormItem className="flex-grow w-full md:w-auto">
-                            <FormLabel className="text-xs">Date</FormLabel>
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <FormControl>
-                                  <Button
-                                    variant={"outline"}
-                                    className={cn("w-full pl-3 text-left font-normal h-9", !dateField.value && "text-muted-foreground", dateFieldState.error && "border-destructive")}
-                                    disabled={employeeFieldsActuallyDisabled}
-                                  >
-                                    {dateField.value ? format(dateField.value, "dd/MM/yyyy", { locale: fr }) : <span>Choisir date</span>}
-                                    <LucideCalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                                  </Button>
-                                </FormControl>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-auto p-0" align="start">
-                                <Calendar mode="single" selected={dateField.value} onSelect={dateField.onChange} initialFocus locale={fr} disabled={employeeFieldsActuallyDisabled}/>
-                              </PopoverContent>
-                            </Popover>
-                            <FormMessage className="text-xs"/>
-                          </FormItem>
+                  <FormDescription className="text-xs text-muted-foreground">
+                    Pour chaque jour concerné, indiquez les heures d'absence et/ou les heures de récupération.
+                  </FormDescription>
+                  <div className="space-y-4 mt-2">
+                    {fields.map((fieldItem, index) => (
+                      <div key={fieldItem.id} className="p-4 border rounded-lg space-y-4 relative bg-muted/20">
+                        {!employeeFieldsActuallyDisabled && (
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="icon"
+                            onClick={() => remove(index)}
+                            className="absolute -top-3 -right-3 h-7 w-7 rounded-full"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         )}
-                      />
-                       <FormField
-                        control={form.control}
-                        name={`scheduleChangeDetails.${index}.originalStartTime`}
-                        render={({ field: timeField }) => (
-                          console.log(`Field ${timeField.name} value: ${timeField.value}`), // Log the field value here
-                          <FormItem className="w-28">
-                            <FormLabel className="text-xs">Horaire Initial (Début)</FormLabel>
-                            <FormControl><Input type="time" {...timeField} value={timeField.value || ''} className="h-9" disabled={employeeFieldsActuallyDisabled}/></FormControl>
-                            <FormMessage className="text-xs"/>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`scheduleChangeDetails.${index}.originalEndTime`}
-                        render={({ field: timeField }) => (
-                          console.log(`Field ${timeField.name} value: ${timeField.value}`), // Log the field value here
-                          <FormItem className="w-28">
-                            <FormLabel className="text-xs">Horaire Initial (Fin)</FormLabel>
-                            <FormControl><Input type="time" {...timeField} value={timeField.value || ''} className="h-9" disabled={employeeFieldsActuallyDisabled}/></FormControl>
-                            <FormMessage className="text-xs"/>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`scheduleChangeDetails.${index}.newStartTime`}
-                        render={({ field: timeField }) => (
-                          console.log(`Field ${timeField.name} value: ${timeField.value}`), // Log the field value here
-                          <FormItem className="w-28">
-                            <FormLabel className="text-xs">Nouvel Horaire (Début)</FormLabel>
-                            <FormControl><Input type="time" {...timeField} value={timeField.value || ''} className="h-9" disabled={employeeFieldsActuallyDisabled}/></FormControl>
-                            <FormMessage className="text-xs"/>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`scheduleChangeDetails.${index}.newEndTime`}
-                        render={({ field: timeField }) => (
-                          console.log(`Field ${timeField.name} value: ${timeField.value}`), // Log the field value here
-                          <FormItem className="w-28">
-                            <FormLabel className="text-xs">Nouvel Horaire (Fin)</FormLabel>
-                            <FormControl><Input type="time" {...timeField} value={timeField.value || ''} className="h-9" disabled={employeeFieldsActuallyDisabled}/></FormControl>
-                            <FormMessage className="text-xs"/>
-                          </FormItem>
-                        )}
-                      />
-                      {!employeeFieldsActuallyDisabled && (
-                        <Button type="button" variant="destructive" size="icon" onClick={() => remove(index)} className="h-9 w-9">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
+                        
+                        <Controller
+                          control={form.control}
+                          name={`scheduleChangeDetails.${index}.date`}
+                          render={({ field, fieldState }) => {
+                            const selectedDate = field.value ? (field.value instanceof Date ? field.value : parseISO(String(field.value))) : undefined;
+                            const isDateValid = selectedDate && isValid(selectedDate);
+                            return (
+                              <FormItem>
+                                <FormLabel>Jour de l'absence / récupération</FormLabel>
+                                <Popover modal={true}>
+                                  <PopoverTrigger asChild>
+                                    <FormControl>
+                                      <Button
+                                        variant={"outline"}
+                                        className={cn("w-full pl-3 text-left font-normal h-9", !isDateValid && "text-muted-foreground", fieldState.error && "border-destructive")}
+                                        disabled={employeeFieldsActuallyDisabled}
+                                      >
+                                        {isDateValid ? format(selectedDate, "dd/MM/yyyy", { locale: fr }) : <span>Choisir une date</span>}
+                                        <LucideCalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                      </Button>
+                                    </FormControl>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-0" align="start">
+                                    <Calendar mode="single" selected={isDateValid ? selectedDate : undefined} onSelect={field.onChange} initialFocus locale={fr} disabled={employeeFieldsActuallyDisabled} />
+                                  </PopoverContent>
+                                </Popover>
+                                <FormMessage className="text-xs" />
+                              </FormItem>
+                            );
+                          }}
+                        />
+
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium">Horaires d'absence</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <FormField
+                              control={form.control}
+                              name={`scheduleChangeDetails.${index}.originalStartTime`}
+                              render={({ field: timeField }) => (
+                                <FormItem>
+                                  <FormLabel className="text-xs">Début</FormLabel>
+                                  <FormControl><Input type="time" {...timeField} value={timeField.value || ''} className="h-9" disabled={employeeFieldsActuallyDisabled} /></FormControl>
+                                  <FormMessage className="text-xs" />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`scheduleChangeDetails.${index}.originalEndTime`}
+                              render={({ field: timeField }) => (
+                                <FormItem>
+                                  <FormLabel className="text-xs">Fin</FormLabel>
+                                  <FormControl><Input type="time" {...timeField} value={timeField.value || ''} className="h-9" disabled={employeeFieldsActuallyDisabled} /></FormControl>
+                                  <FormMessage className="text-xs" />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium">Horaires de récupération</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <FormField
+                              control={form.control}
+                              name={`scheduleChangeDetails.${index}.newStartTime`}
+                              render={({ field: timeField }) => (
+                                <FormItem>
+                                  <FormLabel className="text-xs">Début</FormLabel>
+                                  <FormControl><Input type="time" {...timeField} value={timeField.value || ''} className="h-9" disabled={employeeFieldsActuallyDisabled} /></FormControl>
+                                  <FormMessage className="text-xs" />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`scheduleChangeDetails.${index}.newEndTime`}
+                              render={({ field: timeField }) => (
+                                <FormItem>
+                                  <FormLabel className="text-xs">Fin</FormLabel>
+                                  <FormControl><Input type="time" {...timeField} value={timeField.value || ''} className="h-9" disabled={employeeFieldsActuallyDisabled} /></FormControl>
+                                  <FormMessage className="text-xs" />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
                   {!employeeFieldsActuallyDisabled && (
-                    <Button type="button" variant="outline" size="sm" onClick={() => append({ id: Math.random().toString(36).substring(2, 9), date: new Date(), newStartTime: '', newEndTime: '', originalStartTime: '', originalEndTime: '' })} className="mt-2" >
-                      <PlusCircle className="mr-2 h-4 w-4" /> Ajouter une date/plage horaire
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => append({ id: Math.random().toString(36).substring(2, 9), date: new Date(), newStartTime: '', newEndTime: '', originalStartTime: '', originalEndTime: '' })}
+                      className="mt-4"
+                    >
+                      <PlusCircle className="mr-2 h-4 w-4" /> Ajouter un jour
                     </Button>
                   )}
                 </div>

@@ -267,6 +267,18 @@ export default function TimeTrackingPage() {
       toast({ title: "Erreur d'enregistrement", description: "L'entrée d'heures n'a pas pu être enregistrée.", variant: "destructive"});
     }
   }, [brigadeMembers, toast, fetchTimeEntries]);
+  
+  const deleteTimeEntry = useCallback(async (entryId: string) => {
+    try {
+      await deleteDoc(doc(firestore, "timeTrackingEntries", entryId));
+      fetchTimeEntries();
+      window.dispatchEvent(new CustomEvent('timeEntriesUpdated'));
+      toast({ title: "Entrée Supprimée", description: "L'entrée d'heures a été supprimée.", variant: "destructive" });
+    } catch (e) {
+      console.error("Error deleting time entry from Firestore: ", e);
+      toast({ title: "Erreur de suppression", description: "L'entrée n'a pas pu être supprimée.", variant: "destructive" });
+    }
+  }, [fetchTimeEntries, toast]);
 
   const handleDeleteAllTimeEntries = useCallback(async () => {
     if (!isClient) return;
@@ -296,7 +308,7 @@ export default function TimeTrackingPage() {
 
   const timeTrackingTabsConfig: TimeTrackingTab[] = [
     { value: "personnel", label: "Gestion Personnel", Icon: Users, component: <ManageBrigadeMembers members={brigadeMembers} onAddMember={addMember} onUpdateMember={updateMember} onDeleteMember={deleteMember} scheduleTemplates={scheduleTemplates} />, permissionKey: 'timeTracking_personnel' },
-    { value: "recording", label: "Saisie & Historique", Icon: Clock, component: <RecordTimeLog members={brigadeMembers} timeEntries={timeEntries} onAddTimeEntry={addTimeEntry} onDeleteAllTimeEntries={handleDeleteAllTimeEntries} loggedInUsername={loggedInUsername} userPermissions={userPermissions} />, permissionKey: 'timeTracking_recording' },
+    { value: "recording", label: "Saisie & Historique", Icon: Clock, component: <RecordTimeLog members={brigadeMembers} timeEntries={timeEntries} onAddTimeEntry={addTimeEntry} onDeleteTimeEntry={deleteTimeEntry} onDeleteAllTimeEntries={handleDeleteAllTimeEntries} loggedInUsername={loggedInUsername} userPermissions={userPermissions} />, permissionKey: 'timeTracking_recording' },
     { value: "summary", label: "Relevés & PDF", Icon: FileText, component: <MemberSummaryPdf members={brigadeMembers} timeEntries={timeEntries} loggedInUsername={loggedInUsername} userPermissions={userPermissions} />, permissionKey: 'timeTracking_summary' },
     { value: "schedules", label: "Modèles d'Horaires", Icon: CalendarClock, component: <ManageWorkSchedules brigadeMembers={brigadeMembers} loggedInUsername={loggedInUsername} viewConfig={loggedInUserHourViewConfig} onTemplatesUpdated={refreshScheduleTemplates} />, permissionKey: 'timeTracking_schedules' },
   ];
@@ -377,4 +389,3 @@ export default function TimeTrackingPage() {
   );
 }
 
- 

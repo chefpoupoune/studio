@@ -33,14 +33,20 @@ const pmsTabsConfig = [
   { value: "picnic-departure", label: "Suivi Départ PN", Icon: ShoppingBasket, component: <PicnicDepartureForm /> }, // New tab
 ];
 
-
 export default function PmsPage() {
   const [isClient, setIsClient] = React.useState(false);
   const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = React.useState(pmsTabsConfig[0].value);
-  
+
   React.useEffect(() => {
     setIsClient(true);
+    const hash = window.location.hash.replace('#', '');
+    if (hash) {
+      const tabExists = pmsTabsConfig.some(tab => tab.value === hash);
+      if (tabExists) {
+        setActiveTab(hash);
+      }
+    }
   }, []);
 
   if (!isClient) {

@@ -1,9 +1,9 @@
-
 import type { Metadata } from 'next';
 import { Inter, Playfair_Display } from 'next/font/google';
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
+import { AuthProvider } from '@/contexts/AuthContext'; // Mise à jour de l'import
 
 const inter = Inter({
   variable: '--font-sans',
@@ -19,6 +19,12 @@ const playfairDisplay = Playfair_Display({
 export const metadata: Metadata = {
   title: 'Excellence Dashboard',
   description: 'Application de gestion de la cuisine de Brebières par l’excellence.',
+  manifest: '/manifest.json',
+  icons: {
+    icon: '/favicon.ico',
+    shortcut: '/favicon.ico',
+    apple: '/favicon.ico',
+  },
 };
 
 export default function RootLayout({
@@ -35,7 +41,9 @@ export default function RootLayout({
           "font-sans antialiased bg-background text-foreground"
         )}
       >
-        {children}
+        <AuthProvider> {/* Remplacement par AuthProvider */}
+          {children}
+        </AuthProvider>
         <Toaster />
       </body>
     </html>

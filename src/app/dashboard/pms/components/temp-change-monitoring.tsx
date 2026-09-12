@@ -1,14 +1,14 @@
-"use client";
+'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
 import type { TempChangeEntry } from '../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription as CardDesc } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, Edit2, Trash2, FileText, Loader2, ArrowDownUp, CalendarIcon as LucideCalendarIcon, Wind, Flame } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, FileText, Loader2, ArrowDownUp, CalendarIcon as LucideCalendarIcon, Wind, Flame, CheckCircle } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -34,7 +34,14 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { firestore } from '@/lib/firebase';
-import { collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy, Timestamp } from 'firebase/firestore';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, orderBy, Timestamp, where } from 'firebase/firestore';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -48,7 +55,6 @@ const tempChangeEntrySchema = z.object({
   servedCold: z.boolean().optional(),
   coolingStartProductTemp: z.string().optional(),
   coolingHotProductTime: z.string().optional(),
-  coolingHotProductTemp: z.string().optional(),
   coolingColdProductTime: z.string().optional(),
   coolingColdProductTemp: z.string().optional(),
   coolingVisa: z.string().optional(),
@@ -61,24 +67,27 @@ const tempChangeEntrySchema = z.object({
 });
 type TempChangeFormData = z.infer<typeof tempChangeEntrySchema>;
 
-const actionSchema = z.object({
-  finalTemp: z.string().min(1, "Température requise."),
-  visa: z.string().min(1, "Visa requis."),
-});
-type ActionFormData = z.infer<typeof actionSchema>;
+type ActionFormData = {
+    finalTemp: string;
+    visa?: string;
+}
 
-// Isolated Action Dialog Component to prevent re-rendering the parent on input change
+// Isolated Action Dialog Component
 interface ActionDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   entry: TempChangeEntry | null;
-  type: 'cooling' | 'reheating' | null;
+  type: 'cooling' | 'reheating' | 'startReheating' | null;
   onSubmit: (data: ActionFormData) => void;
 }
 
 const ActionDialog: React.FC<ActionDialogProps> = ({ isOpen, onOpenChange, entry, type, onSubmit }) => {
+    const currentActionSchema = type === 'startReheating'
+        ? z.object({ finalTemp: z.string().min(1, "Température requise."), visa: z.string().optional() })
+        : z.object({ finalTemp: z.string().min(1, "Température requise."), visa: z.string().min(1, "Visa requis.") });
+
     const form = useForm<ActionFormData>({
-        resolver: zodResolver(actionSchema),
+        resolver: zodResolver(currentActionSchema),
         defaultValues: { finalTemp: '', visa: '' }
     });
 
@@ -88,13 +97,28 @@ const ActionDialog: React.FC<ActionDialogProps> = ({ isOpen, onOpenChange, entry
         }
     }, [isOpen, form]);
 
+    const getTitle = () => {
+        switch(type) {
+            case 'cooling': return 'Fin du Refroidissement';
+            case 'startReheating': return 'Début de la Remise en T°';
+            case 'reheating': return 'Fin de la Remise en T°';
+            default: return '';
+        }
+    };
+
+    const getTempLabel = () => {
+        switch(type) {
+            case 'startReheating': return 'Température de Départ (°C)';
+            default: return 'Température Finale (°C)';
+        }
+    };
+
+
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-[90vw] sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle>
-                        {type === 'cooling' ? 'Fin du Refroidissement' : 'Fin de la Remise en T°'}
-                    </DialogTitle>
+                    <DialogTitle>{getTitle()}</DialogTitle>
                     <DialogDescription>
                         Pour le produit : {entry?.productName}
                     </DialogDescription>
@@ -103,18 +127,20 @@ const ActionDialog: React.FC<ActionDialogProps> = ({ isOpen, onOpenChange, entry
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                         <FormField control={form.control} name="finalTemp" render={({ field }) => (
                             <FormItem>
-                                <FormLabel>Température Finale (°C)</FormLabel>
+                                <FormLabel>{getTempLabel()}</FormLabel>
                                 <FormControl><Input placeholder="Ex: 8" {...field} /></FormControl>
                                 <FormMessage />
                             </FormItem>
                         )}/>
-                         <FormField control={form.control} name="visa" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Visa (Initiales)</FormLabel>
-                                <FormControl><Input placeholder="Ex: JD" {...field} /></FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}/>
+                       {type !== 'startReheating' && (
+                           <FormField control={form.control} name="visa" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Visa (Initiales)</FormLabel>
+                                    <FormControl><Input placeholder="Ex: JD" {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}/>
+                       )}
                         <DialogFooter>
                             <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
                             <Button type="submit">Valider</Button>
@@ -139,8 +165,28 @@ export default function TempChangeMonitoring() {
 
   const [isActionDialogOpen, setIsActionDialogOpen] = useState(false);
   const [actionEntry, setActionEntry] = useState<TempChangeEntry | null>(null);
-  const [actionType, setActionType] = useState<'cooling' | 'reheating' | null>(null);
+  const [actionType, setActionType] = useState<'cooling' | 'reheating' | 'startReheating' | null>(null);
+  
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
+  const handleMonthChange = (monthStr: string) => {
+    const newDate = new Date(selectedDate);
+    newDate.setMonth(parseInt(monthStr, 10));
+    setSelectedDate(newDate);
+  };
+
+  const handleYearChange = (yearStr: string) => {
+    const newDate = new Date(selectedDate);
+    newDate.setFullYear(parseInt(yearStr, 10));
+    setSelectedDate(newDate);
+  };
+
+  const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
+  const months = Array.from({ length: 12 }, (_, i) => ({
+    value: i.toString(),
+    label: format(new Date(0, i), 'MMMM', { locale: fr }),
+  }));
+  
   useEffect(() => {
     if (typeof window !== "undefined") {
       const checkScreenSize = () => setIsMobile(window.innerWidth < 768);
@@ -160,8 +206,15 @@ export default function TempChangeMonitoring() {
 
   const fetchEntries = useCallback(async () => {
     try {
+      const startOfMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+      const endOfMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0, 23, 59, 59);
+
       const entriesCollectionRef = collection(firestore, 'pmsTempChangeLog');
-      const q = query(entriesCollectionRef, orderBy("coolingDate", "desc"));
+      const q = query(entriesCollectionRef, 
+        where("coolingDate", ">=", Timestamp.fromDate(startOfMonth)),
+        where("coolingDate", "<=", Timestamp.fromDate(endOfMonth)),
+        orderBy("coolingDate", "desc")
+      );
       const querySnapshot = await getDocs(q);
       const loadedEntries = querySnapshot.docs.map(docSnap => {
         const data = docSnap.data();
@@ -176,7 +229,8 @@ export default function TempChangeMonitoring() {
       console.error("Error loading entries:", error);
       toast({ title: "Erreur de chargement", variant: "destructive" });
     }
-  }, [toast]);
+  }, [toast, selectedDate]);
+
 
   useEffect(() => {
     setIsInitiallyLoading(true);
@@ -196,20 +250,20 @@ export default function TempChangeMonitoring() {
         coolingDate: new Date(), productName: '', quantity: '',
         cooledWithWater: false, servedCold: false,
         coolingStartProductTemp: '',
-        coolingHotProductTime: format(new Date(), 'HH:mm'), coolingHotProductTemp: '', coolingColdProductTime: '', coolingColdProductTemp: '', coolingVisa: '',
+        coolingHotProductTime: format(new Date(), 'HH:mm'), coolingColdProductTime: '', coolingColdProductTemp: '', coolingVisa: '',
         reheatingDate: null, reheatingColdProductTime: '', reheatingColdProductTemp: '', reheatingHotProductTime: '', reheatingHotProductTemp: '', reheatingVisa: '',
       });
     }
     setIsDialogOpen(true);
   };
   
-  const handleOpenActionDialog = (entry: TempChangeEntry, type: 'cooling' | 'reheating') => {
+  const handleOpenActionDialog = (entry: TempChangeEntry, type: 'cooling' | 'reheating' | 'startReheating') => {
     setActionEntry(entry);
     setActionType(type);
     setIsActionDialogOpen(true);
   };
 
-  const handleFormSubmit = async (data: TempChangeFormData) => {
+const handleFormSubmit = async (data: TempChangeFormData) => {
     setIsSubmitting(true);
     const isNew = !editingEntry;
 
@@ -235,7 +289,12 @@ export default function TempChangeMonitoring() {
         await setDoc(entryDocRef, entryDataForFirestore, { merge: true });
         toast({ title: "Produit Modifié" });
       }
-      await fetchEntries(); 
+
+      if (data.coolingDate && (data.coolingDate.getMonth() !== selectedDate.getMonth() || data.coolingDate.getFullYear() !== selectedDate.getFullYear())) {
+          setSelectedDate(data.coolingDate);
+      } else {
+          await fetchEntries();
+      }
     } catch (error) {
       console.error("Error saving entry:", error);
       toast({ title: "Erreur de Sauvegarde", variant: "destructive" });
@@ -243,7 +302,7 @@ export default function TempChangeMonitoring() {
       setIsSubmitting(false);
       setIsDialogOpen(false);
     }
-  };
+};
 
   const handleActionSubmit = (data: ActionFormData) => {
     if (!actionEntry || !actionType) return;
@@ -261,36 +320,39 @@ export default function TempChangeMonitoring() {
         updatedFields.reheatingVisa = "Servi Froid";
         updatedFields.reheatingHotProductTemp = "0";
       }
+    } else if (actionType === 'startReheating') {
+        updatedFields.reheatingDate = now.toISOString();
+        updatedFields.reheatingColdProductTime = currentTime;
+        updatedFields.reheatingColdProductTemp = data.finalTemp;
     } else if (actionType === 'reheating') {
       updatedFields.reheatingHotProductTime = currentTime;
       updatedFields.reheatingHotProductTemp = data.finalTemp;
       updatedFields.reheatingVisa = data.visa;
+      if (!actionEntry.reheatingDate) {
+          updatedFields.reheatingDate = now.toISOString();
+      }
       if (!actionEntry.reheatingColdProductTime) {
-        updatedFields.reheatingDate = now.toISOString();
         updatedFields.reheatingColdProductTime = currentTime;
       }
     }
 
-    // Optimistic UI update
     setEntries(prevEntries =>
       prevEntries.map(e => e.id === actionEntry.id ? { ...e, ...updatedFields } : e)
     );
     setIsActionDialogOpen(false);
 
-    // Async DB update
     const runAsyncUpdate = async () => {
       try {
         const fieldsForFirestore: any = { ...updatedFields };
-        if (fieldsForFirestore.reheatingDate) {
-          fieldsForFirestore.reheatingDate = Timestamp.fromDate(now);
+        if (fieldsForFirestore.reheatingDate && typeof fieldsForFirestore.reheatingDate === 'string') {
+          fieldsForFirestore.reheatingDate = Timestamp.fromDate(new Date(fieldsForFirestore.reheatingDate));
         }
         const entryDocRef = doc(firestore, 'pmsTempChangeLog', actionEntry.id);
         await setDoc(entryDocRef, fieldsForFirestore, { merge: true });
         toast({ title: `Action enregistrée!` });
       } catch (error) {
         console.error("Error updating entry:", error);
-toast({ title: "Erreur de mise à jour", variant: "destructive" });
-        // Revert the optimistic update on error
+        toast({ title: "Erreur de mise à jour", variant: "destructive" });
         setEntries(originalEntries);
       }
     };
@@ -299,116 +361,180 @@ toast({ title: "Erreur de mise à jour", variant: "destructive" });
 
   const handleDeleteEntry = (entryId: string) => {
       const originalEntries = [...entries];
-      // Optimistic UI update
       setEntries(prevEntries => prevEntries.filter(entry => entry.id !== entryId));
       
-      // Async DB update
       const runAsyncDelete = async () => {
         try {
-            await deleteDoc(doc(firestore, 'pmsTempChangeLog', entryId));
-            toast({ title: "Enregistrement Supprimé", variant: "destructive" });
+          await deleteDoc(doc(firestore, 'pmsTempChangeLog', entryId));
+          toast({ title: "Enregistrement Supprimé", variant: "destructive" });
         } catch (error) {
-            console.error("Error deleting entry:", error);
-            toast({ title: "Erreur de Suppression", variant: "destructive" });
-            setEntries(originalEntries); // Revert on error
+          console.error("Error deleting entry:", error);
+          toast({ title: "Erreur de Suppression", variant: "destructive" });
+          setEntries(originalEntries);
         }
       };
       runAsyncDelete();
   };
     
-    const generatePdf = () => {
-        setIsSubmitting(true);
-        try {
-            const pdfSettings = getPdfLayoutSettings('pms_temp_change_monitoring'); 
-            const doc = new jsPDF('landscape') as jsPDFWithAutoTable;
-            const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
-            let currentY = 15;
-            if (pdfSettings.headerText) { doc.setFontSize(10); doc.text(pdfSettings.headerText, 14, currentY); currentY += 10; }
-            doc.setFontSize(16); doc.text("Suivi Baisse / Remise en Température", 14, currentY); currentY += 8;
-            doc.setFontSize(10); doc.text(`Généré le: ${generationDateFormatted}`, 14, currentY); currentY += 7;
+   const generatePdf = async () => {
+    setIsSubmitting(true);
+    try {
+        const pdfSettings = await getPdfLayoutSettings('pms_temp_change_monitoring');
+        const doc = new jsPDF({
+            orientation: pdfSettings.orientation as any || 'landscape',
+            unit: 'pt',
+            format: pdfSettings.pageSize as any || 'a4',
+        }) as jsPDFWithAutoTable;
+        
+        const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
-            const headStylesBase: any = { fontSize: 7, fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1 };
-            const primaryColorRgb = hexToRgb(pdfSettings.primaryColor || '#CCCCCC'); 
-            if (primaryColorRgb) {
-                headStylesBase.fillColor = primaryColorRgb;
-                const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
-                headStylesBase.textColor = brightness > 125 ? [0,0,0] : [255,255,255];
-            }
-            const orangeColor = hexToRgb('#FFA500') || [255, 165, 0]; 
-            const blueColor = hexToRgb('#ADD8E6') || [173, 216, 230]; 
+        let currentY = pdfSettings.marginTop;
+        const pageContentWidth = doc.internal.pageSize.width - pdfSettings.marginLeft - pdfSettings.marginRight;
+        
+        const effectiveHeaderText = pdfSettings.headerText || (pdfSettings.logoUrl ? '{logo}' : '');
 
-            const head: any[] = [
-                [
-                    { content: '', colSpan: 4, styles: { ...headStylesBase, fillColor: [255,255,255], textColor: [0,0,0] } }, 
-                    { content: 'REFROIDISSEMENT RAPIDE', colSpan: 5, styles: headStylesBase },
-                    { content: 'REMISE EN TEMPERATURE', colSpan: 6, styles: headStylesBase }, 
-                ],
-                [
-                    { content: 'Date', styles: headStylesBase }, { content: 'Produit', styles: headStylesBase }, { content: 'Quantité', styles: headStylesBase }, { content: 'T° Départ', styles: headStylesBase },
-                    { content: 'P. chauds\nHeure', styles: {...headStylesBase, fillColor: orangeColor, textColor: [0,0,0]} },
-                    { content: 'P. chauds\nT°', styles: {...headStylesBase, fillColor: orangeColor, textColor: [0,0,0]} },
-                    { content: 'P. froids\nHeure', styles: {...headStylesBase, fillColor: blueColor, textColor: [0,0,0]} },
-                    { content: 'P. froids\nT°', styles: {...headStylesBase, fillColor: blueColor, textColor: [0,0,0]} },
-                    { content: 'Visa', styles: headStylesBase }, { content: 'Date', styles: headStylesBase }, 
-                    { content: 'P. froids\nHeure', styles: {...headStylesBase, fillColor: blueColor, textColor: [0,0,0]} },
-                    { content: 'P. froids\nT°', styles: {...headStylesBase, fillColor: blueColor, textColor: [0,0,0]} },
-                    { content: 'P. chauds\nHeure', styles: {...headStylesBase, fillColor: orangeColor, textColor: [0,0,0]} },
-                    { content: 'P. chauds\nT°', styles: {...headStylesBase, fillColor: orangeColor, textColor: [0,0,0]} },
-                    { content: 'Visa', styles: headStylesBase },
-                ]
-            ];
-            
-            const body = entries.map(entry => {
-                const reheatingPart = entry.servedCold
-                    ? ['N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'Servi Froid']
-                    : [
-                        entry.reheatingDate ? format(parseISO(entry.reheatingDate), "dd/MM/yy", { locale: fr }) : '-',
-                        entry.reheatingColdProductTime || '-',
-                        entry.reheatingColdProductTemp || '-',
-                        entry.reheatingHotProductTime || '-',
-                        entry.reheatingHotProductTemp || '-',
-                        entry.reheatingVisa || '-',
-                    ];
-
-                return [
-                    format(parseISO(entry.coolingDate), "dd/MM/yy", { locale: fr }),
-                    entry.productName + (entry.cooledWithWater ? ' (eau)' : ''),
-                    entry.quantity,
-                    entry.coolingStartProductTemp ? `${entry.coolingStartProductTemp}°C` : '-',
-                    entry.coolingHotProductTime || '-',
-                    entry.coolingHotProductTemp || '-',
-                    entry.coolingColdProductTime || '-',
-                    entry.coolingColdProductTemp || '-',
-                    entry.coolingVisa || '-',
-                    ...reheatingPart,
-                ];
-            });
-
-            doc.autoTable({
-                head: head, body: body, startY: currentY, theme: 'grid',
-                styles: { fontSize: 7, cellPadding: 1, valign: 'middle', halign: 'center' },
-                headStyles: {halign: 'center', valign: 'middle', fontStyle: 'bold', cellPadding: 1, fontSize: 6.5},
-                columnStyles: { 0: { cellWidth: 15 }, 1: { cellWidth: 30 }, 2: { cellWidth: 15 }, 3: { cellWidth: 15 }, 4: { cellWidth: 15 }, 5: { cellWidth: 12 }, 6: { cellWidth: 15 }, 7: { cellWidth: 12 }, 8: { cellWidth: 10 }, 9: { cellWidth: 15 }, 10: { cellWidth: 15 }, 11: { cellWidth: 12 }, 12: { cellWidth: 15 }, 13: { cellWidth: 12 }, 14: { cellWidth: 10 } },
-                didDrawPage: (data) => {
-                    const pageCount = doc.internal.getNumberOfPages();
-                    if (pdfSettings.footerText) {
-                        let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', data.pageNumber.toString()).replace('{totalPages}', pageCount.toString());
-                        doc.setFontSize(9); doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - 10);
+        if (effectiveHeaderText) {
+            const headerRows = effectiveHeaderText.split('\n');
+            doc.setFontSize(pdfSettings.headerFontSize);
+            for (const row of headerRows) {
+                const cells = row.split('|');
+                if (cells.length === 0) continue;
+                const cellWidth = pageContentWidth / cells.length;
+                let maxHeightInRow = 0;
+                cells.forEach(cell => {
+                    const cellText = cell.trim();
+                    if (cellText === '{logo}' && pdfSettings.logoUrl) {
+                        maxHeightInRow = Math.max(maxHeightInRow, 30);
+                    } else {
+                        const textLines = doc.splitTextToSize(cellText, cellWidth - 6);
+                        maxHeightInRow = Math.max(maxHeightInRow, (textLines.length * pdfSettings.headerFontSize * 0.7) + 6);
                     }
-                },
-            });
-            doc.save(`Suivi_Baisse_Remise_Temperature_${format(new Date(), "yyyyMMdd")}.pdf`);
-            toast({ title: "PDF Généré" });
-        } catch (error) {
-            console.error("Error generating PDF:", error);
-            toast({ title: "Erreur PDF", variant: "destructive" });
-        } finally {
-            setIsSubmitting(false);
+                });
+
+                let currentX = pdfSettings.marginLeft;
+                for (const cell of cells) {
+                    const cellText = cell.trim();
+                    doc.rect(currentX, currentY, cellWidth, maxHeightInRow, 'S');
+                    if (cellText === '{logo}' && pdfSettings.logoUrl) {
+                        try {
+                            const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+                            const formatType = imgProps.fileType.toUpperCase();
+                            const desiredImgHeight = Math.min(maxHeightInRow - 6, 40);
+                            const imgWidth = (imgProps.width * desiredImgHeight) / imgProps.height;
+                            const imgX = currentX + (cellWidth - imgWidth) / 2;
+                            const imgY = currentY + (maxHeightInRow - desiredImgHeight) / 2;
+                            doc.addImage(pdfSettings.logoUrl, formatType, imgX, imgY, imgWidth, desiredImgHeight);
+                        } catch (e) { console.error("Erreur d'ajout du logo.", e); }
+                    } else if (cellText !== '{logo}') {
+                        doc.text(cellText, currentX + (cellWidth / 2), currentY + (maxHeightInRow / 2), { align: 'center', baseline: 'middle', maxWidth: cellWidth - 6 });
+                    }
+                    currentX += cellWidth;  
+                }
+                currentY += maxHeightInRow;
+            }
+            currentY += 10;
         }
-    };
+
+        const monthYearTitle = format(selectedDate, 'MMMM yyyy', { locale: fr });
+        const moduleDefaultTitle = `Suivi Baisse / Remise en Température - ${monthYearTitle}`;
+        let finalTitle = "";
+        if (pdfSettings.showDocumentBaseTitle && pdfSettings.documentBaseTitle) {
+            finalTitle = pdfSettings.documentBaseTitle.trim();
+        }
+        if (pdfSettings.showModuleTitle) {
+            finalTitle = finalTitle ? `${finalTitle} - ${moduleDefaultTitle}` : moduleDefaultTitle;
+        }
+        if (finalTitle) {
+            doc.setFontSize(pdfSettings.documentTitleFontSize);
+            doc.text(finalTitle, doc.internal.pageSize.width / 2, currentY, { align: 'center' });
+            currentY += pdfSettings.documentTitleFontSize + 5;
+        }
+
+        const baseHeadStyles = { fontSize: 7, fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 1, textColor: [0, 0, 0] };
+        
+        const mainHeadStyles = { ...baseHeadStyles };
+        if (pdfSettings.primaryColor) {
+            const rgb = hexToRgb(pdfSettings.primaryColor);
+            if (rgb) {
+                mainHeadStyles.fillColor = [rgb.r, rgb.g, rgb.b];
+                const brightness = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
+                mainHeadStyles.textColor = brightness > 125 ? [0, 0, 0] : [255, 255, 255];
+            }
+        }
+        
+        const orangeHeadStyle = { ...baseHeadStyles, fillColor: '#fed7aa' };
+        const blueHeadStyle = { ...baseHeadStyles, fillColor: '#bfdbfe' };
+        
+        const orangeBodyStyle = { fillColor: '#fed7aa' };
+        const blueBodyStyle = { fillColor: '#bfdbfe' };
+
+        const head: any[] = [
+            [
+                { content: 'Date', rowSpan: 2, styles: mainHeadStyles }, { content: 'Produit', rowSpan: 2, styles: mainHeadStyles }, { content: 'Qté', rowSpan: 2, styles: mainHeadStyles }, { content: 'T° Départ', rowSpan: 2, styles: mainHeadStyles },
+                { content: 'REFROIDISSEMENT RAPIDE', colSpan: 4, styles: mainHeadStyles },
+                { content: 'REMISE EN TEMPERATURE', colSpan: 6, styles: mainHeadStyles },
+            ],
+            [
+                { content: 'P. chauds\nHeure', styles: orangeHeadStyle },
+                { content: 'P. froids\nHeure', styles: blueHeadStyle }, { content: 'P. froids\nT°', styles: blueHeadStyle },
+                { content: 'Visa', styles: mainHeadStyles }, { content: 'Date', styles: mainHeadStyles },
+                { content: 'P. froids\nHeure', styles: blueHeadStyle }, { content: 'P. froids\nT°', styles: blueHeadStyle },
+                { content: 'P. chauds\nHeure', styles: orangeHeadStyle }, { content: 'P. chauds\nT°', styles: orangeHeadStyle },
+                { content: 'Visa', styles: mainHeadStyles },
+            ]
+        ];
+
+        const body = entries.map(entry => {
+            const reheatingPart = entry.servedCold
+                ? [{ content: 'Servi Froid', colSpan: 6, styles: { halign: 'center', fontStyle: 'bold' } }]
+                : [
+                    entry.reheatingDate ? format(parseISO(entry.reheatingDate), "dd/MM/yy", { locale: fr }) : '-',
+                    { content: entry.reheatingColdProductTime || '-', styles: blueBodyStyle },
+                    { content: entry.reheatingColdProductTemp || '-', styles: blueBodyStyle },
+                    { content: entry.reheatingHotProductTime || '-', styles: orangeBodyStyle },
+                    { content: entry.reheatingHotProductTemp || '-', styles: orangeBodyStyle },
+                    entry.reheatingVisa || '-',
+                ];
+
+            return [
+                format(parseISO(entry.coolingDate), "dd/MM/yy", { locale: fr }),
+                entry.productName + (entry.cooledWithWater ? ' (eau)' : ''),
+                entry.quantity,
+                entry.coolingStartProductTemp ? `${entry.coolingStartProductTemp}°C` : '-',
+                { content: entry.coolingHotProductTime || '-', styles: orangeBodyStyle },
+                { content: entry.coolingColdProductTime || '-', styles: blueBodyStyle },
+                { content: entry.coolingColdProductTemp || '-', styles: blueBodyStyle },
+                entry.coolingVisa || '-',
+                ...reheatingPart,
+            ];
+        });
+
+        doc.autoTable({
+            head: head, body: body, startY: currentY, theme: 'grid',
+            styles: { fontSize: 7, cellPadding: 1, valign: 'middle', halign: 'center', textColor: [0,0,0] },
+            columnStyles: { 1: { halign: 'left' } },
+            margin: { top: pdfSettings.marginTop, right: pdfSettings.marginRight, bottom: pdfSettings.marginBottom, left: pdfSettings.marginLeft },
+            didDrawPage: (data) => {
+                const pageCount = doc.internal.getNumberOfPages();
+                if (pdfSettings.footerText) {
+                    let footerStr = pdfSettings.footerText.replace('{date}', generationDateFormatted).replace('{pageNumber}', data.pageNumber.toString()).replace('{totalPages}', pageCount.toString());
+                    doc.setFontSize(pdfSettings.footerFontSize);
+                    doc.text(footerStr, data.settings.margin.left, doc.internal.pageSize.height - (pdfSettings.marginBottom / 2));
+                }
+            },
+        });
+        doc.save(`Suivi_Baisse_Remise_Temperature_${format(selectedDate, "yyyy-MM")}.pdf`);
+        toast({ title: "PDF Généré", description: "Le téléchargement de votre document a commencé." });
+    } catch (error) {
+        console.error("Error generating PDF:", error);
+        toast({ title: "Erreur PDF", description: "La génération du PDF a échoué.", variant: "destructive" });
+    } finally {
+        setIsSubmitting(false);
+    }
+};
 
   const DesktopView = () => (
-     <>
+      <>
       <CardContent>
         {isInitiallyLoading ? (
           <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Chargement...</div>
@@ -424,12 +550,11 @@ toast({ title: "Erreur de mise à jour", variant: "destructive" });
                     <TableHead rowSpan={2} className="text-center align-middle border-r min-w-[150px]">Produit</TableHead>
                     <TableHead rowSpan={2} className="text-center align-middle border-r min-w-[80px]">Quantité</TableHead>
                     <TableHead rowSpan={2} className="text-center align-middle border-r min-w-[70px]">T° Départ</TableHead>
-                    <TableHead colSpan={5} className="text-center font-semibold border-r py-1">REFROIDISSEMENT RAPIDE</TableHead>
+                    <TableHead colSpan={4} className="text-center font-semibold border-r py-1">REFROIDISSEMENT RAPIDE</TableHead>
                     <TableHead colSpan={6} className="text-center font-semibold py-1">REMISE EN TEMPERATURE</TableHead> 
                     </TableRow>
                     <TableRow className="bg-primary/10 text-xs whitespace-nowrap">
                     <TableHead className="text-center border-r bg-orange-200 dark:bg-orange-700/50 min-w-[70px]">P.Chauds<br/>Heure</TableHead>
-                    <TableHead className="text-center border-r bg-orange-200 dark:bg-orange-700/50 min-w-[60px]">P.Chauds<br/>T°</TableHead>
                     <TableHead className="text-center border-r bg-blue-200 dark:bg-blue-700/50 min-w-[70px]">P.Froids<br/>Heure</TableHead>
                     <TableHead className="text-center border-r bg-blue-200 dark:bg-blue-700/50 min-w-[60px]">P.Froids<br/>T°</TableHead>
                     <TableHead className="text-center border-r min-w-[60px]">Visa</TableHead>
@@ -466,16 +591,21 @@ toast({ title: "Erreur de mise à jour", variant: "destructive" });
                                 <TableCell className="border-r text-center">{entry.quantity}</TableCell>
                                 <TableCell className="border-r text-center">{entry.coolingStartProductTemp ? `${entry.coolingStartProductTemp}°C` : '-'}</TableCell>
                                 <TableCell className="border-r text-center">{entry.coolingHotProductTime || '-'}</TableCell>
-                                <TableCell className="border-r text-center">{entry.coolingHotProductTemp || '-'}</TableCell>
                                 <TableCell className="border-r text-center">{entry.coolingColdProductTime || '-'}</TableCell>
                                 <TableCell className="border-r text-center">{entry.coolingColdProductTemp || '-'}</TableCell>
                                 <TableCell className="border-r text-center">{entry.coolingVisa || '-'}</TableCell>
-                                <TableCell className={cn("border-r text-center", isServedCold && "text-muted-foreground")}>{isServedCold ? 'N/A' : (entry.reheatingDate ? format(parseISO(entry.reheatingDate), "dd/MM/yy", { locale: fr }) : '-')}</TableCell>
-                                <TableCell className={cn("border-r text-center", isServedCold && "text-muted-foreground")}>{isServedCold ? 'N/A' : entry.reheatingColdProductTime || '-'}</TableCell>
-                                <TableCell className={cn("border-r text-center", isServedCold && "text-muted-foreground")}>{isServedCold ? 'N/A' : entry.reheatingColdProductTemp || '-'}</TableCell>
-                                <TableCell className={cn("border-r text-center", isServedCold && "text-muted-foreground")}>{isServedCold ? 'N/A' : entry.reheatingHotProductTime || '-'}</TableCell>
-                                <TableCell className={cn("border-r text-center", isServedCold && "text-muted-foreground")}>{isServedCold ? 'N/A' : entry.reheatingHotProductTemp || '-'}</TableCell>
-                                <TableCell className={cn("text-center font-semibold", isServedCold && "text-muted-foreground")}>{isServedCold ? 'Servi Froid' : entry.reheatingVisa || '-'}</TableCell>
+                                {isServedCold ? (
+                                    <TableCell colSpan={6} className="text-center font-semibold text-muted-foreground">Servi Froid</TableCell>
+                                ) : (
+                                    <>
+                                        <TableCell className="border-r text-center">{entry.reheatingDate ? format(parseISO(entry.reheatingDate), "dd/MM/yy", { locale: fr }) : '-'}</TableCell>
+                                        <TableCell className="border-r text-center">{entry.reheatingColdProductTime || '-'}</TableCell>
+                                        <TableCell className="border-r text-center">{entry.reheatingColdProductTemp || '-'}</TableCell>
+                                        <TableCell className="border-r text-center">{entry.reheatingHotProductTime || '-'}</TableCell>
+                                        <TableCell className="border-r text-center">{entry.reheatingHotProductTemp || '-'}</TableCell>
+                                        <TableCell className="text-center font-semibold">{entry.reheatingVisa || '-'}</TableCell>
+                                    </>
+                                )}
                             </TableRow>
                         );
                     })}
@@ -489,13 +619,14 @@ toast({ title: "Erreur de mise à jour", variant: "destructive" });
             <Button onClick={generatePdf} disabled={isSubmitting}><FileText className="mr-2 h-4 w-4"/> Générer PDF</Button>
           )}
       </CardFooter>
-    </>
+      </>
   );
 
   const MobileView = () => {
     const entriesToAction = entries.filter(entry => {
         const isCoolingDone = !!entry.coolingColdProductTemp;
-        const isProcessComplete = isCoolingDone && (entry.servedCold || !!entry.reheatingHotProductTemp);
+        const isReheatingComplete = !!entry.reheatingHotProductTemp;
+        const isProcessComplete = isCoolingDone && (entry.servedCold || isReheatingComplete);
         return !isProcessComplete;
     });
 
@@ -506,15 +637,47 @@ toast({ title: "Erreur de mise à jour", variant: "destructive" });
         <CardContent className="p-2 sm:p-4 space-y-3">
             {entriesToAction.map(entry => {
                 const isCoolingDone = !!entry.coolingColdProductTemp;
+                const isReheatingStarted = !!entry.reheatingColdProductTime;
+                const isServedCold = entry.servedCold;
                 
-                let statusText = "En refroidissement";
-                let StatusIcon = Wind;
-                let statusColor = "text-blue-500";
-                
-                if (isCoolingDone) {
+                let statusText: string;
+                let StatusIcon: React.ElementType;
+                let statusColor: string;
+                let actionButton: React.ReactNode;
+
+                if (!isCoolingDone) {
+                    statusText = "En refroidissement";
+                    StatusIcon = Wind;
+                    statusColor = "text-blue-500";
+                    actionButton = (
+                        <Button size="sm" className="w-full bg-blue-500 hover:bg-blue-600 text-white" disabled={isSuperviseur} onClick={() => handleOpenActionDialog(entry, 'cooling')}>
+                            <Wind className="mr-2 h-4 w-4"/> Fin Refroidissement
+                        </Button>
+                    );
+                } else if (!isReheatingStarted && !isServedCold) {
                     statusText = "Prêt pour remise en T°";
                     StatusIcon = Flame;
+                    statusColor = "text-yellow-500";
+                    actionButton = (
+                        <Button size="sm" className="w-full bg-yellow-500 hover:bg-yellow-600 text-white" disabled={isSuperviseur} onClick={() => handleOpenActionDialog(entry, 'startReheating')}>
+                            <Flame className="mr-2 h-4 w-4"/> Début Remise en T°
+                        </Button>
+                    );
+                } else if (isReheatingStarted && !isServedCold) {
+                    statusText = "En remise en T°";
+                    StatusIcon = Flame;
                     statusColor = "text-orange-500";
+                    actionButton = (
+                        <Button size="sm" className="w-full bg-orange-500 hover:bg-orange-600 text-white" disabled={isSuperviseur} onClick={() => handleOpenActionDialog(entry, 'reheating')}>
+                            <Flame className="mr-2 h-4 w-4"/> Fin Remise en T°
+                        </Button>
+                    );
+                } else {
+                    // This case should technically not be rendered due to the filter, but as a fallback:
+                    statusText = "Terminé";
+                    StatusIcon = CheckCircle;
+                    statusColor = "text-green-500";
+                    actionButton = null;
                 }
 
                 return (
@@ -533,15 +696,7 @@ toast({ title: "Erreur de mise à jour", variant: "destructive" });
                             </div>
                         </CardHeader>
                         <CardFooter className="p-3 flex justify-end">
-                            {!isCoolingDone ? (
-                                <Button size="sm" className="w-full bg-blue-500 hover:bg-blue-600 text-white" disabled={isSuperviseur} onClick={() => handleOpenActionDialog(entry, 'cooling')}>
-                                    <Wind className="mr-2 h-4 w-4"/> Fin Refroidissement
-                                </Button>
-                            ) : (
-                                <Button size="sm" className="w-full bg-orange-500 hover:bg-orange-600 text-white" disabled={isSuperviseur} onClick={() => handleOpenActionDialog(entry, 'reheating')}>
-                                    <Flame className="mr-2 h-4 w-4"/> Fin Remise en T°
-                                </Button>
-                            )}
+                            {actionButton}
                         </CardFooter>
                     </Card>
                 );
@@ -553,87 +708,149 @@ toast({ title: "Erreur de mise à jour", variant: "destructive" });
   return (
     <Card className="shadow-lg w-full">
       <CardHeader className="flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0">
-        <div className="space-y-1.5">
-          <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-            <ArrowDownUp className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
-            Suivi Baisse / Remise en T°
-          </CardTitle>
-          <CardDesc className="hidden md:block">
-            Refroidissement rapide et remise en température des produits.
-          </CardDesc>
+    <div className="space-y-1.5">
+      <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+        <ArrowDownUp className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
+        Suivi Baisse / Remise en T°
+      </CardTitle>
+      <CardDesc className="hidden md:block">
+        Refroidissement rapide et remise en température des produits.
+      </CardDesc>
+    </div>
+    <div className="flex flex-col sm:flex-row items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Select value={selectedDate.getMonth().toString()} onValueChange={handleMonthChange}>
+                <SelectTrigger className="w-full sm:w-[150px]">
+                    <SelectValue placeholder="Mois" />
+                </SelectTrigger>
+                <SelectContent>
+                    {months.map(month => (
+                        <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+            <Select value={selectedDate.getFullYear().toString()} onValueChange={handleYearChange}>
+                <SelectTrigger className="w-full sm:w-[100px]">
+                    <SelectValue placeholder="Année" />
+                </SelectTrigger>
+                <SelectContent>
+                    {years.map(year => (
+                        <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={() => handleOpenDialog()} className="w-full sm:w-auto">
-              <PlusCircle className="mr-2 h-4 w-4" /> Ajouter
-            </Button>
-          </DialogTrigger>
-          <DialogContent className={isMobile ? "max-w-[95vw]" : "sm:max-w-4xl"}>
-            <DialogHeader><DialogTitle>{editingEntry ? "Modifier" : (isMobile ? "Nouveau Produit" : "Nouvel Enregistrement")}</DialogTitle></DialogHeader>
-            <Form {...mainForm}>
-              <form onSubmit={mainForm.handleSubmit(handleFormSubmit)} className="space-y-4 py-2 max-h-[80vh] overflow-y-auto pr-2">
-                
-                {isMobile && !editingEntry ? (
-                    <div className="space-y-3">
-                        <FormField control={mainForm.control} name="productName" render={({ field }) => (<FormItem><FormLabel>Produit</FormLabel><FormControl><Input placeholder="Ex: Boeuf Bourguignon" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField control={mainForm.control} name="quantity" render={({ field }) => (<FormItem><FormLabel>Quantité</FormLabel><FormControl><Input placeholder="Ex: 5 kg" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField control={mainForm.control} name="coolingStartProductTemp" render={({ field }) => (<FormItem><FormLabel>T° de Départ (°C)</FormLabel><FormControl><Input placeholder="Ex: 65" type="number" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        <div className="flex items-center space-x-2">
-                            <FormField control={mainForm.control} name="cooledWithWater" render={({ field }) => ( <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-3 shadow-sm"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><div className="space-y-1 leading-none"><FormLabel>Refroidi à l'eau</FormLabel></div></FormItem> )}/>
-                            <FormField control={mainForm.control} name="servedCold" render={({ field }) => ( <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-3 shadow-sm"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><div className="space-y-1 leading-none"><FormLabel>Servi froid</FormLabel></div></FormItem> )}/>
-                        </div>
-                    </div>
-                ) : (
-                <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  <FormField control={mainForm.control} name="coolingDate" render={({ field }) => ( <FormItem className="flex flex-col"><FormLabel>Date</FormLabel><Popover><PopoverTrigger asChild><FormControl><Button variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")} disabled={!!editingEntry}><LucideCalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr} /></PopoverContent></Popover><FormMessage /></FormItem> )} />
-                  <FormField control={mainForm.control} name="productName" render={({ field }) => (<FormItem><FormLabel>Produit</FormLabel><FormControl><Input placeholder="Ex: Boeuf Bourguignon" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                  <FormField control={mainForm.control} name="quantity" render={({ field }) => (<FormItem><FormLabel>Quantité</FormLabel><FormControl><Input placeholder="Ex: 5 kg" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                  <FormField control={mainForm.control} name="coolingStartProductTemp" render={({ field }) => (<FormItem><FormLabel>T° de Départ (°C)</FormLabel><FormControl><Input placeholder="Ex: 65°C" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                </div>
-
-                <div className="flex items-center space-x-4 pt-2">
-                    <FormField control={mainForm.control} name="cooledWithWater" render={({ field }) => ( <FormItem className="flex flex-row items-center space-x-2"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><FormLabel className="font-normal">Refroidi à l'eau</FormLabel></FormItem> )}/>
-                    <FormField control={mainForm.control} name="servedCold" render={({ field }) => ( <FormItem className="flex flex-row items-center space-x-2"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><FormLabel className="font-normal">Servi froid</FormLabel></FormItem> )}/>
-                </div>
-
-                <div className="pt-3 border-t">
-                  <h4 className="text-md font-semibold mb-2">Refroidissement Rapide</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
-                    <FormField control={mainForm.control} name="coolingHotProductTime" render={({ field }) => (<FormItem><FormLabel>P. Chauds Heure</FormLabel><FormControl><Input type="time" {...field} value={field.value || ''} disabled={isSuperviseur} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={mainForm.control} name="coolingHotProductTemp" render={({ field }) => (<FormItem><FormLabel>P. Chauds T°C</FormLabel><FormControl><Input placeholder="T°C" {...field} value={field.value || ''} disabled={isSuperviseur} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={mainForm.control} name="coolingColdProductTime" render={({ field }) => (<FormItem><FormLabel>P. Froids Heure</FormLabel><FormControl><Input type="time" {...field} value={field.value || ''} disabled={isSuperviseur} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={mainForm.control} name="coolingColdProductTemp" render={({ field }) => (<FormItem><FormLabel>P. Froids T°C</FormLabel><FormControl><Input placeholder="T°C" {...field} value={field.value || ''} disabled={isSuperviseur} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField control={mainForm.control} name="coolingVisa" render={({ field }) => (<FormItem><FormLabel>Visa</FormLabel><FormControl><Input placeholder="Initiales" {...field} value={field.value || ''} disabled={isSuperviseur} /></FormControl><FormMessage /></FormItem>)} />
-                  </div>
-                </div>
-                <div className="pt-3 border-t">
-                  <h4 className="text-md font-semibold mb-2">Remise en Température</h4>
-                  <fieldset disabled={watchedServedCold} className={cn(watchedServedCold && "opacity-50")}>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                        <FormField control={mainForm.control} name="reheatingDate" render={({ field }) => ( <FormItem className="flex flex-col"><FormLabel>Date Remise</FormLabel><Popover><PopoverTrigger asChild><FormControl><Button variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")} disabled={isSuperviseur}><LucideCalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={field.value ?? undefined} onSelect={field.onChange} initialFocus locale={fr} /></PopoverContent></Popover><FormMessage /></FormItem> )}/>
-                        <FormField control={mainForm.control} name="reheatingColdProductTime" render={({ field }) => (<FormItem><FormLabel>P. Froids Heure</FormLabel><FormControl><Input type="time" {...field} value={field.value || ''} disabled={isSuperviseur} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField control={mainForm.control} name="reheatingColdProductTemp" render={({ field }) => (<FormItem><FormLabel>P. Froids T°C</FormLabel><FormControl><Input placeholder="T°C" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField control={mainForm.control} name="reheatingHotProductTime" render={({ field }) => (<FormItem><FormLabel>P. Chauds Heure</FormLabel><FormControl><Input type="time" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField control={mainForm.control} name="reheatingHotProductTemp" render={({ field }) => (<FormItem><FormLabel>P. Chauds T°C</FormLabel><FormControl><Input placeholder="T°C" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField control={mainForm.control} name="reheatingVisa" render={({ field }) => (<FormItem><FormLabel>Visa</FormLabel><FormControl><Input placeholder="Initiales" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
-                    </div>
-                  </fieldset>
-                </div>
-                </>
-                )}
-                
-                <DialogFooter className="pt-4">
-                  <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                  <Button type="submit" disabled={isSubmitting || isSuperviseur}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingEntry ? "Enregistrer" : "Ajouter"}</Button>
-                </DialogFooter>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
+        
+        <Button onClick={() => handleOpenDialog()} className="w-full sm:w-auto" disabled={isSuperviseur && !editingEntry}>
+            <PlusCircle className="mr-2 h-4 w-4" /> Ajouter
+        </Button>
+    </div>
       </CardHeader>
       
       {isMobile ? <MobileView /> : <DesktopView />}
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+    <DialogContent
+      className={isMobile ? "max-w-[95vw] h-[95vh] flex flex-col" : "sm:max-w-4xl"}
+    >
+      <DialogHeader><DialogTitle>{editingEntry ? "Modifier" : (isMobile ? "Nouveau Produit" : "Nouvel Enregistrement")}</DialogTitle></DialogHeader>
+      <Form {...mainForm}>
+        <form onSubmit={mainForm.handleSubmit(handleFormSubmit)} className="space-y-4 py-2 flex-grow overflow-y-auto pr-2">
+
+          <div className={cn("grid gap-3", isMobile && !editingEntry ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4")}>
+            {!(isMobile && !editingEntry) && (
+              <FormField
+                control={mainForm.control}
+                name="coolingDate"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Date</FormLabel>
+                    <Popover modal={true}>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant={"outline"}
+                            className={cn("w-full justify-start text-left font-normal", !field.value && "text-muted-foreground")}
+                          >
+                            <LucideCalendarIcon className="mr-2 h-4 w-4" />
+                            {field.value ? format(field.value, 'PPP', { locale: fr }) : <span>Choisir une date</span>}
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar mode="single" selected={field.value} onSelect={field.onChange} locale={fr} initialFocus/>
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+            <FormField control={mainForm.control} name="productName" render={({ field }) => (<FormItem><FormLabel>Produit</FormLabel><FormControl><Input placeholder="Ex: Boeuf Bourguignon" {...field} /></FormControl><FormMessage /></FormItem>)} />
+            <FormField control={mainForm.control} name="quantity" render={({ field }) => (<FormItem><FormLabel>Quantité</FormLabel><FormControl><Input placeholder="Ex: 5 kg" {...field} /></FormControl><FormMessage /></FormItem>)} />
+            <FormField control={mainForm.control} name="coolingStartProductTemp" render={({ field }) => (<FormItem><FormLabel>T° de Départ (°C)</FormLabel><FormControl><Input placeholder="Ex: 65" type="text" {...field} /></FormControl><FormMessage /></FormItem>)} />
+          </div>
+
+          <div className={cn("flex items-center space-x-4 pt-2", isMobile && !editingEntry ? "flex-col space-y-2 space-x-0" : "")}>
+            <FormField control={mainForm.control} name="cooledWithWater" render={({ field }) => ( <FormItem className="flex flex-row items-center space-x-2 rounded-md border p-3 shadow-sm w-full sm:w-auto"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><FormLabel className="font-normal">Refroidi à l'eau</FormLabel></FormItem> )}/>
+            <FormField control={mainForm.control} name="servedCold" render={({ field }) => ( <FormItem className="flex flex-row items-center space-x-2 rounded-md border p-3 shadow-sm w-full sm:w-auto"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><FormLabel className="font-normal">Servi froid</FormLabel></FormItem> )}/>
+          </div>
+
+          {!(isMobile && !editingEntry) && (
+            <>
+              <div className="pt-3 border-t">
+                <h4 className="text-md font-semibold mb-2 flex items-center"><Wind className="mr-2 h-4 w-4 text-blue-500"/> Refroidissement Rapide</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                  <FormField control={mainForm.control} name="coolingHotProductTime" render={({ field }) => (<FormItem><FormLabel>P. Chauds Heure</FormLabel><FormControl><Input type="time" {...field} value={field.value || ''} disabled={isSuperviseur} /></FormControl><FormMessage /></FormItem>)} />
+                  <FormField control={mainForm.control} name="coolingColdProductTime" render={({ field }) => (<FormItem><FormLabel>P. Froids Heure</FormLabel><FormControl><Input type="time" {...field} value={field.value || ''} disabled={isSuperviseur} /></FormControl><FormMessage /></FormItem>)} />
+                  <FormField control={mainForm.control} name="coolingColdProductTemp" render={({ field }) => (<FormItem><FormLabel>P. Froids T°C</FormLabel><FormControl><Input placeholder="T°C" {...field} value={field.value || ''} disabled={isSuperviseur} /></FormControl><FormMessage /></FormItem>)} />
+                  <FormField control={mainForm.control} name="coolingVisa" render={({ field }) => (<FormItem><FormLabel>Visa</FormLabel><FormControl><Input placeholder="Initiales" {...field} value={field.value || ''} disabled={isSuperviseur} /></FormControl><FormMessage /></FormItem>)} />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t">
+                <h4 className="text-md font-semibold mb-2 flex items-center"><Flame className="mr-2 h-4 w-4 text-orange-500"/> Remise en Température</h4>
+                <fieldset disabled={watchedServedCold} className={cn(watchedServedCold && "opacity-50 pointer-events-none")}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                      <FormField control={mainForm.control} name="reheatingDate" render={({ field }) => (
+                          <FormItem className="flex flex-col">
+                              <FormLabel>Date Remise</FormLabel>
+                              <Popover modal={true}>
+                                  <PopoverTrigger asChild>
+                                      <FormControl>
+                                          <Button variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")} disabled={isSuperviseur}>
+                                              {field.value ? format(field.value, 'PPP', { locale: fr }) : <span>Choisir une date</span>}
+                                              <LucideCalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                          </Button>
+                                      </FormControl>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-0" align="start">
+                                    <Calendar mode="single" selected={field.value ?? undefined} onSelect={field.onChange} locale={fr} initialFocus />
+                                  </PopoverContent>
+                              </Popover>
+                              <FormMessage />
+                          </FormItem>
+                      )}/>
+                      <FormField control={mainForm.control} name="reheatingColdProductTime" render={({ field }) => (<FormItem><FormLabel>P. Froids Heure</FormLabel><FormControl><Input type="time" {...field} value={field.value || ''} disabled={isSuperviseur} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={mainForm.control} name="reheatingColdProductTemp" render={({ field }) => (<FormItem><FormLabel>P. Froids T°C</FormLabel><FormControl><Input placeholder="T°C" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={mainForm.control} name="reheatingHotProductTime" render={({ field }) => (<FormItem><FormLabel>P. Chauds Heure</FormLabel><FormControl><Input type="time" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={mainForm.control} name="reheatingHotProductTemp" render={({ field }) => (<FormItem><FormLabel>P. Chauds T°C</FormLabel><FormControl><Input placeholder="T°C" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={mainForm.control} name="reheatingVisa" render={({ field }) => (<FormItem><FormLabel>Visa</FormLabel><FormControl><Input placeholder="Initiales" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>)} />
+                  </div>
+                </fieldset>
+              </div>
+            </>
+          )}
+
+          <DialogFooter className="pt-4 sticky bottom-0 bg-card z-10 p-0 sm:p-2">
+            <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
+            <Button type="submit" disabled={isSubmitting || isSuperviseur}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingEntry ? "Enregistrer" : "Ajouter"}</Button>
+          </DialogFooter>
+        </form>
+      </Form>
+    </DialogContent>
+  </Dialog>
+
 
       <ActionDialog 
         isOpen={isActionDialogOpen}

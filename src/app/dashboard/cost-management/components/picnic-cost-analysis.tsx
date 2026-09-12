@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Textarea } from '@/components/ui/textarea';
 import { PlusCircle, Edit2, Trash2, FileText, Loader2, Apple, Salad, Save } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -19,7 +20,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { getPdfLayoutSettings, hexToRgb } from '@/lib/pdf-settings';
+import { getPdfLayoutSettings, hexToRgb, loadPdfLayoutSettingsFromFirestore } from '@/lib/pdf-settings';
 import { firestore } from '@/lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
@@ -58,6 +59,7 @@ export default function PicnicCostAnalysis() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  const [remarks, setRemarks] = useState('');
 
   const { toast } = useToast();
 
@@ -166,14 +168,15 @@ export default function PicnicCostAnalysis() {
 
   const mealTypeLabel = selectedMealType === 'picnic' ? 'Pique-Nique' : 'Salade';
 
-  const generatePdf = () => {
+   const generatePdf = async () => {
     if (currentIngredients.length === 0) {
       toast({ title: "Aucun Ingrédient", description: `Veuillez ajouter des ingrédients pour le repas ${mealTypeLabel}.`, variant: "destructive" });
       return;
     }
     setIsLoading(true);
     try {
-      const pdfSettings = getPdfLayoutSettings('picnic_cost');
+      const pdfSettings = await getPdfLayoutSettings('picnic_cost');
+
       const doc = new jsPDF({
         orientation: pdfSettings.orientation,
         unit: 'pt',
@@ -183,16 +186,60 @@ export default function PicnicCostAnalysis() {
       const generationDateFormatted = format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr });
 
       let currentY = pdfSettings.marginTop;
-      if (pdfSettings.headerText) {
-        doc.setFontSize(pdfSettings.headerFontSize);
-        doc.text(pdfSettings.headerText, pdfSettings.marginLeft, currentY);
-        currentY += pdfSettings.headerFontSize + 5;
-      }
+      const pageContentWidth = doc.internal.pageSize.width - pdfSettings.marginLeft - pdfSettings.marginRight;
 
-      if (pdfSettings.logoUrl) {
-        doc.setFontSize(pdfSettings.defaultFontSize - 2);
-        doc.text(`Logo: ${pdfSettings.logoUrl}`, pdfSettings.marginLeft, currentY);
-        currentY += (pdfSettings.defaultFontSize - 2) + 5;
+      if (pdfSettings.headerText) {
+          const headerRows = pdfSettings.headerText.split('\n');
+          doc.setFontSize(pdfSettings.headerFontSize);
+
+          for (const row of headerRows) {
+              const cells = row.split('|');
+              if (cells.length === 0) continue;
+              
+              const cellWidth = pageContentWidth / cells.length;
+              let maxHeightInRow = 0;
+              
+              cells.forEach(cell => {
+                  const cellText = cell.trim();
+                  if (cellText === '{logo}' && pdfSettings.logoUrl) {
+                      maxHeightInRow = Math.max(maxHeightInRow, 30);
+                  } else {
+                      const textLines = doc.splitTextToSize(cellText, cellWidth - 6);
+                      const textHeight = textLines.length * pdfSettings.headerFontSize * 0.7;
+                      maxHeightInRow = Math.max(maxHeightInRow, textHeight);
+                  }
+              });
+              maxHeightInRow += 6;
+
+              let currentX = pdfSettings.marginLeft;
+              for (const cell of cells) {
+                  const cellText = cell.trim();
+                  doc.rect(currentX, currentY, cellWidth, maxHeightInRow, 'S');
+
+                  if (cellText === '{logo}' && pdfSettings.logoUrl && pdfSettings.logoUrl.startsWith('data:image')) {
+                      try {
+                          const imgProps = doc.getImageProperties(pdfSettings.logoUrl);
+                          const formatType = imgProps.fileType.toUpperCase();
+                          const desiredImgHeight = Math.min(maxHeightInRow - 6, 40);
+                          const imgWidth = (imgProps.width * desiredImgHeight) / imgProps.height;
+                          const imgX = currentX + (cellWidth - imgWidth) / 2;
+                          const imgY = currentY + (maxHeightInRow - desiredImgHeight) / 2;
+                          doc.addImage(pdfSettings.logoUrl, formatType, imgX, imgY, imgWidth, desiredImgHeight);
+                      } catch (e) {
+                          console.error("Error adding logo to PDF header cell:", e);
+                          doc.text("Logo", currentX + 3, currentY + pdfSettings.headerFontSize);
+                      }
+                  } else {
+                      doc.text(cellText, currentX + 3, currentY + pdfSettings.headerFontSize * 0.8, {
+                          maxWidth: cellWidth - 6,
+                          align: 'left'
+                      });
+                  }
+                  currentX += cellWidth;
+              }
+              currentY += maxHeightInRow;
+          }
+          currentY += 10;
       }
 
       const moduleDefaultTitle = `Coût de Revient - Repas ${mealTypeLabel}`;
@@ -210,16 +257,16 @@ export default function PicnicCostAnalysis() {
 
       if (finalTitle) {
         doc.setFontSize(pdfSettings.documentTitleFontSize);
-        doc.text(finalTitle, pdfSettings.marginLeft, currentY);
-        currentY += pdfSettings.documentTitleFontSize * 0.7 + 5;
+        doc.text(finalTitle, doc.internal.pageSize.width / 2, currentY, { align: 'center', maxWidth: pageContentWidth });
+        currentY += doc.getTextDimensions(finalTitle, { fontSize: pdfSettings.documentTitleFontSize, maxWidth: pageContentWidth }).h + 10;
       }
 
       const headStyles: { fillColor?: [number, number, number], textColor?: [number, number, number], fontSize?: number } = { fontSize: pdfSettings.tableHeaderFontSize };
       if (pdfSettings.primaryColor) {
         const primaryColorRgb = hexToRgb(pdfSettings.primaryColor);
         if (primaryColorRgb) {
-          headStyles.fillColor = primaryColorRgb;
-          const brightness = (primaryColorRgb[0] * 299 + primaryColorRgb[1] * 587 + primaryColorRgb[2] * 114) / 1000;
+          headStyles.fillColor = [primaryColorRgb.r, primaryColorRgb.g, primaryColorRgb.b];
+          const brightness = (primaryColorRgb.r * 299 + primaryColorRgb.g * 587 + primaryColorRgb.b * 114) / 1000;
           headStyles.textColor = brightness > 125 ? [0, 0, 0] : [255, 255, 255];
         }
       }
@@ -246,16 +293,17 @@ export default function PicnicCostAnalysis() {
         foot: footer,
         startY: currentY,
         theme: 'grid',
-        headStyles: headStyles,
+        headStyles: { ...headStyles, fontStyle: 'bold' },
         styles: { fontSize: pdfSettings.tableBodyFontSize, font: pdfSettings.fontFamily },
-        footStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0], fontSize: pdfSettings.tableBodyFontSize },
+        footStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0], fontSize: pdfSettings.tableBodyFontSize, fontStyle: 'bold' },
         columnStyles: {
           0: { cellWidth: 'auto' },
           1: { cellWidth: 'auto' },
-          2: { cellWidth: 'auto', halign: 'right' },
-          3: { cellWidth: 'auto', halign: 'right' },
-          4: { cellWidth: 'auto', halign: 'right' },
+          2: { halign: 'right' },
+          3: { halign: 'right' },
+          4: { halign: 'right' },
         },
+        margin: { left: pdfSettings.marginLeft, right: pdfSettings.marginRight, bottom: pdfSettings.marginBottom },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
           if (pdfSettings.footerText) {
@@ -268,6 +316,29 @@ export default function PicnicCostAnalysis() {
           }
         }
       });
+
+      let finalY = (doc as any).lastAutoTable.finalY;
+
+      if (remarks.trim() !== "") {
+          const remarksLines = doc.splitTextToSize(remarks, pageContentWidth);
+          const remarksHeight = (remarksLines.length * pdfSettings.tableBodyFontSize) + 25;
+
+          if (finalY + remarksHeight > doc.internal.pageSize.height - pdfSettings.marginBottom) {
+              doc.addPage();
+              finalY = pdfSettings.marginTop;
+          } else {
+              finalY += 20; 
+          }
+
+          doc.setFontSize(pdfSettings.tableHeaderFontSize);
+          doc.setFont(doc.getFont().fontName, 'bold');
+          doc.text("Remarques:", pdfSettings.marginLeft, finalY);
+          finalY += pdfSettings.tableHeaderFontSize + 5;
+
+          doc.setFontSize(pdfSettings.tableBodyFontSize);
+          doc.setFont(doc.getFont().fontName, 'normal');
+          doc.text(remarksLines, pdfSettings.marginLeft, finalY);
+      }
 
       doc.save(`cout_repas_${selectedMealType}_${format(new Date(), "yyyyMMdd")}.pdf`);
       toast({ title: "PDF Généré", description: `Le PDF du coût pour ${mealTypeLabel} a été téléchargé.` });
@@ -381,7 +452,6 @@ export default function PicnicCostAnalysis() {
                     <Button variant="outline" size="icon" onClick={() => handleOpenIngredientDialog(ing)} className="h-8 w-8">
                       <Edit2 className="h-4 w-4" />
                     </Button>
-                    {/* Modified onClick to open AlertDialog */}
                     <Button variant="destructive" size="icon" onClick={() => handleDeleteClick(ing)} className="h-8 w-8">
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -403,6 +473,18 @@ export default function PicnicCostAnalysis() {
           Aucun ingrédient pour le repas {mealTypeLabel}. Cliquez sur "Ajouter Ingrédient" pour commencer.
         </p>
       )}
+
+      <div className="my-6">
+        <Label htmlFor="remarks" className="font-semibold">Remarques pour le PDF (optionnel)</Label>
+        <Textarea
+          id="remarks"
+          placeholder="Saisissez ici des remarques ou des détails à inclure dans le fichier PDF..."
+          value={remarks}
+          onChange={(e) => setRemarks(e.target.value)}
+          className="mt-2"
+          rows={3}
+        />
+      </div>
 
       <Button onClick={generatePdf} disabled={isLoading || isSaving || currentIngredients.length === 0} className="w-full sm:w-auto mt-4">
         {isLoading || isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}

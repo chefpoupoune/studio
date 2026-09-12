@@ -179,7 +179,7 @@ export default function OngoingTasksSummary() {
       </CardHeader>
       <CardContent className="flex-grow pt-2">
         {ongoingTasks.length > 0 ? (
-          <ScrollArea className="h-[220px] sm:h-[240px] pr-3">
+          <ScrollArea className="h-[500px] sm:h-[240px] pr-3">
             <ul className="space-y-2.5">
               {ongoingTasks.slice(0, 5).map((task) => {
                 const lastStatusEntry = task.statusHistory && task.statusHistory.length > 0

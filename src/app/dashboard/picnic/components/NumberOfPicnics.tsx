@@ -350,6 +350,7 @@ export default function NumberOfPicnics() {
   const clientBreadTotalsForSelectedDay = useMemo(() => {
     let baguettes = 0;
     let faluches = 0;
+    let salades = 0;
     
     clientOrders.forEach(order => {
       const dayData = order.days[selectedClientOrderDay];
@@ -359,12 +360,15 @@ export default function NumberOfPicnics() {
           baguettes += Math.round(nbPn / 2);
         } else if (dayData.breadChoice === 'faluche') {
           faluches += nbPn;
+        } else if (dayData.breadChoice === 'salade') {
+          salades += nbPn;
         }
       }
     });
     return {
       baguettes: baguettes,
       faluches: faluches,
+      salades: salades,
     };
   }, [clientOrders, selectedClientOrderDay]);
 
@@ -374,24 +378,22 @@ export default function NumberOfPicnics() {
       .map(order => {
         const dailyBaguetteCounts: Record<DayOfWeekKey, number> = {} as any;
         const dailyFalucheCounts: Record<DayOfWeekKey, number> = {} as any;
+        const dailySaladeCounts: Record<DayOfWeekKey, number> = {} as any;
 
         DAYS_OF_WEEK_KEYS.forEach(day => {
           const dayData = order.days[day];
           const nbPn = Number(dayData.nbPn) || 0;
+          dailyBaguetteCounts[day] = 0;
+          dailyFalucheCounts[day] = 0;
+          dailySaladeCounts[day] = 0;
           if (nbPn > 0) {
             if (dayData.breadChoice === 'baguette') {
               dailyBaguetteCounts[day] = Math.round(nbPn / 2);
-              dailyFalucheCounts[day] = 0;
             } else if (dayData.breadChoice === 'faluche') {
               dailyFalucheCounts[day] = nbPn;
-              dailyBaguetteCounts[day] = 0;
-            } else {
-              dailyBaguetteCounts[day] = 0;
-              dailyFalucheCounts[day] = 0;
+            } else if (dayData.breadChoice === 'salade') {
+              dailySaladeCounts[day] = nbPn;
             }
-          } else {
-            dailyBaguetteCounts[day] = 0;
-            dailyFalucheCounts[day] = 0;
           }
         });
         return {
@@ -399,19 +401,22 @@ export default function NumberOfPicnics() {
           clientName: order.clientName,
           baguetteCounts: dailyBaguetteCounts,
           falucheCounts: dailyFalucheCounts,
+          saladeCounts: dailySaladeCounts,
         };
     });
   }, [clientOrders]);
 
   const weeklyRecapFooterTotals = useMemo(() => {
-    const totals: { baguette: Record<DayOfWeekKey, number>, faluche: Record<DayOfWeekKey, number> } = {
+    const totals: { baguette: Record<DayOfWeekKey, number>, faluche: Record<DayOfWeekKey, number>, salade: Record<DayOfWeekKey, number> } = {
       baguette: { lundi: 0, mardi: 0, mercredi: 0, jeudi: 0, vendredi: 0 },
       faluche: { lundi: 0, mardi: 0, mercredi: 0, jeudi: 0, vendredi: 0 },
+      salade: { lundi: 0, mardi: 0, mercredi: 0, jeudi: 0, vendredi: 0 },
     };
     weeklyClientRecapData.forEach(recap => {
       DAYS_OF_WEEK_KEYS.forEach(day => {
         totals.baguette[day] += recap.baguetteCounts[day] || 0;
         totals.faluche[day] += recap.falucheCounts[day] || 0;
+        totals.salade[day] += recap.saladeCounts[day] || 0;
       });
     });
     return totals;
@@ -658,6 +663,7 @@ export default function NumberOfPicnics() {
                                 <SelectItem value="none" className="text-xs">Aucun</SelectItem>
                                 <SelectItem value="baguette" className="text-xs">Baguette</SelectItem>
                                 <SelectItem value="faluche" className="text-xs">Faluche</SelectItem>
+                                <SelectItem value="salade" className="text-xs">Salade</SelectItem>
                             </SelectContent>
                             </Select>
                         </TableCell>
@@ -685,7 +691,7 @@ export default function NumberOfPicnics() {
                         TOTAUX PAINS ({DAY_LABELS[selectedClientOrderDay].toUpperCase()}) :
                     </TableCell>
                     <TableCell className="text-left font-bold text-black dark:text-white">
-                       B: {clientBreadTotalsForSelectedDay.baguettes}, F: {clientBreadTotalsForSelectedDay.faluches}
+                       B: {clientBreadTotalsForSelectedDay.baguettes}, F: {clientBreadTotalsForSelectedDay.faluches}, S: {clientBreadTotalsForSelectedDay.salades}
                     </TableCell>
                     <TableCell colSpan={2}></TableCell>
                 </TableRow>
@@ -756,13 +762,14 @@ export default function NumberOfPicnics() {
                   {weeklyClientRecapData.map((recap) => {
                     const clientHasBaguettes = DAYS_OF_WEEK_KEYS.some(day => recap.baguetteCounts[day] > 0);
                     const clientHasFaluches = DAYS_OF_WEEK_KEYS.some(day => recap.falucheCounts[day] > 0);
+                    const clientHasSalades = DAYS_OF_WEEK_KEYS.some(day => recap.saladeCounts[day] > 0);
 
-                    if (!clientHasBaguettes && !clientHasFaluches) {
+                    if (!clientHasBaguettes && !clientHasFaluches && !clientHasSalades) {
                       return null; 
                     }
                     
                     let clientCellRendered = false;
-                    const rowSpanForClientName = (clientHasBaguettes && clientHasFaluches) ? 2 : 1;
+                    const rowSpanForClientName = [clientHasBaguettes, clientHasFaluches, clientHasSalades].filter(Boolean).length;
 
                     return (
                       <React.Fragment key={recap.id}>
@@ -777,7 +784,7 @@ export default function NumberOfPicnics() {
                             <TableCell className="font-semibold">Baguette</TableCell>
                             {DAYS_OF_WEEK_KEYS.map(day => (
                               <TableCell key={`${recap.id}-baguette-${day}`} className="text-center">
-                                {recap.baguetteCounts[day] > 0 ? recap.baguetteCounts[day] : '-'}
+                                {recap.baguetteCounts[day] > 0 ? `${recap.baguetteCounts[day]} (${recap.baguetteCounts[day] * 2} PN)` : '-'}
                               </TableCell>
                             ))}
                           </TableRow>
@@ -785,14 +792,31 @@ export default function NumberOfPicnics() {
                         {clientHasFaluches && (
                           <TableRow>
                             {!clientCellRendered && (
-                              <TableCell rowSpan={1} className="font-medium sticky left-0 z-10 bg-card group-hover:bg-muted/50 w-[150px] align-middle">
+                              <TableCell rowSpan={rowSpanForClientName} className="font-medium sticky left-0 z-10 bg-card group-hover:bg-muted/50 w-[150px] align-middle">
                                 {recap.clientName || <span className="italic text-muted-foreground">Client non nommé</span>}
                               </TableCell>
                             )}
+                            {clientCellRendered = true}
                             <TableCell className="font-semibold">Faluche</TableCell>
                             {DAYS_OF_WEEK_KEYS.map(day => (
                               <TableCell key={`${recap.id}-faluche-${day}`} className="text-center">
-                                {recap.falucheCounts[day] > 0 ? recap.falucheCounts[day] : '-'}
+                                {recap.falucheCounts[day] > 0 ? `${recap.falucheCounts[day]} (${recap.falucheCounts[day]} PN)` : '-'}
+                              </TableCell>
+                            ))}\
+                          </TableRow>
+                        )}
+                        {clientHasSalades && (
+                          <TableRow>
+                            {!clientCellRendered && (
+                              <TableCell rowSpan={rowSpanForClientName} className="font-medium sticky left-0 z-10 bg-card group-hover:bg-muted/50 w-[150px] align-middle">
+                                {recap.clientName || <span className="italic text-muted-foreground">Client non nommé</span>}
+                              </TableCell>
+                            )}
+                            {clientCellRendered = true}
+                            <TableCell className="font-semibold">Salade</TableCell>
+                            {DAYS_OF_WEEK_KEYS.map(day => (
+                              <TableCell key={`${recap.id}-salade-${day}`} className="text-center">
+                                {recap.saladeCounts[day] > 0 ? `${recap.saladeCounts[day]} (${recap.saladeCounts[day]} PN)` : '-'}
                               </TableCell>
                             ))}
                           </TableRow>
@@ -818,6 +842,14 @@ export default function NumberOfPicnics() {
                           </TableCell>
                         ))}
                     </TableRow>
+                    <TableRow className="bg-orange-100 dark:bg-orange-800/50">
+                        <TableCell colSpan={2} className="text-right font-bold text-black dark:text-white sticky left-0 z-10 bg-orange-100 dark:bg-orange-800/50">Total Salade</TableCell>
+                        {DAYS_OF_WEEK_KEYS.map(day => (
+                          <TableCell key={`footer-total-salade-${day}`} className="text-center font-bold text-black dark:text-white">
+                            {weeklyRecapFooterTotals.salade[day] > 0 ? weeklyRecapFooterTotals.salade[day] : '-'}
+                          </TableCell>
+                        ))}
+                    </TableRow>
                 </TableFooter>
               </Table>
             </div>
@@ -827,4 +859,3 @@ export default function NumberOfPicnics() {
     </div>
   );
 }
-

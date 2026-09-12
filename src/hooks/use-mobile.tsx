@@ -1,6 +1,4 @@
 
-"use client";
-
 import { useState, useEffect } from 'react';
 
 const useMobile = (query: string = '(max-width: 768px)') => {

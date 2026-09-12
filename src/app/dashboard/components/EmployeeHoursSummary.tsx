@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Users, User, Clock, AlertCircle, TrendingUp, TrendingDown, Scale, Loader2 } from "lucide-react";
@@ -11,6 +11,7 @@ import { LOGGED_IN_USER_HOUR_VIEW_CONFIG_KEY } from '@/app/dashboard/settings/co
 import { firestore } from '@/lib/firebase';
 import { collection, query, orderBy, getDocs, Timestamp } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
+import { formatHours } from '@/lib/time-utils';
 
 const LOGGED_IN_USERNAME_KEY = 'loggedInUsername';
 
@@ -223,12 +224,12 @@ export default function EmployeeHoursSummary() {
                 <div className="flex justify-between items-center">
                   <span className="font-medium truncate pr-2" title={data.name}>{data.name} <span className="text-xs text-muted-foreground">({data.role})</span></span>
                   <span className={`font-semibold ${data.net >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                    {data.net.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} h
+                    {formatHours(data.net)}
                   </span>
                 </div>
                  <div className="text-xs text-muted-foreground mt-0.5 flex justify-between">
-                    <span><TrendingUp className="inline h-3 w-3 mr-0.5 text-green-500"/>{data.added.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})}h</span>
-                    <span><TrendingDown className="inline h-3 w-3 mr-0.5 text-red-500"/>{data.deducted.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 2})}h</span>
+                    <span><TrendingUp className="inline h-3 w-3 mr-0.5 text-green-500"/>{formatHours(data.added)}</span>
+                    <span><TrendingDown className="inline h-3 w-3 mr-0.5 text-red-500"/>{formatHours(data.deducted)}</span>
                 </div>
               </li>
             ))}
@@ -246,14 +247,14 @@ export default function EmployeeHoursSummary() {
             <TrendingUp className="h-4 w-4 mr-1.5 text-green-600 dark:text-green-400"/>
             <span className="text-black dark:text-white">Heures Ajoutées:</span>
           </span>
-          <span className="font-bold text-green-600 dark:text-green-400">{singleMemberData.added.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} h</span>
+          <span className="font-bold text-green-600 dark:text-green-400">{formatHours(singleMemberData.added)}</span>
         </div>
         <div className="flex justify-between items-center p-2 bg-red-50 dark:bg-red-900/30 rounded-md">
           <span className="flex items-center">
             <TrendingDown className="h-4 w-4 mr-1.5 text-red-600 dark:text-red-400"/>
             <span className="text-black dark:text-white">Heures Déduites:</span>
           </span>
-          <span className="font-bold text-red-600 dark:text-red-400">{singleMemberData.deducted.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} h</span>
+          <span className="font-bold text-red-600 dark:text-red-400">{formatHours(singleMemberData.deducted)}</span>
         </div>
         <div className={`flex justify-between items-center p-2 rounded-md ${singleMemberData.net >= 0 ? 'bg-blue-50 dark:bg-blue-900/30' : 'bg-orange-50 dark:bg-orange-900/30'}`}>
           <span className="flex items-center">
@@ -261,7 +262,7 @@ export default function EmployeeHoursSummary() {
             <span className="text-black dark:text-white">Solde d'Heures:</span>
           </span>
           <span className={`font-bold text-lg ${singleMemberData.net >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-orange-600 dark:text-orange-400'}`}>
-            {singleMemberData.net.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} h
+            {formatHours(singleMemberData.net)}
           </span>
         </div>
       </div>
@@ -301,5 +302,3 @@ export default function EmployeeHoursSummary() {
     </Card>
   );
 }
-
-    

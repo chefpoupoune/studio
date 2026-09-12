@@ -1,47 +1,90 @@
 "use client";
 
 import Link from 'next/link';
-import { ShoppingBasket, Calculator, BookOpenText, ScrollText } from 'lucide-react';
+import { ShoppingBasket, Calculator, BookOpenText, ScrollText, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import NumberOfPicnics from './components/NumberOfPicnics';
 import PicnicMenu from './components/PicnicMenu';
 import PicnicRecap from './components/PicnicRecap';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { CurrentDate } from '@/components/current-date';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import useIsMobile from '@/hooks/use-mobile';
+import { useUser } from '@/hooks/use-user';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 interface PicnicTab {
   value: string;
   label: string;
   Icon: React.ElementType;
   component: React.ReactNode;
+  permissionId?: string;
 }
 
-const picnicTabsConfig: PicnicTab[] = [
-  { value: "recapPn", label: "Recap", Icon: ScrollText, component: <PicnicRecap /> },
+const allPicnicTabs: PicnicTab[] = [
+  { value: "recapPn", label: "Recap", Icon: ScrollText, component: <PicnicRecap />, permissionId: 'picnic_recapPn' },
   { value: "nbPn", label: "NB PN", Icon: Calculator, component: <NumberOfPicnics /> },
   { value: "menuPn", label: "Menu", Icon: BookOpenText, component: <PicnicMenu /> },
 ];
 
 export default function PicnicPage() {
   const [isClient, setIsClient] = useState(false);
+  const { user, isLoading: isLoadingUser } = useUser();
   const isMobile = useIsMobile();
-  const [activeTab, setActiveTab] = useState(picnicTabsConfig[0].value);
+
+  const visibleTabs = useMemo(() => {
+    if (!user) return [];
+    const { permissions } = user;
+    return allPicnicTabs.filter(tab => {
+      if (tab.permissionId) {
+        return !!permissions[tab.permissionId as keyof typeof permissions];
+      }
+      // Fallback for tabs without a specific permission: only show if the user has general access
+      return !!permissions.canAccessPicnic;
+    });
+  }, [user]);
+
+  const [activeTab, setActiveTab] = useState('');
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
-  if (!isClient) {
+  useEffect(() => {
+    if (visibleTabs.length > 0) {
+      const currentTabIsVisible = visibleTabs.some(tab => tab.value === activeTab);
+      if (!currentTabIsVisible) {
+        setActiveTab(visibleTabs[0].value);
+      }
+    } else {
+      setActiveTab('');
+    }
+  }, [visibleTabs, activeTab]);
+
+  if (!isClient || isLoadingUser) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p className="text-lg text-muted-foreground">Chargement de la section Pique Nique...</p>
       </div>
     );
   }
+  
+  if (visibleTabs.length === 0) {
+     return (
+        <div className="container mx-auto p-4 md:p-6 lg:p-8 flex-grow flex items-center justify-center">
+            <Alert variant="destructive" className="max-w-lg">
+                <ShieldAlert className="h-4 w-4" />
+                <AlertTitle>Accès non autorisé</AlertTitle>
+                <AlertDescription>
+                    Vous n'avez pas les permissions nécessaires pour accéder à la section Pique-Nique. Veuillez contacter un administrateur.
+                </AlertDescription>
+            </Alert>
+        </div>
+    );
+  }
+
 
   return (
     <div className="container mx-auto p-4 md:p-6 lg:p-8 min-h-screen">
@@ -66,7 +109,7 @@ export default function PicnicPage() {
                 <SelectValue placeholder="Choisir une section..." />
               </SelectTrigger>
               <SelectContent>
-                {picnicTabsConfig.map(tab => (
+                {visibleTabs.map(tab => (
                   <SelectItem key={tab.value} value={tab.value} className="text-sm">
                     <span className="flex items-center">
                       <tab.Icon className="mr-2 h-4 w-4" />
@@ -78,8 +121,8 @@ export default function PicnicPage() {
             </Select>
           </div>
         ) : (
-          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 mb-6 bg-card p-1 rounded-lg">
-            {picnicTabsConfig.map(tab => (
+          <TabsList className={`grid w-full grid-cols-1 sm:grid-cols-${visibleTabs.length} mb-6 bg-card p-1 rounded-lg`}>
+            {visibleTabs.map(tab => (
               <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-2 py-1">
                 <tab.Icon className="mr-1 sm:mr-2 h-4 w-4" /> {tab.label}
               </TabsTrigger>
@@ -87,7 +130,7 @@ export default function PicnicPage() {
           </TabsList>
         )}
         
-        {picnicTabsConfig.map(tab => (
+        {visibleTabs.map(tab => (
           <TabsContent key={tab.value} value={tab.value}>
             {tab.component}
           </TabsContent>

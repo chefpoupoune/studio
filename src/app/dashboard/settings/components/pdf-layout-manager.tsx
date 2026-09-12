@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
@@ -11,15 +9,15 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare, ArrowRightLeft, TextCursorInput, Eye, FileTextIcon, AlignHorizontalSpaceAround, Maximize, Minus, RefreshCw, UploadCloud, Heading1, InfoIcon, Loader2 } from 'lucide-react';
+import { FileCog, ImagePlus, Palette, Settings2, Save, Type, MessageSquare, ArrowRightLeft, TextCursorInput, Eye, FileTextIcon, Loader2, InfoIcon, Ruler } from 'lucide-react';
 import type { PdfLayoutSettings } from '../types';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
 import {
-  PDF_LAYOUT_CONFIGS_KEY,
   GENERAL_CONFIG_KEY,
-  getPdfLayoutSettings as fetchPdfSettings,
+  getPdfLayoutSettings as getEffectivePdfSettings,
   DEFAULT_LOGO_URL,
+  DEFAULT_LOGO_WIDTH,
   DEFAULT_HEADER_TEXT,
   DEFAULT_FOOTER_TEXT,
   DEFAULT_MARGIN,
@@ -27,7 +25,7 @@ import {
   DEFAULT_FONT_FAMILY,
   DEFAULT_DOCUMENT_BASE_TITLE,
   DEFAULT_SHOW_DOCUMENT_BASE_TITLE,
-  DEFAULT_SHOW_MODULE_TITLE, // New import
+  DEFAULT_SHOW_MODULE_TITLE,
   DEFAULT_DOCUMENT_TITLE_FONT_SIZE,
   DEFAULT_HEADER_FONT_SIZE,
   DEFAULT_FOOTER_FONT_SIZE,
@@ -35,6 +33,8 @@ import {
   DEFAULT_TABLE_BODY_FONT_SIZE,
   DEFAULT_ORIENTATION,
   DEFAULT_PAGE_SIZE,
+  loadPdfLayoutSettingsFromFirestore,
+  savePdfLayoutSettingsToFirestore,
 } from '@/lib/pdf-settings';
 import { DEFAULT_APP_PRIMARY_COLOR } from '@/config/colors';
 import { format } from 'date-fns';
@@ -56,6 +56,7 @@ const pdfTypes = [
   { value: 'weekly_order_sheet', label: 'Fiche de Commande Hebdomadaire' },
   { value: 'pms_kitchen_cleaning_monthly', label: 'PMS - Nettoyage Cuisine (Mensuel)' },
   { value: 'pms_restaurant_cleaning_monthly', label: 'PMS - Nettoyage Restaurant (Mensuel)' },
+  { value: 'pms_fryer_oil_overall_monitoring', label: 'PMS - Suivi Huile Friture' },
   { value: 'pms_temperature_monitoring_monthly', label: 'PMS - Suivi Températures (Mensuel)' },
   { value: 'pms_reception_monitoring', label: 'PMS - Suivi Réception Marchandises' },
   { value: 'pms_temp_change_monitoring', label: 'PMS - Suivi Baisse/Remise Température' },
@@ -85,13 +86,14 @@ const pageOrientations: { value: NonNullable<PdfLayoutSettings['orientation']>, 
 const pageSizes: { value: NonNullable<PdfLayoutSettings['pageSize']>, label: string }[] = [
     { value: 'a3', label: 'A3' },
     { value: 'a4', label: 'A4' },
-    { value: 'a5', label: 'A5' },
+    { value: 'a5', label: 'A5' }, 
     { value: 'letter', label: 'Lettre US' },
     { value: 'legal', label: 'Légal US' },
 ];
 
 const DEFAULT_SETTINGS: Required<PdfLayoutSettings> = {
   logoUrl: DEFAULT_LOGO_URL,
+  logoWidth: DEFAULT_LOGO_WIDTH,
   primaryColor: DEFAULT_APP_PRIMARY_COLOR,
   headerText: DEFAULT_HEADER_TEXT,
   footerText: DEFAULT_FOOTER_TEXT,
@@ -103,7 +105,7 @@ const DEFAULT_SETTINGS: Required<PdfLayoutSettings> = {
   fontFamily: DEFAULT_FONT_FAMILY,
   documentBaseTitle: DEFAULT_DOCUMENT_BASE_TITLE,
   showDocumentBaseTitle: DEFAULT_SHOW_DOCUMENT_BASE_TITLE,
-  showModuleTitle: DEFAULT_SHOW_MODULE_TITLE, // New
+  showModuleTitle: DEFAULT_SHOW_MODULE_TITLE,
   documentTitleFontSize: DEFAULT_DOCUMENT_TITLE_FONT_SIZE,
   headerFontSize: DEFAULT_HEADER_FONT_SIZE,
   footerFontSize: DEFAULT_FOOTER_FONT_SIZE,
@@ -113,12 +115,12 @@ const DEFAULT_SETTINGS: Required<PdfLayoutSettings> = {
   pageSize: DEFAULT_PAGE_SIZE,
 };
 
-
 export default function PdfLayoutManager() {
   const [selectedPdfType, setSelectedPdfType] = useState<string>(GENERAL_CONFIG_KEY);
   const [pdfConfigs, setPdfConfigs] = useState<Record<string, Partial<PdfLayoutSettings>>>({});
   
   const [logoUrlInput, setLogoUrlInput] = useState<string>(DEFAULT_SETTINGS.logoUrl);
+  const [logoWidthInput, setLogoWidthInput] = useState<string>(String(DEFAULT_SETTINGS.logoWidth));
   const [uploadedLogoPreview, setUploadedLogoPreview] = useState<string | null>(null);
   const [primaryColorInput, setPrimaryColorInput] = useState<string>(DEFAULT_SETTINGS.primaryColor);
   const [headerTextInput, setHeaderTextInput] = useState<string>(DEFAULT_SETTINGS.headerText);
@@ -131,7 +133,7 @@ export default function PdfLayoutManager() {
   const [fontFamilyInput, setFontFamilyInput] = useState<NonNullable<PdfLayoutSettings['fontFamily']>>(DEFAULT_SETTINGS.fontFamily);
   const [documentBaseTitleInput, setDocumentBaseTitleInput] = useState<string>(DEFAULT_SETTINGS.documentBaseTitle);
   const [showDocumentBaseTitleInput, setShowDocumentBaseTitleInput] = useState<boolean>(DEFAULT_SETTINGS.showDocumentBaseTitle);
-  const [showModuleTitleInput, setShowModuleTitleInput] = useState<boolean>(DEFAULT_SETTINGS.showModuleTitle); // New state
+  const [showModuleTitleInput, setShowModuleTitleInput] = useState<boolean>(DEFAULT_SETTINGS.showModuleTitle);
   const [documentTitleFontSizeInput, setDocumentTitleFontSizeInput] = useState<string>(String(DEFAULT_SETTINGS.documentTitleFontSize));
   const [headerFontSizeInput, setHeaderFontSizeInput] = useState<string>(String(DEFAULT_SETTINGS.headerFontSize));
   const [footerFontSizeInput, setFooterFontSizeInput] = useState<string>(String(DEFAULT_SETTINGS.footerFontSize));
@@ -144,6 +146,7 @@ export default function PdfLayoutManager() {
   const logoFileInputRef = useRef<HTMLInputElement>(null);
   const [isClient, setIsClient] = useState(false);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
@@ -151,66 +154,75 @@ export default function PdfLayoutManager() {
 
   useEffect(() => {
     if (!isClient) return;
-    setIsLoadingSettings(true);
-    try {
-      const storedConfigs = localStorage.getItem(PDF_LAYOUT_CONFIGS_KEY);
-      if (storedConfigs) {
-        setPdfConfigs(JSON.parse(storedConfigs));
-      } else {
-        setPdfConfigs({ [GENERAL_CONFIG_KEY]: { ...DEFAULT_SETTINGS } }); 
+    
+    const loadSettings = async () => {
+      setIsLoadingSettings(true);
+      try {
+        const configs = await loadPdfLayoutSettingsFromFirestore();
+        setPdfConfigs(configs);
+      } catch (error) {
+        console.error("Error loading PDF layout configs from Firestore:", error);
+        toast({
+          title: "Erreur de chargement",
+          description: "Impossible de charger les configurations depuis la base de données.",
+          variant: "destructive",
+        });
+        setPdfConfigs({ [GENERAL_CONFIG_KEY]: { ...DEFAULT_SETTINGS } });
       }
-    } catch (error) {
-      console.error("Error loading PDF layout configs from localStorage:", error);
-      toast({
-        title: "Erreur de chargement",
-        description: "Impossible de charger les configurations de mise en page PDF.",
-        variant: "destructive",
-      });
-       setPdfConfigs({ [GENERAL_CONFIG_KEY]: { ...DEFAULT_SETTINGS } });
-    }
-    setIsLoadingSettings(false);
+      setIsLoadingSettings(false);
+    };
+
+    loadSettings();
   }, [isClient, toast]);
 
   const [previewSettingsForDisplay, setPreviewSettingsForDisplay] = useState<Required<PdfLayoutSettings>>(DEFAULT_SETTINGS);
 
   useEffect(() => {
     if (!isClient || isLoadingSettings) return;
-    const effectiveSettings = fetchPdfSettings(selectedPdfType || GENERAL_CONFIG_KEY, pdfConfigs);
-    
-    setLogoUrlInput(effectiveSettings.logoUrl); 
-    if (effectiveSettings.logoUrl && effectiveSettings.logoUrl.startsWith('data:image')) {
-        setUploadedLogoPreview(effectiveSettings.logoUrl);
-    } else {
-        setUploadedLogoPreview(null); 
-    }
 
-    setPrimaryColorInput(effectiveSettings.primaryColor);
-    setHeaderTextInput(effectiveSettings.headerText);
-    setFooterTextInput(effectiveSettings.footerText);
-    setMarginTopInput(String(effectiveSettings.marginTop));
-    setMarginRightInput(String(effectiveSettings.marginRight));
-    setMarginBottomInput(String(effectiveSettings.marginBottom));
-    setMarginLeftInput(String(effectiveSettings.marginLeft));
-    setDefaultFontSizeInput(String(effectiveSettings.defaultFontSize));
-    setFontFamilyInput(effectiveSettings.fontFamily);
-    setDocumentBaseTitleInput(effectiveSettings.documentBaseTitle);
-    setShowDocumentBaseTitleInput(effectiveSettings.showDocumentBaseTitle);
-    setShowModuleTitleInput(effectiveSettings.showModuleTitle); // Load new setting
-    setDocumentTitleFontSizeInput(String(effectiveSettings.documentTitleFontSize));
-    setHeaderFontSizeInput(String(effectiveSettings.headerFontSize));
-    setFooterFontSizeInput(String(effectiveSettings.footerFontSize));
-    setTableHeaderFontSizeInput(String(effectiveSettings.tableHeaderFontSize));
-    setTableBodyFontSizeInput(String(effectiveSettings.tableBodyFontSize));
-    setOrientationInput(effectiveSettings.orientation);
-    setPageSizeInput(effectiveSettings.pageSize);
+    const loadAndSetCurrentSettings = async () => {
+        const effectiveSettings = await getEffectivePdfSettings(selectedPdfType || GENERAL_CONFIG_KEY);
+
+        setLogoUrlInput(effectiveSettings.logoUrl || DEFAULT_SETTINGS.logoUrl); 
+        setLogoWidthInput(String(effectiveSettings.logoWidth ?? DEFAULT_SETTINGS.logoWidth));
+        if (effectiveSettings.logoUrl && effectiveSettings.logoUrl.startsWith('data:image')) {
+            setUploadedLogoPreview(effectiveSettings.logoUrl);
+        } else {
+            setUploadedLogoPreview(null); 
+        }
+
+        setPrimaryColorInput(effectiveSettings.primaryColor || DEFAULT_SETTINGS.primaryColor);
+        setHeaderTextInput(effectiveSettings.headerText || DEFAULT_SETTINGS.headerText);
+        setFooterTextInput(effectiveSettings.footerText || DEFAULT_SETTINGS.footerText);
+        setMarginTopInput(String(effectiveSettings.marginTop ?? DEFAULT_SETTINGS.marginTop));
+        setMarginRightInput(String(effectiveSettings.marginRight ?? DEFAULT_SETTINGS.marginRight));
+        setMarginBottomInput(String(effectiveSettings.marginBottom ?? DEFAULT_SETTINGS.marginBottom));
+        setMarginLeftInput(String(effectiveSettings.marginLeft ?? DEFAULT_SETTINGS.marginLeft));
+        setDefaultFontSizeInput(String(effectiveSettings.defaultFontSize ?? DEFAULT_SETTINGS.defaultFontSize));
+        setFontFamilyInput(effectiveSettings.fontFamily || DEFAULT_SETTINGS.fontFamily);
+        setDocumentBaseTitleInput(effectiveSettings.documentBaseTitle || DEFAULT_SETTINGS.documentBaseTitle);
+        setShowDocumentBaseTitleInput(effectiveSettings.showDocumentBaseTitle ?? DEFAULT_SETTINGS.showDocumentBaseTitle);
+        setShowModuleTitleInput(effectiveSettings.showModuleTitle ?? DEFAULT_SETTINGS.showModuleTitle);
+        setDocumentTitleFontSizeInput(String(effectiveSettings.documentTitleFontSize ?? DEFAULT_SETTINGS.documentTitleFontSize));
+        setHeaderFontSizeInput(String(effectiveSettings.headerFontSize ?? DEFAULT_SETTINGS.headerFontSize));
+        setFooterFontSizeInput(String(effectiveSettings.footerFontSize ?? DEFAULT_SETTINGS.footerFontSize));
+        setTableHeaderFontSizeInput(String(effectiveSettings.tableHeaderFontSize ?? DEFAULT_SETTINGS.tableHeaderFontSize));
+        setTableBodyFontSizeInput(String(effectiveSettings.tableBodyFontSize ?? DEFAULT_SETTINGS.tableBodyFontSize));
+        setOrientationInput(effectiveSettings.orientation || DEFAULT_SETTINGS.orientation);
+        setPageSizeInput(effectiveSettings.pageSize || DEFAULT_SETTINGS.pageSize);
+    }
+    
+    loadAndSetCurrentSettings();
     
   }, [selectedPdfType, pdfConfigs, isClient, isLoadingSettings]);
+
 
   useEffect(() => {
     if (!isClient || isLoadingSettings) return;
 
     const liveSettings: Required<PdfLayoutSettings> = {
       logoUrl: logoUrlInput || DEFAULT_SETTINGS.logoUrl,
+      logoWidth: parseFloat(logoWidthInput) || DEFAULT_SETTINGS.logoWidth,
       primaryColor: primaryColorInput || DEFAULT_SETTINGS.primaryColor,
       headerText: headerTextInput || DEFAULT_SETTINGS.headerText,
       footerText: footerTextInput || DEFAULT_SETTINGS.footerText,
@@ -222,7 +234,7 @@ export default function PdfLayoutManager() {
       fontFamily: fontFamilyInput || DEFAULT_SETTINGS.fontFamily,
       documentBaseTitle: documentBaseTitleInput || DEFAULT_SETTINGS.documentBaseTitle,
       showDocumentBaseTitle: showDocumentBaseTitleInput,
-      showModuleTitle: showModuleTitleInput, // Add to live settings
+      showModuleTitle: showModuleTitleInput,
       documentTitleFontSize: parseFloat(documentTitleFontSizeInput) || DEFAULT_SETTINGS.documentTitleFontSize,
       headerFontSize: parseFloat(headerFontSizeInput) || DEFAULT_SETTINGS.headerFontSize,
       footerFontSize: parseFloat(footerFontSizeInput) || DEFAULT_SETTINGS.footerFontSize,
@@ -234,10 +246,10 @@ export default function PdfLayoutManager() {
     setPreviewSettingsForDisplay(liveSettings);
   }, [
     isClient, isLoadingSettings,
-    logoUrlInput, primaryColorInput, headerTextInput, footerTextInput,
+    logoUrlInput, logoWidthInput, primaryColorInput, headerTextInput, footerTextInput,
     marginTopInput, marginRightInput, marginBottomInput, marginLeftInput,
     defaultFontSizeInput, fontFamilyInput, documentBaseTitleInput, showDocumentBaseTitleInput,
-    showModuleTitleInput, // Add new dependency
+    showModuleTitleInput,
     documentTitleFontSizeInput, headerFontSizeInput, footerFontSizeInput,
     tableHeaderFontSizeInput, tableBodyFontSizeInput, orientationInput, pageSizeInput
   ]);
@@ -250,57 +262,49 @@ export default function PdfLayoutManager() {
     return foundPdf ? foundPdf.label : GENERAL_CONFIG_DISPLAY_LABEL;
   }, [selectedPdfType]);
 
-  const saveConfig = useCallback((updates: Partial<PdfLayoutSettings>, successMessagePrefix: string) => {
-    const activeConfigKey = selectedPdfType || GENERAL_CONFIG_KEY;
+  const saveConfig = useCallback(async (updates: Partial<PdfLayoutSettings>, successMessagePrefix: string) => {
+    if (isSaving) return;
+    setIsSaving(true);
     
-    const currentSpecificConfigForActiveKey = pdfConfigs[activeConfigKey] ? { ...pdfConfigs[activeConfigKey] } : {};
-    let newSpecificConfigWithUpdates = { ...currentSpecificConfigForActiveKey, ...updates };
+    const activeConfigKey = selectedPdfType || GENERAL_CONFIG_KEY;
+    const currentSpecificConfig = pdfConfigs[activeConfigKey] ? { ...pdfConfigs[activeConfigKey] } : {};
+    let newSpecificConfig = { ...currentSpecificConfig, ...updates };
 
-    (Object.keys(newSpecificConfigWithUpdates) as Array<keyof PdfLayoutSettings>).forEach(key => {
-        const valueToSave = newSpecificConfigWithUpdates[key];
-        let defaultValue: string | number | boolean | undefined;
-
-        switch(key) {
-            case 'logoUrl': defaultValue = DEFAULT_SETTINGS.logoUrl; break;
-            case 'primaryColor': defaultValue = DEFAULT_SETTINGS.primaryColor; break;
-            case 'headerText': defaultValue = DEFAULT_SETTINGS.headerText; break;
-            case 'footerText': defaultValue = DEFAULT_SETTINGS.footerText; break;
-            case 'marginTop': case 'marginRight': case 'marginBottom': case 'marginLeft': defaultValue = DEFAULT_SETTINGS.marginTop; break;
-            case 'defaultFontSize': defaultValue = DEFAULT_SETTINGS.defaultFontSize; break;
-            case 'fontFamily': defaultValue = DEFAULT_SETTINGS.fontFamily; break;
-            case 'documentBaseTitle': defaultValue = DEFAULT_SETTINGS.documentBaseTitle; break;
-            case 'showDocumentBaseTitle': defaultValue = DEFAULT_SETTINGS.showDocumentBaseTitle; break;
-            case 'showModuleTitle': defaultValue = DEFAULT_SETTINGS.showModuleTitle; break; // New
-            case 'documentTitleFontSize': defaultValue = DEFAULT_SETTINGS.documentTitleFontSize; break;
-            case 'headerFontSize': defaultValue = DEFAULT_SETTINGS.headerFontSize; break;
-            case 'footerFontSize': defaultValue = DEFAULT_SETTINGS.footerFontSize; break;
-            case 'tableHeaderFontSize': defaultValue = DEFAULT_SETTINGS.tableHeaderFontSize; break;
-            case 'tableBodyFontSize': defaultValue = DEFAULT_SETTINGS.tableBodyFontSize; break;
-            case 'orientation': defaultValue = DEFAULT_SETTINGS.orientation; break;
-            case 'pageSize': defaultValue = DEFAULT_SETTINGS.pageSize; break;
-        }
+    (Object.keys(newSpecificConfig) as Array<keyof PdfLayoutSettings>).forEach(key => {
+        const valueToSave = newSpecificConfig[key];
+        const defaultValue = DEFAULT_SETTINGS[key];
         
         const isDefaultValue = valueToSave === defaultValue;
         if (valueToSave === undefined || (typeof valueToSave === 'string' && String(valueToSave).trim() === '') || (isDefaultValue && activeConfigKey !== GENERAL_CONFIG_KEY) ) {
-          delete newSpecificConfigWithUpdates[key];
+          delete newSpecificConfig[key];
         }
     });
     
     const newPdfConfigs = { ...pdfConfigs };
-
-    if (Object.keys(newSpecificConfigWithUpdates).length === 0 && activeConfigKey !== GENERAL_CONFIG_KEY) {
-        delete newPdfConfigs[activeConfigKey]; 
+    if (Object.keys(newSpecificConfig).length === 0 && activeConfigKey !== GENERAL_CONFIG_KEY) {
+        delete newPdfConfigs[activeConfigKey];
     } else {
-        newPdfConfigs[activeConfigKey] = newSpecificConfigWithUpdates;
+        newPdfConfigs[activeConfigKey] = newSpecificConfig;
     }
     
-    setPdfConfigs(newPdfConfigs);
-    localStorage.setItem(PDF_LAYOUT_CONFIGS_KEY, JSON.stringify(newPdfConfigs));
-    toast({
-      title: "Configuration Enregistrée",
-      description: `${successMessagePrefix} pour "${selectedPdfLabel}" a été enregistrée.`,
-    });
-  }, [selectedPdfType, pdfConfigs, toast, selectedPdfLabel]);
+    try {
+        await savePdfLayoutSettingsToFirestore(newPdfConfigs);
+        setPdfConfigs(newPdfConfigs); 
+        toast({
+          title: "Configuration Enregistrée",
+          description: `${successMessagePrefix} pour "${selectedPdfLabel}" a été enregistrée.`,
+        });
+    } catch (error) {
+        console.error("Error saving PDF layout settings to Firestore:", error);
+        toast({
+          title: "Erreur de Sauvegarde",
+          description: `Impossible d'enregistrer la configuration dans la base de données.`,
+          variant: "destructive",
+        });
+    } finally {
+        setIsSaving(false);
+    }
+  }, [selectedPdfType, pdfConfigs, toast, selectedPdfLabel, isSaving]);
 
   const handleLogoFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -324,8 +328,11 @@ export default function PdfLayoutManager() {
     }
   };
 
-  const handleSaveLogo = () => {
-    saveConfig({ logoUrl: logoUrlInput || undefined }, "Le logo");
+  const handleSaveLogoAndWidth = () => {
+    saveConfig({ 
+      logoUrl: logoUrlInput || undefined,
+      logoWidth: parseFloat(logoWidthInput) || undefined
+    }, "Le logo et sa largeur");
   };
 
   const handleSaveHeaderText = () => saveConfig({ headerText: headerTextInput || undefined }, "Le texte d'en-tête");
@@ -335,7 +342,7 @@ export default function PdfLayoutManager() {
     saveConfig({
       documentBaseTitle: documentBaseTitleInput || undefined,
       showDocumentBaseTitle: showDocumentBaseTitleInput,
-      showModuleTitle: showModuleTitleInput // Save new option
+      showModuleTitle: showModuleTitleInput,
     }, "Les options de titre");
   };
 
@@ -380,8 +387,9 @@ export default function PdfLayoutManager() {
                       <Image 
                         src={logoToDisplay} 
                         alt="Aperçu logo" 
-                        width={32} 
-                        height={16} 
+                        width={32}
+                        height={16}
+                        style={{ width: `${previewSettingsForDisplay.logoWidth}%`, height: 'auto' }}
                         className="object-contain"
                         unoptimized
                       />
@@ -418,7 +426,7 @@ export default function PdfLayoutManager() {
       <div className="space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle>Sélectionnez un type de PDF à configurer</CardTitle>
+            <CardTitle>Personnalisation de la Mise en Page PDF</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex justify-center items-center p-8">
@@ -457,7 +465,7 @@ export default function PdfLayoutManager() {
         <CardContent>
           <div className="max-w-md">
             <Label htmlFor="pdf-type-select" className="mb-2 block">Type de Document PDF</Label>
-            <Select value={selectedPdfType} onValueChange={setSelectedPdfType}>
+            <Select value={selectedPdfType} onValueChange={setSelectedPdfType} disabled={isSaving}>
               <SelectTrigger id="pdf-type-select">
                 <SelectValue placeholder="Choisir un type de PDF..." />
               </SelectTrigger>
@@ -479,7 +487,7 @@ export default function PdfLayoutManager() {
             Options de Personnalisation pour: <span className="text-primary ml-1">{selectedPdfLabel}</span>
           </CardTitle>
           <CardDescription>
-            Modifiez les paramètres ci-dessous pour le type de PDF sélectionné. Les paramètres non définis spécifiquement pour ce type de PDF utiliseront la configuration générale (ou les valeurs par défaut de l'application).
+            Modifiez les paramètres ci-dessous pour le type de PDF sélectionné. Les paramètres non définis utiliseront la configuration générale.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -499,10 +507,28 @@ export default function PdfLayoutManager() {
                         ref={logoFileInputRef}
                         onChange={handleLogoFileUpload}
                         className="mt-1 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                        disabled={isSaving}
                     />
                 </div>
-                <Button onClick={handleSaveLogo}>
-                    <Save className="mr-2 h-4 w-4"/> Enregistrer Logo
+                 <div>
+                    <Label htmlFor="logo-width-input" className="flex items-center gap-1"><Ruler className="w-4 h-4"/> Largeur du Logo (en % de la page)</Label>
+                    <Input 
+                        id="logo-width-input"
+                        type="number"
+                        value={logoWidthInput}
+                        onChange={e => setLogoWidthInput(e.target.value)}
+                        placeholder="Ex: 50"
+                        className="mt-1 h-8"
+                        disabled={isSaving}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                        La largeur est un pourcentage de la largeur totale de la page. 100% prendra toute la largeur.
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">Effectif : {previewSettingsForDisplay.logoWidth}%</p>
+                </div>
+                <Button onClick={handleSaveLogoAndWidth} disabled={isSaving}>
+                    {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>} 
+                    Enregistrer Logo & Largeur
                 </Button>
                 {(uploadedLogoPreview || (previewSettingsForDisplay.logoUrl && previewSettingsForDisplay.logoUrl.startsWith('data:image'))) && (
                   <div className="mt-4 p-2 border rounded-md inline-block bg-muted">
@@ -517,7 +543,7 @@ export default function PdfLayoutManager() {
                     />
                   </div>
                 )}
-                 {!(uploadedLogoPreview || (previewSettingsForDisplay.logoUrl && previewSettingsForDisplay.logoUrl.startsWith('data:image'))) && <p className="text-xs text-muted-foreground mt-2">Aucun logo configuré. Téléchargez une image pour en ajouter un.</p>}
+                 {!(uploadedLogoPreview || (previewSettingsForDisplay.logoUrl && previewSettingsForDisplay.logoUrl.startsWith('data:image'))) && <p className="text-xs text-muted-foreground mt-2">Aucun logo configuré. Téléchargez une image.</p>}
               </div>
             </div>
 
@@ -529,7 +555,7 @@ export default function PdfLayoutManager() {
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="orientation-select">Orientation de Page</Label>
-                  <Select value={orientationInput} onValueChange={(val) => setOrientationInput(val as NonNullable<PdfLayoutSettings['orientation']>)}>
+                  <Select value={orientationInput} onValueChange={(val) => setOrientationInput(val as NonNullable<PdfLayoutSettings['orientation']>)} disabled={isSaving}>
                     <SelectTrigger id="orientation-select"><SelectValue /></SelectTrigger>
                     <SelectContent>{pageOrientations.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
                   </Select>
@@ -537,7 +563,7 @@ export default function PdfLayoutManager() {
                 </div>
                 <div>
                   <Label htmlFor="page-size-select">Format de Page</Label>
-                  <Select value={pageSizeInput} onValueChange={(val) => setPageSizeInput(val as NonNullable<PdfLayoutSettings['pageSize']>)}>
+                  <Select value={pageSizeInput} onValueChange={(val) => setPageSizeInput(val as NonNullable<PdfLayoutSettings['pageSize']>)} disabled={isSaving}>
                     <SelectTrigger id="page-size-select"><SelectValue /></SelectTrigger>
                     <SelectContent>{pageSizes.map(ps => <SelectItem key={ps.value} value={ps.value}>{ps.label}</SelectItem>)}</SelectContent>
                   </Select>
@@ -545,7 +571,7 @@ export default function PdfLayoutManager() {
                 </div>
                 <div>
                   <Label htmlFor="font-family-select">Police de Caractères</Label>
-                  <Select value={fontFamilyInput} onValueChange={(val) => setFontFamilyInput(val as NonNullable<PdfLayoutSettings['fontFamily']>)}>
+                  <Select value={fontFamilyInput} onValueChange={(val) => setFontFamilyInput(val as NonNullable<PdfLayoutSettings['fontFamily']>)} disabled={isSaving}>
                     <SelectTrigger id="font-family-select"><SelectValue /></SelectTrigger>
                     <SelectContent>{fontFamilies.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
                   </Select>
@@ -553,12 +579,12 @@ export default function PdfLayoutManager() {
                 </div>
                 <Label className="flex items-center gap-1 pt-2"><TextCursorInput className="w-4 h-4"/> Tailles de Police (pt)</Label>
                 <div className="grid grid-cols-2 gap-3">
-                    <div><Label htmlFor="document-title-font-size-input" className="text-xs">Titre Document</Label><Input id="document-title-font-size-input" type="number" value={documentTitleFontSizeInput} onChange={e => setDocumentTitleFontSizeInput(e.target.value)} className="h-8"/></div>
-                    <div><Label htmlFor="default-font-size-input" className="text-xs">Défaut</Label><Input id="default-font-size-input" type="number" value={defaultFontSizeInput} onChange={e => setDefaultFontSizeInput(e.target.value)} className="h-8"/></div>
-                    <div><Label htmlFor="header-font-size-input" className="text-xs">En-tête (Perso)</Label><Input id="header-font-size-input" type="number" value={headerFontSizeInput} onChange={e => setHeaderFontSizeInput(e.target.value)} className="h-8"/></div>
-                    <div><Label htmlFor="footer-font-size-input" className="text-xs">Pied de Page</Label><Input id="footer-font-size-input" type="number" value={footerFontSizeInput} onChange={e => setFooterFontSizeInput(e.target.value)} className="h-8"/></div>
-                    <div><Label htmlFor="table-header-font-size-input" className="text-xs">En-tête Tableau</Label><Input id="table-header-font-size-input" type="number" value={tableHeaderFontSizeInput} onChange={e => setTableHeaderFontSizeInput(e.target.value)} className="h-8"/></div>
-                    <div><Label htmlFor="table-body-font-size-input" className="text-xs">Corps Tableau</Label><Input id="table-body-font-size-input" type="number" value={tableBodyFontSizeInput} onChange={e => setTableBodyFontSizeInput(e.target.value)} className="h-8"/></div>
+                    <div><Label htmlFor="document-title-font-size-input" className="text-xs">Titre Document</Label><Input id="document-title-font-size-input" type="number" value={documentTitleFontSizeInput} onChange={e => setDocumentTitleFontSizeInput(e.target.value)} className="h-8" disabled={isSaving}/></div>
+                    <div><Label htmlFor="default-font-size-input" className="text-xs">Défaut</Label><Input id="default-font-size-input" type="number" value={defaultFontSizeInput} onChange={e => setDefaultFontSizeInput(e.target.value)} className="h-8" disabled={isSaving}/></div>
+                    <div><Label htmlFor="header-font-size-input" className="text-xs">En-tête (Perso)</Label><Input id="header-font-size-input" type="number" value={headerFontSizeInput} onChange={e => setHeaderFontSizeInput(e.target.value)} className="h-8" disabled={isSaving}/></div>
+                    <div><Label htmlFor="footer-font-size-input" className="text-xs">Pied de Page</Label><Input id="footer-font-size-input" type="number" value={footerFontSizeInput} onChange={e => setFooterFontSizeInput(e.target.value)} className="h-8" disabled={isSaving}/></div>
+                    <div><Label htmlFor="table-header-font-size-input" className="text-xs">En-tête Tableau</Label><Input id="table-header-font-size-input" type="number" value={tableHeaderFontSizeInput} onChange={e => setTableHeaderFontSizeInput(e.target.value)} className="h-8" disabled={isSaving}/></div>
+                    <div><Label htmlFor="table-body-font-size-input" className="text-xs">Corps Tableau</Label><Input id="table-body-font-size-input" type="number" value={tableBodyFontSizeInput} onChange={e => setTableBodyFontSizeInput(e.target.value)} className="h-8" disabled={isSaving}/></div>
                 </div>
                  <p className="text-xs text-muted-foreground mt-1">
                     Effectives: Titre Doc. {previewSettingsForDisplay.documentTitleFontSize}pt, Défaut {previewSettingsForDisplay.defaultFontSize}pt, En-tête Perso {previewSettingsForDisplay.headerFontSize}pt, Pied {previewSettingsForDisplay.footerFontSize}pt, En-tête Tab. {previewSettingsForDisplay.tableHeaderFontSize}pt, Corps Tab. {previewSettingsForDisplay.tableBodyFontSize}pt
@@ -582,6 +608,7 @@ export default function PdfLayoutManager() {
                             value={primaryColorInput}
                             onChange={(e) => setPrimaryColorInput(e.target.value)}
                             className="h-8 w-10 rounded border-input bg-background p-0.5 cursor-pointer"
+                            disabled={isSaving}
                         />
                         <Input
                             type="text"
@@ -589,6 +616,7 @@ export default function PdfLayoutManager() {
                             onChange={(e) => setPrimaryColorInput(e.target.value)}
                             placeholder="#FFBF00"
                             className="w-32 h-8"
+                            disabled={isSaving}
                         />
                     </div>
                      <p className="text-xs text-muted-foreground mt-1">Effective: <span style={{backgroundColor: previewSettingsForDisplay.primaryColor, padding: '2px 6px', borderRadius: '3px', color: '#fff', textShadow: '0 0 2px #000' }}>{previewSettingsForDisplay.primaryColor}</span></p>
@@ -596,10 +624,10 @@ export default function PdfLayoutManager() {
                 <div>
                   <Label className="flex items-center gap-1"><ArrowRightLeft className="w-4 h-4"/> Marges (en points PDF, 1pt ≈ 0.35mm)</Label>
                   <div className="grid grid-cols-2 gap-3">
-                    <div><Label htmlFor="margin-top-input" className="text-xs">Haut</Label><Input id="margin-top-input" type="number" value={marginTopInput} onChange={e => setMarginTopInput(e.target.value)} placeholder={String(DEFAULT_MARGIN)} className="h-8"/></div>
-                    <div><Label htmlFor="margin-bottom-input" className="text-xs">Bas</Label><Input id="margin-bottom-input" type="number" value={marginBottomInput} onChange={e => setMarginBottomInput(e.target.value)} placeholder={String(DEFAULT_MARGIN)} className="h-8"/></div>
-                    <div><Label htmlFor="margin-left-input" className="text-xs">Gauche</Label><Input id="margin-left-input" type="number" value={marginLeftInput} onChange={e => setMarginLeftInput(e.target.value)} placeholder={String(DEFAULT_MARGIN)} className="h-8"/></div>
-                    <div><Label htmlFor="margin-right-input" className="text-xs">Droite</Label><Input id="margin-right-input" type="number" value={marginRightInput} onChange={e => setMarginRightInput(e.target.value)} placeholder={String(DEFAULT_MARGIN)} className="h-8"/></div>
+                    <div><Label htmlFor="margin-top-input" className="text-xs">Haut</Label><Input id="margin-top-input" type="number" value={marginTopInput} onChange={e => setMarginTopInput(e.target.value)} placeholder={String(DEFAULT_MARGIN)} className="h-8" disabled={isSaving}/></div>
+                    <div><Label htmlFor="margin-bottom-input" className="text-xs">Bas</Label><Input id="margin-bottom-input" type="number" value={marginBottomInput} onChange={e => setMarginBottomInput(e.target.value)} placeholder={String(DEFAULT_MARGIN)} className="h-8" disabled={isSaving}/></div>
+                    <div><Label htmlFor="margin-left-input" className="text-xs">Gauche</Label><Input id="margin-left-input" type="number" value={marginLeftInput} onChange={e => setMarginLeftInput(e.target.value)} placeholder={String(DEFAULT_MARGIN)} className="h-8" disabled={isSaving}/></div>
+                    <div><Label htmlFor="margin-right-input" className="text-xs">Droite</Label><Input id="margin-right-input" type="number" value={marginRightInput} onChange={e => setMarginRightInput(e.target.value)} placeholder={String(DEFAULT_MARGIN)} className="h-8" disabled={isSaving}/></div>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Effectives: H:{previewSettingsForDisplay.marginTop}pt, B:{previewSettingsForDisplay.marginBottom}pt, G:{previewSettingsForDisplay.marginLeft}pt, D:{previewSettingsForDisplay.marginRight}pt</p>
                 </div>
@@ -613,7 +641,7 @@ export default function PdfLayoutManager() {
               </div>
               <div className="space-y-4">
                 <div>
-                    <Label className="flex items-center gap-1" htmlFor="document-base-title-input"><Heading1 className="w-4 h-4"/> je voudrasi choisir si je veux afficher le titre de base avec un sélecteur : "oui ou non "</Label>
+                    <Label className="flex items-center gap-1" htmlFor="document-base-title-input"><TextCursorInput className="w-4 h-4"/> Titre de Base du Document</Label>
                     <Input 
                         id="document-base-title-input"
                         type="text"
@@ -621,13 +649,14 @@ export default function PdfLayoutManager() {
                         value={documentBaseTitleInput}
                         onChange={(e) => setDocumentBaseTitleInput(e.target.value)}
                         className="mt-1 h-8"
+                        disabled={isSaving}
                     />
-                    <p className="text-xs text-muted-foreground mt-1">Ce titre sera utilisé comme base. Des informations dynamiques (mois, année, etc.) pourront être ajoutées par chaque module.</p>
+                    <p className="text-xs text-muted-foreground mt-1">Ce titre sera utilisé comme base. Des informations dynamiques pourront être ajoutées.</p>
                     {previewSettingsForDisplay.documentBaseTitle && <p className="text-xs text-muted-foreground mt-1">Effectif : {previewSettingsForDisplay.documentBaseTitle}</p>}
                 </div>
                 <div className="flex items-center justify-between rounded-lg border p-3 shadow-sm">
                   <div className="space-y-0.5">
-                    <Label htmlFor="show-document-base-title-switch">je voudrais un syte oui ou non</Label>
+                    <Label htmlFor="show-document-base-title-switch">Afficher le Titre de Base</Label>
                     <p className="text-xs text-muted-foreground">
                       Si activé, le "Titre de Base" ci-dessus sera inclus dans le titre principal du PDF.
                     </p>
@@ -636,6 +665,7 @@ export default function PdfLayoutManager() {
                     id="show-document-base-title-switch"
                     checked={showDocumentBaseTitleInput}
                     onCheckedChange={setShowDocumentBaseTitleInput}
+                    disabled={isSaving}
                   />
                 </div>
                 <div className="flex items-center justify-between rounded-lg border p-3 shadow-sm">
@@ -649,10 +679,12 @@ export default function PdfLayoutManager() {
                     id="show-module-title-switch"
                     checked={showModuleTitleInput}
                     onCheckedChange={setShowModuleTitleInput}
+                    disabled={isSaving}
                   />
                 </div>
-                <Button onClick={handleSaveTitleOptions}>
-                    <Save className="mr-2 h-4 w-4"/> Enregistrer Options des Titres
+                <Button onClick={handleSaveTitleOptions} disabled={isSaving}>
+                    {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>} 
+                    Enregistrer Options des Titres
                 </Button>
                 <div>
                     <Label htmlFor="header-text-input" className="flex items-center gap-1"><Type className="w-4 h-4"/> Texte d'En-tête Personnalisé</Label>
@@ -663,14 +695,16 @@ export default function PdfLayoutManager() {
                         onChange={(e) => setHeaderTextInput(e.target.value)}
                         className="mt-1"
                         rows={3}
+                        disabled={isSaving}
                     />
                     {previewSettingsForDisplay.headerText && 
                       <div className="text-xs text-muted-foreground mt-1">Effectif : <pre className="whitespace-pre-wrap text-xs bg-muted/50 p-1 rounded inline-block">{previewSettingsForDisplay.headerText}</pre></div>
                     }
                     {!previewSettingsForDisplay.headerText && <p className="text-xs text-muted-foreground mt-1">Aucun texte d'en-tête personnalisé défini.</p>}
                 </div>
-                <Button onClick={handleSaveHeaderText}>
-                    <Save className="mr-2 h-4 w-4"/> Enregistrer En-tête Personnalisé
+                <Button onClick={handleSaveHeaderText} disabled={isSaving}>
+                    {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>} 
+                    Enregistrer En-tête Personnalisé
                 </Button>
                  <div>
                     <Label htmlFor="footer-text-input" className="flex items-center gap-1"><MessageSquare className="w-4 h-4"/> Texte de Pied de Page</Label>
@@ -681,18 +715,21 @@ export default function PdfLayoutManager() {
                         onChange={(e) => setFooterTextInput(e.target.value)}
                         className="mt-1"
                         rows={2}
+                        disabled={isSaving}
                     />
                     <p className="text-xs text-muted-foreground mt-1">Utilisez &#123;date&#125;, &#123;pageNumber&#125;, &#123;totalPages&#125; comme placeholders.</p>
                     {previewSettingsForDisplay.footerText && <p className="text-xs text-muted-foreground mt-1">Effectif : {previewSettingsForDisplay.footerText}</p>}
                 </div>
-                 <Button onClick={handleSaveFooterText}>
-                    <Save className="mr-2 h-4 w-4"/> Enregistrer Pied de Page
+                 <Button onClick={handleSaveFooterText} disabled={isSaving}>
+                    {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>} 
+                    Enregistrer Pied de Page
                 </Button>
               </div>
             </div>
             <div className="flex justify-end mt-6 space-x-2">
-                <Button onClick={handleSaveLayoutAndFontStyles} size="lg">
-                    <Save className="mr-2 h-5 w-5"/> Enregistrer Config. (Police, Couleur, Marges, Format)
+                <Button onClick={handleSaveLayoutAndFontStyles} size="lg" disabled={isSaving}>
+                    {isSaving ? <Loader2 className="mr-2 h-5 w-5 animate-spin"/> : <Save className="mr-2 h-5 w-5"/>} 
+                    Enregistrer Config. (Police, Couleur, Marges, Format)
                 </Button>
             </div>
         </CardContent>
@@ -705,7 +742,7 @@ export default function PdfLayoutManager() {
             Aperçu de la Mise en Page PDF
           </CardTitle>
           <CardDescription>
-            Visualisation basée sur les paramètres pour "{selectedPdfLabel}". L'aperçu se met à jour dynamiquement lorsque vous modifiez les champs.
+            Visualisation basée sur les paramètres pour "{selectedPdfLabel}". L'aperçu se met à jour dynamiquement.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -798,5 +835,3 @@ export default function PdfLayoutManager() {
     </div>
   );
 }
-
-

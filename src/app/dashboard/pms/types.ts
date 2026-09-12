@@ -41,6 +41,7 @@ export interface DailyTempGridLogEntry {
   markedTemp?: number | null; // The temp value marked, e.g., 3 for 3°C. Null if none.
   time?: string; // HH:MM
   operator?: string;
+  isOutOfOrder?: boolean;
 }
 
 // Represents all records for a specific equipment for a specific month.
@@ -72,8 +73,10 @@ export interface TempChangeEntry {
   coolingDate: string;
   productName: string;
   quantity: string;
+  cooledWithWater?: boolean;
+  servedCold?: boolean;
+  coolingStartProductTemp?: string;
   coolingHotProductTime?: string;
-  coolingHotProductTemp?: string;
   coolingColdProductTime?: string;
   coolingColdProductTemp?: string;
   coolingVisa?: string;
@@ -142,4 +145,3 @@ export const PMS_SUPPLIER_MANAGEMENT_KEY = 'supplierManagement_v1'; // Added for
 export type PmsEquipmentDefinition = PmsZone; 
 export type PmsSupplierDefinition = PmsZone; 
 export type PmsZoneWithTasksDefinition = PmsZone;
-
